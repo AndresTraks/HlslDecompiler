@@ -777,45 +777,7 @@ namespace HlslDecompiler
             var ast = new HlslAst(shader);
             if (ast.IsValid)
             {
-                var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value);
-                if (roots.All(r => r is HlslConstant || r is HlslShaderInput))
-                {
-                    if (roots.All(r => r is HlslConstant))
-                    {
-                        var values = roots.Select(r => (r as HlslConstant).Value).ToList();
-                        if (values[0] == values[1] && values[0] == values[2] && values[0] == values[3])
-                        {
-                            WriteLine("return {0};", values[0].ToString(System.Globalization.CultureInfo.InvariantCulture));
-                        }
-                        else
-                        {
-                            WriteFloat4(roots);
-                        }
-                    }
-                    else if (roots.All(r => r is HlslShaderInput))
-                    {
-                        var dcls = roots.Select(r => (r as HlslShaderInput).DeclInstruction).ToList();
-                        if (dcls[0] == dcls[1] && dcls[0] == dcls[2] && dcls[0] == dcls[3])
-                        {
-                            var dcl = dcls[0];
-                            int destIndex = dcl.GetDestinationParamIndex();
-                            var registerType = dcl.GetParamRegisterType(destIndex);
-                            int registerNumber = dcl.GetParamRegisterNumber(destIndex);
-
-                            var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
-
-                            WriteLine("return {0};", decl.Name);
-                        }
-                        else
-                        {
-                            WriteFloat4(roots);
-                        }
-                    }
-                    else
-                    {
-                        WriteFloat4(roots);
-                    }
-                }
+                WriteAst(ast);
             }
             else
             {
@@ -886,27 +848,169 @@ namespace HlslDecompiler
             hlslFile.Dispose();
         }
 
-        void WriteFloat4(IEnumerable<HlslTreeNode> roots)
+        string GetAstConstant(HlslTreeNode constant)
         {
-            var args = roots.Select(r =>
+            if (constant is HlslConstant)
             {
-                if (r is HlslConstant)
-                {
-                    return (r as HlslConstant).Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                }
-                else
-                {
-                    var shaderInput = r as HlslShaderInput;
-                    var dcl = shaderInput.DeclInstruction;
-                    int destIndex = dcl.GetDestinationParamIndex();
-                    var registerType = dcl.GetParamRegisterType(destIndex);
-                    int registerNumber = dcl.GetParamRegisterNumber(destIndex);
+                float value = (constant as HlslConstant).Value;
+                return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                var shaderInput = constant as HlslShaderInput;
+                var dcl = shaderInput.InputDecl;
+                var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == dcl.RegisterType && x.RegisterNumber == dcl.RegisterNumber);
+                return decl.Name + '.' + new[] { 'x', 'y', 'z', 'w' }[shaderInput.ComponentIndex];
+            }
+        }
 
-                    var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
-                    return decl.Name + '.' + new[] { 'x', 'y', 'z', 'w' }[shaderInput.ComponentIndex];
+        public string GetAstSourceSwizzleName(IEnumerable<HlslShaderInput> inputs)
+        {
+            int swizzleLength = inputs.Count();
+
+            string swizzleName = "";
+            var swizzle = inputs.Select(i => i.ComponentIndex).ToList();
+            for (int i = 0; i < swizzleLength; i++)
+            {
+                switch (swizzle[i])
+                {
+                    case 0:
+                        swizzleName += "x";
+                        break;
+                    case 1:
+                        swizzleName += "y";
+                        break;
+                    case 2:
+                        swizzleName += "z";
+                        break;
+                    case 3:
+                        swizzleName += "w";
+                        break;
                 }
-            }).ToList();
-            WriteLine("return float4({0}, {1}, {2}, {3});", args[0], args[1], args[2], args[3]);
+            }
+            switch (swizzleLength)
+            {
+                case 4:
+                    switch (swizzleName)
+                    {
+                        case "xyzw":
+                            return "";
+                        case "xxxx":
+                            return ".x";
+                        case "yyyy":
+                            return ".y";
+                        case "zzzz":
+                            return ".z";
+                        case "wwww":
+                            return ".w";
+                        default:
+                            return "." + swizzleName;
+                    }
+                case 3:
+                    switch (swizzleName)
+                    {
+                        case "xyz":
+                            return "";
+                        case "xxx":
+                            return ".x";
+                        case "yyy":
+                            return ".y";
+                        case "zzz":
+                            return ".z";
+                        case "www":
+                            return ".w";
+                        default:
+                            return "." + swizzleName;
+                    }
+                case 2:
+                    switch (swizzleName)
+                    {
+                        case "xy":
+                            return "";
+                        case "xx":
+                            return ".x";
+                        case "yy":
+                            return ".y";
+                        case "zz":
+                            return ".z";
+                        case "ww":
+                            return ".w";
+                        default:
+                            return "." + swizzleName;
+                    }
+                default:
+                    return "." + swizzleName;
+            }
+        }
+
+        static bool AllRegistersEqual(IEnumerable<RegisterKey> registers)
+        {
+            var first = registers.First();
+            return registers.All(r =>
+                r.RegisterType == first.RegisterType &&
+                r.RegisterNumber == first.RegisterNumber);
+        }
+
+        void WriteAst(HlslAst ast)
+        {
+            var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value);
+            if (roots.All(r => r is HlslConstant || r is HlslShaderInput))
+            {
+                if (roots.All(r => r is HlslConstant))
+                {
+                    var values = roots.Select(r => (r as HlslConstant).Value).ToList();
+                    if (values[0] == values[1] && values[0] == values[2] && values[0] == values[3])
+                    {
+                        WriteLine("return {0};", values[0].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        return;
+                    }
+                }
+                else if (roots.All(r => r is HlslShaderInput))
+                {
+                    var dcls = roots.Select(r => (r as HlslShaderInput).InputDecl).ToList();
+                    if (AllRegistersEqual(dcls))
+                    {
+                        var dcl = dcls[0];
+                        var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == dcl.RegisterType && x.RegisterNumber == dcl.RegisterNumber);
+
+                        WriteLine("return {0};", decl.Name);
+                        return;
+                    }
+                }
+                else if (roots.Take(3).All(r => r is HlslShaderInput))
+                {
+                    var roots3 = roots.Take(3).Select(r => r as HlslShaderInput);
+                    var dcls = roots3.Select(r => r.InputDecl);
+                    if (AllRegistersEqual(dcls))
+                    {
+                        var dcl = dcls.First();
+                        var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == dcl.RegisterType && x.RegisterNumber == dcl.RegisterNumber);
+                        string swizzle = GetAstSourceSwizzleName(roots3);
+
+                        WriteLine("return float4({0}{1}, {2});", decl.Name, swizzle, GetAstConstant(roots.Skip(3).First()));
+                        return;
+                    }
+                }
+                else if (roots.Take(2).All(r => r is HlslShaderInput))
+                {
+                    var roots2 = roots.Take(2).Select(r => r as HlslShaderInput);
+                    var dcls = roots2.Select(r => r.InputDecl);
+                    if (AllRegistersEqual(dcls))
+                    {
+                        var dcl = dcls.First();
+                        var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == dcl.RegisterType && x.RegisterNumber == dcl.RegisterNumber);
+                        string swizzle = GetAstSourceSwizzleName(roots2);
+
+                        WriteLine("return float4({0}{1}, {2}, {3});", decl.Name, swizzle,
+                            GetAstConstant(roots.Skip(2).First()),
+                            GetAstConstant(roots.Skip(3).First()));
+                        return;
+                    }
+                }
+
+                var args = roots.Select(r => GetAstConstant(r)).ToList();
+                WriteLine("return float4({0}, {1}, {2}, {3});", args[0], args[1], args[2], args[3]);
+            }
         }
     }
 }

@@ -100,12 +100,12 @@ namespace HlslDecompiler
 
     public class HlslShaderInput : HlslTreeNode
     {
-        public Instruction DeclInstruction { get; set; }
+        public RegisterKey InputDecl { get; set; }
         public int ComponentIndex { get; set; }
 
         public override string ToString()
         {
-            return string.Format("{0} ({1})", DeclInstruction, ComponentIndex);
+            return string.Format("{0} ({1})", InputDecl, ComponentIndex);
         }
     }
 
@@ -180,7 +180,21 @@ namespace HlslDecompiler
             var constantTable = _shader.ParseConstantTable();
             foreach (var constant in constantTable)
             {
-                throw new NotImplementedException();
+                for (int i = 0; i < 4; i++)
+                {
+                    var destinationKey = new RegisterKey()
+                    {
+                        RegisterNumber = constant.RegisterIndex,
+                        RegisterType = RegisterType.Const,
+                        ComponentIndex = i
+                    };
+                    var shaderInput = new HlslShaderInput()
+                    {
+                        InputDecl = destinationKey,
+                        ComponentIndex = i
+                    };
+                    currentOutputs.Add(destinationKey, shaderInput);
+                }
             }
 
             while (instructionPointer < _shader.Instructions.Count)
@@ -191,9 +205,12 @@ namespace HlslDecompiler
                     int destIndex = instruction.GetDestinationParamIndex();
                     var destRegisterType = instruction.GetParamRegisterType(destIndex);
                     int destRegisterNumber = instruction.GetParamRegisterNumber(destIndex);
+                    int destMask = instruction.GetDestinationWriteMask();
 
                     for (int i = 0; i < 4; i++)
                     {
+                        if ((destMask & (1 << i)) == 0) continue;
+
                         var destinationKey = new RegisterKey()
                         {
                             RegisterNumber = destRegisterNumber,
@@ -205,12 +222,9 @@ namespace HlslDecompiler
                         {
                             case Opcode.Dcl:
                                 {
-                                    int mask = instruction.GetDestinationWriteMask();
-                                    if ((mask & (1 << i)) == 0) continue;
-
                                     var shaderInput = new HlslShaderInput()
                                     {
-                                        DeclInstruction = instruction,
+                                        InputDecl = destinationKey,
                                         ComponentIndex = i
                                     };
                                     currentOutputs.Add(destinationKey, shaderInput);
@@ -227,6 +241,11 @@ namespace HlslDecompiler
                                     var mad = new HlslOperation(Opcode.Mad);
                                     for (int j = 0; j < 3; j++)
                                     {
+                                        var modifier = instruction.GetSourceModifier(j + 1);
+                                        if (modifier != SourceModifier.None)
+                                        {
+                                            // TODO
+                                        }
                                         var inputKey = GetParamRegisterKey(instruction, j + 1, i);
                                         var input = currentOutputs[inputKey];
                                         mad.Children.Add(input);

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 
 namespace HlslDecompiler
 {
@@ -36,7 +38,7 @@ namespace HlslDecompiler
         public int MinorVersion { get; private set; }
         public ShaderType Type { get; private set; }
 
-        public ICollection<Instruction> Instructions { get; private set; }
+        public IList<Instruction> Instructions { get; private set; }
 
         public ShaderModel(int majorVersion, int minorVersion, ShaderType type)
         {
@@ -45,6 +47,116 @@ namespace HlslDecompiler
             Type = type;
 
             Instructions = new List<Instruction>();
+        }
+
+        static int MakeFourCC(string id)
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                return (id[0]) + (id[1] << 8) + (id[2] << 16) + (id[3] << 24);
+            }
+            return (id[3]) + (id[2] << 8) + (id[1] << 16) + (id[0] << 24);
+        }
+
+        static string ReadStringNullTerminated(Stream stream)
+        {
+            StringBuilder builder = new StringBuilder();
+            char b;
+            while ((b = (char)stream.ReadByte()) != 0)
+            {
+                builder.Append(b.ToString());
+            }
+            return builder.ToString();
+        }
+
+        public IList<ConstantDeclaration> ParseConstantTable()
+        {
+            var constantDeclarations = new List<ConstantDeclaration>();
+
+            int ctabToken = MakeFourCC("CTAB");
+            var ctabComment = Instructions.FirstOrDefault(x => x.Opcode == Opcode.Comment && x.Params[0] == ctabToken);
+            if (ctabComment == null)
+            {
+                return constantDeclarations;
+            }
+
+            byte[] constantTable = new byte[ctabComment.Params.Length * 4];
+            for (int i = 1; i < ctabComment.Params.Length; i++)
+            {
+                constantTable[i * 4 - 4] = (byte)(ctabComment.Params[i] & 0xFF);
+                constantTable[i * 4 - 3] = (byte)((ctabComment.Params[i] >> 8) & 0xFF);
+                constantTable[i * 4 - 2] = (byte)((ctabComment.Params[i] >> 16) & 0xFF);
+                constantTable[i * 4 - 1] = (byte)((ctabComment.Params[i] >> 24) & 0xFF);
+            }
+
+            var ctabStream = new MemoryStream(constantTable);
+            using (var ctabReader = new BinaryReader(ctabStream))
+            {
+                int ctabSize = ctabReader.ReadInt32();
+                System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
+                long creatorPosition = ctabReader.ReadInt32();
+
+                int minorVersion = ctabReader.ReadByte();
+                int majorVersion = ctabReader.ReadByte();
+                System.Diagnostics.Debug.Assert(majorVersion == MajorVersion);
+                System.Diagnostics.Debug.Assert(minorVersion == MinorVersion);
+
+                var shaderType = (ShaderType)ctabReader.ReadUInt16();
+                System.Diagnostics.Debug.Assert(shaderType == Type);
+
+                int numConstants = ctabReader.ReadInt32();
+                long constantInfoPosition = ctabReader.ReadInt32();
+                ShaderFlags shaderFlags = (ShaderFlags)ctabReader.ReadInt32();
+                Console.WriteLine("Flags = {0}", shaderFlags);
+
+                long shaderModelPosition = ctabReader.ReadInt32();
+                //Console.WriteLine("ctabStart = {0}, shaderModelPosition = {1}", ctabStart, shaderModelPosition);
+
+
+                ctabStream.Position = creatorPosition;
+                string compilerInfo = ReadStringNullTerminated(ctabStream);
+                Console.WriteLine(compilerInfo);
+
+                ctabStream.Position = shaderModelPosition;
+                string shaderModel = ReadStringNullTerminated(ctabStream);
+                Console.WriteLine(shaderModel);
+
+
+                for (int i = 0; i < numConstants; i++)
+                {
+                    ctabStream.Position = constantInfoPosition + i * 20;
+
+                    // D3DXSHADER_CONSTANTINFO
+                    int nameOffset = ctabReader.ReadInt32();
+                    RegisterSet registerSet = (RegisterSet)ctabReader.ReadInt16();
+                    short registerIndex = ctabReader.ReadInt16();
+                    short registerCount = ctabReader.ReadInt16();
+                    ctabStream.Position += sizeof(short); // Reserved
+                    int typeInfoOffset = ctabReader.ReadInt32();
+                    int defaultValueOffset = ctabReader.ReadInt32();
+                    System.Diagnostics.Debug.Assert(defaultValueOffset == 0);
+
+                    ctabStream.Position = nameOffset;
+                    string name = ReadStringNullTerminated(ctabStream);
+
+                    // D3DXSHADER_TYPEINFO
+                    ctabStream.Position = typeInfoOffset;
+                    ParameterClass cl = (ParameterClass)ctabReader.ReadInt16();
+                    ParameterType type = (ParameterType)ctabReader.ReadInt16();
+                    short rows = ctabReader.ReadInt16();
+                    short columns = ctabReader.ReadInt16();
+                    short numElements = ctabReader.ReadInt16();
+                    short numStructMembers = ctabReader.ReadInt16();
+                    int structMemberInfoOffset = ctabReader.ReadInt32();
+                    //System.Diagnostics.Debug.Assert(numElements == 1);
+                    System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
+
+                    var declaration = new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
+                    constantDeclarations.Add(declaration);
+                }
+            }
+
+            return constantDeclarations;
         }
 
         public void ToFile(string filename)

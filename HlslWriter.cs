@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace HlslDecompiler
 {
@@ -26,15 +25,6 @@ namespace HlslDecompiler
             this.shader = shader;
         }
 
-        static int MakeFourCC(string id)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                return (id[0]) + (id[1] << 8) + (id[2] << 16) + (id[3] << 24);
-            }
-            return (id[3]) + (id[2] << 8) + (id[1] << 16) + (id[0] << 24);
-        }
-
         void WriteLine()
         {
             hlslWriter.WriteLine();
@@ -50,106 +40,6 @@ namespace HlslDecompiler
         {
             hlslWriter.Write(indent);
             hlslWriter.WriteLine(format, args);
-        }
-
-        static string ReadStringNullTerminated(Stream stream)
-        {
-            StringBuilder builder = new StringBuilder();
-            char b;
-            while ((b = (char)stream.ReadByte()) != 0)
-            {
-                builder.Append(b.ToString());
-            }
-            return builder.ToString();
-        }
-
-        void ParseConstantTable(Instruction ctabComment)
-        {
-            byte[] constantTable = new byte[ctabComment.Params.Length * 4];
-            for (int i = 1; i < ctabComment.Params.Length; i++)
-            {
-                constantTable[i * 4 - 4] = (byte)(ctabComment.Params[i] & 0xFF);
-                constantTable[i * 4 - 3] = (byte)((ctabComment.Params[i] >> 8) & 0xFF);
-                constantTable[i * 4 - 2] = (byte)((ctabComment.Params[i] >> 16) & 0xFF);
-                constantTable[i * 4 - 1] = (byte)((ctabComment.Params[i] >> 24) & 0xFF);
-            }
-
-            var ctabStream = new MemoryStream(constantTable);
-            using (var ctabReader = new BinaryReader(ctabStream))
-            {
-                int ctabSize = ctabReader.ReadInt32();
-                System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
-                long creatorPosition = ctabReader.ReadInt32();
-
-                int minorVersion = ctabReader.ReadByte();
-                int majorVersion = ctabReader.ReadByte();
-                System.Diagnostics.Debug.Assert(majorVersion == shader.MajorVersion);
-                System.Diagnostics.Debug.Assert(minorVersion == shader.MinorVersion);
-
-                var shaderType = (ShaderType)ctabReader.ReadUInt16();
-                System.Diagnostics.Debug.Assert(shaderType == shader.Type);
-
-                int numConstants = ctabReader.ReadInt32();
-                long constantInfoPosition = ctabReader.ReadInt32();
-                ShaderFlags shaderFlags = (ShaderFlags)ctabReader.ReadInt32();
-                Console.WriteLine("Flags = {0}", shaderFlags);
-
-                long shaderModelPosition = ctabReader.ReadInt32();
-                //Console.WriteLine("ctabStart = {0}, shaderModelPosition = {1}", ctabStart, shaderModelPosition);
-
-
-                ctabStream.Position = creatorPosition;
-                string compilerInfo = ReadStringNullTerminated(ctabStream);
-                Console.WriteLine(compilerInfo);
-
-                ctabStream.Position = shaderModelPosition;
-                string shaderModel = ReadStringNullTerminated(ctabStream);
-                Console.WriteLine(shaderModel);
-
-
-                for (int i = 0; i < numConstants; i++)
-                {
-                    ctabStream.Position = constantInfoPosition + i * 20;
-
-                    // D3DXSHADER_CONSTANTINFO
-                    int nameOffset = ctabReader.ReadInt32();
-                    RegisterSet registerSet = (RegisterSet)ctabReader.ReadInt16();
-                    short registerIndex = ctabReader.ReadInt16();
-                    short registerCount = ctabReader.ReadInt16();
-                    ctabStream.Position += sizeof(short); // Reserved
-                    int typeInfoOffset = ctabReader.ReadInt32();
-                    int defaultValueOffset = ctabReader.ReadInt32();
-                    System.Diagnostics.Debug.Assert(defaultValueOffset == 0);
-
-                    ctabStream.Position = nameOffset;
-                    string name = ReadStringNullTerminated(ctabStream);
-
-                    // D3DXSHADER_TYPEINFO
-                    ctabStream.Position = typeInfoOffset;
-                    ParameterClass cl = (ParameterClass)ctabReader.ReadInt16();
-                    ParameterType type = (ParameterType)ctabReader.ReadInt16();
-                    short rows = ctabReader.ReadInt16();
-                    short columns = ctabReader.ReadInt16();
-                    short numElements = ctabReader.ReadInt16();
-                    short numStructMembers = ctabReader.ReadInt16();
-                    int structMemberInfoOffset = ctabReader.ReadInt32();
-                    //System.Diagnostics.Debug.Assert(numElements == 1);
-                    System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
-
-                    var declaration = new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
-                    ConstantDeclarations.Add(declaration);
-                }
-            }
-
-            foreach (ConstantDeclaration declaration in ConstantDeclarations)
-            {
-                string typeName = GetTypeName(declaration);
-                WriteLine("{0} {1};", typeName, declaration.Name);
-            }
-            if (ConstantDeclarations.Count != 0)
-            {
-                WriteLine();
-            }
         }
 
         static string ApplyModifier(SourceModifier modifier, string value)
@@ -756,7 +646,6 @@ namespace HlslDecompiler
 
             ConstantDefinitions = new List<Constant>();
             ConstantIntDefinitions = new List<ConstantInt>();
-            ConstantDeclarations = new List<ConstantDeclaration>();
 
             // Look for dcl instructions
             RegisterDeclarations = new List<RegisterDeclaration>();
@@ -767,11 +656,15 @@ namespace HlslDecompiler
             }
 
             // Look for and parse the constant table
-            int ctabToken = MakeFourCC("CTAB");
-            var ctabComment = shader.Instructions.FirstOrDefault(x => x.Opcode == Opcode.Comment && x.Params[0] == ctabToken);
-            if (ctabComment != null)
+            ConstantDeclarations = shader.ParseConstantTable();
+            foreach (ConstantDeclaration declaration in ConstantDeclarations)
             {
-                ParseConstantTable(ctabComment);
+                string typeName = GetTypeName(declaration);
+                WriteLine("{0} {1};", typeName, declaration.Name);
+            }
+            if (ConstantDeclarations.Count != 0)
+            {
+                WriteLine();
             }
 
             string methodTypeName;
@@ -880,70 +773,140 @@ namespace HlslDecompiler
             WriteLine("{0} main({1}){2}", methodTypeName, methodParamList, methodSemantic);
             WriteLine("{");
             indent = "\t";
-            WriteLine("{0} o;", methodTypeName);
-            WriteLine();
 
-            // Find all assignments to temporary variables
-            // and declare the variables.
-            Dictionary<string, int> tempRegisters = new Dictionary<string, int>();
-            foreach (Instruction instruction in shader.Instructions)
+            var ast = new HlslAst(shader);
+            if (ast.IsValid)
             {
-                if (!instruction.HasDestination)
+                var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value);
+                if (roots.All(r => r is HlslConstant || r is HlslShaderInput))
                 {
-                    continue;
-                }
-
-                int destIndex = instruction.GetDestinationParamIndex();
-                if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
-                {
-                    string registerName = instruction.GetParamRegisterName(destIndex);
-                    if (!tempRegisters.ContainsKey(registerName))
+                    if (roots.All(r => r is HlslConstant))
                     {
-                        tempRegisters.Add(registerName, 0);
+                        var values = roots.Select(r => (r as HlslConstant).Value).ToList();
+                        if (values[0] == values[1] && values[0] == values[2] && values[0] == values[3])
+                        {
+                            WriteLine("return {0};", values[0].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            WriteFloat4(roots);
+                        }
                     }
-                    tempRegisters[registerName] |= instruction.GetDestinationWriteMask();
+                    else if (roots.All(r => r is HlslShaderInput))
+                    {
+                        var dcls = roots.Select(r => (r as HlslShaderInput).DeclInstruction).ToList();
+                        if (dcls[0] == dcls[1] && dcls[0] == dcls[2] && dcls[0] == dcls[3])
+                        {
+                            var dcl = dcls[0];
+                            int destIndex = dcl.GetDestinationParamIndex();
+                            var registerType = dcl.GetParamRegisterType(destIndex);
+                            int registerNumber = dcl.GetParamRegisterNumber(destIndex);
+
+                            var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
+
+                            WriteLine("return {0};", decl.Name);
+                        }
+                        else
+                        {
+                            WriteFloat4(roots);
+                        }
+                    }
+                    else
+                    {
+                        WriteFloat4(roots);
+                    }
                 }
             }
-
-            foreach (var registerName in tempRegisters.Keys)
+            else
             {
-                int writeMask = tempRegisters[registerName];
-                string writeMaskName;
-                switch (writeMask)
+                WriteLine("{0} o;", methodTypeName);
+                WriteLine();
+
+                // Find all assignments to temporary variables
+                // and declare the variables.
+                Dictionary<string, int> tempRegisters = new Dictionary<string, int>();
+                foreach (Instruction instruction in shader.Instructions)
                 {
-                    case 0x1:
-                        writeMaskName = "float";
-                        break;
-                    case 0x3:
-                        writeMaskName = "float2";
-                        break;
-                    case 0x7:
-                        writeMaskName = "float3";
-                        break;
-                    case 0xF:
-                        writeMaskName = "float4";
-                        break;
-                    default:
-                        // TODO
-                        writeMaskName = "float4";
-                        break;
-                        //throw new NotImplementedException();
+                    if (!instruction.HasDestination)
+                    {
+                        continue;
+                    }
+
+                    int destIndex = instruction.GetDestinationParamIndex();
+                    if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
+                    {
+                        string registerName = instruction.GetParamRegisterName(destIndex);
+                        if (!tempRegisters.ContainsKey(registerName))
+                        {
+                            tempRegisters.Add(registerName, 0);
+                        }
+                        tempRegisters[registerName] |= instruction.GetDestinationWriteMask();
+                    }
                 }
-                WriteLine("{0} {1};", writeMaskName, registerName);
-            }
 
-            foreach (Instruction instruction in shader.Instructions)
-            {
-                WriteInstruction(instruction);
-            }
+                foreach (var registerName in tempRegisters.Keys)
+                {
+                    int writeMask = tempRegisters[registerName];
+                    string writeMaskName;
+                    switch (writeMask)
+                    {
+                        case 0x1:
+                            writeMaskName = "float";
+                            break;
+                        case 0x3:
+                            writeMaskName = "float2";
+                            break;
+                        case 0x7:
+                            writeMaskName = "float3";
+                            break;
+                        case 0xF:
+                            writeMaskName = "float4";
+                            break;
+                        default:
+                            // TODO
+                            writeMaskName = "float4";
+                            break;
+                            //throw new NotImplementedException();
+                    }
+                    WriteLine("{0} {1};", writeMaskName, registerName);
+                }
 
-            WriteLine();
-            WriteLine("return o;");
+                foreach (Instruction instruction in shader.Instructions)
+                {
+                    WriteInstruction(instruction);
+                }
+
+                WriteLine();
+                WriteLine("return o;");
+            }
             indent = "";
             WriteLine("}");
 
             hlslWriter.Dispose();
             hlslFile.Dispose();
+        }
+
+        void WriteFloat4(IEnumerable<HlslTreeNode> roots)
+        {
+            var args = roots.Select(r =>
+            {
+                if (r is HlslConstant)
+                {
+                    return (r as HlslConstant).Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    var shaderInput = r as HlslShaderInput;
+                    var dcl = shaderInput.DeclInstruction;
+                    int destIndex = dcl.GetDestinationParamIndex();
+                    var registerType = dcl.GetParamRegisterType(destIndex);
+                    int registerNumber = dcl.GetParamRegisterNumber(destIndex);
+
+                    var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
+                    return decl.Name + '.' + new[] { 'x', 'y', 'z', 'w' }[shaderInput.ComponentIndex];
+                }
+            }).ToList();
+            WriteLine("return float4({0}, {1}, {2}, {3});", args[0], args[1], args[2], args[3]);
         }
     }
 }

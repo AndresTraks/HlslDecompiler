@@ -319,10 +319,19 @@ namespace HlslDecompiler
                     registerTypeName = "a";
                     break;
                 case RegisterType.Const:
+                    registerTypeName = "c";
+                    break;
                 case RegisterType.Const2:
+                    registerTypeName = "c";
+                    registerNumber += 2048;
+                    break;
                 case RegisterType.Const3:
+                    registerTypeName = "c";
+                    registerNumber += 4096;
+                    break;
                 case RegisterType.Const4:
                     registerTypeName = "c";
+                    registerNumber += 6144;
                     break;
                 case RegisterType.ConstBool:
                     registerTypeName = "b";

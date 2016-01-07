@@ -1,10 +1,8 @@
 @echo off
 
+set FXC="C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe"
 set SRC=ShaderSources\
 set DEST=CompiledShaders\
+set N=6
 
-"C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe" /T ps_3_0 %SRC%ps1.fx /Fo %DEST%ps1.fxc
-"C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe" /T ps_3_0 %SRC%ps2.fx /Fo %DEST%ps2.fxc
-"C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe" /T ps_3_0 %SRC%ps3.fx /Fo %DEST%ps3.fxc
-"C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe" /T ps_3_0 %SRC%ps4.fx /Fo %DEST%ps4.fxc
-"C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe" /T ps_3_0 %SRC%ps5.fx /Fo %DEST%ps5.fxc
+FOR /l %%i in (1,1,%N%) DO %FXC% /T ps_3_0 %SRC%ps%%i.fx /Fo %DEST%ps%%i.fxc

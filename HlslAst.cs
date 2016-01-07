@@ -52,16 +52,28 @@ namespace HlslDecompiler
                             }
                             else if (mul2Value == 1)
                             {
-                                if (addend is HlslConstant)
+                                if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
                                 {
-                                    var addendConst = addend as HlslConstant;
-                                    if (addendConst.Value == 0)
-                                    {
-                                        return multiplicand1;
-                                    }
+                                    return multiplicand1;
                                 }
                             }
-                            throw new NotImplementedException();
+                            else if (mul2Value == -1)
+                            {
+                                if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
+                                {
+                                    var mul = new HlslOperation(Opcode.Mul);
+                                    mul.Children.Add(multiplicand1);
+                                    mul.Children.Add(multiplicand2);
+                                    return mul;
+                                }
+                            }
+                            if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
+                            {
+                                var mul = new HlslOperation(Opcode.Mul);
+                                mul.Children.Add(multiplicand1);
+                                mul.Children.Add(multiplicand2);
+                                return mul;
+                            }
                         }
                         else if (addend is HlslConstant)
                         {
@@ -114,6 +126,8 @@ namespace HlslDecompiler
         public int RegisterNumber { get; set; }
         public RegisterType RegisterType { get; set; }
         public int ComponentIndex { get; set; }
+
+        public SourceModifier Modifier { get; set; }
 
         public override bool Equals(object obj)
         {
@@ -236,10 +250,25 @@ namespace HlslDecompiler
                                     currentOutputs.Add(destinationKey, constant);
                                 }
                                 break;
+                            case Opcode.Abs:
                             case Opcode.Mad:
+                            case Opcode.Mov:
                                 {
-                                    var mad = new HlslOperation(Opcode.Mad);
-                                    for (int j = 0; j < 3; j++)
+                                    int numInputs;
+                                    switch (instruction.Opcode)
+                                    {
+                                        case Opcode.Abs:
+                                        case Opcode.Mov:
+                                            numInputs = 1;
+                                            break;
+                                        case Opcode.Mad:
+                                            numInputs = 3;
+                                            break;
+                                        default:
+                                            throw new NotImplementedException();
+                                    }
+                                    var operation = new HlslOperation(instruction.Opcode);
+                                    for (int j = 0; j < numInputs; j++)
                                     {
                                         var modifier = instruction.GetSourceModifier(j + 1);
                                         if (modifier != SourceModifier.None)
@@ -248,20 +277,10 @@ namespace HlslDecompiler
                                         }
                                         var inputKey = GetParamRegisterKey(instruction, j + 1, i);
                                         var input = currentOutputs[inputKey];
-                                        mad.Children.Add(input);
+                                        operation.Children.Add(input);
                                     }
 
-                                    currentOutputs.Add(destinationKey, mad);
-                                }
-                                break;
-                            case Opcode.Mov:
-                                {
-                                    var mov = new HlslOperation(Opcode.Mov);
-                                    var inputKey = GetParamRegisterKey(instruction, 1, i);
-                                    var input = currentOutputs[inputKey];
-                                    mov.Children.Add(input);
-
-                                    currentOutputs.Add(destinationKey, mov);
+                                    currentOutputs.Add(destinationKey, operation);
                                 }
                                 break;
                             default:

@@ -133,7 +133,7 @@ namespace HlslDecompiler
             get
             {
                 string typeName = "float";
-                int length = DeclInstruction.GetDestinationMaskLength();
+                int length = DeclInstruction.GetDestinationMaskedLength();
                 if (length > 1)
                 {
                     typeName += length.ToString();

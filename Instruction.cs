@@ -424,6 +424,21 @@ namespace HlslDecompiler
             return writeMaskName;
         }
 
+        // Length of ".yw" = 4 (xyzw)
+        public int GetDestinationMaskedLength()
+        {
+            int writeMask = GetDestinationWriteMask();
+            for (int i = 3; i != 0; i--)
+            {
+                if ((writeMask & (1 << i)) != 0)
+                {
+                    return i + 1;
+                }
+            }
+            return 0;
+        }
+
+        // Length of ".yw" = 2
         public int GetDestinationMaskLength()
         {
             int writeMask = GetDestinationWriteMask();

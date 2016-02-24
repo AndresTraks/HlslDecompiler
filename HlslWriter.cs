@@ -9,6 +9,7 @@ namespace HlslDecompiler
     public class HlslWriter
     {
         ShaderModel shader;
+        private bool doAstAnalysis;
 
         FileStream hlslFile;
         StreamWriter hlslWriter;
@@ -21,9 +22,10 @@ namespace HlslDecompiler
         public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
         public ICollection<RegisterDeclaration> RegisterDeclarations { get; private set; }
 
-        public HlslWriter(ShaderModel shader)
+        public HlslWriter(ShaderModel shader, bool doAstAnalysis = false)
         {
             this.shader = shader;
+            this.doAstAnalysis = doAstAnalysis;
         }
 
         void WriteLine()
@@ -50,29 +52,29 @@ namespace HlslDecompiler
                 case SourceModifier.None:
                     return value;
                 case SourceModifier.Negate:
-                    return string.Format("-{0}", value);
+                    return $"-{value}";
                 case SourceModifier.Bias:
-                    return string.Format("{0}_bias", value);
+                    return $"{value}_bias";
                 case SourceModifier.BiasAndNegate:
-                    return string.Format("-{0}_bias", value);
+                    return $"-{value}_bias";
                 case SourceModifier.Sign:
-                    return string.Format("{0}_bx2", value);
+                    return $"{value}_bx2";
                 case SourceModifier.SignAndNegate:
-                    return string.Format("-{0}_bx2", value);
+                    return $"-{value}_bx2";
                 case SourceModifier.Complement:
                     throw new NotImplementedException();
                 case SourceModifier.X2:
-                    return string.Format("(2 * {0})", value);
+                    return $"(2 * {value})";
                 case SourceModifier.X2AndNegate:
-                    return string.Format("(-2 * {0})", value);
+                    return $"(-2 * {value})";
                 case SourceModifier.DivideByZ:
-                    return string.Format("{0}_dz", value);
+                    return $"{value}_dz";
                 case SourceModifier.DivideByW:
-                    return string.Format("{0}_dw", value);
+                    return $"{value}_dw";
                 case SourceModifier.Abs:
-                    return string.Format("abs({0})", value);
+                    return $"abs({value})";
                 case SourceModifier.AbsAndNegate:
-                    return string.Format("-abs({0})", value);
+                    return $"-abs({value})";
                 case SourceModifier.Not:
                     throw new NotImplementedException();
                 default:
@@ -140,27 +142,29 @@ namespace HlslDecompiler
             return null;
         }
 
+        int GetRegisterFullLength(RegisterDeclaration decl)
+        {
+            if (decl != null)
+            {
+                switch (decl.TypeName)
+                {
+                    case "float":
+                        return 1;
+                    case "float2":
+                        return 2;
+                    case "float3":
+                        return 3;
+                }
+            }
+            return 4;
+        }
+
         int GetRegisterFullLength(Instruction instruction, int paramIndex)
         {
             RegisterType registerType = instruction.GetParamRegisterType(paramIndex);
             int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
             var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
-            if (decl != null)
-            {
-                if (decl.TypeName == "float")
-                {
-                    return 1;
-                }
-                else if (decl.TypeName == "float2")
-                {
-                    return 2;
-                }
-                else if (decl.TypeName == "float3")
-                {
-                    return 3;
-                }
-            }
-            return 4;
+            return GetRegisterFullLength(decl);
         }
 
         string GetDestinationName(Instruction instruction)
@@ -193,7 +197,7 @@ namespace HlslDecompiler
                             return null;
                         }
                         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
-                        uint[] constant = new uint[] {
+                        uint[] constant = {
                                 constantInt[swizzle[0]],
                                 constantInt[swizzle[1]],
                                 constantInt[swizzle[2]],
@@ -769,7 +773,7 @@ namespace HlslDecompiler
             indent = "\t";
 
             var ast = new HlslAst(shader);
-            if (ast.IsValid && false)
+            if (doAstAnalysis && ast.IsValid)
             {
                 WriteAst(ast);
             }
@@ -858,7 +862,7 @@ namespace HlslDecompiler
             }
         }
 
-        public string GetAstSourceSwizzleName(IEnumerable<HlslShaderInput> inputs)
+        public string GetAstSourceSwizzleName(IEnumerable<HlslShaderInput> inputs, int registerSize)
         {
             string swizzleName = "";
             foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
@@ -866,7 +870,7 @@ namespace HlslDecompiler
                 swizzleName += "xyzw"[swizzle];
             }
 
-            if (swizzleName.Equals("xyzw".Substring(0, inputs.Count())))
+            if (swizzleName.Equals("xyzw".Substring(0, registerSize)))
             {
                 return "";
             }
@@ -899,7 +903,7 @@ namespace HlslDecompiler
                 return input1.InputDecl.RegisterType == input2.InputDecl.RegisterType &&
                        input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
             }
-            /*
+
             var operation1 = node1 as HlslOperation;
             var operation2 = node2 as HlslOperation;
             if (operation1 != null && operation2 != null)
@@ -908,23 +912,18 @@ namespace HlslDecompiler
                 {
                     if (operation1.Operation == Opcode.Mul)
                     {
-                        return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                        //return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                    }
+                    else if (operation1.Operation == Opcode.Sub)
+                    {
+                        return operation1.Children[1].Equals(operation2.Children[1]);
                     }
                 }
             }
-            */
+
             return false;
         }
 
-        // Possible four component groupings:
-        // float4(float, float, float, float)
-        // float4(float, float, float2)
-        // float4(float, float2, float)
-        // float4(float, float3)
-        // float4(float2, float, float)
-        // float4(float2, float2)
-        // float4(float3, float)
-        // float4(float4)
         IList<IEnumerable<HlslTreeNode>> GroupComponents(IEnumerable<HlslTreeNode> nodes)
         {
             var nodesList = nodes.ToList();
@@ -974,7 +973,7 @@ namespace HlslDecompiler
             {
                 var shaderInputs = groups.First().Cast<HlslShaderInput>();
                 var firstInput = shaderInputs.First();
-                string swizzle = GetAstSourceSwizzleName(shaderInputs);
+                string swizzle = GetAstSourceSwizzleName(shaderInputs, 4);
                 var decl = RegisterDeclarations.FirstOrDefault(x =>
                     x.RegisterType == firstInput.InputDecl.RegisterType &&
                     x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
@@ -982,39 +981,69 @@ namespace HlslDecompiler
                 return;
             }
 
-            var constructorParts = new List<string>();
-            foreach (var group in groups)
-            {
-                var first = group.First();
-                var firstConstant = first as HlslConstant;
-                if (firstConstant != null)
-                {
-                    constructorParts.Add(firstConstant.Value.ToString(CultureInfo.InvariantCulture));
-                }
-
-                var firstShaderInput = first as HlslShaderInput;
-                if (firstShaderInput != null)
-                {
-                    var shaderInputs = group.Cast<HlslShaderInput>();
-                    string swizzle = GetAstSourceSwizzleName(shaderInputs);
-                    var decl = RegisterDeclarations.FirstOrDefault(x =>
-                        x.RegisterType == firstShaderInput.InputDecl.RegisterType &&
-                        x.RegisterNumber == firstShaderInput.InputDecl.RegisterNumber);
-                    constructorParts.Add($"{decl.Name}{swizzle}");
-                }
-
-                var firstOperation = first as HlslOperation;
-                if (firstOperation != null)
-                {
-                    if (firstOperation.Operation == Opcode.Abs)
-                    {
-                        constructorParts.Add(string.Format("{0}({1})", firstOperation.Operation.ToString().ToLower(), firstOperation.Children[0].ToString()));
-                    }
-                }
-            }
+            var constructorParts = groups.Select(Compile);
             string returnStatement = $"return float4({string.Join(", ", constructorParts)});";
             WriteLine(returnStatement);
 
+        }
+
+        public string Compile(IEnumerable<HlslTreeNode> group)
+        {
+            var first = group.First();
+
+            var firstConstant = first as HlslConstant;
+            if (firstConstant != null)
+            {
+                return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
+            }
+
+            var firstShaderInput = first as HlslShaderInput;
+            if (firstShaderInput != null)
+            {
+                var shaderInputs = group.Cast<HlslShaderInput>();
+                var decl = RegisterDeclarations.FirstOrDefault(x =>
+                    x.RegisterType == firstShaderInput.InputDecl.RegisterType &&
+                    x.RegisterNumber == firstShaderInput.InputDecl.RegisterNumber);
+                string swizzle = GetAstSourceSwizzleName(shaderInputs, GetRegisterFullLength(decl));
+                return $"{decl.Name}{swizzle}";
+            }
+
+            var firstOperation = first as HlslOperation;
+            if (firstOperation != null)
+            {
+                if (firstOperation.Operation == Opcode.Abs)
+                {
+                    return string.Format("{0}({1})",
+                        firstOperation.Operation.ToString().ToLower(),
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (firstOperation.Operation == Opcode.Sub)
+                {
+                    return string.Format("{0} - {1}",
+                        Compile(group.Select(g => g.Children[0])),
+                        Compile(group.Select(g => g.Children[1])));
+                }
+
+                if (firstOperation.Operation == Opcode.Mul)
+                {
+                    var multiplicand1 = group.Select(g => g.Children[0]);
+                    var multiplicand2 = group.Select(g => g.Children[1]);
+
+                    if (multiplicand2.First() is HlslConstant)
+                    {
+                        return string.Format("{0} * {1}",
+                        Compile(multiplicand2),
+                        Compile(multiplicand1));
+                    }
+
+                    return string.Format("{0} * {1}",
+                        Compile(multiplicand1),
+                        Compile(multiplicand2));
+                }
+            }
+            throw new NotImplementedException();
+            return "";
         }
     }
 }

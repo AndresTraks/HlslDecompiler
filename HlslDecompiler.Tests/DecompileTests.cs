@@ -13,6 +13,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps5")]
         [TestCase("ps6")]
         [TestCase("ps7")]
+        [TestCase("ps8")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";
@@ -29,7 +30,7 @@ namespace HlslDecompiler.Tests
                 var asmWriter = new AsmWriter(shader);
                 asmWriter.Write(asmOutputFilename);
 
-                var hlslWriter = new HlslWriter(shader);
+                var hlslWriter = new HlslWriter(shader, true);
                 hlslWriter.Write(hlslOutputFilename);
             }
 

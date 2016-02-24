@@ -134,8 +134,10 @@ namespace HlslDecompiler
                                 }
                                 break;
                             case Opcode.Abs:
+                            case Opcode.Add:
                             case Opcode.Mad:
                             case Opcode.Mov:
+                            case Opcode.Mul:
                                 {
                                     int numInputs;
                                     switch (instruction.Opcode)
@@ -143,6 +145,10 @@ namespace HlslDecompiler
                                         case Opcode.Abs:
                                         case Opcode.Mov:
                                             numInputs = 1;
+                                            break;
+                                        case Opcode.Add:
+                                        case Opcode.Mul:
+                                            numInputs = 2;
                                             break;
                                         case Opcode.Mad:
                                             numInputs = 3;
@@ -160,7 +166,7 @@ namespace HlslDecompiler
                                         }
                                         var inputKey = GetParamRegisterKey(instruction, j + 1, i);
                                         var input = currentOutputs[inputKey];
-                                        operation.Children.Add(input);
+                                        operation.AddChild(input);
                                     }
 
                                     currentOutputs.Add(destinationKey, operation);

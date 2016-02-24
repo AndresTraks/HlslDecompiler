@@ -38,29 +38,29 @@ namespace HlslDecompiler
                 case SourceModifier.None:
                     return value;
                 case SourceModifier.Negate:
-                    return string.Format("-{0}", value);
+                    return $"-{value}";
                 case SourceModifier.Bias:
-                    return string.Format("{0}_bias", value);
+                    return $"{value}_bias";
                 case SourceModifier.BiasAndNegate:
-                    return string.Format("-{0}_bias", value);
+                    return $"-{value}_bias";
                 case SourceModifier.Sign:
-                    return string.Format("{0}_bx2", value);
+                    return $"{value}_bx2";
                 case SourceModifier.SignAndNegate:
-                    return string.Format("-{0}_bx2", value);
+                    return $"-{value}_bx2";
                 case SourceModifier.Complement:
                     throw new NotImplementedException();
                 case SourceModifier.X2:
-                    return string.Format("{0}_x2", value);
+                    return $"{value}_x2";
                 case SourceModifier.X2AndNegate:
-                    return string.Format("-{0}_x2", value);
+                    return $"-{value}_x2";
                 case SourceModifier.DivideByZ:
-                    return string.Format("{0}_dz", value);
+                    return $"{value}_dz";
                 case SourceModifier.DivideByW:
-                    return string.Format("{0}_dw", value);
+                    return $"{value}_dw";
                 case SourceModifier.Abs:
-                    return string.Format("{0}_abs", value);
+                    return $"{value}_abs";
                 case SourceModifier.AbsAndNegate:
-                    return string.Format("-{0}_abs", value);
+                    return $"-{value}_abs";
                 case SourceModifier.Not:
                     throw new NotImplementedException();
                 default:
@@ -83,7 +83,7 @@ namespace HlslDecompiler
             const int registerLength = 4;
             string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, false);
 
-            return string.Format("{0}{1}", registerName, writeMaskName);
+            return $"{registerName}{writeMaskName}";
         }
 
         string GetSourceName(Instruction instruction, int srcIndex)

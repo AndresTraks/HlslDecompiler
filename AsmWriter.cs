@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.IO;
 
 namespace HlslDecompiler
@@ -126,10 +127,10 @@ namespace HlslDecompiler
                     case Opcode.Def:
                         {
                             string constRegisterName = instruction.GetParamRegisterName(0);
-                            string constValue0 = instruction.GetParamSingle(1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                            string constValue1 = instruction.GetParamSingle(2).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                            string constValue2 = instruction.GetParamSingle(3).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                            string constValue3 = instruction.GetParamSingle(4).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            string constValue0 = instruction.GetParamSingle(1).ToString(CultureInfo.InvariantCulture);
+                            string constValue1 = instruction.GetParamSingle(2).ToString(CultureInfo.InvariantCulture);
+                            string constValue2 = instruction.GetParamSingle(3).ToString(CultureInfo.InvariantCulture);
+                            string constValue3 = instruction.GetParamSingle(4).ToString(CultureInfo.InvariantCulture);
                             WriteLine("def {0}, {1}, {2}, {3}, {4}", constRegisterName, constValue0, constValue1, constValue2, constValue3);
                         }
                         break;

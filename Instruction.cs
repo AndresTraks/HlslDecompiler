@@ -377,15 +377,13 @@ namespace HlslDecompiler
                     throw new NotImplementedException();
             }
 
-            return string.Format("{0}{1}", registerTypeName, registerNumber);
+            return $"{registerTypeName}{registerNumber}";
         }
 
         public int GetDestinationParamIndex()
         {
-            if (Opcode == Opcode.Dcl)
-            {
-                return 1;
-            }
+            if (Opcode == Opcode.Dcl) return 1;
+
             return 0;
         }
 
@@ -467,7 +465,7 @@ namespace HlslDecompiler
             {
                 swizzleLength = 3;
             }
-            if (HasDestination)
+            else if (HasDestination)
             {
                 swizzleLength = GetDestinationMaskLength();
             }
@@ -538,11 +536,11 @@ namespace HlslDecompiler
 
         public string GetDeclSemantic()
         {
-            string name;
             switch (GetParamRegisterType(1))
             {
                 case RegisterType.Input:
                 case RegisterType.Output:
+                    string name;
                     switch (GetDeclUsage())
                     {
                         case DeclUsage.Binormal:
@@ -586,14 +584,11 @@ namespace HlslDecompiler
                     {
                         return "vFace";
                     }
-                    else if (GetParamRegisterNumber(1) == 1)
+                    if (GetParamRegisterNumber(1) == 1)
                     {
                         return "vPos";
                     }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
+                    throw new NotImplementedException();
                 default:
                     throw new NotImplementedException();
             }

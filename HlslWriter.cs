@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -224,26 +225,19 @@ namespace HlslDecompiler
                                 {
                                     return constant[0].ToString();
                                 }
-                                return string.Format("int2({0}, {1})", constant[0], constant[1]);
+                                return $"int2({constant[0]}, {constant[1]})";
                             case 3:
                                 if (constant[0] == constant[1] && constant[0] == constant[2])
                                 {
                                     return constant[0].ToString();
                                 }
-                                return string.Format("int3({0}, {1}, {2})",
-                                    constant[0].ToString(),
-                                    constant[1].ToString(),
-                                    constant[2].ToString());
+                                return $"int3({constant[0]}, {constant[1]}, {constant[2]})";
                             case 4:
                                 if (constant[0] == constant[1] && constant[0] == constant[2] && constant[0] == constant[3])
                                 {
                                     return constant[0].ToString();
                                 }
-                                return string.Format("int4({0}, {1}, {2}, {3})",
-                                    constant[0].ToString(),
-                                    constant[1].ToString(),
-                                    constant[2].ToString(),
-                                    constant[3].ToString());
+                                return $"int4({constant[0]}, {constant[1]}, {constant[2]}, {constant[3]})";
                             default:
                                 throw new InvalidOperationException();
                         }
@@ -261,7 +255,7 @@ namespace HlslDecompiler
                         }
 
                         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
-                        float[] constant = new float[] {
+                        float[] constant = {
                             constantRegister[swizzle[0]],
                             constantRegister[swizzle[1]],
                             constantRegister[swizzle[2]],
@@ -297,34 +291,34 @@ namespace HlslDecompiler
                         switch (destLength)
                         {
                             case 1:
-                                return constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                return constant[0].ToString(CultureInfo.InvariantCulture);
                             case 2:
                                 if (constant[0] == constant[1])
                                 {
-                                    return constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                    return constant[0].ToString(CultureInfo.InvariantCulture);
                                 }
                                 return string.Format("float2({0}, {1})",
-                                    constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[1].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                    constant[0].ToString(CultureInfo.InvariantCulture),
+                                    constant[1].ToString(CultureInfo.InvariantCulture));
                             case 3:
                                 if (constant[0] == constant[1] && constant[0] == constant[2])
                                 {
-                                    return constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                    return constant[0].ToString(CultureInfo.InvariantCulture);
                                 }
                                 return string.Format("float3({0}, {1}, {2})",
-                                    constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[1].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[2].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                    constant[0].ToString(CultureInfo.InvariantCulture),
+                                    constant[1].ToString(CultureInfo.InvariantCulture),
+                                    constant[2].ToString(CultureInfo.InvariantCulture));
                             case 4:
                                 if (constant[0] == constant[1] && constant[0] == constant[2] && constant[0] == constant[3])
                                 {
-                                    return constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                    return constant[0].ToString(CultureInfo.InvariantCulture);
                                 }
                                 return string.Format("float4({0}, {1}, {2}, {3})",
-                                    constant[0].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[1].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[2].ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                    constant[3].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                    constant[0].ToString(CultureInfo.InvariantCulture),
+                                    constant[1].ToString(CultureInfo.InvariantCulture),
+                                    constant[2].ToString(CultureInfo.InvariantCulture),
+                                    constant[3].ToString(CultureInfo.InvariantCulture));
                             default:
                                 throw new InvalidOperationException();
                         }
@@ -419,7 +413,7 @@ namespace HlslDecompiler
                 case ParameterClass.MatrixRows:
                     if (declaration.ParameterType == ParameterType.Float)
                     {
-                        return string.Format("float{0}x{1}", declaration.Rows, declaration.Columns);
+                        return $"float{declaration.Rows}x{declaration.Columns}";
                     }
                     else
                     {
@@ -775,7 +769,7 @@ namespace HlslDecompiler
             indent = "\t";
 
             var ast = new HlslAst(shader);
-            if (ast.IsValid)
+            if (ast.IsValid && false)
             {
                 WriteAst(ast);
             }
@@ -786,7 +780,7 @@ namespace HlslDecompiler
 
                 // Find all assignments to temporary variables
                 // and declare the variables.
-                Dictionary<string, int> tempRegisters = new Dictionary<string, int>();
+                var tempRegisters = new Dictionary<string, int>();
                 foreach (Instruction instruction in shader.Instructions)
                 {
                     if (!instruction.HasDestination)
@@ -853,7 +847,7 @@ namespace HlslDecompiler
             if (constant is HlslConstant)
             {
                 float value = (constant as HlslConstant).Value;
-                return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return value.ToString(CultureInfo.InvariantCulture);
             }
             else
             {
@@ -888,63 +882,139 @@ namespace HlslDecompiler
             return "." + swizzleName;
         }
 
+        bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
+        {
+            /*
+            var constant1 = node1 as HlslConstant;
+            var constant2 = node2 as HlslConstant;
+            if (constant1 != null && constant2 != null)
+            {
+                return constant1.Value == constant2.Value;
+            }
+            */
+            var input1 = node1 as HlslShaderInput;
+            var input2 = node2 as HlslShaderInput;
+            if (input1 != null && input2 != null)
+            {
+                return input1.InputDecl.RegisterType == input2.InputDecl.RegisterType &&
+                       input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
+            }
+            /*
+            var operation1 = node1 as HlslOperation;
+            var operation2 = node2 as HlslOperation;
+            if (operation1 != null && operation2 != null)
+            {
+                if (operation1.Operation == operation2.Operation)
+                {
+                    if (operation1.Operation == Opcode.Mul)
+                    {
+                        return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                    }
+                }
+            }
+            */
+            return false;
+        }
+
+        // Possible four component groupings:
+        // float4(float, float, float, float)
+        // float4(float, float, float2)
+        // float4(float, float2, float)
+        // float4(float, float3)
+        // float4(float2, float, float)
+        // float4(float2, float2)
+        // float4(float3, float)
+        // float4(float4)
+        IList<IEnumerable<HlslTreeNode>> GroupComponents(IEnumerable<HlslTreeNode> nodes)
+        {
+            var nodesList = nodes.ToList();
+            switch (nodesList.Count)
+            {
+                case 0:
+                    return new List<IEnumerable<HlslTreeNode>>();
+                case 1:
+                    return new List<IEnumerable<HlslTreeNode>> { nodesList };
+            }
+
+            var groups = new List<IEnumerable<HlslTreeNode>>();
+            int n, groupStart = 0;
+            for (n = 1; n < nodesList.Count; n++)
+            {
+                if (!CanGroupComponents(nodesList[groupStart], nodesList[n]))
+                {
+                    groups.Add(nodesList.GetRange(groupStart, n - groupStart));
+                    groupStart = n;
+                }
+            }
+            groups.Add(nodesList.GetRange(groupStart, n - groupStart));
+            return groups;
+        }
+
         void WriteAst(HlslAst ast)
         {
-            var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value);
+            var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
 
             // Check for scalar promotion from float to float4
             if (roots.All(r => r is HlslConstant))
             {
-                var values = roots.Cast<HlslConstant>().Select(r => r.Value).ToList();
-                if (values[0] == values[1] && values[0] == values[2] && values[0] == values[3])
+                var constants = roots.Cast<HlslConstant>();
+                float value = constants.First().Value;
+                if (constants.Skip(1).All(r => r.Value == value))
                 {
-                    WriteLine("return {0};", values[0].ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    WriteLine("return {0};", value.ToString(CultureInfo.InvariantCulture));
                     return;
                 }
+
+                // In float4(x, float), x cannot be promoted from float to float3
+                // In float4(x, y), x cannot be promoted to float2 and y to float2
             }
 
-            // Check for a float4 constructor with the first parameter a float2 or float3
-            var first = roots.First();
-            if (first is HlslShaderInput)
+            var groups = GroupComponents(roots);
+            if (groups.Count == 1)
             {
-                var firstInput = first as HlslShaderInput;
-                var shaderInputs = roots.Skip(1).Where(r => {
-                    var input = r as HlslShaderInput;
-                    if (input == null) return false;
-                    return input.InputDecl.RegisterType == firstInput.InputDecl.RegisterType &&
-                        input.InputDecl.RegisterNumber == firstInput.InputDecl.RegisterNumber;
-                }).Cast<HlslShaderInput>();
+                var shaderInputs = groups.First().Cast<HlslShaderInput>();
+                var firstInput = shaderInputs.First();
+                string swizzle = GetAstSourceSwizzleName(shaderInputs);
+                var decl = RegisterDeclarations.FirstOrDefault(x =>
+                    x.RegisterType == firstInput.InputDecl.RegisterType &&
+                    x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
+                WriteLine($"return {decl.Name}{swizzle};");
+                return;
+            }
 
-                int numShaderInputs = shaderInputs.Count() + 1;
-                if (numShaderInputs > 1)
+            var constructorParts = new List<string>();
+            foreach (var group in groups)
+            {
+                var first = group.First();
+                var firstConstant = first as HlslConstant;
+                if (firstConstant != null)
                 {
-                    shaderInputs = new[] { firstInput }.Union(shaderInputs);
+                    constructorParts.Add(firstConstant.Value.ToString(CultureInfo.InvariantCulture));
+                }
+
+                var firstShaderInput = first as HlslShaderInput;
+                if (firstShaderInput != null)
+                {
+                    var shaderInputs = group.Cast<HlslShaderInput>();
                     string swizzle = GetAstSourceSwizzleName(shaderInputs);
                     var decl = RegisterDeclarations.FirstOrDefault(x =>
-                        x.RegisterType == firstInput.InputDecl.RegisterType && x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
+                        x.RegisterType == firstShaderInput.InputDecl.RegisterType &&
+                        x.RegisterNumber == firstShaderInput.InputDecl.RegisterNumber);
+                    constructorParts.Add($"{decl.Name}{swizzle}");
+                }
 
-                    if (numShaderInputs == 4)
+                var firstOperation = first as HlslOperation;
+                if (firstOperation != null)
+                {
+                    if (firstOperation.Operation == Opcode.Abs)
                     {
-                        WriteLine("return {0}{1};", decl.Name, swizzle);
-                        return;
+                        constructorParts.Add(string.Format("{0}({1})", firstOperation.Operation.ToString().ToLower(), firstOperation.Children[0].ToString()));
                     }
-
-                    string returnStatement = string.Format("return float4({0}{1}", decl.Name, swizzle);
-                    foreach (var input in roots.Skip(numShaderInputs))
-                    {
-                        returnStatement += ", " + GetAstConstant(input);
-                    }
-                    returnStatement += ");";
-                    WriteLine(returnStatement);
-                    return;
                 }
             }
+            string returnStatement = $"return float4({string.Join(", ", constructorParts)});";
+            WriteLine(returnStatement);
 
-            if (roots.All(r => r is HlslConstant || r is HlslShaderInput))
-            {
-                var args = roots.Select(r => GetAstConstant(r)).ToList();
-                WriteLine("return float4({0}, {1}, {2}, {3});", args[0], args[1], args[2], args[3]);
-            }
         }
     }
 }

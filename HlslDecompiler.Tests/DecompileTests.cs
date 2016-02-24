@@ -12,13 +12,14 @@ namespace HlslDecompiler.Tests
         [TestCase("ps4")]
         [TestCase("ps5")]
         [TestCase("ps6")]
+        [TestCase("ps7")]
         public void DecompileTest(string baseFilename)
         {
-            string compiledShaderFilename = string.Format("CompiledShaders{0}{1}.fxc", Path.DirectorySeparatorChar, baseFilename);
-            string asmExpectedFilename = string.Format("ShaderAssembly{0}{1}.asm", Path.DirectorySeparatorChar, baseFilename);
-            string hlslExpectedFilename = string.Format("ShaderSources{0}{1}.fx", Path.DirectorySeparatorChar, baseFilename);
-            string asmOutputFilename = string.Format("{0}.asm", baseFilename);
-            string hlslOutputFilename = string.Format("{0}.fx", baseFilename);
+            string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";
+            string asmExpectedFilename = $"ShaderAssembly{Path.DirectorySeparatorChar}{baseFilename}.asm";
+            string hlslExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{baseFilename}.fx";
+            string asmOutputFilename = $"{baseFilename}.asm";
+            string hlslOutputFilename = $"{baseFilename}.fx";
 
             var inputStream = File.Open(compiledShaderFilename, FileMode.Open, FileAccess.Read);
             using (var input = new ShaderReader(inputStream, true))

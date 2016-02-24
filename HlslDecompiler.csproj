@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>HlslDecompiler</RootNamespace>
     <AssemblyName>HlslDecompiler</AssemblyName>
-    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -48,6 +48,7 @@
     <Compile Include="Declaration.cs" />
     <Compile Include="DetectFormat.cs" />
     <Compile Include="HlslAst.cs" />
+    <Compile Include="HlslTreeNode.cs" />
     <Compile Include="HlslWriter.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="Program.cs" />

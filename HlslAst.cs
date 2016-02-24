@@ -1,127 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 namespace HlslDecompiler
 {
-    public class HlslTreeNode
-    {
-        public IList<HlslTreeNode> Children { get; set; }
-
-        public HlslTreeNode()
-        {
-            Children = new List<HlslTreeNode>();
-        }
-
-        public virtual HlslTreeNode Reduce()
-        {
-            return this;
-        }
-    }
-
-    public class HlslOperation : HlslTreeNode
-    {
-        public Opcode Operation { get; private set; }
-
-        public HlslOperation(Opcode operation)
-        {
-            Operation = operation;
-        }
-
-        public override HlslTreeNode Reduce()
-        {
-            switch (Operation)
-            {
-                case Opcode.Mad:
-                    {
-                        var multiplicand1 = Children[0].Reduce();
-                        var multiplicand2 = Children[1].Reduce();
-                        var addend = Children[2].Reduce();
-
-                        if (multiplicand1 is HlslConstant)
-                        {
-                            throw new NotImplementedException();
-                        }
-                        else if (multiplicand2 is HlslConstant)
-                        {
-                            float mul2Value = (multiplicand2 as HlslConstant).Value;
-                            if (mul2Value == 0)
-                            {
-                                return addend;
-                            }
-                            else if (mul2Value == 1)
-                            {
-                                if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
-                                {
-                                    return multiplicand1;
-                                }
-                            }
-                            else if (mul2Value == -1)
-                            {
-                                if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
-                                {
-                                    var mul = new HlslOperation(Opcode.Mul);
-                                    mul.Children.Add(multiplicand1);
-                                    mul.Children.Add(multiplicand2);
-                                    return mul;
-                                }
-                            }
-                            if (addend is HlslConstant && (addend as HlslConstant).Value == 0)
-                            {
-                                var mul = new HlslOperation(Opcode.Mul);
-                                mul.Children.Add(multiplicand1);
-                                mul.Children.Add(multiplicand2);
-                                return mul;
-                            }
-                        }
-                        else if (addend is HlslConstant)
-                        {
-                            throw new NotImplementedException();
-                        }
-                    }
-                    break;
-                case Opcode.Mov:
-                    {
-                        return Children[0].Reduce();
-                    }
-            }
-            return base.Reduce();
-        }
-
-        public override string ToString()
-        {
-            return Operation.ToString();
-        }
-    }
-
-    public class HlslConstant : HlslTreeNode
-    {
-        public float Value { get; private set; }
-
-        public HlslConstant(float value)
-        {
-            Value = value;
-        }
-
-        public override string ToString()
-        {
-            return Value.ToString();
-        }
-    }
-
-    public class HlslShaderInput : HlslTreeNode
-    {
-        public RegisterKey InputDecl { get; set; }
-        public int ComponentIndex { get; set; }
-
-        public override string ToString()
-        {
-            return string.Format("{0} ({1})", InputDecl, ComponentIndex);
-        }
-    }
-
-    public class RegisterKey
+   public class RegisterKey
     {
         public int RegisterNumber { get; set; }
         public RegisterType RegisterType { get; set; }
@@ -140,12 +23,12 @@ namespace HlslDecompiler
 
         public override int GetHashCode()
         {
-            return RegisterNumber.GetHashCode() + RegisterType.GetHashCode() + ComponentIndex.GetHashCode();
+            return RegisterNumber.GetHashCode() ^ RegisterType.GetHashCode() ^ ComponentIndex.GetHashCode();
         }
 
         public override string ToString()
         {
-            return string.Format("{0}{1} ({2})", RegisterType, RegisterNumber, ComponentIndex);
+            return $"{RegisterType}{RegisterNumber} ({ComponentIndex})";
         }
     }
 

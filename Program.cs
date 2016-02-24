@@ -40,12 +40,12 @@ namespace HlslDecompiler
                                 string outFilename;
                                 if (shader.Type == ShaderType.Vertex)
                                 {
-                                    outFilename = string.Format("{0}_vs{1}", baseFilename, ivs);
+                                    outFilename = $"{baseFilename}_vs{ivs}";
                                     ivs++;
                                 }
                                 else
                                 {
-                                    outFilename = string.Format("{0}_ps{1}", baseFilename, ips);
+                                    outFilename = $"{baseFilename}_ps{ips}";
                                     ips++;
                                 }
                                 Console.WriteLine(outFilename);
@@ -71,10 +71,10 @@ namespace HlslDecompiler
                             shader = input.ReadShader();
 
                             writer = new AsmWriter(shader);
-                            writer.Write(string.Format("{0}.asm", baseFilename));
+                            writer.Write($"{baseFilename}.asm");
 
                             hlslWriter = new HlslWriter(shader);
-                            hlslWriter.Write(string.Format("{0}.fx", baseFilename));
+                            hlslWriter.Write($"{baseFilename}.fx");
                         }
                         break;
 

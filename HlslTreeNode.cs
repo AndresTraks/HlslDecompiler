@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 
 namespace HlslDecompiler
 {
@@ -43,8 +41,6 @@ namespace HlslDecompiler
                 with.Parents.Add(parent);
             }
         }
-
-        public bool Inline { get { return Children.All(c => c.Inline); } }
     }
 
     public class HlslOperation : HlslTreeNode

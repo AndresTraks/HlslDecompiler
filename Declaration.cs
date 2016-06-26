@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace HlslDecompiler
+﻿namespace HlslDecompiler
 {
     // D3DXREGISTER_SET
     public enum RegisterSet

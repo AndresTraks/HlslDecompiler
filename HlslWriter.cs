@@ -772,8 +772,14 @@ namespace HlslDecompiler
             WriteLine("{");
             indent = "\t";
 
-            var ast = new HlslAst(shader);
-            if (doAstAnalysis && ast.IsValid)
+            HlslAst ast = null;
+            if (doAstAnalysis)
+           {
+                var parser = new BytecodeParser();
+                ast = parser.Parse(shader);
+                ast.ReduceTree();
+            }
+            if (ast != null)
             {
                 WriteAst(ast);
             }
@@ -1033,8 +1039,8 @@ namespace HlslDecompiler
                     if (multiplicand2.First() is HlslConstant)
                     {
                         return string.Format("{0} * {1}",
-                        Compile(multiplicand2),
-                        Compile(multiplicand1));
+                            Compile(multiplicand2),
+                            Compile(multiplicand1));
                     }
 
                     return string.Format("{0} * {1}",

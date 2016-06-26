@@ -44,15 +44,18 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BytecodeParser.cs" />
     <Compile Include="Constant.cs" />
     <Compile Include="Declaration.cs" />
     <Compile Include="DetectFormat.cs" />
+    <Compile Include="FourCC.cs" />
     <Compile Include="HlslAst.cs" />
     <Compile Include="HlslTreeNode.cs" />
     <Compile Include="HlslWriter.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="RegisterKey.cs" />
     <Compile Include="RgxaReader.cs" />
     <Compile Include="ShaderModel.cs" />
     <Compile Include="ShaderReader.cs" />

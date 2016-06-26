@@ -37,7 +37,7 @@ namespace HlslDecompiler
         public void ReadFileHeader()
         {
             int signature = ReadInt32();
-            if (signature != MakeFourCC("rgxa"))
+            if (signature != FourCC.Make("rgxa"))
             {
                 Console.WriteLine("Error: unknown file format!");
                 throw new InvalidDataException();

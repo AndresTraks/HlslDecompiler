@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Text;
 
 namespace HlslDecompiler
@@ -8,15 +7,6 @@ namespace HlslDecompiler
     {
         ShaderModel _shader;
         Instruction _instruction;
-
-        protected static int MakeFourCC(string id)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                return (id[0]) + (id[1] << 8) + (id[2] << 16) + (id[3] << 24);
-            }
-            return (id[3]) + (id[2] << 8) + (id[1] << 16) + (id[0] << 24);
-        }
 
         void ReadInstruction()
         {

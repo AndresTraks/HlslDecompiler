@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Text;
 
 namespace HlslDecompiler
@@ -21,7 +20,7 @@ namespace HlslDecompiler
             using (var reader = new BinaryReader(stream, new UTF8Encoding(), true))
             {
                 uint signature = (uint)reader.ReadInt32();
-                if (signature == MakeFourCC("rgxa"))
+                if (signature == FourCC.Make("rgxa"))
                 {
                     format = ShaderFileFormat.Rgxa;
                 }
@@ -38,15 +37,6 @@ namespace HlslDecompiler
 
             stream.Position = tempPosition;
             return format;
-        }
-
-        static int MakeFourCC(string id)
-        {
-            if (BitConverter.IsLittleEndian)
-            {
-                return (id[0]) + (id[1] << 8) + (id[2] << 16) + (id[3] << 24);
-            }
-            return (id[3]) + (id[2] << 8) + (id[1] << 16) + (id[0] << 24);
         }
     }
 }

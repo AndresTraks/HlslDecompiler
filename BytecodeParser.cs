@@ -16,7 +16,8 @@ namespace HlslDecompiler
             int instructionPointer = 0;
             while (instructionPointer < shader.Instructions.Count)
             {
-                ParseInstruction(shader.Instructions[instructionPointer]);
+                var instruction = shader.Instructions[instructionPointer];
+                ParseInstruction(instruction);
                 instructionPointer++;
             }
 
@@ -74,7 +75,7 @@ namespace HlslDecompiler
                     };
 
                     HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
-                    _activeOutputs.Add(destinationKey, instructionTree);
+                    _activeOutputs[destinationKey] = instructionTree;
                 }
             }
         }
@@ -133,13 +134,26 @@ namespace HlslDecompiler
             var inputs = new HlslTreeNode[numInputs];
             for (int i = 0; i < numInputs; i++)
             {
-                var modifier = instruction.GetSourceModifier(i + 1);
-                if (modifier != SourceModifier.None)
-                {
-                    // TODO
-                }
                 var inputKey = GetParamRegisterKey(instruction, i + 1, componentIndex);
                 var input = _activeOutputs[inputKey];
+                var modifier = instruction.GetSourceModifier(i + 1);
+                switch (modifier)
+                {
+                    case SourceModifier.Abs:
+                        input = new AbsoluteOperation(input);
+                        break;
+                    case SourceModifier.Negate:
+                        input = new AbsoluteOperation(input);
+                        break;
+                    case SourceModifier.AbsAndNegate:
+                        input = new AbsoluteOperation(input);
+                        input = new NegateOperation(input);
+                        break;
+                    case SourceModifier.None:
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
                 inputs[i] = input;
             }
             return inputs;

@@ -14,6 +14,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps6")]
         [TestCase("ps7")]
         [TestCase("ps8")]
+        [TestCase("ps9")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";

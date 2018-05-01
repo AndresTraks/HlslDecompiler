@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.Hlsl;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -892,7 +893,7 @@ namespace HlslDecompiler
             return "." + swizzleName;
         }
 
-        bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
+        private bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
         {
             /*
             var constant1 = node1 as HlslConstant;
@@ -910,17 +911,17 @@ namespace HlslDecompiler
                        input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
             }
 
-            var operation1 = node1 as HlslOperation;
-            var operation2 = node2 as HlslOperation;
+            var operation1 = node1 as Operation;
+            var operation2 = node2 as Operation;
             if (operation1 != null && operation2 != null)
             {
-                if (operation1.Operation == operation2.Operation)
+                if (operation1.Type == operation2.Type)
                 {
-                    if (operation1.Operation == Opcode.Mul)
+                    if (operation1.Type == OperationType.Multiply)
                     {
                         //return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
                     }
-                    else if (operation1.Operation == Opcode.Sub)
+                    else if (operation1.Type == OperationType.Subtract)
                     {
                         return operation1.Children[1].Equals(operation2.Children[1]);
                     }
@@ -1014,24 +1015,23 @@ namespace HlslDecompiler
                 return $"{decl.Name}{swizzle}";
             }
 
-            var firstOperation = first as HlslOperation;
+            var firstOperation = first as Operation;
             if (firstOperation != null)
             {
-                if (firstOperation.Operation == Opcode.Abs)
+                if (firstOperation.Type == OperationType.Absolute)
                 {
-                    return string.Format("{0}({1})",
-                        firstOperation.Operation.ToString().ToLower(),
+                    return string.Format("abs({0})",
                         Compile(group.Select(g => g.Children[0])));
                 }
 
-                if (firstOperation.Operation == Opcode.Sub)
+                if (firstOperation.Type == OperationType.Subtract)
                 {
                     return string.Format("{0} - {1}",
                         Compile(group.Select(g => g.Children[0])),
                         Compile(group.Select(g => g.Children[1])));
                 }
 
-                if (firstOperation.Operation == Opcode.Mul)
+                if (firstOperation.Type == OperationType.Multiply)
                 {
                     var multiplicand1 = group.Select(g => g.Children[0]);
                     var multiplicand2 = group.Select(g => g.Children[1]);
@@ -1049,7 +1049,6 @@ namespace HlslDecompiler
                 }
             }
             throw new NotImplementedException();
-            return "";
         }
     }
 }

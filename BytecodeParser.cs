@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.Hlsl;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -104,38 +105,58 @@ namespace HlslDecompiler
                 case Opcode.Mov:
                 case Opcode.Mul:
                     {
-                        int numInputs;
+                        HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
                         {
                             case Opcode.Abs:
+                                return new AbsoluteOperation(inputs[0]);
                             case Opcode.Mov:
-                                numInputs = 1;
-                                break;
+                                return new MoveOperation(inputs[0]);
                             case Opcode.Add:
+                                return new AddOperation(inputs[0], inputs[1]);
                             case Opcode.Mul:
-                                numInputs = 2;
-                                break;
+                                return new MultiplyOperation(inputs[0], inputs[1]);
                             case Opcode.Mad:
-                                numInputs = 3;
-                                break;
+                                return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                             default:
                                 throw new NotImplementedException();
                         }
-                        var operation = new HlslOperation(instruction.Opcode);
-                        for (int j = 0; j < numInputs; j++)
-                        {
-                            var modifier = instruction.GetSourceModifier(j + 1);
-                            if (modifier != SourceModifier.None)
-                            {
-                                // TODO
-                            }
-                            var inputKey = GetParamRegisterKey(instruction, j + 1, componentIndex);
-                            var input = _activeOutputs[inputKey];
-                            operation.AddChild(input);
-                        }
-
-                        return operation;
                     }
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private HlslTreeNode[] GetInputs(Instruction instruction, int componentIndex)
+        {
+            int numInputs = GetNumInputs(instruction.Opcode);
+            var inputs = new HlslTreeNode[numInputs];
+            for (int i = 0; i < numInputs; i++)
+            {
+                var modifier = instruction.GetSourceModifier(i + 1);
+                if (modifier != SourceModifier.None)
+                {
+                    // TODO
+                }
+                var inputKey = GetParamRegisterKey(instruction, i + 1, componentIndex);
+                var input = _activeOutputs[inputKey];
+                inputs[i] = input;
+            }
+            return inputs;
+        }
+
+        private static int GetNumInputs(Opcode opcode)
+        {
+            switch (opcode)
+            {
+                case Opcode.Abs:
+                case Opcode.Mov:
+                    return 1;
+                case Opcode.Add:
+                case Opcode.Mul:
+                    return 2;
+                case Opcode.Mad:
+                    return 3;
                 default:
                     throw new NotImplementedException();
             }

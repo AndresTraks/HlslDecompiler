@@ -52,6 +52,14 @@
     <Compile Include="HlslAst.cs" />
     <Compile Include="HlslTreeNode.cs" />
     <Compile Include="HlslWriter.cs" />
+    <Compile Include="Hlsl\MoveOperation.cs" />
+    <Compile Include="Hlsl\AbsoluteOperation.cs" />
+    <Compile Include="Hlsl\AddOperation.cs" />
+    <Compile Include="Hlsl\MultiplyAddOperation.cs" />
+    <Compile Include="Hlsl\MultiplyOperation.cs" />
+    <Compile Include="Hlsl\OperationType.cs" />
+    <Compile Include="Hlsl\Operation.cs" />
+    <Compile Include="Hlsl\SubtractOperation.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="InstructionVerifier.cs" />
     <Compile Include="Program.cs" />

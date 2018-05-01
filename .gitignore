@@ -1,6 +1,4 @@
-/bin
-/obj
-/packages
-/.vs
-/HlslDecompiler.Tests/bin
-/HlslDecompiler.Tests/obj
+bin
+obj
+packages
+.vs

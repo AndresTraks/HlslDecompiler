@@ -34,8 +34,8 @@ namespace HlslDecompiler.Tests
                 hlslWriter.Write(hlslOutputFilename);
             }
 
-            FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename);
-            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename);
+            FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal");
+            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal");
         }
     }
 }

@@ -5,10 +5,32 @@ namespace HlslDecompiler
 {
     public class ShaderReader : BinaryReader
     {
-        ShaderModel _shader;
-        Instruction _instruction;
+        public ShaderReader(Stream input, bool leaveOpen = false)
+            : base(input, new UTF8Encoding(false, true), leaveOpen)
+        {
+        }
 
-        void ReadInstruction()
+        virtual public ShaderModel ReadShader()
+        {
+            // Version token
+            byte minorVersion = ReadByte();
+            byte majorVersion = ReadByte();
+            ShaderType shaderType = (ShaderType)ReadUInt16();
+
+            var shader = new ShaderModel(majorVersion, minorVersion, shaderType);
+
+            while (true)
+            {
+                Instruction instruction = ReadInstruction();
+                InstructionVerifier.Verify(instruction);
+                shader.Instructions.Add(instruction);
+                if (instruction.Opcode == Opcode.End) break;
+            }
+
+            return shader;
+        }
+
+        private Instruction ReadInstruction()
         {
             uint instructionToken = ReadUInt32();
             Opcode opcode = (Opcode)(instructionToken & 0xffff);
@@ -23,106 +45,21 @@ namespace HlslDecompiler
                 size = (int)((instructionToken >> 24) & 0x0f);
             }
 
-            _instruction = new Instruction(opcode, size);
-            _shader.Instructions.Add(_instruction);
+            var instruction = new Instruction(opcode, size);
 
             for (int i = 0; i < size; i++)
             {
-                _instruction.Params[i] = ReadUInt32();
+                instruction.Params[i] = ReadUInt32();
             }
 
-            if (opcode == Opcode.Comment)
+            if (opcode != Opcode.Comment)
             {
-                return;
+                instruction.Modifier = (int)((instructionToken >> 16) & 0xff);
+                instruction.Predicated = (instructionToken & 0x10000000) != 0;
+                System.Diagnostics.Debug.Assert((instructionToken & 0xE0000000) == 0);
             }
 
-            _instruction.Modifier = (int)((instructionToken >> 16) & 0xff);
-            _instruction.Predicated = (instructionToken & 0x10000000) != 0;
-            System.Diagnostics.Debug.Assert((instructionToken & 0xE0000000) == 0);
-        }
-
-        void VerifyInstruction()
-        {
-            //System.Diagnostics.Debug.Assert(currentInstruction.Modifier == 0);
-            System.Diagnostics.Debug.Assert(!_instruction.Predicated);
-
-            switch (_instruction.Opcode)
-            {
-                case Opcode.Dcl:
-                    // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549176(v=vs.85).aspx
-                    System.Diagnostics.Debug.Assert(_instruction.Params.Length == 2);
-                    uint param0 = _instruction.Params[0];
-                    switch (_instruction.GetParamRegisterType(1))
-                    {
-                        case RegisterType.Sampler:
-                            System.Diagnostics.Debug.Assert((param0 & 0x07FFFFFF) == 0);
-                            break;
-                        case RegisterType.Input:
-                        case RegisterType.Output:
-                        case RegisterType.Texture:
-                            System.Diagnostics.Debug.Assert((param0 & 0x0000FFF0) == 0);
-                            System.Diagnostics.Debug.Assert((param0 & 0x7FF00000) == 0);
-                            break;
-                    }
-                    System.Diagnostics.Debug.Assert((param0 & 0x80000000) != 0);
-                    break;
-                case Opcode.Def:
-                    {
-                        System.Diagnostics.Debug.Assert(_instruction.Params.Length == 5);
-                        var registerType = _instruction.GetParamRegisterType(0);
-                        System.Diagnostics.Debug.Assert(
-                            registerType == RegisterType.Const ||
-                            registerType == RegisterType.Const2 ||
-                            registerType == RegisterType.Const3 ||
-                            registerType == RegisterType.Const4);
-                    }
-                    break;
-                case Opcode.DefI:
-                    {
-                        System.Diagnostics.Debug.Assert(_instruction.Params.Length == 5);
-                        var registerType = _instruction.GetParamRegisterType(0);
-                        System.Diagnostics.Debug.Assert(registerType == RegisterType.ConstInt);
-                    }
-                    break;
-                case Opcode.IfC:
-                    IfComparison comp = (IfComparison)_instruction.Modifier;
-                    System.Diagnostics.Debug.Assert(
-                        comp == IfComparison.GT ||
-                        comp == IfComparison.EQ ||
-                        comp == IfComparison.GE ||
-                        comp == IfComparison.LT ||
-                        comp == IfComparison.NE ||
-                        comp == IfComparison.LE);
-                    break;
-                default:
-                    //throw new NotImplementedException();
-                    break;
-            }
-        }
-
-        public ShaderReader(Stream input, bool leaveOpen = false)
-            : base(input, new UTF8Encoding(false, true), leaveOpen)
-        {
-        }
-
-        virtual public ShaderModel ReadShader()
-        {
-            // Version token
-            byte minorVersion = ReadByte();
-            byte majorVersion = ReadByte();
-            ShaderType shaderType = (ShaderType)ReadUInt16();
-
-            _shader = new ShaderModel(majorVersion, minorVersion, shaderType);
-
-            do
-            {
-                ReadInstruction();
-                VerifyInstruction();
-            } while (_instruction.Opcode != Opcode.End);
-
-
-            _instruction = null;
-            return _shader;
+            return instruction;
         }
     }
 }

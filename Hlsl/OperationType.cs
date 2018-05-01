@@ -7,6 +7,7 @@
         MultiplyAdd,
         Subtract,
         Absolute,
-        Move
+        Move,
+        Negate
     }
 }

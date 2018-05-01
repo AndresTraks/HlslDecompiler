@@ -32,6 +32,12 @@
                     Replace(factor2);
                     return factor2;
                 }
+                if (value1 == -1)
+                {
+                    var negation = new NegateOperation(factor2);
+                    Replace(negation);
+                    return negation;
+                }
                 if (constant2 != null)
                 {
                     return new HlslConstant(value1 * constant2.Value);
@@ -50,6 +56,12 @@
                 {
                     Replace(factor1);
                     return factor1;
+                }
+                if (value2 == -1)
+                {
+                    var negation = new NegateOperation(factor1);
+                    Replace(negation);
+                    return negation;
                 }
             }
 

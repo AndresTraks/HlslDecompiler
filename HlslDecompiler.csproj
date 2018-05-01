@@ -57,6 +57,7 @@
     <Compile Include="Hlsl\AddOperation.cs" />
     <Compile Include="Hlsl\MultiplyAddOperation.cs" />
     <Compile Include="Hlsl\MultiplyOperation.cs" />
+    <Compile Include="Hlsl\NegateOperation.cs" />
     <Compile Include="Hlsl\OperationType.cs" />
     <Compile Include="Hlsl\Operation.cs" />
     <Compile Include="Hlsl\SubtractOperation.cs" />

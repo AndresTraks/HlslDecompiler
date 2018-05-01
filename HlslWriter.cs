@@ -917,9 +917,14 @@ namespace HlslDecompiler
             {
                 if (operation1.Type == operation2.Type)
                 {
-                    if (operation1.Type == OperationType.Multiply)
+                    if (operation1.Type == OperationType.Negate)
+                    {
+                        return true;
+                    }
+                    else if (operation1.Type == OperationType.Multiply)
                     {
                         //return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                        return operation1.Children[1].Equals(operation2.Children[1]);
                     }
                     else if (operation1.Type == OperationType.Subtract)
                     {
@@ -931,28 +936,26 @@ namespace HlslDecompiler
             return false;
         }
 
-        IList<IEnumerable<HlslTreeNode>> GroupComponents(IEnumerable<HlslTreeNode> nodes)
+        IList<IEnumerable<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
         {
-            var nodesList = nodes.ToList();
-            switch (nodesList.Count)
+            switch (nodes.Count)
             {
                 case 0:
-                    return new List<IEnumerable<HlslTreeNode>>();
                 case 1:
-                    return new List<IEnumerable<HlslTreeNode>> { nodesList };
+                    return new List<IEnumerable<HlslTreeNode>> { nodes };
             }
 
             var groups = new List<IEnumerable<HlslTreeNode>>();
             int n, groupStart = 0;
-            for (n = 1; n < nodesList.Count; n++)
+            for (n = 1; n < nodes.Count; n++)
             {
-                if (!CanGroupComponents(nodesList[groupStart], nodesList[n]))
+                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
                 {
-                    groups.Add(nodesList.GetRange(groupStart, n - groupStart));
+                    groups.Add(nodes.GetRange(groupStart, n - groupStart));
                     groupStart = n;
                 }
             }
-            groups.Add(nodesList.GetRange(groupStart, n - groupStart));
+            groups.Add(nodes.GetRange(groupStart, n - groupStart));
             return groups;
         }
 
@@ -998,10 +1001,10 @@ namespace HlslDecompiler
         {
             var first = group.First();
 
-            var firstConstant = first as HlslConstant;
-            if (firstConstant != null)
+            var constant = first as HlslConstant;
+            if (constant != null)
             {
-                return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
+                return CompileConstant(constant);
             }
 
             var firstShaderInput = first as HlslShaderInput;
@@ -1021,6 +1024,12 @@ namespace HlslDecompiler
                 if (firstOperation.Type == OperationType.Absolute)
                 {
                     return string.Format("abs({0})",
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (firstOperation.Type == OperationType.Negate)
+                {
+                    return string.Format("-{0}",
                         Compile(group.Select(g => g.Children[0])));
                 }
 
@@ -1049,6 +1058,11 @@ namespace HlslDecompiler
                 }
             }
             throw new NotImplementedException();
+        }
+
+        private static string CompileConstant(HlslConstant firstConstant)
+        {
+            return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
         }
     }
 }

@@ -19,6 +19,24 @@ $fxc_paths = @(
     "C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe"
 );
 
+function RunProgram($program, $arguments) {
+	$info = New-Object System.Diagnostics.ProcessStartInfo
+	$info.FileName = $program
+	$info.RedirectStandardError = $true
+	$info.RedirectStandardOutput = $true
+	$info.UseShellExecute = $false
+	$info.Arguments = $arguments
+	$info.WorkingDirectory = Get-Location
+	$process = New-Object System.Diagnostics.Process
+	$process.StartInfo = $info
+	$process.Start() | Out-Null
+	$process.WaitForExit()
+	
+	if ($process.ExitCode -ne 0) {
+		Write-Error $process.StandardError.ReadToEnd()
+	}
+}
+
 function Compile {
     $fxc = $fxc_paths | Where { Test-Path -Path $_ -PathType Leaf } | Select -First 1
     if (-Not $fxc) {
@@ -27,7 +45,9 @@ function Compile {
     }
 
     ForEach ($shaderSource in $shaderSources) {
-        & $fxc /T ps_3_0 "ShaderSources/$shaderSource.fx" /Fo "CompiledShaders/$shaderSource.fxc"
+		Write-Host "Compiling $shaderSource..."
+		$arguments = "/T ps_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc"
+		RunProgram $fxc $arguments
     }
 }
 

@@ -2,7 +2,7 @@
 {
     public class SubtractOperation : Operation
     {
-        public SubtractOperation(HlslTreeNode minuend, HlslConstant subtrahend)
+        public SubtractOperation(HlslTreeNode minuend, HlslTreeNode subtrahend)
         {
             AddChild(minuend);
             AddChild(subtrahend);

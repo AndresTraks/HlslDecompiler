@@ -54,10 +54,18 @@ namespace HlslDecompiler
         {
             if (instruction.HasDestination)
             {
-                foreach (RegisterKey destinationKey in GetDestinationKeys(instruction))
+                var newOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
+
+                RegisterKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+                foreach (RegisterKey destinationKey in destinationKeys)
                 {
                     HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
-                    _activeOutputs[destinationKey] = instructionTree;
+                    newOutputs[destinationKey] = instructionTree;
+                }
+
+                foreach (var output in newOutputs)
+                {
+                    _activeOutputs[output.Key] = output.Value;
                 }
             }
         }
@@ -106,7 +114,7 @@ namespace HlslDecompiler
                     }
                 case Opcode.Def:
                     {
-                        var constant = new HlslConstant(instruction.GetParamSingle(componentIndex + 1));
+                        var constant = new ConstantNode(instruction.GetParamSingle(componentIndex + 1));
                         return constant;
                     }
                 case Opcode.Abs:
@@ -133,7 +141,7 @@ namespace HlslDecompiler
                         }
                     }
                 case Opcode.Tex:
-                    return new TextureLoadOutputNode(GetTextureLoadInputs(instruction), componentIndex);
+                    return CreateTextureLoadOutputNode(instruction, componentIndex);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
@@ -161,29 +169,28 @@ namespace HlslDecompiler
             return inputs;
         }
 
-        private IList<HlslTreeNode> GetTextureLoadInputs(Instruction instruction)
+        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int componentIndex)
         {
             const int TextureCoordsIndex = 1;
             const int SamplerIndex = 2;
 
-            var inputs = new List<HlslTreeNode>();
-            
+            IList<HlslTreeNode> texCoords = new List<HlslTreeNode>();
             for (int component = 0; component < 4; component++)
             {
                 RegisterKey textureCoordsKey = GetParamRegisterKey(instruction, TextureCoordsIndex, component);
                 if (_activeOutputs.TryGetValue(textureCoordsKey, out HlslTreeNode textureCoord))
                 {
-                    inputs.Add(textureCoord);
+                    texCoords.Add(textureCoord);
                 }
             }
 
-            RegisterKey samplerKey = GetParamRegisterKey(instruction, SamplerIndex, 0);
-            if (_activeOutputs.TryGetValue(samplerKey, out HlslTreeNode input))
+            RegisterKey sampler = GetParamRegisterKey(instruction, SamplerIndex, 0);
+            if (!_activeOutputs.TryGetValue(sampler, out HlslTreeNode samplerInput))
             {
-                inputs.Add(input);
+                throw new InvalidOperationException();
             }
 
-            return inputs;
+            return new TextureLoadOutputNode(samplerInput, texCoords, componentIndex);
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)

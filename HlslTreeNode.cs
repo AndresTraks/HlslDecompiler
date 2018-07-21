@@ -8,7 +8,7 @@ namespace HlslDecompiler
         public IList<HlslTreeNode> Children { get; } = new List<HlslTreeNode>();
         public IList<HlslTreeNode> Parents { get; } = new List<HlslTreeNode>();
 
-        public void AddChild(HlslTreeNode node)
+        protected void AddChild(HlslTreeNode node)
         {
             Children.Add(node);
             node.Parents.Add(this);
@@ -40,41 +40,6 @@ namespace HlslDecompiler
                 }
                 with.Parents.Add(parent);
             }
-        }
-    }
-
-    public class HlslConstant : HlslTreeNode
-    {
-        public float Value { get; }
-
-        public HlslConstant(float value)
-        {
-            Value = value;
-        }
-
-        public override bool Equals(object obj)
-        {
-            return obj is HlslConstant && this == (HlslConstant)obj;
-        }
-
-        public override int GetHashCode()
-        {
-            return Value.GetHashCode();
-        }
-        public static bool operator ==(HlslConstant x, HlslConstant y)
-        {
-            if (x is null) return y is null;
-            if (y is null) return false;
-            return x.Value == y.Value;
-        }
-        public static bool operator !=(HlslConstant x, HlslConstant y)
-        {
-            return !(x == y);
-        }
-
-        public override string ToString()
-        {
-            return Value.ToString(CultureInfo.InvariantCulture);
         }
     }
 }

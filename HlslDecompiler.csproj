@@ -49,6 +49,7 @@
     <Compile Include="Declaration.cs" />
     <Compile Include="DetectFormat.cs" />
     <Compile Include="FourCC.cs" />
+    <Compile Include="Hlsl\ConstantNode.cs" />
     <Compile Include="Hlsl\HlslAst.cs" />
     <Compile Include="HlslTreeNode.cs" />
     <Compile Include="HlslWriter.cs" />

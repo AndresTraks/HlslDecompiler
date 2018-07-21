@@ -1,15 +1,22 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
     public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     {
-        public TextureLoadOutputNode(IEnumerable<HlslTreeNode> inputNodes, int componentIndex)
+        public TextureLoadOutputNode(HlslTreeNode sampler, IEnumerable<HlslTreeNode> textureCoords, int componentIndex)
         {
-            foreach (HlslTreeNode inputNode in inputNodes)
+            if (!(sampler is RegisterInputNode samplerInput))
             {
-                AddChild(inputNode);
+                throw new ArgumentException(nameof(sampler));
+            }
+
+            AddChild(sampler);
+            foreach (HlslTreeNode textureCoord in textureCoords)
+            {
+                AddChild(textureCoord);
             }
 
             ComponentIndex = componentIndex;

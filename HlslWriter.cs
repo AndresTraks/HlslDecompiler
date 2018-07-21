@@ -87,7 +87,11 @@ namespace HlslDecompiler
         {
             RegisterType registerType = instruction.GetParamRegisterType(paramIndex);
             int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
+            return GetRegisterName(registerType, registerNumber);
+        }
 
+        private string GetRegisterName(RegisterType registerType, int registerNumber)
+        {
             var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
             if (decl != null)
             {
@@ -656,13 +660,14 @@ namespace HlslDecompiler
 
             // Look for and parse the constant table
             ConstantDeclarations = shader.ParseConstantTable();
-            foreach (ConstantDeclaration declaration in ConstantDeclarations)
-            {
-                string typeName = GetTypeName(declaration);
-                WriteLine("{0} {1};", typeName, declaration.Name);
-            }
             if (ConstantDeclarations.Count != 0)
             {
+                foreach (ConstantDeclaration declaration in ConstantDeclarations)
+                {
+                    string typeName = GetTypeName(declaration);
+                    WriteLine("{0} {1};", typeName, declaration.Name);
+                }
+
                 WriteLine();
             }
 
@@ -855,9 +860,9 @@ namespace HlslDecompiler
 
         string GetAstConstant(HlslTreeNode constant)
         {
-            if (constant is HlslConstant)
+            if (constant is ConstantNode)
             {
-                float value = (constant as HlslConstant).Value;
+                float value = (constant as ConstantNode).Value;
                 return value.ToString(CultureInfo.InvariantCulture);
             }
             else
@@ -892,14 +897,12 @@ namespace HlslDecompiler
 
         private bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
         {
-            /*
-            var constant1 = node1 as HlslConstant;
-            var constant2 = node2 as HlslConstant;
-            if (constant1 != null && constant2 != null)
+            if (node1 is ConstantNode constant1 &&
+                node2 is ConstantNode constant2)
             {
                 return constant1.Value == constant2.Value;
             }
-            */
+
             if (node1 is RegisterInputNode input1 &&
                 node2 is RegisterInputNode input2)
             {
@@ -918,8 +921,7 @@ namespace HlslDecompiler
                 else if (operation1 is MultiplyOperation multiply1 &&
                     operation2 is MultiplyOperation multiply2)
                 {
-                    //return operation1.Children.Any(c1 => operation2.Children.Any(c2 => CanGroupComponents(c1, c2)));
-                    return multiply1.Factor2.Equals(multiply2.Factor2);
+                    return operation1.Children.Any(c1 => operation2.Children.Any(c2 => c1.Equals(c2)));
                 }
                 else if (operation1 is SubtractOperation subtract1 &&
                     operation2 is SubtractOperation subtract2)
@@ -970,108 +972,68 @@ namespace HlslDecompiler
             return groups;
         }
 
-        void WriteAst(HlslAst ast)
+        private void WriteAst(HlslAst ast)
         {
             var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
 
-            // Check for scalar promotion from float to float4
-            if (roots.All(r => r is HlslConstant))
-            {
-                var constants = roots.Cast<HlslConstant>();
-                float value = constants.First().Value;
-                if (constants.Skip(1).All(r => r.Value == value))
-                {
-                    WriteLine("return {0};", value.ToString(CultureInfo.InvariantCulture));
-                    return;
-                }
+            string statement = Compile(roots);
 
-                // In float4(x, float), x cannot be promoted from float to float3
-                // In float4(x, y), x cannot be promoted to float2 and y to float2
-            }
-
-            var groups = GroupComponents(roots);
-            if (groups.Count == 1)
-            {
-                IList<HlslTreeNode> singleGroup = groups.First();
-                if (singleGroup.First() is RegisterInputNode)
-                {
-                    var shaderInputs = singleGroup.Cast<RegisterInputNode>();
-                    var firstInput = shaderInputs.First();
-                    string swizzle = GetAstSourceSwizzleName(shaderInputs, 4);
-                    var decl = RegisterDeclarations.FirstOrDefault(x =>
-                        x.RegisterType == firstInput.InputDecl.RegisterType &&
-                        x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
-                    WriteLine($"return {decl.Name}{swizzle};");
-                }
-                else if (singleGroup.First() is TextureLoadOutputNode)
-                {
-                    var shaderInputs = singleGroup.Cast<TextureLoadOutputNode>();
-                    var firstInput = shaderInputs.First();
-                    string swizzle = GetAstSourceSwizzleName(shaderInputs, 4);
-                    WriteLine($"return tex2D(sampler0, texcoord){swizzle};");
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
-                return;
-            }
-
-            var constructorParts = groups.Select(Compile);
-            string returnStatement = $"return float4({string.Join(", ", constructorParts)});";
-            WriteLine(returnStatement);
+            WriteLine($"return {statement};");
 
         }
 
-        public string Compile(IEnumerable<HlslTreeNode> group)
+        private string Compile(IEnumerable<HlslTreeNode> group)
         {
+            List<HlslTreeNode> groupList = group.ToList();
+            int componentCount = groupList.Count;
+            var subGroups = GroupComponents(groupList);
+            if (subGroups.Count == 0)
+            {
+                throw new InvalidOperationException();
+            }
+
+            if (subGroups.Count > 1)
+            {
+                // In float4(x, float), x cannot be promoted from float to float3
+                // In float4(x, y), x cannot be promoted to float2 and y to float2
+                var constructorParts = subGroups.Select(Compile);
+                return $"float{componentCount}({string.Join(", ", constructorParts)})";
+            }
+
             var first = group.First();
 
-            var constant = first as HlslConstant;
-            if (constant != null)
+            if (first is ConstantNode constant)
             {
                 return CompileConstant(constant);
             }
 
-            var firstShaderInput = first as RegisterInputNode;
-            if (firstShaderInput != null)
+            if (first is Operation operation)
             {
-                var shaderInputs = group.Cast<RegisterInputNode>();
-                var decl = RegisterDeclarations.FirstOrDefault(x =>
-                    x.RegisterType == firstShaderInput.InputDecl.RegisterType &&
-                    x.RegisterNumber == firstShaderInput.InputDecl.RegisterNumber);
-                string swizzle = GetAstSourceSwizzleName(shaderInputs, GetRegisterFullLength(decl));
-                return $"{decl.Name}{swizzle}";
-            }
-
-            var firstOperation = first as Operation;
-            if (firstOperation != null)
-            {
-                if (firstOperation is AbsoluteOperation)
+                if (operation is AbsoluteOperation)
                 {
                     return string.Format("abs({0})",
                         Compile(group.Select(g => g.Children[0])));
                 }
 
-                if (firstOperation is NegateOperation)
+                if (operation is NegateOperation)
                 {
                     return string.Format("-{0}",
                         Compile(group.Select(g => g.Children[0])));
                 }
 
-                if (firstOperation is SubtractOperation)
+                if (operation is SubtractOperation)
                 {
                     return string.Format("{0} - {1}",
                         Compile(group.Select(g => g.Children[0])),
                         Compile(group.Select(g => g.Children[1])));
                 }
 
-                if (firstOperation is MultiplyOperation)
+                if (operation is MultiplyOperation)
                 {
                     var multiplicand1 = group.Select(g => g.Children[0]);
                     var multiplicand2 = group.Select(g => g.Children[1]);
 
-                    if (multiplicand2.First() is HlslConstant)
+                    if (multiplicand2.First() is ConstantNode)
                     {
                         return string.Format("{0} * {1}",
                             Compile(multiplicand2),
@@ -1084,26 +1046,43 @@ namespace HlslDecompiler
                 }
             }
 
-            var firstTextureLoadOperation = first as TextureLoadOutputNode;
-            if (firstTextureLoadOperation != null)
+
+            if (first is IHasComponentIndex component)
             {
-                /*
-                var textureLoadOperations = group.Cast<TextureLoadOutputNode>();
-                var textureCoordinates = Compile(textureLoadOperations.Select(ld => ld.TextureCoordinateInputs));
-                var samplers = Compile(textureLoadOperations.Select(ld => ld.SamplerInputs));
-                //var decl = RegisterDeclarations.FirstOrDefault(x =>
-                //    x.RegisterType == firstTextureLoadOperation.TextureCoordinates.RegisterType &&
-                //    x.RegisterNumber == firstTextureLoadOperation.InputDecl.RegisterNumber);
-                //string swizzle = GetAstSourceSwizzleName(textureLoadOperations, GetRegisterFullLength(decl));
-                return $"tex2D({textureCoordinates}, {samplers})";
-                */
-                return "tex2D()";
+                var components = group.Cast<IHasComponentIndex>();
+
+                if (first is RegisterInputNode shaderInput)
+                {
+                    RegisterType registerType = shaderInput.InputDecl.RegisterType;
+                    int registerNumber = shaderInput.InputDecl.RegisterNumber;
+
+                    string swizzle = "";
+                    if (registerType != RegisterType.Sampler)
+                    {
+                        var decl = RegisterDeclarations.FirstOrDefault(x =>
+                                x.RegisterType == registerType &&
+                                x.RegisterNumber == registerNumber);
+                        swizzle = GetAstSourceSwizzleName(components, GetRegisterFullLength(decl));
+                    }
+
+                    string name = GetRegisterName(registerType, registerNumber);
+                    return $"{name}{swizzle}";
+                }
+
+                if (first is TextureLoadOutputNode textureLoad)
+                {
+                    string swizzle = GetAstSourceSwizzleName(components, 4);
+
+                    string sampler = Compile(new[] { textureLoad.SamplerInput });
+                    string texcoords = Compile(textureLoad.TextureCoordinateInputs);
+                    return $"tex2D({sampler}, {texcoords}){swizzle}";
+                }
             }
 
             throw new NotImplementedException();
         }
 
-        private static string CompileConstant(HlslConstant firstConstant)
+        private static string CompileConstant(ConstantNode firstConstant)
         {
             return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
         }

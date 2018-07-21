@@ -16,8 +16,8 @@
             var factor1 = Factor1.Reduce();
             var factor2 = Factor2.Reduce();
 
-            var constant1 = factor1 as HlslConstant;
-            var constant2 = factor2 as HlslConstant;
+            var constant1 = factor1 as ConstantNode;
+            var constant2 = factor2 as ConstantNode;
             if (constant1 != null)
             {
                 float value1 = constant1.Value;
@@ -39,7 +39,7 @@
                 }
                 if (constant2 != null)
                 {
-                    return new HlslConstant(value1 * constant2.Value);
+                    return new ConstantNode(value1 * constant2.Value);
                 }
             }
 

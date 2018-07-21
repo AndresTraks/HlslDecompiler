@@ -3,7 +3,6 @@
     public class AddOperation : Operation
     {
         public AddOperation(HlslTreeNode addend1, HlslTreeNode addend2)
-            : base(OperationType.Add)
         {
             AddChild(addend1);
             AddChild(addend2);

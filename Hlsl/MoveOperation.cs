@@ -3,7 +3,6 @@
     public class MoveOperation : Operation
     {
         public MoveOperation(HlslTreeNode value)
-            : base(OperationType.Move)
         {
             AddChild(value);
         }

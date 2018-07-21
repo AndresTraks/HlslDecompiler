@@ -3,7 +3,6 @@
     public class MultiplyAddOperation : Operation
     {
         public MultiplyAddOperation(HlslTreeNode factor1, HlslTreeNode factor2, HlslTreeNode addend)
-             : base(OperationType.MultiplyAdd)
         {
             AddChild(factor1);
             AddChild(factor2);

@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler
 {
-    public class RegisterKey
+    public class RegisterKey : IHasComponentIndex
     {
         public int RegisterNumber { get; set; }
         public RegisterType RegisterType { get; set; }
@@ -26,23 +26,44 @@
             }
         }
 
-    public override bool Equals(object obj)
+        public override bool Equals(object obj)
         {
-            var other = obj as RegisterKey;
-            if (other == null) return false;
-            return other.RegisterNumber == RegisterNumber &&
-                other.RegisterType == RegisterType &&
-                other.ComponentIndex == ComponentIndex;
+            if (!(obj is RegisterKey other))
+            {
+                return false;
+            }
+            if (other.RegisterNumber == RegisterNumber &&
+                other.RegisterType == RegisterType)
+            {
+                if (IsSampler)
+                {
+                    return true;
+                }
+                else
+                {
+                    return other.ComponentIndex == ComponentIndex;
+                }
+            }
+            return false;
         }
 
         public override int GetHashCode()
         {
-            return RegisterNumber.GetHashCode() ^ RegisterType.GetHashCode() ^ ComponentIndex.GetHashCode();
+            int hashCode = RegisterNumber.GetHashCode() ^ RegisterType.GetHashCode();
+            if (!IsSampler)
+            {
+                hashCode ^= ComponentIndex.GetHashCode();
+            }
+            return hashCode;
         }
 
         public override string ToString()
         {
-            return $"{RegisterType}{RegisterNumber}.{Component}";
+            return IsSampler
+                ? $"{RegisterType}{RegisterNumber}"
+                : $"{RegisterType}{RegisterNumber}.{Component}";
         }
+
+        private bool IsSampler => RegisterType == RegisterType.Sampler;
     }
 }

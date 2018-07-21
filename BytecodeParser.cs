@@ -42,11 +42,7 @@ namespace HlslDecompiler
                         RegisterType = RegisterType.Const,
                         ComponentIndex = i
                     };
-                    var shaderInput = new HlslShaderInput()
-                    {
-                        InputDecl = destinationKey,
-                        ComponentIndex = i
-                    };
+                    var shaderInput = new RegisterInputNode(destinationKey, i);
                     constantOutputs.Add(destinationKey, shaderInput);
                 }
             }
@@ -58,46 +54,42 @@ namespace HlslDecompiler
         {
             if (instruction.HasDestination)
             {
-                IEnumerable<RegisterKey> destinationKeys = GetDestinationKeys(instruction);
-
-                if (instruction.Opcode == Opcode.Tex)
+                foreach (RegisterKey destinationKey in GetDestinationKeys(instruction))
                 {
-                    var node1 = new HlslConstant(0);
-                    var node2 = new HlslConstant(1);
-                    var textureLoad = new TextureLoadOperation(node1, node2);
-                    foreach (RegisterKey destinationKey in destinationKeys)
-                    {
-                        _activeOutputs[destinationKey] = textureLoad;
-                    }
-                }
-                else
-                {
-                    foreach (RegisterKey destinationKey in destinationKeys)
-                    {
-                        HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
-                        _activeOutputs[destinationKey] = instructionTree;
-                    }
+                    HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                    _activeOutputs[destinationKey] = instructionTree;
                 }
             }
         }
 
         private IEnumerable<RegisterKey> GetDestinationKeys(Instruction instruction)
         {
-            int destIndex = instruction.GetDestinationParamIndex();
-            var destRegisterType = instruction.GetParamRegisterType(destIndex);
-            int destRegisterNumber = instruction.GetParamRegisterNumber(destIndex);
-            int destMask = instruction.GetDestinationWriteMask();
+            int index = instruction.GetDestinationParamIndex();
+            RegisterType registerType = instruction.GetParamRegisterType(index);
+            int registerNumber = instruction.GetParamRegisterNumber(index);
 
-            for (int i = 0; i < 4; i++)
+            if (registerType == RegisterType.Sampler)
             {
-                if ((destMask & (1 << i)) == 0) continue;
-
                 yield return new RegisterKey()
                 {
-                    RegisterNumber = destRegisterNumber,
-                    RegisterType = destRegisterType,
-                    ComponentIndex = i
+                    RegisterNumber = registerNumber,
+                    RegisterType = RegisterType.Sampler
                 };
+            }
+            else
+            {
+                int mask = instruction.GetDestinationWriteMask();
+                for (int component = 0; component < 4; component++)
+                {
+                    if ((mask & (1 << component)) == 0) continue;
+
+                    yield return new RegisterKey()
+                    {
+                        RegisterNumber = registerNumber,
+                        RegisterType = registerType,
+                        ComponentIndex = component
+                    };
+                }
             }
         }
 
@@ -109,11 +101,7 @@ namespace HlslDecompiler
             {
                 case Opcode.Dcl:
                     {
-                        var shaderInput = new HlslShaderInput()
-                        {
-                            InputDecl = destinationKey,
-                            ComponentIndex = componentIndex
-                        };
+                        var shaderInput = new RegisterInputNode(destinationKey, componentIndex);
                         return shaderInput;
                     }
                 case Opcode.Def:
@@ -126,7 +114,6 @@ namespace HlslDecompiler
                 case Opcode.Mad:
                 case Opcode.Mov:
                 case Opcode.Mul:
-                case Opcode.Tex:
                     {
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
@@ -141,12 +128,12 @@ namespace HlslDecompiler
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
-                            case Opcode.Tex:
-                                return new TextureLoadOperation(inputs[0], inputs[1]);
                             default:
                                 throw new NotImplementedException();
                         }
                     }
+                case Opcode.Tex:
+                    return new TextureLoadOutputNode(GetTextureLoadInputs(instruction), componentIndex);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
@@ -159,9 +146,8 @@ namespace HlslDecompiler
             for (int i = 0; i < numInputs; i++)
             {
                 int inputParameterIndex = i + 1;
-                var inputKey = GetParamRegisterKey(instruction, inputParameterIndex, componentIndex);
-                HlslTreeNode input;
-                if (_activeOutputs.TryGetValue(inputKey, out input))
+                RegisterKey inputKey = GetParamRegisterKey(instruction, inputParameterIndex, componentIndex);
+                if (_activeOutputs.TryGetValue(inputKey, out HlslTreeNode input))
                 {
                     var modifier = instruction.GetSourceModifier(inputParameterIndex);
                     input = ApplyModifier(input, modifier);
@@ -172,6 +158,31 @@ namespace HlslDecompiler
                     throw new Exception($"Unknown input {inputKey}");
                 }
             }
+            return inputs;
+        }
+
+        private IList<HlslTreeNode> GetTextureLoadInputs(Instruction instruction)
+        {
+            const int TextureCoordsIndex = 1;
+            const int SamplerIndex = 2;
+
+            var inputs = new List<HlslTreeNode>();
+            
+            for (int component = 0; component < 4; component++)
+            {
+                RegisterKey textureCoordsKey = GetParamRegisterKey(instruction, TextureCoordsIndex, component);
+                if (_activeOutputs.TryGetValue(textureCoordsKey, out HlslTreeNode textureCoord))
+                {
+                    inputs.Add(textureCoord);
+                }
+            }
+
+            RegisterKey samplerKey = GetParamRegisterKey(instruction, SamplerIndex, 0);
+            if (_activeOutputs.TryGetValue(samplerKey, out HlslTreeNode input))
+            {
+                inputs.Add(input);
+            }
+
             return inputs;
         }
 

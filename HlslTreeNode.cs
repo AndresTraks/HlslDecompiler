@@ -63,8 +63,8 @@ namespace HlslDecompiler
         }
         public static bool operator ==(HlslConstant x, HlslConstant y)
         {
-            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
-            if (ReferenceEquals(y, null)) return false;
+            if (x is null) return y is null;
+            if (y is null) return false;
             return x.Value == y.Value;
         }
         public static bool operator !=(HlslConstant x, HlslConstant y)
@@ -75,17 +75,6 @@ namespace HlslDecompiler
         public override string ToString()
         {
             return Value.ToString(CultureInfo.InvariantCulture);
-        }
-    }
-
-    public class HlslShaderInput : HlslTreeNode
-    {
-        public RegisterKey InputDecl { get; set; }
-        public int ComponentIndex { get; set; }
-
-        public override string ToString()
-        {
-            return $"{InputDecl} ({ComponentIndex})";
         }
     }
 }

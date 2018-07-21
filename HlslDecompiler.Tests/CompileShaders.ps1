@@ -8,7 +8,8 @@ $shaderSources = @(
     "ps_multiply_subtract",
     "ps_absolute_multiply",
     "ps_negate_absolute",
-    "ps_tex2d"
+    "ps_tex2d",
+    "ps_tex2d_swizzle"
 );
 
 $fxc_paths = @(

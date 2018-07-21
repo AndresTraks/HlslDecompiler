@@ -6,16 +6,16 @@ namespace HlslDecompiler.Tests
     [TestFixture]
     public class DecompileTests
     {
-        [TestCase("ps1")]
-        [TestCase("ps2")]
-        [TestCase("ps3")]
-        [TestCase("ps4")]
-        [TestCase("ps5")]
-        [TestCase("ps6")]
-        [TestCase("ps7")]
-        [TestCase("ps8")]
-        [TestCase("ps9")]
-        [TestCase("ps10")]
+        [TestCase("ps_constant")]
+        [TestCase("ps_texcoord")]
+        [TestCase("ps_texcoord_modifier")]
+        [TestCase("ps_texcoord_swizzle")]
+        [TestCase("ps_float4_construct")]
+        [TestCase("ps_float4_constant")]
+        [TestCase("ps_multiply_subtract")]
+        [TestCase("ps_absolute_multiply")]
+        [TestCase("ps_negate_absolute")]
+        [TestCase("ps_tex2d")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";

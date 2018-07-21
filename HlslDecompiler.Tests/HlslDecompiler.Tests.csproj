@@ -58,47 +58,47 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="CompiledShaders\ps1.fxc">
+    <None Include="CompiledShaders\ps_constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps10.fxc">
+    <None Include="CompiledShaders\ps_tex2d.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps2.fxc">
+    <None Include="CompiledShaders\ps_texcoord.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps3.fxc">
+    <None Include="CompiledShaders\ps_float4_construct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps4.fxc">
+    <None Include="CompiledShaders\ps_float4_constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps5.fxc">
+    <None Include="CompiledShaders\ps_texcoord_swizzle.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps6.fxc">
+    <None Include="CompiledShaders\ps_texcoord_modifier.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps7.fxc">
+    <None Include="CompiledShaders\ps_multiply_subtract.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps8.fxc">
+    <None Include="CompiledShaders\ps_absolute_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\ps9.fxc">
+    <None Include="CompiledShaders\ps_negate_absolute.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="packages.config" />
-    <Content Include="ShaderSources\ps9.fx">
+    <Content Include="ShaderSources\ps_negate_absolute.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps9.asm">
+    <Content Include="ShaderAssembly\ps_negate_absolute.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps10.fx">
+    <Content Include="ShaderSources\ps_tex2d.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps10.asm">
+    <Content Include="ShaderAssembly\ps_tex2d.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -112,52 +112,52 @@
     <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="ShaderAssembly\ps1.asm">
+    <Content Include="ShaderAssembly\ps_constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps2.asm">
+    <Content Include="ShaderAssembly\ps_texcoord.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps3.asm">
+    <Content Include="ShaderAssembly\ps_float4_construct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps4.asm">
+    <Content Include="ShaderAssembly\ps_float4_constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps5.asm">
+    <Content Include="ShaderAssembly\ps_texcoord_swizzle.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps6.asm">
+    <Content Include="ShaderAssembly\ps_texcoord_modifier.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps7.asm">
+    <Content Include="ShaderAssembly\ps_multiply_subtract.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\ps8.asm">
+    <Content Include="ShaderAssembly\ps_absolute_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps1.fx">
+    <Content Include="ShaderSources\ps_constant.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps2.fx">
+    <Content Include="ShaderSources\ps_texcoord.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps3.fx">
+    <Content Include="ShaderSources\ps_float4_construct.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps4.fx">
+    <Content Include="ShaderSources\ps_float4_constant.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps5.fx">
+    <Content Include="ShaderSources\ps_texcoord_swizzle.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps6.fx">
+    <Content Include="ShaderSources\ps_texcoord_modifier.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps7.fx">
+    <Content Include="ShaderSources\ps_multiply_subtract.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\ps8.fx">
+    <Content Include="ShaderSources\ps_absolute_multiply.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

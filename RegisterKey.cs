@@ -6,7 +6,27 @@
         public RegisterType RegisterType { get; set; }
         public int ComponentIndex { get; set; }
 
-        public override bool Equals(object obj)
+        private string Component
+        {
+            get
+            {
+                switch (ComponentIndex)
+                {
+                    case 0:
+                        return "x";
+                    case 1:
+                        return "y";
+                    case 2:
+                        return "z";
+                    case 3:
+                        return "w";
+                    default:
+                        return $"({ComponentIndex})";
+                }
+            }
+        }
+
+    public override bool Equals(object obj)
         {
             var other = obj as RegisterKey;
             if (other == null) return false;
@@ -22,7 +42,7 @@
 
         public override string ToString()
         {
-            return $"{RegisterType}{RegisterNumber} ({ComponentIndex})";
+            return $"{RegisterType}{RegisterNumber}.{Component}";
         }
     }
 }

@@ -933,19 +933,26 @@ namespace HlslDecompiler
                 }
             }
 
+            var textureLoad1 = node1 as TextureLoadOperation;
+            var textureLoad2 = node2 as TextureLoadOperation;
+            if (textureLoad1 != null && textureLoad2 != null)
+            {
+                return ReferenceEquals(textureLoad1, textureLoad2);
+            }
+
             return false;
         }
 
-        IList<IEnumerable<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
+        IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
         {
             switch (nodes.Count)
             {
                 case 0:
                 case 1:
-                    return new List<IEnumerable<HlslTreeNode>> { nodes };
+                    return new List<IList<HlslTreeNode>> { nodes };
             }
 
-            var groups = new List<IEnumerable<HlslTreeNode>>();
+            var groups = new List<IList<HlslTreeNode>>();
             int n, groupStart = 0;
             for (n = 1; n < nodes.Count; n++)
             {
@@ -981,13 +988,25 @@ namespace HlslDecompiler
             var groups = GroupComponents(roots);
             if (groups.Count == 1)
             {
-                var shaderInputs = groups.First().Cast<HlslShaderInput>();
-                var firstInput = shaderInputs.First();
-                string swizzle = GetAstSourceSwizzleName(shaderInputs, 4);
-                var decl = RegisterDeclarations.FirstOrDefault(x =>
-                    x.RegisterType == firstInput.InputDecl.RegisterType &&
-                    x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
-                WriteLine($"return {decl.Name}{swizzle};");
+                IList<HlslTreeNode> singleGroup = groups.First();
+                if (singleGroup.First() is HlslShaderInput)
+                {
+                    var shaderInputs = singleGroup.Cast<HlslShaderInput>();
+                    var firstInput = shaderInputs.First();
+                    string swizzle = GetAstSourceSwizzleName(shaderInputs, 4);
+                    var decl = RegisterDeclarations.FirstOrDefault(x =>
+                        x.RegisterType == firstInput.InputDecl.RegisterType &&
+                        x.RegisterNumber == firstInput.InputDecl.RegisterNumber);
+                    WriteLine($"return {decl.Name}{swizzle};");
+                }
+                else if (singleGroup.First() is TextureLoadOperation)
+                {
+                    WriteLine($"return tex2D(sampler0, texcoord);");
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
                 return;
             }
 
@@ -1057,6 +1076,20 @@ namespace HlslDecompiler
                         Compile(multiplicand2));
                 }
             }
+
+            var firstTextureLoadOperation = first as TextureLoadOperation;
+            if (firstTextureLoadOperation != null)
+            {
+                var textureLoadOperations = group.Cast<TextureLoadOperation>();
+                var textureCoordinates = Compile(textureLoadOperations.Select(ld => ld.TextureCoordinates));
+                var samplers = Compile(textureLoadOperations.Select(ld => ld.Sampler));
+                //var decl = RegisterDeclarations.FirstOrDefault(x =>
+                //    x.RegisterType == firstTextureLoadOperation.TextureCoordinates.RegisterType &&
+                //    x.RegisterNumber == firstTextureLoadOperation.InputDecl.RegisterNumber);
+                //string swizzle = GetAstSourceSwizzleName(textureLoadOperations, GetRegisterFullLength(decl));
+                return $"tex2D({textureCoordinates}, {samplers})";
+            }
+
             throw new NotImplementedException();
         }
 

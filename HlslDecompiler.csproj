@@ -61,6 +61,7 @@
     <Compile Include="Hlsl\OperationType.cs" />
     <Compile Include="Hlsl\Operation.cs" />
     <Compile Include="Hlsl\SubtractOperation.cs" />
+    <Compile Include="Hlsl\TextureLoadOperation.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="InstructionVerifier.cs" />
     <Compile Include="Program.cs" />

@@ -58,25 +58,46 @@ namespace HlslDecompiler
         {
             if (instruction.HasDestination)
             {
-                int destIndex = instruction.GetDestinationParamIndex();
-                var destRegisterType = instruction.GetParamRegisterType(destIndex);
-                int destRegisterNumber = instruction.GetParamRegisterNumber(destIndex);
-                int destMask = instruction.GetDestinationWriteMask();
+                IEnumerable<RegisterKey> destinationKeys = GetDestinationKeys(instruction);
 
-                for (int i = 0; i < 4; i++)
+                if (instruction.Opcode == Opcode.Tex)
                 {
-                    if ((destMask & (1 << i)) == 0) continue;
-
-                    var destinationKey = new RegisterKey()
+                    var node1 = new HlslConstant(0);
+                    var node2 = new HlslConstant(1);
+                    var textureLoad = new TextureLoadOperation(node1, node2);
+                    foreach (RegisterKey destinationKey in destinationKeys)
                     {
-                        RegisterNumber = destRegisterNumber,
-                        RegisterType = destRegisterType,
-                        ComponentIndex = i
-                    };
-
-                    HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
-                    _activeOutputs[destinationKey] = instructionTree;
+                        _activeOutputs[destinationKey] = textureLoad;
+                    }
                 }
+                else
+                {
+                    foreach (RegisterKey destinationKey in destinationKeys)
+                    {
+                        HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                        _activeOutputs[destinationKey] = instructionTree;
+                    }
+                }
+            }
+        }
+
+        private IEnumerable<RegisterKey> GetDestinationKeys(Instruction instruction)
+        {
+            int destIndex = instruction.GetDestinationParamIndex();
+            var destRegisterType = instruction.GetParamRegisterType(destIndex);
+            int destRegisterNumber = instruction.GetParamRegisterNumber(destIndex);
+            int destMask = instruction.GetDestinationWriteMask();
+
+            for (int i = 0; i < 4; i++)
+            {
+                if ((destMask & (1 << i)) == 0) continue;
+
+                yield return new RegisterKey()
+                {
+                    RegisterNumber = destRegisterNumber,
+                    RegisterType = destRegisterType,
+                    ComponentIndex = i
+                };
             }
         }
 
@@ -105,6 +126,7 @@ namespace HlslDecompiler
                 case Opcode.Mad:
                 case Opcode.Mov:
                 case Opcode.Mul:
+                case Opcode.Tex:
                     {
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
@@ -119,12 +141,14 @@ namespace HlslDecompiler
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                            case Opcode.Tex:
+                                return new TextureLoadOperation(inputs[0], inputs[1]);
                             default:
                                 throw new NotImplementedException();
                         }
                     }
                 default:
-                    throw new NotImplementedException();
+                    throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
         }
 
@@ -134,29 +158,38 @@ namespace HlslDecompiler
             var inputs = new HlslTreeNode[numInputs];
             for (int i = 0; i < numInputs; i++)
             {
-                var inputKey = GetParamRegisterKey(instruction, i + 1, componentIndex);
-                var input = _activeOutputs[inputKey];
-                var modifier = instruction.GetSourceModifier(i + 1);
-                switch (modifier)
+                int inputParameterIndex = i + 1;
+                var inputKey = GetParamRegisterKey(instruction, inputParameterIndex, componentIndex);
+                HlslTreeNode input;
+                if (_activeOutputs.TryGetValue(inputKey, out input))
                 {
-                    case SourceModifier.Abs:
-                        input = new AbsoluteOperation(input);
-                        break;
-                    case SourceModifier.Negate:
-                        input = new AbsoluteOperation(input);
-                        break;
-                    case SourceModifier.AbsAndNegate:
-                        input = new AbsoluteOperation(input);
-                        input = new NegateOperation(input);
-                        break;
-                    case SourceModifier.None:
-                        break;
-                    default:
-                        throw new NotImplementedException();
+                    var modifier = instruction.GetSourceModifier(inputParameterIndex);
+                    input = ApplyModifier(input, modifier);
+                    inputs[i] = input;
                 }
-                inputs[i] = input;
+                else
+                {
+                    throw new Exception($"Unknown input {inputKey}");
+                }
             }
             return inputs;
+        }
+
+        private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)
+        {
+            switch (modifier)
+            {
+                case SourceModifier.Abs:
+                    return new AbsoluteOperation(input);
+                case SourceModifier.Negate:
+                    return new NegateOperation(input);
+                case SourceModifier.AbsAndNegate:
+                    return new NegateOperation(new AbsoluteOperation(input));
+                case SourceModifier.None:
+                    return input;
+                default:
+                    throw new NotImplementedException();
+            }
         }
 
         private static int GetNumInputs(Opcode opcode)
@@ -168,6 +201,7 @@ namespace HlslDecompiler
                     return 1;
                 case Opcode.Add:
                 case Opcode.Mul:
+                case Opcode.Tex:
                     return 2;
                 case Opcode.Mad:
                     return 3;

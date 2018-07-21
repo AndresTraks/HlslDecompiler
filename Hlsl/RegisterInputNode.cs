@@ -10,6 +10,7 @@
 
         public RegisterKey InputDecl { get; }
         public int ComponentIndex { get; }
+        public int SamplerTextureDimension { get; set; }
 
         public override string ToString()
         {

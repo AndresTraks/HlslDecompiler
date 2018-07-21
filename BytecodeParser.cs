@@ -11,7 +11,7 @@ namespace HlslDecompiler
 
         public HlslAst Parse(ShaderModel shader)
         {
-            _activeOutputs = GetConstantOutputs(shader);
+            _activeOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
 
             int instructionPointer = 0;
             while (instructionPointer < shader.Instructions.Count)
@@ -25,29 +25,6 @@ namespace HlslDecompiler
                 .Where(o => o.Key.RegisterType == RegisterType.ColorOut)
                 .ToDictionary(o => o.Key, o => o.Value);
             return new HlslAst(roots);
-        }
-
-        private static Dictionary<RegisterKey, HlslTreeNode> GetConstantOutputs(ShaderModel shader)
-        {
-            var constantTable = shader.ParseConstantTable();
-
-            var constantOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
-            foreach (var constant in constantTable)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    var destinationKey = new RegisterKey()
-                    {
-                        RegisterNumber = constant.RegisterIndex,
-                        RegisterType = RegisterType.Const,
-                        ComponentIndex = i
-                    };
-                    var shaderInput = new RegisterInputNode(destinationKey, i);
-                    constantOutputs.Add(destinationKey, shaderInput);
-                }
-            }
-
-            return constantOutputs;
         }
 
         private void ParseInstruction(Instruction instruction)
@@ -110,6 +87,17 @@ namespace HlslDecompiler
                 case Opcode.Dcl:
                     {
                         var shaderInput = new RegisterInputNode(destinationKey, componentIndex);
+                        SamplerTextureType textureType = instruction.GetDeclSamplerTextureType();
+                        switch (textureType)
+                        {
+                            case SamplerTextureType.TwoD:
+                                shaderInput.SamplerTextureDimension = 2;
+                                break;
+                            case SamplerTextureType.Cube:
+                            case SamplerTextureType.Volume:
+                                shaderInput.SamplerTextureDimension = 3;
+                                break;
+                        }
                         return shaderInput;
                     }
                 case Opcode.Def:
@@ -174,20 +162,21 @@ namespace HlslDecompiler
             const int TextureCoordsIndex = 1;
             const int SamplerIndex = 2;
 
+            RegisterKey sampler = GetParamRegisterKey(instruction, SamplerIndex, 0);
+            if (!_activeOutputs.TryGetValue(sampler, out HlslTreeNode samplerInput))
+            {
+                throw new InvalidOperationException();
+            }
+            int numSamplerOutputComponents = ((RegisterInputNode)samplerInput).SamplerTextureDimension;
+
             IList<HlslTreeNode> texCoords = new List<HlslTreeNode>();
-            for (int component = 0; component < 4; component++)
+            for (int component = 0; component < numSamplerOutputComponents; component++)
             {
                 RegisterKey textureCoordsKey = GetParamRegisterKey(instruction, TextureCoordsIndex, component);
                 if (_activeOutputs.TryGetValue(textureCoordsKey, out HlslTreeNode textureCoord))
                 {
                     texCoords.Add(textureCoord);
                 }
-            }
-
-            RegisterKey sampler = GetParamRegisterKey(instruction, SamplerIndex, 0);
-            if (!_activeOutputs.TryGetValue(sampler, out HlslTreeNode samplerInput))
-            {
-                throw new InvalidOperationException();
             }
 
             return new TextureLoadOutputNode(samplerInput, texCoords, componentIndex);

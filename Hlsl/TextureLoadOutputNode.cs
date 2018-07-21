@@ -22,8 +22,8 @@ namespace HlslDecompiler.Hlsl
             ComponentIndex = componentIndex;
         }
 
+        public RegisterInputNode SamplerInput => (RegisterInputNode)Children[0];
         public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Children.Where(c => !IsSamplerInput(c));
-        public RegisterInputNode SamplerInput => (RegisterInputNode)Children.Single(IsSamplerInput);
         public int ComponentIndex { get; }
 
         private static bool IsSamplerInput(HlslTreeNode node)

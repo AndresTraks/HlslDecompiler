@@ -858,23 +858,7 @@ namespace HlslDecompiler
             hlslFile.Dispose();
         }
 
-        string GetAstConstant(HlslTreeNode constant)
-        {
-            if (constant is ConstantNode)
-            {
-                float value = (constant as ConstantNode).Value;
-                return value.ToString(CultureInfo.InvariantCulture);
-            }
-            else
-            {
-                var registerInput = constant as RegisterInputNode;
-                var dcl = registerInput.InputDecl;
-                var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == dcl.RegisterType && x.RegisterNumber == dcl.RegisterNumber);
-                return decl.Name + '.' + new[] { 'x', 'y', 'z', 'w' }[registerInput.ComponentIndex];
-            }
-        }
-
-        public string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs, int registerSize)
+        private string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs, int registerSize)
         {
             string swizzleName = "";
             foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
@@ -895,83 +879,6 @@ namespace HlslDecompiler
             return "." + swizzleName;
         }
 
-        private bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
-        {
-            if (node1 is ConstantNode constant1 &&
-                node2 is ConstantNode constant2)
-            {
-                return constant1.Value == constant2.Value;
-            }
-
-            if (node1 is RegisterInputNode input1 &&
-                node2 is RegisterInputNode input2)
-            {
-                return input1.InputDecl.RegisterType == input2.InputDecl.RegisterType &&
-                       input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
-            }
-
-            if (node1 is Operation operation1 &&
-                node2 is Operation operation2)
-            {
-                if (operation1 is NegateOperation &&
-                    operation2 is NegateOperation)
-                {
-                    return true;
-                }
-                else if (operation1 is MultiplyOperation multiply1 &&
-                    operation2 is MultiplyOperation multiply2)
-                {
-                    return operation1.Children.Any(c1 => operation2.Children.Any(c2 => c1.Equals(c2)));
-                }
-                else if (operation1 is SubtractOperation subtract1 &&
-                    operation2 is SubtractOperation subtract2)
-                {
-                    return subtract1.Subtrahend.Equals(subtract2.Subtrahend);
-                }
-            }
-
-            if (node1 is TextureLoadOutputNode textureLoad1 &&
-                node2 is TextureLoadOutputNode textureLoad2)
-            {
-                if (textureLoad1.Children.Count == textureLoad2.Children.Count)
-                {
-                    for (int i = 0; i < textureLoad1.Children.Count; i++)
-                    {
-                        if (textureLoad1.Children[i].Equals(textureLoad2.Children[i]) == false)
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
-        {
-            switch (nodes.Count)
-            {
-                case 0:
-                case 1:
-                    return new List<IList<HlslTreeNode>> { nodes };
-            }
-
-            var groups = new List<IList<HlslTreeNode>>();
-            int n, groupStart = 0;
-            for (n = 1; n < nodes.Count; n++)
-            {
-                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
-                {
-                    groups.Add(nodes.GetRange(groupStart, n - groupStart));
-                    groupStart = n;
-                }
-            }
-            groups.Add(nodes.GetRange(groupStart, n - groupStart));
-            return groups;
-        }
-
         private void WriteAst(HlslAst ast)
         {
             var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
@@ -986,6 +893,7 @@ namespace HlslDecompiler
         {
             List<HlslTreeNode> groupList = group.ToList();
             int componentCount = groupList.Count;
+
             var subGroups = GroupComponents(groupList);
             if (subGroups.Count == 0)
             {
@@ -1013,6 +921,13 @@ namespace HlslDecompiler
                 {
                     return string.Format("abs({0})",
                         Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (operation is AddOperation)
+                {
+                    return string.Format("{0} + {1}",
+                        Compile(group.Select(g => g.Children[0])),
+                        Compile(group.Select(g => g.Children[1])));
                 }
 
                 if (operation is NegateOperation)
@@ -1085,6 +1000,88 @@ namespace HlslDecompiler
         private static string CompileConstant(ConstantNode firstConstant)
         {
             return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
+        {
+            switch (nodes.Count)
+            {
+                case 0:
+                case 1:
+                    return new List<IList<HlslTreeNode>> { nodes };
+            }
+
+            var groups = new List<IList<HlslTreeNode>>();
+            int n, groupStart = 0;
+            for (n = 1; n < nodes.Count; n++)
+            {
+                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
+                {
+                    groups.Add(nodes.GetRange(groupStart, n - groupStart));
+                    groupStart = n;
+                }
+            }
+            groups.Add(nodes.GetRange(groupStart, n - groupStart));
+            return groups;
+        }
+
+        private bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
+        {
+            if (node1 is ConstantNode constant1 &&
+                node2 is ConstantNode constant2)
+            {
+                return constant1.Value == constant2.Value;
+            }
+
+            if (node1 is RegisterInputNode input1 &&
+                node2 is RegisterInputNode input2)
+            {
+                return input1.InputDecl.RegisterType == input2.InputDecl.RegisterType &&
+                       input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
+            }
+
+            if (node1 is Operation operation1 &&
+                node2 is Operation operation2)
+            {
+                if (operation1 is AddOperation add1 &&
+                    operation2 is AddOperation add2)
+                {
+                    return add1.Children.Any(c1 => add2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                }
+                else if (operation1 is NegateOperation &&
+                    operation2 is NegateOperation)
+                {
+                    return true;
+                }
+                else if (operation1 is MultiplyOperation multiply1 &&
+                    operation2 is MultiplyOperation multiply2)
+                {
+                    return multiply1.Children.Any(c1 => multiply2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                }
+                else if (operation1 is SubtractOperation subtract1 &&
+                    operation2 is SubtractOperation subtract2)
+                {
+                    return subtract1.Subtrahend.Equals(subtract2.Subtrahend);
+                }
+            }
+
+            if (node1 is TextureLoadOutputNode textureLoad1 &&
+                node2 is TextureLoadOutputNode textureLoad2)
+            {
+                if (textureLoad1.Children.Count == textureLoad2.Children.Count)
+                {
+                    for (int i = 0; i < textureLoad1.Children.Count; i++)
+                    {
+                        if (textureLoad1.Children[i].Equals(textureLoad2.Children[i]) == false)
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

@@ -11,20 +11,76 @@ namespace HlslDecompiler
 
         public HlslAst Parse(ShaderModel shader)
         {
-            _activeOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
+            _activeOutputs = GetConstantOutputs(shader);
 
             int instructionPointer = 0;
+            bool ifBlock = false;
             while (instructionPointer < shader.Instructions.Count)
             {
                 var instruction = shader.Instructions[instructionPointer];
-                ParseInstruction(instruction);
+                if (ifBlock)
+                {
+                    if (instruction.Opcode == Opcode.Else)
+                    {
+                        ifBlock = false;
+                    }
+                }
+                else
+                {
+                    if (instruction.Opcode == Opcode.IfC)
+                    {
+                        ifBlock = true;
+                    }
+                    ParseInstruction(instruction);
+                }
                 instructionPointer++;
             }
 
-            var roots = _activeOutputs
-                .Where(o => o.Key.RegisterType == RegisterType.ColorOut)
-                .ToDictionary(o => o.Key, o => o.Value);
+            Dictionary<RegisterKey, HlslTreeNode> roots;
+            if (shader.Type == ShaderType.Pixel)
+            {
+                roots = _activeOutputs
+                    .Where(o => o.Key.RegisterType == RegisterType.ColorOut)
+                    .ToDictionary(o => o.Key, o => o.Value);
+            }
+            else
+            {
+                roots = _activeOutputs
+                    .Where(o => o.Key.RegisterType == RegisterType.Output && o.Key.RegisterNumber == 0)
+                    .ToDictionary(o => o.Key, o => o.Value);
+            }
             return new HlslAst(roots);
+        }
+
+        private static Dictionary<RegisterKey, HlslTreeNode> GetConstantOutputs(ShaderModel shader)
+        {
+            var constantTable = shader.ParseConstantTable();
+
+            var constantOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
+            foreach (var constant in constantTable)
+            {
+                if (constant.RegisterSet == RegisterSet.Sampler)
+                {
+                    continue;
+                }
+
+                for (int r = 0; r < constant.RegisterCount; r++)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var destinationKey = new RegisterKey()
+                        {
+                            RegisterNumber = constant.RegisterIndex + r,
+                            RegisterType = RegisterType.Const,
+                            ComponentIndex = i
+                        };
+                        var shaderInput = new RegisterInputNode(destinationKey, i);
+                        constantOutputs.Add(destinationKey, shaderInput);
+                    }
+                }
+            }
+
+            return constantOutputs;
         }
 
         private void ParseInstruction(Instruction instruction)
@@ -107,15 +163,32 @@ namespace HlslDecompiler
                     }
                 case Opcode.Abs:
                 case Opcode.Add:
+                case Opcode.Frc:
+                case Opcode.Lrp:
                 case Opcode.Mad:
+                case Opcode.Max:
+                case Opcode.Min:
                 case Opcode.Mov:
                 case Opcode.Mul:
+                case Opcode.Rcp:
+                case Opcode.Rsq:
+                case Opcode.SinCos:
+                case Opcode.Sge:
+                case Opcode.Slt:
                     {
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
                         {
                             case Opcode.Abs:
                                 return new AbsoluteOperation(inputs[0]);
+                            case Opcode.Frc:
+                                return new FractionalOperation(inputs[0]);
+                            case Opcode.Lrp:
+                                return new LinearInterpolateOperation(inputs[0], inputs[1], inputs[2]);
+                            case Opcode.Max:
+                                return new MaximumOperation(inputs[0], inputs[1]);
+                            case Opcode.Min:
+                                return new MinimumOperation(inputs[0], inputs[1]);
                             case Opcode.Mov:
                                 return new MoveOperation(inputs[0]);
                             case Opcode.Add:
@@ -124,12 +197,29 @@ namespace HlslDecompiler
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                            case Opcode.Rcp:
+                                return new ReciprocalOperation(inputs[0]);
+                            case Opcode.Rsq:
+                                return new ReciprocalSquareRootOperation(inputs[0]);
+                            case Opcode.SinCos:
+                                if (componentIndex == 0)
+                                {
+                                    return new CosineOperation(inputs[0]);
+                                }
+                                return new SineOperation(inputs[0]);
+                            case Opcode.Sge:
+                                return new SignGreaterOrEqualOperation(inputs[0], inputs[1]);
+                            case Opcode.Slt:
+                                return new SignLessOperation(inputs[0], inputs[1]);
                             default:
                                 throw new NotImplementedException();
                         }
                     }
                 case Opcode.Tex:
+                case Opcode.TexLDL:
                     return CreateTextureLoadOutputNode(instruction, componentIndex);
+                case Opcode.Dp3:
+                    return CreateDotProductOutputNode(instruction, componentIndex);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
@@ -143,21 +233,26 @@ namespace HlslDecompiler
             {
                 int inputParameterIndex = i + 1;
                 RegisterKey inputKey = GetParamRegisterKey(instruction, inputParameterIndex, componentIndex);
-                if (_activeOutputs.TryGetValue(inputKey, out HlslTreeNode input))
+                if (_activeOutputs.TryGetValue(inputKey, out HlslTreeNode input) == false)
                 {
-                    var modifier = instruction.GetSourceModifier(inputParameterIndex);
-                    input = ApplyModifier(input, modifier);
-                    inputs[i] = input;
+                    if (inputKey.RegisterType == RegisterType.Const)
+                    {
+                        input = new ConstantNode(inputKey.RegisterNumber);
+                        _activeOutputs[inputKey] = input;
+                    }
+                    else
+                    {
+                        throw new Exception($"Unknown input {inputKey}");
+                    }
                 }
-                else
-                {
-                    throw new Exception($"Unknown input {inputKey}");
-                }
+                var modifier = instruction.GetSourceModifier(inputParameterIndex);
+                input = ApplyModifier(input, modifier);
+                inputs[i] = input;
             }
             return inputs;
         }
 
-        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int componentIndex)
+        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
         {
             const int TextureCoordsIndex = 1;
             const int SamplerIndex = 2;
@@ -179,7 +274,19 @@ namespace HlslDecompiler
                 }
             }
 
-            return new TextureLoadOutputNode(samplerInput, texCoords, componentIndex);
+            return new TextureLoadOutputNode(samplerInput, texCoords, outputComponent);
+        }
+
+        private HlslTreeNode CreateDotProductOutputNode(Instruction instruction, int outputComponent)
+        {
+            var inputs = new List<HlslTreeNode>();
+            for (int component = 0; component < 3; component++)
+            {
+                IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
+                inputs.AddRange(componentInput);
+            }
+
+            return new DotProductOutputNode(inputs, outputComponent);
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)
@@ -204,12 +311,22 @@ namespace HlslDecompiler
             switch (opcode)
             {
                 case Opcode.Abs:
+                case Opcode.Frc:
                 case Opcode.Mov:
+                case Opcode.Rcp:
+                case Opcode.Rsq:
+                case Opcode.SinCos:
                     return 1;
                 case Opcode.Add:
+                case Opcode.Dp3:
+                case Opcode.Max:
+                case Opcode.Min:
                 case Opcode.Mul:
+                case Opcode.Sge:
+                case Opcode.Slt:
                 case Opcode.Tex:
                     return 2;
+                case Opcode.Lrp:
                 case Opcode.Mad:
                     return 3;
                 default:
@@ -222,12 +339,13 @@ namespace HlslDecompiler
             int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
             var registerType = instruction.GetParamRegisterType(paramIndex);
             byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
+            int componentIndex = swizzle[component];
 
             return new RegisterKey()
             {
                 RegisterNumber = registerNumber,
                 RegisterType = registerType,
-                ComponentIndex = swizzle[component]
+                ComponentIndex = componentIndex
             };
         }
     }

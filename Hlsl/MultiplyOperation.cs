@@ -64,7 +64,14 @@
                 }
             }
 
-            return base.Reduce();
+            Children[0] = factor1;
+            Children[1] = factor2;
+            return this;
+        }
+
+        public override string ToString()
+        {
+            return $"mul({Factor1}, {Factor2})";
         }
     }
 }

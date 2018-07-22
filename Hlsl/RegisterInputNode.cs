@@ -14,7 +14,7 @@
 
         public override string ToString()
         {
-            return $"{InputDecl} ({ComponentIndex})";
+            return $"{InputDecl}->{ComponentIndex}";
         }
     }
 }

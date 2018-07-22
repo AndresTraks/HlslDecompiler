@@ -50,7 +50,14 @@
                 return mul;
             }
 
-            return base.Reduce();
+            Children[0] = addend1;
+            Children[1] = addend2;
+            return this;
+        }
+
+        public override string ToString()
+        {
+            return $"add({Addend1}, {Addend2})";
         }
     }
 }

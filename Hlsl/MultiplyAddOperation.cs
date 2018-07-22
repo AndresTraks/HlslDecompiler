@@ -15,14 +15,19 @@
 
         public override HlslTreeNode Reduce()
         {
-            var multiplication = new MultiplyOperation(Factor1, Factor2);
             Factor1.Parents.Remove(this);
             Factor2.Parents.Remove(this);
+            var multiplication = new MultiplyOperation(Factor1, Factor2);
 
             var addition = new AddOperation(multiplication, Addend);
             Replace(addition);
 
             return addition.Reduce();
+        }
+
+        public override string ToString()
+        {
+            return $"madd({Factor1}, {Factor2}, {Addend})";
         }
     }
 }

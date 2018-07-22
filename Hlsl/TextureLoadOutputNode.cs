@@ -23,16 +23,7 @@ namespace HlslDecompiler.Hlsl
         }
 
         public RegisterInputNode SamplerInput => (RegisterInputNode)Children[0];
-        public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Children.Where(c => !IsSamplerInput(c));
+        public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Children.Skip(1);
         public int ComponentIndex { get; }
-
-        private static bool IsSamplerInput(HlslTreeNode node)
-        {
-            if (node is RegisterInputNode registerInput)
-            {
-                return registerInput.InputDecl.RegisterType == RegisterType.Sampler;
-            }
-            return false;
-        }
     }
 }

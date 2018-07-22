@@ -137,9 +137,12 @@ namespace HlslDecompiler
                     var constDecl = ConstantDeclarations.FirstOrDefault(x => x.ContainsIndex(registerNumber));
                     if (constDecl != null)
                     {
+                        return constDecl.Name;
+                    }
+                    else
+                    {
                         throw new NotImplementedException();
                     }
-                    break;
                 case RegisterType.ColorOut:
                     return "o";
             }
@@ -930,9 +933,27 @@ namespace HlslDecompiler
                         Compile(group.Select(g => g.Children[1])));
                 }
 
+                if (operation is CosineOperation)
+                {
+                    return string.Format("cos({0})",
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (operation is FractionalOperation)
+                {
+                    return string.Format("{0} - floor({0})",
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
                 if (operation is NegateOperation)
                 {
                     return string.Format("-{0}",
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (operation is ReciprocalOperation)
+                {
+                    return string.Format("rcp({0})",
                         Compile(group.Select(g => g.Children[0])));
                 }
 
@@ -941,6 +962,26 @@ namespace HlslDecompiler
                     return string.Format("{0} - {1}",
                         Compile(group.Select(g => g.Children[0])),
                         Compile(group.Select(g => g.Children[1])));
+                }
+
+                if (operation is MaximumOperation)
+                {
+                    var value1 = group.Select(g => g.Children[0]);
+                    var value2 = group.Select(g => g.Children[1]);
+
+                    return string.Format("max({0}, {1})",
+                        Compile(value1),
+                        Compile(value2));
+                }
+
+                if (operation is MinimumOperation)
+                {
+                    var value1 = group.Select(g => g.Children[0]);
+                    var value2 = group.Select(g => g.Children[1]);
+
+                    return string.Format("min({0}, {1})",
+                        Compile(value1),
+                        Compile(value2));
                 }
 
                 if (operation is MultiplyOperation)
@@ -958,6 +999,26 @@ namespace HlslDecompiler
                     return string.Format("{0} * {1}",
                         Compile(multiplicand1),
                         Compile(multiplicand2));
+                }
+
+                if (operation is ReciprocalSquareRootOperation)
+                {
+                    return string.Format("rsqrt({0})",
+                        Compile(group.Select(g => g.Children[0])));
+                }
+
+                if (operation is SignGreaterOrEqualOperation)
+                {
+                    var value1 = group.Select(g => g.Children[0]);
+                    var value2 = group.Select(g => g.Children[1]);
+                    return $"({Compile(value1)} >= {Compile(value2)}) ? 1 : 0";
+                }
+
+                if (operation is SignLessOperation)
+                {
+                    var value1 = group.Select(g => g.Children[0]);
+                    var value2 = group.Select(g => g.Children[1]);
+                    return $"({Compile(value1)} < {Compile(value2)}) ? 1 : 0";
                 }
             }
 
@@ -992,6 +1053,16 @@ namespace HlslDecompiler
                     string texcoords = Compile(textureLoad.TextureCoordinateInputs);
                     return $"tex2D({sampler}, {texcoords}){swizzle}";
                 }
+
+                if (first is DotProductOutputNode dotProductOutputNode)
+                {
+                    string input1 = Compile(dotProductOutputNode.Inputs1);
+                    string input2 = Compile(dotProductOutputNode.Inputs2);
+                    string swizzle = GetAstSourceSwizzleName(components, 4);
+                    return $"dot({input1}, {input2}){swizzle}";
+                }
+
+                throw new NotImplementedException();
             }
 
             throw new NotImplementedException();
@@ -1048,10 +1119,23 @@ namespace HlslDecompiler
                 {
                     return add1.Children.Any(c1 => add2.Children.Any(c2 => CanGroupComponents(c1, c2)));
                 }
-                else if (operation1 is NegateOperation &&
-                    operation2 is NegateOperation)
+                else if (
+                    (operation1 is AbsoluteOperation && operation2 is AbsoluteOperation)
+                    || (operation1 is CosineOperation && operation2 is CosineOperation)
+                    || (operation1 is FractionalOperation && operation2 is FractionalOperation)
+                    || (operation1 is NegateOperation && operation2 is NegateOperation)
+                    || (operation1 is ReciprocalOperation && operation2 is ReciprocalOperation)
+                    || (operation1 is ReciprocalSquareRootOperation && operation2 is ReciprocalSquareRootOperation))
                 {
-                    return true;
+                    return CanGroupComponents(operation1.Children[0], operation2.Children[0]);
+                }
+                else if (
+                    (operation1 is MinimumOperation && operation2 is MinimumOperation) ||
+                    (operation1 is SignGreaterOrEqualOperation && operation2 is SignGreaterOrEqualOperation) ||
+                    (operation1 is SignLessOperation && operation2 is SignLessOperation))
+                {
+                    return CanGroupComponents(operation1.Children[0], operation2.Children[0])
+                        && CanGroupComponents(operation1.Children[1], operation2.Children[1]);
                 }
                 else if (operation1 is MultiplyOperation multiply1 &&
                     operation2 is MultiplyOperation multiply2)
@@ -1065,14 +1149,14 @@ namespace HlslDecompiler
                 }
             }
 
-            if (node1 is TextureLoadOutputNode textureLoad1 &&
-                node2 is TextureLoadOutputNode textureLoad2)
+            if (node1 is IHasComponentIndex &&
+                node2 is IHasComponentIndex)
             {
-                if (textureLoad1.Children.Count == textureLoad2.Children.Count)
+                if (node1.Children.Count == node2.Children.Count)
                 {
-                    for (int i = 0; i < textureLoad1.Children.Count; i++)
+                    for (int i = 0; i < node1.Children.Count; i++)
                     {
-                        if (textureLoad1.Children[i].Equals(textureLoad2.Children[i]) == false)
+                        if (node1.Children[i].Equals(node2.Children[i]) == false)
                         {
                             return false;
                         }

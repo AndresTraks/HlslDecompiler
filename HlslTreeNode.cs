@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace HlslDecompiler
 {
@@ -11,6 +12,7 @@ namespace HlslDecompiler
         {
             Children.Add(node);
             node.Parents.Add(this);
+            AssertLoopFree();
         }
 
         public virtual HlslTreeNode Reduce()
@@ -38,6 +40,29 @@ namespace HlslDecompiler
                     }
                 }
                 with.Parents.Add(parent);
+            }
+        }
+
+        private void AssertLoopFree()
+        {
+            foreach (HlslTreeNode parent in Parents)
+            {
+                AssertLoopFree(parent);
+                if (this == parent)
+                {
+                    throw new InvalidOperationException();
+                }
+            }
+        }
+
+        private void AssertLoopFree(HlslTreeNode parent)
+        {
+            foreach (HlslTreeNode upperParent in parent.Parents)
+            {
+                if (this == upperParent)
+                {
+                    throw new InvalidOperationException();
+                }
             }
         }
     }

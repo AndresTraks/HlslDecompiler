@@ -18,6 +18,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_tex2d")]
         [TestCase("ps_tex2d_swizzle")]
         [TestCase("ps_tex2d_two_samplers")]
+        [TestCase("vs_constant")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";
@@ -26,17 +27,19 @@ namespace HlslDecompiler.Tests
             string asmOutputFilename = $"{baseFilename}.asm";
             string hlslOutputFilename = $"{baseFilename}.fx";
 
+            ShaderModel shader;
+
             var inputStream = File.Open(compiledShaderFilename, FileMode.Open, FileAccess.Read);
             using (var input = new ShaderReader(inputStream, true))
             {
-                var shader = input.ReadShader();
-
-                var asmWriter = new AsmWriter(shader);
-                asmWriter.Write(asmOutputFilename);
-
-                var hlslWriter = new HlslWriter(shader, true);
-                hlslWriter.Write(hlslOutputFilename);
+                shader = input.ReadShader();
             }
+
+            var asmWriter = new AsmWriter(shader);
+            asmWriter.Write(asmOutputFilename);
+
+            var hlslWriter = new HlslWriter(shader, true);
+            hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal");
             FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal");

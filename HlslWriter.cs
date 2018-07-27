@@ -683,7 +683,6 @@ namespace HlslDecompiler
             numInputs = dclInputs.Count();
             if (numInputs == 0)
             {
-                System.Diagnostics.Debug.Assert(shader.Type == ShaderType.Pixel);
             }
             else if (numInputs == 1)
             {

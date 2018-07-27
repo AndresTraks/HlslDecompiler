@@ -8,13 +8,6 @@ namespace HlslDecompiler
         public IList<HlslTreeNode> Children { get; } = new List<HlslTreeNode>();
         public IList<HlslTreeNode> Parents { get; } = new List<HlslTreeNode>();
 
-        protected void AddChild(HlslTreeNode node)
-        {
-            Children.Add(node);
-            node.Parents.Add(this);
-            AssertLoopFree();
-        }
-
         public virtual HlslTreeNode Reduce()
         {
             for (int i = 0; i < Children.Count; i++)
@@ -41,6 +34,13 @@ namespace HlslDecompiler
                 }
                 with.Parents.Add(parent);
             }
+        }
+
+        protected void AddChild(HlslTreeNode node)
+        {
+            Children.Add(node);
+            node.Parents.Add(this);
+            AssertLoopFree();
         }
 
         private void AssertLoopFree()

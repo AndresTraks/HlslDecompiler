@@ -1,4 +1,4 @@
-$shaderSources = @(
+$pixelShaderSources = @(
     "ps_constant",
     "ps_texcoord",
     "ps_texcoord_modifier",
@@ -11,6 +11,10 @@ $shaderSources = @(
     "ps_tex2d",
     "ps_tex2d_swizzle",
     "ps_tex2d_two_samplers"
+);
+
+$vertexShaderSources = @(
+    "vs_constant"
 );
 
 $fxc_paths = @(
@@ -45,9 +49,15 @@ function Compile {
         return
     }
 
-    ForEach ($shaderSource in $shaderSources) {
+    ForEach ($shaderSource in $pixelShaderSources) {
 		Write-Host "Compiling $shaderSource..."
 		$arguments = "/T ps_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc"
+		RunProgram $fxc $arguments
+    }
+	
+	ForEach ($shaderSource in $vertexShaderSources) {
+		Write-Host "Compiling $shaderSource..."
+		$arguments = "/T vs_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc"
 		RunProgram $fxc $arguments
     }
 }

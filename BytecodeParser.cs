@@ -7,11 +7,12 @@ namespace HlslDecompiler
 {
     class BytecodeParser
     {
-        private Dictionary<RegisterKey, HlslTreeNode> _activeOutputs;
+        private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
+        private Dictionary<RegisterKey, HlslTreeNode> _samplers;
 
         public HlslAst Parse(ShaderModel shader)
         {
-            _activeOutputs = GetConstantOutputs(shader);
+            LoadConstantOutputs(shader);
 
             int instructionPointer = 0;
             bool ifBlock = false;
@@ -36,61 +37,75 @@ namespace HlslDecompiler
                 instructionPointer++;
             }
 
-            Dictionary<RegisterKey, HlslTreeNode> roots;
+            Dictionary<RegisterComponentKey, HlslTreeNode> roots;
             if (shader.Type == ShaderType.Pixel)
             {
                 roots = _activeOutputs
-                    .Where(o => o.Key.RegisterType == RegisterType.ColorOut)
+                    .Where(o => o.Key.Type == RegisterType.ColorOut)
                     .ToDictionary(o => o.Key, o => o.Value);
             }
             else
             {
                 roots = _activeOutputs
-                    .Where(o => o.Key.RegisterType == RegisterType.Output && o.Key.RegisterNumber == 0)
+                    .Where(o => o.Key.Type == RegisterType.Output && o.Key.Number == 0)
                     .ToDictionary(o => o.Key, o => o.Value);
             }
             return new HlslAst(roots);
         }
 
-        private static Dictionary<RegisterKey, HlslTreeNode> GetConstantOutputs(ShaderModel shader)
+        private void LoadConstantOutputs(ShaderModel shader)
         {
-            var constantTable = shader.ParseConstantTable();
+            IList<ConstantDeclaration> constantTable = shader.ParseConstantTable();
 
-            var constantOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
+            _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+            _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
+
             foreach (var constant in constantTable)
             {
                 if (constant.RegisterSet == RegisterSet.Sampler)
                 {
-                    continue;
-                }
-
-                for (int r = 0; r < constant.RegisterCount; r++)
-                {
-                    for (int i = 0; i < 4; i++)
+                    var registerKey = new RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
+                    var destinationKey = new RegisterComponentKey(registerKey, 0);
+                    var shaderInput = new RegisterInputNode(destinationKey, 0);
+                    switch (constant.ParameterType)
                     {
-                        var destinationKey = new RegisterKey()
+                    case ParameterType.Sampler1D:
+                        shaderInput.SamplerTextureDimension = 1;
+                        break;
+                    case ParameterType.Sampler2D:
+                        shaderInput.SamplerTextureDimension = 2;
+                        break;
+                    case ParameterType.Sampler3D:
+                    case ParameterType.SamplerCube:
+                        shaderInput.SamplerTextureDimension = 3;
+                        break;
+                    }
+                    _samplers.Add(registerKey, shaderInput);
+                }
+                else
+                {
+                    for (int r = 0; r < constant.RegisterCount; r++)
+                    {
+                        var registerKey = new RegisterKey(RegisterType.Const, constant.RegisterIndex + r);
+                        for (int i = 0; i < 4; i++)
                         {
-                            RegisterNumber = constant.RegisterIndex + r,
-                            RegisterType = RegisterType.Const,
-                            ComponentIndex = i
-                        };
-                        var shaderInput = new RegisterInputNode(destinationKey, i);
-                        constantOutputs.Add(destinationKey, shaderInput);
+                            var destinationKey = new RegisterComponentKey(registerKey, i);
+                            var shaderInput = new RegisterInputNode(destinationKey, i);
+                            _activeOutputs.Add(destinationKey, shaderInput);
+                        }
                     }
                 }
             }
-
-            return constantOutputs;
         }
 
         private void ParseInstruction(Instruction instruction)
         {
             if (instruction.HasDestination)
             {
-                var newOutputs = new Dictionary<RegisterKey, HlslTreeNode>();
+                var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
 
-                RegisterKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
-                foreach (RegisterKey destinationKey in destinationKeys)
+                RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+                foreach (RegisterComponentKey destinationKey in destinationKeys)
                 {
                     HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
                     newOutputs[destinationKey] = instructionTree;
@@ -103,38 +118,26 @@ namespace HlslDecompiler
             }
         }
 
-        private IEnumerable<RegisterKey> GetDestinationKeys(Instruction instruction)
+        private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
         {
             int index = instruction.GetDestinationParamIndex();
-            RegisterType registerType = instruction.GetParamRegisterType(index);
-            int registerNumber = instruction.GetParamRegisterNumber(index);
+            RegisterKey registerKey = instruction.GetParamRegisterKey(index);
 
-            if (registerType == RegisterType.Sampler)
+            if (registerKey.Type == RegisterType.Sampler)
             {
-                yield return new RegisterKey()
-                {
-                    RegisterNumber = registerNumber,
-                    RegisterType = RegisterType.Sampler
-                };
+                yield break;
             }
-            else
+            
+            int mask = instruction.GetDestinationWriteMask();
+            for (int component = 0; component < 4; component++)
             {
-                int mask = instruction.GetDestinationWriteMask();
-                for (int component = 0; component < 4; component++)
-                {
-                    if ((mask & (1 << component)) == 0) continue;
+                if ((mask & (1 << component)) == 0) continue;
 
-                    yield return new RegisterKey()
-                    {
-                        RegisterNumber = registerNumber,
-                        RegisterType = registerType,
-                        ComponentIndex = component
-                    };
-                }
+                yield return new RegisterComponentKey(registerKey, component);
             }
         }
 
-        private HlslTreeNode CreateInstructionTree(Instruction instruction, RegisterKey destinationKey)
+        private HlslTreeNode CreateInstructionTree(Instruction instruction, RegisterComponentKey destinationKey)
         {
             int componentIndex = destinationKey.ComponentIndex;
 
@@ -143,17 +146,6 @@ namespace HlslDecompiler
                 case Opcode.Dcl:
                     {
                         var shaderInput = new RegisterInputNode(destinationKey, componentIndex);
-                        SamplerTextureType textureType = instruction.GetDeclSamplerTextureType();
-                        switch (textureType)
-                        {
-                            case SamplerTextureType.TwoD:
-                                shaderInput.SamplerTextureDimension = 2;
-                                break;
-                            case SamplerTextureType.Cube:
-                            case SamplerTextureType.Volume:
-                                shaderInput.SamplerTextureDimension = 3;
-                                break;
-                        }
                         return shaderInput;
                     }
                 case Opcode.Def:
@@ -232,12 +224,12 @@ namespace HlslDecompiler
             for (int i = 0; i < numInputs; i++)
             {
                 int inputParameterIndex = i + 1;
-                RegisterKey inputKey = GetParamRegisterKey(instruction, inputParameterIndex, componentIndex);
+                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
                 if (_activeOutputs.TryGetValue(inputKey, out HlslTreeNode input) == false)
                 {
-                    if (inputKey.RegisterType == RegisterType.Const)
+                    if (inputKey.Type == RegisterType.Const)
                     {
-                        input = new ConstantNode(inputKey.RegisterNumber);
+                        input = new ConstantNode(inputKey.Number);
                         _activeOutputs[inputKey] = input;
                     }
                     else
@@ -257,24 +249,25 @@ namespace HlslDecompiler
             const int TextureCoordsIndex = 1;
             const int SamplerIndex = 2;
 
-            RegisterKey sampler = GetParamRegisterKey(instruction, SamplerIndex, 0);
-            if (!_activeOutputs.TryGetValue(sampler, out HlslTreeNode samplerInput))
+            RegisterKey samplerRegister = instruction.GetParamRegisterKey(SamplerIndex);
+            if (!_samplers.TryGetValue(samplerRegister, out HlslTreeNode samplerInput))
             {
                 throw new InvalidOperationException();
             }
-            int numSamplerOutputComponents = ((RegisterInputNode)samplerInput).SamplerTextureDimension;
+            var samplerRegisterInput = (RegisterInputNode)samplerInput;
+            int numSamplerOutputComponents = samplerRegisterInput.SamplerTextureDimension;
 
             IList<HlslTreeNode> texCoords = new List<HlslTreeNode>();
             for (int component = 0; component < numSamplerOutputComponents; component++)
             {
-                RegisterKey textureCoordsKey = GetParamRegisterKey(instruction, TextureCoordsIndex, component);
+                RegisterComponentKey textureCoordsKey = GetParamRegisterComponentKey(instruction, TextureCoordsIndex, component);
                 if (_activeOutputs.TryGetValue(textureCoordsKey, out HlslTreeNode textureCoord))
                 {
                     texCoords.Add(textureCoord);
                 }
             }
 
-            return new TextureLoadOutputNode(samplerInput, texCoords, outputComponent);
+            return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent);
         }
 
         private HlslTreeNode CreateDotProductOutputNode(Instruction instruction, int outputComponent)
@@ -334,19 +327,13 @@ namespace HlslDecompiler
             }
         }
 
-        private static RegisterKey GetParamRegisterKey(Instruction instruction, int paramIndex, int component)
+        private static RegisterComponentKey GetParamRegisterComponentKey(Instruction instruction, int paramIndex, int component)
         {
-            int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
-            var registerType = instruction.GetParamRegisterType(paramIndex);
+            RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
             byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
             int componentIndex = swizzle[component];
 
-            return new RegisterKey()
-            {
-                RegisterNumber = registerNumber,
-                RegisterType = registerType,
-                ComponentIndex = componentIndex
-            };
+            return new RegisterComponentKey(registerKey, componentIndex);
         }
     }
 }

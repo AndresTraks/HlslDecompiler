@@ -834,19 +834,16 @@ namespace HlslDecompiler
 
         private void WriteOutputStructureDeclaration()
         {
-            if (_outputRegisters.Count > 1)
+            WriteLine("struct VS_OUT");
+            WriteLine("{");
+            indent = "\t";
+            foreach (var output in _outputRegisters)
             {
-                WriteLine("struct VS_OUT");
-                WriteLine("{");
-                indent = "\t";
-                foreach (var output in _outputRegisters)
-                {
-                    WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
-                }
-                indent = "";
-                WriteLine("};");
-                WriteLine();
+                WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
             }
+            indent = "";
+            WriteLine("};");
+            WriteLine();
         }
 
         private string GetMethodReturnType()
@@ -886,7 +883,7 @@ namespace HlslDecompiler
                     case 1:
                         return " : COLOR";
                     default:
-                        return "PS_OUT";
+                        return string.Empty;
                 }
             }
 
@@ -1087,8 +1084,8 @@ namespace HlslDecompiler
 
                 if (first is RegisterInputNode shaderInput)
                 {
-                    RegisterType registerType = shaderInput.InputDecl.RegisterType;
-                    int registerNumber = shaderInput.InputDecl.RegisterNumber;
+                    RegisterType registerType = shaderInput.RegisterComponentKey.Type;
+                    int registerNumber = shaderInput.RegisterComponentKey.Number;
 
                     string swizzle = "";
                     if (registerType != RegisterType.Sampler)
@@ -1165,8 +1162,8 @@ namespace HlslDecompiler
             if (node1 is RegisterInputNode input1 &&
                 node2 is RegisterInputNode input2)
             {
-                return input1.InputDecl.RegisterType == input2.InputDecl.RegisterType &&
-                       input1.InputDecl.RegisterNumber == input2.InputDecl.RegisterNumber;
+                return input1.RegisterComponentKey.Type == input2.RegisterComponentKey.Type &&
+                       input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number;
             }
 
             if (node1 is Operation operation1 &&

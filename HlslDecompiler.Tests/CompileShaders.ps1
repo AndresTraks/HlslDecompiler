@@ -1,5 +1,8 @@
+$generateAssemblyListing = $False;
+
 $pixelShaderSources = @(
     "ps_constant",
+    "ps_constant_struct",
     "ps_texcoord",
     "ps_texcoord_modifier",
     "ps_texcoord_swizzle",
@@ -26,21 +29,21 @@ $fxc_paths = @(
 );
 
 function RunProgram($program, $arguments) {
-	$info = New-Object System.Diagnostics.ProcessStartInfo
-	$info.FileName = $program
-	$info.RedirectStandardError = $true
-	$info.RedirectStandardOutput = $true
-	$info.UseShellExecute = $false
-	$info.Arguments = $arguments
-	$info.WorkingDirectory = Get-Location
-	$process = New-Object System.Diagnostics.Process
-	$process.StartInfo = $info
-	$process.Start() | Out-Null
-	$process.WaitForExit()
-	
-	if ($process.ExitCode -ne 0) {
-		Write-Error $process.StandardError.ReadToEnd()
-	}
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $program
+    $info.RedirectStandardError = $true
+    $info.RedirectStandardOutput = $true
+    $info.UseShellExecute = $false
+    $info.Arguments = $arguments
+    $info.WorkingDirectory = Get-Location
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    $process.Start() | Out-Null
+    $process.WaitForExit()
+    
+    if ($process.ExitCode -ne 0) {
+        Write-Error $process.StandardError.ReadToEnd()
+    }
 }
 
 function Compile {
@@ -51,15 +54,25 @@ function Compile {
     }
 
     ForEach ($shaderSource in $pixelShaderSources) {
-		Write-Host "Compiling $shaderSource..."
-		$arguments = "/T ps_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc"
-		RunProgram $fxc $arguments
+        Write-Host "Compiling $shaderSource..."
+        if ($generateAssemblyListing) {
+            $assemblyListingArg = " /Fc ShaderAssembly/$shaderSource.asm"
+        } else {
+            $assemblyListingArg = ""
+        }
+        $arguments = "/T ps_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc$assemblyListingArg"
+        RunProgram $fxc $arguments
     }
-	
-	ForEach ($shaderSource in $vertexShaderSources) {
-		Write-Host "Compiling $shaderSource..."
-		$arguments = "/T vs_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc"
-		RunProgram $fxc $arguments
+    
+    ForEach ($shaderSource in $vertexShaderSources) {
+        Write-Host "Compiling $shaderSource..."
+        if ($generateAssemblyListing) {
+            $assemblyListingArg = " /Fc ShaderAssembly/$shaderSource.asm"
+        } else {
+            $assemblyListingArg = ""
+        }
+        $arguments = "/T vs_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc$assemblyListingArg"
+        RunProgram $fxc $arguments
     }
 }
 

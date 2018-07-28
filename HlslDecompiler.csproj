@@ -80,6 +80,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RegisterKey.cs" />
+    <Compile Include="RegisterComponentKey.cs" />
     <Compile Include="RgxaReader.cs" />
     <Compile Include="ShaderModel.cs" />
     <Compile Include="ShaderReader.cs" />

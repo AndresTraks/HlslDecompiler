@@ -2,19 +2,19 @@
 {
     public class RegisterInputNode : HlslTreeNode, IHasComponentIndex
     {
-        public RegisterInputNode(RegisterKey inputDecl, int componentIndex)
+        public RegisterInputNode(RegisterComponentKey registerComponentKey, int componentIndex)
         {
-            InputDecl = inputDecl;
+            RegisterComponentKey = registerComponentKey;
             ComponentIndex = componentIndex;
         }
 
-        public RegisterKey InputDecl { get; }
+        public RegisterComponentKey RegisterComponentKey { get; }
         public int ComponentIndex { get; }
         public int SamplerTextureDimension { get; set; }
 
         public override string ToString()
         {
-            return $"{InputDecl}->{ComponentIndex}";
+            return $"{RegisterComponentKey}->{ComponentIndex}";
         }
     }
 }

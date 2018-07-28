@@ -5,9 +5,9 @@ namespace HlslDecompiler
 {
     public class HlslAst
     {
-        public Dictionary<RegisterKey, HlslTreeNode> Roots { get; private set; }
+        public Dictionary<RegisterComponentKey, HlslTreeNode> Roots { get; private set; }
 
-        public HlslAst(Dictionary<RegisterKey, HlslTreeNode> roots)
+        public HlslAst(Dictionary<RegisterComponentKey, HlslTreeNode> roots)
         {
             Roots = roots;
         }

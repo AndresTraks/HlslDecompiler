@@ -1,30 +1,16 @@
 ﻿namespace HlslDecompiler
 {
-    public class RegisterKey : IHasComponentIndex
+    public class RegisterKey
     {
-        public int RegisterNumber { get; set; }
-        public RegisterType RegisterType { get; set; }
-        public int ComponentIndex { get; set; }
-
-        private string Component
+        public RegisterKey(RegisterType registerType, int registerNumber)
         {
-            get
-            {
-                switch (ComponentIndex)
-                {
-                    case 0:
-                        return "x";
-                    case 1:
-                        return "y";
-                    case 2:
-                        return "z";
-                    case 3:
-                        return "w";
-                    default:
-                        return $"({ComponentIndex})";
-                }
-            }
+            Type = registerType;
+            Number = registerNumber;
         }
+
+        public int Number { get; }
+        public RegisterType Type { get; }
+
 
         public override bool Equals(object obj)
         {
@@ -32,38 +18,22 @@
             {
                 return false;
             }
-            if (other.RegisterNumber == RegisterNumber &&
-                other.RegisterType == RegisterType)
-            {
-                if (IsSampler)
-                {
-                    return true;
-                }
-                else
-                {
-                    return other.ComponentIndex == ComponentIndex;
-                }
-            }
-            return false;
+            return
+                other.Number == Number &&
+                other.Type == Type;
         }
 
         public override int GetHashCode()
         {
-            int hashCode = RegisterNumber.GetHashCode() ^ RegisterType.GetHashCode();
-            if (!IsSampler)
-            {
-                hashCode ^= ComponentIndex.GetHashCode();
-            }
+            int hashCode = 
+                Number.GetHashCode() ^
+                Type.GetHashCode();
             return hashCode;
         }
 
         public override string ToString()
         {
-            return IsSampler
-                ? $"{RegisterType}{RegisterNumber}"
-                : $"{RegisterType}{RegisterNumber}.{Component}";
+            return $"{Type}{Number}";
         }
-
-        private bool IsSampler => RegisterType == RegisterType.Sampler;
     }
 }

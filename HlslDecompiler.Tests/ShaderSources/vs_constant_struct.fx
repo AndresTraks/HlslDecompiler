@@ -1,9 +1,9 @@
 struct VS_OUT
 {
 	float4 position : POSITION;
-	float4 texcoord : TEXCOORD;
-	float3 texcoord1 : TEXCOORD1;
-	float3 texcoord2 : TEXCOORD2;
+	float4 position1 : POSITION1;
+	float3 position2 : POSITION2;
+	float3 position3 : POSITION3;
 };
 
 VS_OUT main() : POSITION
@@ -11,9 +11,9 @@ VS_OUT main() : POSITION
 	VS_OUT o;
 
 	o.position = 0;
-	o.texcoord = 0;
-	o.texcoord1 = 0;
-	o.texcoord2 = 0;
+	o.position1 = 0;
+	o.position2 = 0;
+	o.position3 = 0;
 
 	return o;
 }

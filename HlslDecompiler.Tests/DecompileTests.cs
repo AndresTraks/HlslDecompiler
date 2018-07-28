@@ -7,6 +7,7 @@ namespace HlslDecompiler.Tests
     public class DecompileTests
     {
         [TestCase("ps_constant")]
+        //[TestCase("ps_constant_struct")]
         [TestCase("ps_texcoord")]
         [TestCase("ps_texcoord_modifier")]
         [TestCase("ps_texcoord_swizzle")]

@@ -41,13 +41,15 @@ namespace HlslDecompiler.Hlsl.Compiler
 
             if (group.Count == 2)
             {
-                MatrixMultiplicationContext multiplicationGroup =
+                MatrixMultiplicationContext multiplication =
                     _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(group[0], group[1]);
-                if (multiplicationGroup != null)
+                if (multiplication != null)
                 {
-                    string matrixName = multiplicationGroup.MatrixDelaration.Name;
-                    string vector = Compile(new[] { multiplicationGroup.X, multiplicationGroup.Y });
-                    return $"mul({matrixName}, {vector})";
+                    string matrixName = multiplication.MatrixDeclaration.Name;
+                    string vector = Compile(multiplication.Vector);
+                    return multiplication.IsMatrixByVector
+                        ? $"mul({matrixName}, {vector})"
+                        : $"mul({vector}, {matrixName})";
                 }
             }
 

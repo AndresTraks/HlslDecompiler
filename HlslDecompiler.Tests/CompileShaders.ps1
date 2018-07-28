@@ -19,7 +19,8 @@ $pixelShaderSources = @(
 $vertexShaderSources = @(
     "vs_constant",
     "vs_constant_struct",
-    "vs_matrix_multiply"
+    "vs_matrix22_vector2_multiply",
+    "vs_vector2_matrix22_multiply"
 );
 
 $fxc_paths = @(

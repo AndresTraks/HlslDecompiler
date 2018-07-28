@@ -61,7 +61,10 @@
     <Content Include="ShaderAssembly\ps_constant_struct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderAssembly\vs_matrix_multiply.asm">
+    <Content Include="ShaderAssembly\vs_vector2_matrix22_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ShaderAssembly\vs_matrix22_vector2_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderAssembly\vs_constant_struct.asm">
@@ -73,7 +76,10 @@
     <Content Include="ShaderSources\ps_constant_struct.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="ShaderSources\vs_matrix_multiply.fx">
+    <Content Include="ShaderSources\vs_vector2_matrix22_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ShaderSources\vs_matrix22_vector2_multiply.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderSources\vs_constant_struct.fx">
@@ -121,7 +127,10 @@
     <None Include="CompiledShaders\ps_negate_absolute.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="CompiledShaders\vs_matrix_multiply.fxc">
+    <None Include="CompiledShaders\vs_vector2_matrix22_multiply.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="CompiledShaders\vs_matrix22_vector2_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="CompiledShaders\vs_constant_struct.fxc">

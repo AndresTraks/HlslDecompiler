@@ -20,9 +20,14 @@ namespace HlslDecompiler.Hlsl
 
         public MatrixMultiplicationContext TryGetMultiplicationGroup(HlslTreeNode node1, HlslTreeNode node2)
         {
-            // 2x2 matrix multiplication has a pattern of:
-            // node1 = A*X + B*Y
-            // node2 = C*X + D*Y
+            // 2x2(abcd) * 2x1(xy) matrix multiplication has a pattern of:
+            // node1 = a*x + b*y
+            // node2 = c*x + d*y
+
+            // 1x2(xy) * 2x2(abcd) matrix multiplication has a pattern of:
+            // node1 = a*x + c*y
+            // node2 = b*x + d*y
+
             if (!(node1 is AddOperation add1))
             {
                 return null;
@@ -52,12 +57,15 @@ namespace HlslDecompiler.Hlsl
             HlslTreeNode x = GetCommonFactor(ax, cx);
             if (x == null)
             {
+                return null;
+                /*
                 x = GetCommonFactor(ax, dy);
                 if (x == null)
                 {
                     return null;
                 }
                 Swap(ref cx, ref dy);
+                */
             }
             if (!(GetOther(ax, x) is RegisterInputNode a))
             {
@@ -87,13 +95,29 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            ConstantDeclaration matrixDelaration = TryGet2x2MatrixDeclaration(a, b, c, d);
-            if (matrixDelaration == null)
+            bool matrixByVector;
+            HlslTreeNode[] vector;
+            ConstantDeclaration matrix = TryGet2x2MatrixDeclaration(a, b, c, d);
+            if (matrix != null)
             {
-                return null;
+                vector = new[] { x, y };
+                matrixByVector = true;
+            }
+            else
+            {
+                matrix = TryGet2x2MatrixDeclaration(a, c, b, d);
+                if (matrix != null)
+                {
+                    vector = new[] { y, x };
+                    matrixByVector = false;
+                }
+                else
+                {
+                    return null;
+                }
             }
 
-            return new MatrixMultiplicationContext(a, b, c, d, x, y, matrixDelaration);
+            return new MatrixMultiplicationContext(vector, matrix, matrixByVector);
         }
 
         private ConstantDeclaration TryGet2x2MatrixDeclaration(
@@ -102,8 +126,14 @@ namespace HlslDecompiler.Hlsl
             RegisterInputNode c,
             RegisterInputNode d)
         {
+            const bool ColumnMajorOrder = true;
+            if (ColumnMajorOrder)
+            {
+                Swap(ref b, ref c);
+            }
+
             RegisterComponentKey aKey = a.RegisterComponentKey;
-            if (aKey.Type != RegisterType.Const || aKey.ComponentIndex != 0)
+            if (aKey.Type != RegisterType.Const)
             {
                 return null;
             }
@@ -115,19 +145,19 @@ namespace HlslDecompiler.Hlsl
             }
 
             RegisterComponentKey cKey = c.RegisterComponentKey;
-            if (cKey.Type != RegisterType.Const || cKey.Number != aKey.Number || cKey.ComponentIndex != 1)
+            if (cKey.Type != RegisterType.Const || cKey.Number != aKey.Number + 1)
             {
                 return null;
             }
 
             RegisterComponentKey bKey = b.RegisterComponentKey;
-            if (bKey.Type != RegisterType.Const || bKey.Number != aKey.Number + 1 || bKey.ComponentIndex != 0)
+            if (bKey.Type != RegisterType.Const || bKey.Number != aKey.Number || bKey.ComponentIndex == aKey.ComponentIndex)
             {
                 return null;
             }
 
             RegisterComponentKey dKey = d.RegisterComponentKey;
-            if (dKey.Type != RegisterType.Const || bKey.Number != bKey.Number || dKey.ComponentIndex != 1)
+            if (dKey.Type != RegisterType.Const || dKey.Number != cKey.Number || dKey.ComponentIndex == cKey.ComponentIndex)
             {
                 return null;
             }
@@ -159,42 +189,36 @@ namespace HlslDecompiler.Hlsl
                 : ax.Factor1;
         }
 
-        private static void Swap(ref MultiplyOperation cx, ref MultiplyOperation dy)
+        private static void Swap(ref MultiplyOperation a, ref MultiplyOperation b)
         {
-            MultiplyOperation temp = cx;
-            cx = dy;
-            dy = temp;
+            MultiplyOperation temp = a;
+            a = b;
+            b = temp;
+        }
+
+        private static void Swap(ref RegisterInputNode a, ref RegisterInputNode b)
+        {
+            RegisterInputNode temp = a;
+            a = b;
+            b = temp;
         }
     }
 
     public class MatrixMultiplicationContext
     {
         public MatrixMultiplicationContext(
-            RegisterInputNode a,
-            RegisterInputNode b, 
-            RegisterInputNode c, 
-            RegisterInputNode d,
-            HlslTreeNode x,
-            HlslTreeNode y,
-            ConstantDeclaration matrixDelaration)
+            HlslTreeNode[] vector,
+            ConstantDeclaration matrix,
+            bool matrixByVector)
         {
-            A = a;
-            B = b;
-            C = c;
-            D = d;
-            X = x;
-            Y = y;
-            MatrixDelaration = matrixDelaration;
+            Vector = vector;
+            MatrixDeclaration = matrix;
+            IsMatrixByVector = matrixByVector;
         }
 
-        public RegisterInputNode A { get; }
-        public RegisterInputNode B { get; }
-        public RegisterInputNode C { get; }
-        public RegisterInputNode D { get; }
+        public HlslTreeNode[] Vector { get; }
 
-        public HlslTreeNode X { get; }
-        public HlslTreeNode Y { get; }
-
-        public ConstantDeclaration MatrixDelaration { get; }
+        public ConstantDeclaration MatrixDeclaration { get; }
+        public bool IsMatrixByVector { get; }
     }
 }

@@ -115,8 +115,8 @@ namespace HlslDecompiler.Hlsl
 
         public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
 
-        public readonly IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
-        public readonly IDictionary<RegisterKey, RegisterDeclaration> MethodOutputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
+        public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
+        public IDictionary<RegisterKey, RegisterDeclaration> MethodOutputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
 
         public string GetDestinationName(Instruction instruction)
         {

@@ -3,9 +3,16 @@ using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
-    public static class NodeGrouper
+    public class NodeGrouper
     {
-        public static IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
+        public NodeGrouper(RegisterState registerState)
+        {
+            MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registerState);
+        }
+
+        public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
+
+        public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
         {
             switch (nodes.Count)
             {
@@ -28,75 +35,15 @@ namespace HlslDecompiler.Hlsl
             return groups;
         }
 
-        public static bool IsMatrixMultiplication(HlslTreeNode node1, HlslTreeNode node2)
-        {
-            // 2x2 matrix multiplication has a pattern of:
-            // node1 = A*X + B*Y
-            // node2 = C*X + D*Y
-            if (!(node1 is AddOperation add1))
-            {
-                return false;
-            }
-            if (!(node2 is AddOperation add2))
-            {
-                return false;
-            }
-
-            if (!(add1.Addend1 is MultiplyOperation ax))
-            {
-                return false;
-            }
-            if (!(add1.Addend2 is MultiplyOperation by))
-            {
-                return false;
-            }
-            if (!(add2.Addend1 is MultiplyOperation cx))
-            {
-                return false;
-            }
-            if (!(add2.Addend2 is MultiplyOperation dy))
-            {
-                return false;
-            }
-
-            HlslTreeNode x = GetCommonFactor(ax, cx);
-            if (x == null)
-            {
-                x = GetCommonFactor(ax, dy);
-                if (x == null)
-                {
-                    return false;
-                }
-                Swap(ref cx, ref dy);
-            }
-            HlslTreeNode a = GetOther(ax, x);
-            HlslTreeNode c = GetOther(cx, x);
-
-            HlslTreeNode y = GetCommonFactor(by, dy);
-            if (y == null)
-            {
-                return false;
-            }
-            HlslTreeNode b = GetOther(by, y);
-            HlslTreeNode d = GetOther(dy, y);
-
-            if (CanGroupComponents(x, y) == false)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
         // Returns true if children differ at most by component index, meaning they can be combined, for example:
         // n1 = a.x + b.x
         // n2 = a.y + b.y
         // =>
         // n.xy = a.xy + b.xy
         // n = a + b
-        public static bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
+        public bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
         {
-            if (IsMatrixMultiplication(node1, node2))
+            if (MatrixMultiplicationGrouper.CanGroup(node1, node2))
             {
                 return true;
             }
@@ -171,7 +118,7 @@ namespace HlslDecompiler.Hlsl
             return false;
         }
 
-        public static bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
+        public bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
         {
             if (node1 is ConstantNode constant1 &&
                 node2 is ConstantNode constant2)
@@ -240,37 +187,6 @@ namespace HlslDecompiler.Hlsl
             }
 
             return false;
-        }
-
-        private static HlslTreeNode GetCommonFactor(MultiplyOperation ax, MultiplyOperation cx)
-        {
-            if (AreNodesEquivalent(ax.Factor1, cx.Factor1) ||
-                AreNodesEquivalent(ax.Factor1, cx.Factor2))
-            {
-                return ax.Factor1;
-            }
-
-            if (AreNodesEquivalent(ax.Factor2, cx.Factor1) ||
-                AreNodesEquivalent(ax.Factor2, cx.Factor2))
-            {
-                return ax.Factor2;
-            }
-
-            return null;
-        }
-
-        private static HlslTreeNode GetOther(MultiplyOperation ax, HlslTreeNode x)
-        {
-            return AreNodesEquivalent(ax.Factor1, x)
-                ? ax.Factor2
-                : ax.Factor1;
-        }
-
-        private static void Swap(ref MultiplyOperation cx, ref MultiplyOperation dy)
-        {
-            MultiplyOperation temp = cx;
-            cx = dy;
-            dy = temp;
         }
     }
 }

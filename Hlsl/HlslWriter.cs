@@ -278,7 +278,7 @@ namespace HlslDecompiler
             hlslFile = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
             hlslWriter = new StreamWriter(hlslFile);
 
-            ParseRegisterDeclarations();
+            _registers = new RegisterState(_shader);
 
             WriteConstantDeclarations();
 
@@ -312,9 +312,7 @@ namespace HlslDecompiler
                 var parser = new BytecodeParser();
                 ast = parser.Parse(_shader);
                 ast.ReduceTree();
-            }
-            if (ast != null)
-            {
+
                 WriteAst(ast);
             }
             else
@@ -322,73 +320,13 @@ namespace HlslDecompiler
                 WriteLine("{0} o;", methodReturnType);
                 WriteLine();
 
-                // Find all assignments to temporary variables
-                // and declare the variables.
-                var tempRegisters = new Dictionary<string, int>();
-                foreach (Instruction instruction in _shader.Instructions)
-                {
-                    if (!instruction.HasDestination)
-                    {
-                        continue;
-                    }
-
-                    int destIndex = instruction.GetDestinationParamIndex();
-                    if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
-                    {
-                        string registerName = instruction.GetParamRegisterName(destIndex);
-                        if (!tempRegisters.ContainsKey(registerName))
-                        {
-                            tempRegisters.Add(registerName, 0);
-                        }
-                        tempRegisters[registerName] |= instruction.GetDestinationWriteMask();
-                    }
-                }
-
-                foreach (var registerName in tempRegisters.Keys)
-                {
-                    int writeMask = tempRegisters[registerName];
-                    string writeMaskName;
-                    switch (writeMask)
-                    {
-                        case 0x1:
-                            writeMaskName = "float";
-                            break;
-                        case 0x3:
-                            writeMaskName = "float2";
-                            break;
-                        case 0x7:
-                            writeMaskName = "float3";
-                            break;
-                        case 0xF:
-                            writeMaskName = "float4";
-                            break;
-                        default:
-                            // TODO
-                            writeMaskName = "float4";
-                            break;
-                            //throw new NotImplementedException();
-                    }
-                    WriteLine("{0} {1};", writeMaskName, registerName);
-                }
-
-                foreach (Instruction instruction in _shader.Instructions)
-                {
-                    WriteInstruction(instruction);
-                }
-
-                WriteLine();
-                WriteLine("return o;");
+                WriteInstructionList();
             }
             indent = "";
             WriteLine("}");
 
             hlslWriter.Dispose();
             hlslFile.Dispose();
-        }
-
-        private void ParseRegisterDeclarations()
-        {
-            _registers = new RegisterState(_shader);
         }
 
         private void WriteConstantDeclarations()
@@ -507,6 +445,66 @@ namespace HlslDecompiler
                 WriteLine();
                 WriteLine($"return o;");
             }
+        }
+
+        private void WriteInstructionList()
+        {
+            // Find all assignments to temporary variables
+            // and declare the variables.
+            var tempRegisters = new Dictionary<string, int>();
+            foreach (Instruction instruction in _shader.Instructions)
+            {
+                if (!instruction.HasDestination)
+                {
+                    continue;
+                }
+
+                int destIndex = instruction.GetDestinationParamIndex();
+                if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
+                {
+                    string registerName = instruction.GetParamRegisterName(destIndex);
+                    if (!tempRegisters.ContainsKey(registerName))
+                    {
+                        tempRegisters.Add(registerName, 0);
+                    }
+                    tempRegisters[registerName] |= instruction.GetDestinationWriteMask();
+                }
+            }
+
+            foreach (var registerName in tempRegisters.Keys)
+            {
+                int writeMask = tempRegisters[registerName];
+                string writeMaskName;
+                switch (writeMask)
+                {
+                    case 0x1:
+                        writeMaskName = "float";
+                        break;
+                    case 0x3:
+                        writeMaskName = "float2";
+                        break;
+                    case 0x7:
+                        writeMaskName = "float3";
+                        break;
+                    case 0xF:
+                        writeMaskName = "float4";
+                        break;
+                    default:
+                        // TODO
+                        writeMaskName = "float4";
+                        break;
+                        //throw new NotImplementedException();
+                }
+                WriteLine("{0} {1};", writeMaskName, registerName);
+            }
+
+            foreach (Instruction instruction in _shader.Instructions)
+            {
+                WriteInstruction(instruction);
+            }
+
+            WriteLine();
+            WriteLine("return o;");
         }
     }
 }

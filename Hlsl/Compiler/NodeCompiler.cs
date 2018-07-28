@@ -6,19 +6,25 @@ namespace HlslDecompiler.Hlsl.Compiler
 {
     public sealed class NodeCompiler
     {
-        private RegisterState _registers;
+        private readonly RegisterState _registers;
+        private readonly NodeGrouper _nodeGrouper;
+        private readonly ConstantCompiler _constantCompiler;
 
         public NodeCompiler(RegisterState registers)
         {
             _registers = registers;
+            _nodeGrouper = new NodeGrouper(registers);
+            _constantCompiler = new ConstantCompiler(_nodeGrouper);
         }
 
         public string Compile(IEnumerable<HlslTreeNode> group)
         {
-            List<HlslTreeNode> groupList = group.ToList();
-            int componentCount = groupList.Count;
+            return Compile(group.ToList());
+        }
 
-            var subGroups = NodeGrouper.GroupComponents(groupList);
+        public string Compile(List<HlslTreeNode> group)
+        {
+            var subGroups = _nodeGrouper.GroupComponents(group);
             if (subGroups.Count == 0)
             {
                 throw new InvalidOperationException();
@@ -26,25 +32,31 @@ namespace HlslDecompiler.Hlsl.Compiler
 
             if (subGroups.Count > 1)
             {
-
                 // In float4(x, float), x cannot be promoted from float to float3
                 // In float4(x, y), x cannot be promoted to float2 and y to float2
                 // float4(float2, float2) is allowed
                 var constructorParts = subGroups.Select(Compile);
-                return $"float{componentCount}({string.Join(", ", constructorParts)})";
+                return $"float{group.Count}({string.Join(", ", constructorParts)})";
             }
 
-            if (groupList.Count == 2 && NodeGrouper.IsMatrixMultiplication(groupList[0], groupList[1]))
+            if (group.Count == 2)
             {
-                return "mul(matrix_2x2, position.xy)";
+                MatrixMultiplicationContext multiplicationGroup =
+                    _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(group[0], group[1]);
+                if (multiplicationGroup != null)
+                {
+                    string matrixName = multiplicationGroup.MatrixDelaration.Name;
+                    string vector = Compile(new[] { multiplicationGroup.X, multiplicationGroup.Y });
+                    return $"mul({matrixName}, {vector})";
+                }
             }
 
-            var first = group.First();
+            var first = group[0];
 
             if (first is ConstantNode constant)
             {
                 var components = group.Cast<ConstantNode>().ToArray();
-                return ConstantCompiler.Compile(components);
+                return _constantCompiler.Compile(components);
             }
 
             if (first is Operation operation)

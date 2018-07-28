@@ -5,9 +5,15 @@ namespace HlslDecompiler.Hlsl.Compiler
 {
     public sealed class ConstantCompiler
     {
-        private static readonly CultureInfo _culture = CultureInfo.InvariantCulture;
+        private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
+        private readonly NodeGrouper _nodeGrouper;
 
-        public static string Compile(ConstantNode[] group)
+        public ConstantCompiler(NodeGrouper nodeGrouper)
+        {
+            _nodeGrouper = nodeGrouper;
+        }
+
+        public string Compile(ConstantNode[] group)
         {
             ConstantNode first = group[0];
 
@@ -17,7 +23,7 @@ namespace HlslDecompiler.Hlsl.Compiler
                 return CompileConstant(first);
             }
 
-            if (group.All(c => NodeGrouper.AreNodesEquivalent(c, first)))
+            if (group.All(c => _nodeGrouper.AreNodesEquivalent(c, first)))
             {
                 return CompileConstant(first);
             }
@@ -26,7 +32,7 @@ namespace HlslDecompiler.Hlsl.Compiler
             return $"float{count}({components})";
         }
 
-        private static string CompileConstant(ConstantNode firstConstant)
+        private string CompileConstant(ConstantNode firstConstant)
         {
             return firstConstant.Value.ToString(_culture);
         }

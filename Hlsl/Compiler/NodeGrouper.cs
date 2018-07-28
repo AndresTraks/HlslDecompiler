@@ -18,7 +18,7 @@ namespace HlslDecompiler.Hlsl
             int n, groupStart = 0;
             for (n = 1; n < nodes.Count; n++)
             {
-                if (!NodeGrouper.CanGroupComponents(nodes[groupStart], nodes[n]))
+                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
                 {
                     groups.Add(nodes.GetRange(groupStart, n - groupStart));
                     groupStart = n;

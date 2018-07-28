@@ -155,6 +155,7 @@ namespace HlslDecompiler
                     }
                 case Opcode.Abs:
                 case Opcode.Add:
+                case Opcode.Cmp:
                 case Opcode.Frc:
                 case Opcode.Lrp:
                 case Opcode.Mad:
@@ -174,6 +175,8 @@ namespace HlslDecompiler
                         {
                             case Opcode.Abs:
                                 return new AbsoluteOperation(inputs[0]);
+                            case Opcode.Cmp:
+                                return new CompareOperation(inputs[0], inputs[1], inputs[2]);
                             case Opcode.Frc:
                                 return new FractionalOperation(inputs[0]);
                             case Opcode.Lrp:
@@ -327,6 +330,7 @@ namespace HlslDecompiler
                 case Opcode.Slt:
                 case Opcode.Tex:
                     return 2;
+                case Opcode.Cmp:
                 case Opcode.Lrp:
                 case Opcode.Mad:
                     return 3;

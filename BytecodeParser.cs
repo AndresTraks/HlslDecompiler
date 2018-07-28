@@ -47,7 +47,7 @@ namespace HlslDecompiler
             else
             {
                 roots = _activeOutputs
-                    .Where(o => o.Key.Type == RegisterType.Output && o.Key.Number == 0)
+                    .Where(o => o.Key.Type == RegisterType.Output)
                     .ToDictionary(o => o.Key, o => o.Value);
             }
             return new HlslAst(roots);

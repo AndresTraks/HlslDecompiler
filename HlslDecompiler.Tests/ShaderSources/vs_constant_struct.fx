@@ -6,7 +6,7 @@ struct VS_OUT
 	float3 position3 : POSITION3;
 };
 
-VS_OUT main() : POSITION
+VS_OUT main()
 {
 	VS_OUT o;
 

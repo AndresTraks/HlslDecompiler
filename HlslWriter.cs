@@ -22,8 +22,7 @@ namespace HlslDecompiler
 
         private ICollection<RegisterDeclaration> _registerDeclarations;
         private IList<RegisterDeclaration> _inputRegisters;
-        private IList<RegisterDeclaration> _outputRegisters;
-        private HashSet<string> _pixelShaderOutputRegisters;
+        private IDictionary<RegisterKey, RegisterDeclaration> _outputRegisters;
 
         public HlslWriter(ShaderModel shader, bool doAstAnalysis = false)
         {
@@ -85,19 +84,18 @@ namespace HlslDecompiler
             }
         }
 
-        string GetRegisterName(Instruction instruction, int paramIndex)
+        private string GetRegisterName(Instruction instruction, int paramIndex)
         {
-            RegisterType registerType = instruction.GetParamRegisterType(paramIndex);
-            int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
-            return GetRegisterName(registerType, registerNumber);
+            RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
+            return GetRegisterName(registerKey);
         }
 
-        private string GetRegisterName(RegisterType registerType, int registerNumber)
+        private string GetRegisterName(RegisterKey registerKey)
         {
-            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
+            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterKey.Equals(registerKey));
             if (decl != null)
             {
-                switch (registerType)
+                switch (registerKey.Type)
                 {
                     case RegisterType.Texture:
                         return decl.Name;
@@ -106,7 +104,7 @@ namespace HlslDecompiler
                     case RegisterType.Output:
                         return (_outputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Sampler:
-                        var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerNumber);
+                        var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerKey.Number);
                         if (samplerDecl != null)
                         {
                             return samplerDecl.Name;
@@ -116,27 +114,24 @@ namespace HlslDecompiler
                             throw new NotImplementedException();
                         }
                     case RegisterType.MiscType:
-                        if (registerNumber == 0)
+                        switch (registerKey.Number)
                         {
-                            return "vFace";
-                        }
-                        else if (registerNumber == 1)
-                        {
-                            return "vPos";
-                        }
-                        else
-                        {
-                            throw new NotImplementedException();
+                            case 0:
+                                return "vFace";
+                            case 1:
+                                return "vPos";
+                            default:
+                                throw new NotImplementedException();
                         }
                     default:
                         throw new NotImplementedException();
                 }
             }
 
-            switch (registerType)
+            switch (registerKey.Type)
             {
                 case RegisterType.Const:
-                    var constDecl = ConstantDeclarations.FirstOrDefault(x => x.ContainsIndex(registerNumber));
+                    var constDecl = ConstantDeclarations.FirstOrDefault(x => x.ContainsIndex(registerKey.Number));
                     if (constDecl != null)
                     {
                         return constDecl.Name;
@@ -152,7 +147,14 @@ namespace HlslDecompiler
             return null;
         }
 
-        int GetRegisterFullLength(RegisterDeclaration decl)
+        private int GetRegisterFullLength(Instruction instruction, int paramIndex)
+        {
+            RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
+            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterKey.Equals(registerKey));
+            return GetRegisterFullLength(decl);
+        }
+
+        private static int GetRegisterFullLength(RegisterDeclaration decl)
         {
             if (decl != null)
             {
@@ -167,14 +169,6 @@ namespace HlslDecompiler
                 }
             }
             return 4;
-        }
-
-        int GetRegisterFullLength(Instruction instruction, int paramIndex)
-        {
-            RegisterType registerType = instruction.GetParamRegisterType(paramIndex);
-            int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
-            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
-            return GetRegisterFullLength(decl);
         }
 
         string GetDestinationName(Instruction instruction)
@@ -677,6 +671,13 @@ namespace HlslDecompiler
             WriteLine("{");
             indent = "\t";
 
+            if (_outputRegisters.Count > 1)
+            {
+                var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+                WriteLine($"{outputStructType} o;");
+                WriteLine();
+            }
+
             HlslAst ast = null;
             if (doAstAnalysis)
             {
@@ -761,13 +762,14 @@ namespace HlslDecompiler
         {
             _registerDeclarations = new List<RegisterDeclaration>();
             _inputRegisters = new List<RegisterDeclaration>();
-            _outputRegisters = new List<RegisterDeclaration>();
+            _outputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
             foreach (var declInstruction in _shader.Instructions.Where(x => x.Opcode == Opcode.Dcl))
             {
                 var reg = new RegisterDeclaration(declInstruction);
                 _registerDeclarations.Add(reg);
 
-                switch (reg.RegisterType)
+                RegisterKey registerKey = reg.RegisterKey;
+                switch (registerKey.Type)
                 {
                     case RegisterType.Input:
                     case RegisterType.MiscType:
@@ -775,22 +777,27 @@ namespace HlslDecompiler
                         break;
                     case RegisterType.Output:
                     case RegisterType.ColorOut:
-                        _outputRegisters.Add(reg);
+                        _outputRegisters[registerKey] = reg;
                         break;
                 }
             }
 
             if (_shader.Type == ShaderType.Pixel)
             {
-                // Find all assignments to color outputs, because these outputs are not declared.
-                _pixelShaderOutputRegisters = new HashSet<string>();
+                // Find all assignments to color outputs, because pixel shader outputs are not declared.
                 foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
                 {
                     int destIndex = instruction.GetDestinationParamIndex();
-                    if (instruction.GetParamRegisterType(destIndex) == RegisterType.ColorOut)
+                    RegisterType registerType = instruction.GetParamRegisterType(destIndex);
+                    if (registerType == RegisterType.ColorOut)
                     {
-                        string registerName = "oC" + instruction.GetParamRegisterNumber(destIndex).ToString();
-                        _pixelShaderOutputRegisters.Add(registerName);
+                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                        var registerKey = new RegisterKey(registerType, registerNumber);
+                        if (_outputRegisters.ContainsKey(registerKey) == false)
+                        {
+                            var reg = new RegisterDeclaration(registerKey);
+                            _outputRegisters[registerKey] = reg;
+                        }
                     }
                 }
             }
@@ -812,20 +819,13 @@ namespace HlslDecompiler
 
         private void WriteInputStructureDeclaration()
         {
-            if (_shader.Type == ShaderType.Pixel)
-            {
-                WriteLine("struct VS_OUT");
-            }
-            else
-            {
-                WriteLine("struct VS_IN");
-            }
+            var inputStructType = _shader.Type == ShaderType.Pixel ? "PS_IN" : "VS_IN";
+            WriteLine($"struct {inputStructType}");
             WriteLine("{");
             indent = "\t";
-            foreach (var dclInput in _inputRegisters)
+            foreach (var input in _inputRegisters)
             {
-                WriteLine("{0} {1} : {2};",
-                    dclInput.TypeName, dclInput.Name, dclInput.Semantic);
+                WriteLine($"{input.TypeName} {input.Name} : {input.Semantic};");
             }
             indent = "";
             WriteLine("};");
@@ -834,10 +834,11 @@ namespace HlslDecompiler
 
         private void WriteOutputStructureDeclaration()
         {
-            WriteLine("struct VS_OUT");
+            var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+            WriteLine($"struct {outputStructType}");
             WriteLine("{");
             indent = "\t";
-            foreach (var output in _outputRegisters)
+            foreach (var output in _outputRegisters.Values)
             {
                 WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
             }
@@ -848,51 +849,25 @@ namespace HlslDecompiler
 
         private string GetMethodReturnType()
         {
-            if (_shader.Type == ShaderType.Pixel)
-            {
-                switch (_pixelShaderOutputRegisters.Count)
-                {
-                    case 0:
-                        throw new InvalidOperationException();
-                    case 1:
-                        return "float4";
-                    default:
-                        return "PS_OUT";
-                }
-            }
-
             switch (_outputRegisters.Count)
             {
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    return _outputRegisters[0].TypeName;
+                    return _outputRegisters.Values.First().TypeName;
                 default:
-                    return "VS_OUT";
+                    return _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
             }
         }
 
         private string GetMethodSemantic()
         {
-            if (_shader.Type == ShaderType.Pixel)
-            {
-                switch (_pixelShaderOutputRegisters.Count)
-                {
-                    case 0:
-                        throw new InvalidOperationException();
-                    case 1:
-                        return " : COLOR";
-                    default:
-                        return string.Empty;
-                }
-            }
-
             switch (_outputRegisters.Count)
             {
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    string semantic = _outputRegisters[0].Semantic;
+                    string semantic = _outputRegisters.Values.First().Semantic;
                     return $" : {semantic}";
                 default:
                     return string.Empty;
@@ -939,12 +914,31 @@ namespace HlslDecompiler
 
         private void WriteAst(HlslAst ast)
         {
-            var roots = ast.Roots.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
+            var rootGroups = ast.Roots.GroupBy(r => r.Key.RegisterKey);
 
-            string statement = Compile(roots);
+            foreach (var rootGroup in rootGroups)
+            {
+                var registerKey = rootGroup.Key;
+                var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
+                string statement = Compile(roots);
 
-            WriteLine($"return {statement};");
+                if (_outputRegisters.Count == 1)
+                {
+                    WriteLine($"return {statement};");
+                }
+                else
+                {
+                    var name = _outputRegisters[registerKey].Name;
+                    WriteLine($"o.{name} = {statement};");
+                }
+            }
 
+            if (_outputRegisters.Count > 1)
+            {
+                WriteLine();
+                WriteLine($"return o;");
+            }
+            
         }
 
         private string Compile(IEnumerable<HlslTreeNode> group)
@@ -1084,6 +1078,7 @@ namespace HlslDecompiler
 
                 if (first is RegisterInputNode shaderInput)
                 {
+                    var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
                     RegisterType registerType = shaderInput.RegisterComponentKey.Type;
                     int registerNumber = shaderInput.RegisterComponentKey.Number;
 
@@ -1091,12 +1086,11 @@ namespace HlslDecompiler
                     if (registerType != RegisterType.Sampler)
                     {
                         var decl = _registerDeclarations.FirstOrDefault(x =>
-                                x.RegisterType == registerType &&
-                                x.RegisterNumber == registerNumber);
+                                x.RegisterKey.Equals(registerKey));
                         swizzle = GetAstSourceSwizzleName(components, GetRegisterFullLength(decl));
                     }
 
-                    string name = GetRegisterName(registerType, registerNumber);
+                    string name = GetRegisterName(registerKey);
                     return $"{name}{swizzle}";
                 }
 

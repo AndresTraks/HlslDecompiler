@@ -1,4 +1,6 @@
-﻿namespace HlslDecompiler
+﻿using System;
+
+namespace HlslDecompiler
 {
     // D3DXREGISTER_SET
     public enum RegisterSet
@@ -111,43 +113,62 @@
     // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549176(v=vs.85).aspx
     public class RegisterDeclaration
     {
+        private readonly int _maskedLength;
+
         public RegisterDeclaration(Instruction declInstruction)
         {
-            DeclInstruction = declInstruction;
+            RegisterKey = declInstruction.GetParamRegisterKey(1);
+            Semantic = declInstruction.GetDeclSemantic();
+            _maskedLength = declInstruction.GetDestinationMaskedLength();
         }
 
-        public Instruction DeclInstruction { get; private set; }
-
-        public RegisterType RegisterType { get { return DeclInstruction.GetParamRegisterType(1); } }
-        public int RegisterNumber { get { return DeclInstruction.GetParamRegisterNumber(1); } }
-
-        public string Semantic
+        public RegisterDeclaration(RegisterKey registerKey)
         {
-            get { return DeclInstruction.GetDeclSemantic(); }
+            if (registerKey.Type != RegisterType.ColorOut)
+            {
+                throw new ArgumentException(nameof(registerKey));
+            }
+
+            RegisterKey = registerKey;
+            switch (registerKey.Number)
+            {
+                case 0:
+                    Semantic = "COLOR";
+                    break;
+                default:
+                    Semantic = "COLOR" + registerKey.Number;
+                    break;
+            }
+            _maskedLength = 4;
         }
 
-        public string Name
-        {
-            get { return DeclInstruction.GetDeclSemantic().ToLower(); }
-        }
+        public RegisterKey RegisterKey { get; }
+        public string Semantic { get; }
+        public string Name => Semantic.ToLower();
 
         public string TypeName
         {
             get
             {
-                string typeName = "float";
-                int length = DeclInstruction.GetDestinationMaskedLength();
-                if (length > 1)
+                switch (_maskedLength)
                 {
-                    typeName += length.ToString();
+                    case 1:
+                        return "float";
+                    case 2:
+                        return "float2";
+                    case 3:
+                        return "float3";
+                    case 4:
+                        return "float4";
+                    default:
+                        throw new InvalidOperationException();
                 }
-                return typeName;
             }
         }
 
         public override string ToString()
         {
-            return RegisterType + " " + Name;
+            return RegisterKey.Type + " " + Name;
         }
     }
 }

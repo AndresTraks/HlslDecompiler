@@ -7,9 +7,6 @@
             AddChild(value);
         }
 
-        public override string ToString()
-        {
-            return $"frc({Children[0]})";
-        }
+        public override string Mnemonic => "frc";
     }
 }

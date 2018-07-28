@@ -20,9 +20,9 @@ namespace HlslDecompiler
         public ICollection<ConstantInt> ConstantIntDefinitions { get; private set; }
         public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
 
-        private ICollection<RegisterDeclaration> _registerDeclarations;
-        private IList<RegisterDeclaration> _inputRegisters;
-        private IDictionary<RegisterKey, RegisterDeclaration> _outputRegisters;
+        private IDictionary<RegisterKey, RegisterDeclaration> _registerDeclarations;
+        private IDictionary<RegisterKey, RegisterDeclaration> _methodInputRegisters;
+        private IDictionary<RegisterKey, RegisterDeclaration> _methodOutputRegisters;
 
         public HlslWriter(ShaderModel shader, bool doAstAnalysis = false)
         {
@@ -92,86 +92,68 @@ namespace HlslDecompiler
 
         private string GetRegisterName(RegisterKey registerKey)
         {
-            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterKey.Equals(registerKey));
-            if (decl != null)
-            {
-                switch (registerKey.Type)
-                {
-                    case RegisterType.Texture:
-                        return decl.Name;
-                    case RegisterType.Input:
-                        return (_inputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
-                    case RegisterType.Output:
-                        return (_outputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
-                    case RegisterType.Sampler:
-                        var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerKey.Number);
-                        if (samplerDecl != null)
-                        {
-                            return samplerDecl.Name;
-                        }
-                        else
-                        {
-                            throw new NotImplementedException();
-                        }
-                    case RegisterType.MiscType:
-                        switch (registerKey.Number)
-                        {
-                            case 0:
-                                return "vFace";
-                            case 1:
-                                return "vPos";
-                            default:
-                                throw new NotImplementedException();
-                        }
-                    default:
-                        throw new NotImplementedException();
-                }
-            }
-
+            var decl = _registerDeclarations[registerKey];
             switch (registerKey.Type)
             {
+                case RegisterType.Texture:
+                    return decl.Name;
+                case RegisterType.Input:
+                    return (_methodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                case RegisterType.Output:
+                    return (_methodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                 case RegisterType.Const:
                     var constDecl = ConstantDeclarations.FirstOrDefault(x => x.ContainsIndex(registerKey.Number));
-                    if (constDecl != null)
+                    return constDecl.Name;
+                case RegisterType.Sampler:
+                    var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerKey.Number);
+                    if (samplerDecl != null)
                     {
-                        return constDecl.Name;
+                        return samplerDecl.Name;
                     }
                     else
                     {
                         throw new NotImplementedException();
                     }
-                case RegisterType.ColorOut:
-                    return "o";
+                case RegisterType.MiscType:
+                    switch (registerKey.Number)
+                    {
+                        case 0:
+                            return "vFace";
+                        case 1:
+                            return "vPos";
+                        default:
+                            throw new NotImplementedException();
+                    }
+                default:
+                    throw new NotImplementedException();
             }
-
-            return null;
         }
 
         private int GetRegisterFullLength(Instruction instruction, int paramIndex)
         {
             RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
-            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterKey.Equals(registerKey));
+            var decl = _registerDeclarations[registerKey];
             return GetRegisterFullLength(decl);
         }
 
         private static int GetRegisterFullLength(RegisterDeclaration decl)
         {
-            if (decl != null)
+            switch (decl.TypeName)
             {
-                switch (decl.TypeName)
-                {
-                    case "float":
-                        return 1;
-                    case "float2":
-                        return 2;
-                    case "float3":
-                        return 3;
-                }
+                case "float":
+                    return 1;
+                case "float2":
+                    return 2;
+                case "float3":
+                    return 3;
+                case "float4":
+                    return 4;
+                default:
+                    throw new InvalidOperationException();
             }
-            return 4;
         }
 
-        string GetDestinationName(Instruction instruction)
+        private string GetDestinationName(Instruction instruction)
         {
             int destIndex = instruction.GetDestinationParamIndex();
 
@@ -183,7 +165,7 @@ namespace HlslDecompiler
             return string.Format("{0}{1}", registerName, writeMaskName);
         }
 
-        string GetSourceConstantName(Instruction instruction, int srcIndex)
+        private string GetSourceConstantName(Instruction instruction, int srcIndex)
         {
             var registerType = instruction.GetParamRegisterType(srcIndex);
             int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
@@ -336,7 +318,7 @@ namespace HlslDecompiler
             }
         }
 
-        string GetSourceName(Instruction instruction, int srcIndex)
+        private string GetSourceName(Instruction instruction, int srcIndex)
         {
             string sourceRegisterName;
 
@@ -648,18 +630,17 @@ namespace HlslDecompiler
 
             ConstantDefinitions = new List<Constant>();
             ConstantIntDefinitions = new List<ConstantInt>();
-            ConstantDeclarations = _shader.ParseConstantTable();
 
             ParseRegisterDeclarations();
 
             WriteConstantDeclarations();
 
-            if (_inputRegisters.Count > 1)
+            if (_methodInputRegisters.Count > 1)
             {
                 WriteInputStructureDeclaration();
             }
 
-            if (_outputRegisters.Count > 1)
+            if (_methodOutputRegisters.Count > 1)
             {
                 WriteOutputStructureDeclaration();
             }
@@ -671,7 +652,7 @@ namespace HlslDecompiler
             WriteLine("{");
             indent = "\t";
 
-            if (_outputRegisters.Count > 1)
+            if (_methodOutputRegisters.Count > 1)
             {
                 var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
                 WriteLine($"{outputStructType} o;");
@@ -760,43 +741,78 @@ namespace HlslDecompiler
 
         private void ParseRegisterDeclarations()
         {
-            _registerDeclarations = new List<RegisterDeclaration>();
-            _inputRegisters = new List<RegisterDeclaration>();
-            _outputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
-            foreach (var declInstruction in _shader.Instructions.Where(x => x.Opcode == Opcode.Dcl))
-            {
-                var reg = new RegisterDeclaration(declInstruction);
-                _registerDeclarations.Add(reg);
+            _registerDeclarations = new Dictionary<RegisterKey, RegisterDeclaration>();
+            _methodInputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
+            _methodOutputRegisters = new Dictionary<RegisterKey, RegisterDeclaration>();
 
-                RegisterKey registerKey = reg.RegisterKey;
-                switch (registerKey.Type)
+            ConstantDeclarations = _shader.ParseConstantTable();
+            foreach (var constantDeclaration in ConstantDeclarations)
+            {
+                RegisterType registerType;
+                switch (constantDeclaration.RegisterSet)
                 {
-                    case RegisterType.Input:
-                    case RegisterType.MiscType:
-                        _inputRegisters.Add(reg);
+                    case RegisterSet.Bool:
+                        registerType = RegisterType.ConstBool;
                         break;
-                    case RegisterType.Output:
-                    case RegisterType.ColorOut:
-                        _outputRegisters[registerKey] = reg;
+                    case RegisterSet.Float4:
+                        registerType = RegisterType.Const;
                         break;
+                    case RegisterSet.Int4:
+                        registerType = RegisterType.Input;
+                        break;
+                    case RegisterSet.Sampler:
+                        registerType = RegisterType.Sampler;
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
+                if (registerType == RegisterType.Sampler)
+                {
+                    // Use declaration from declaration instruction instead
+                    continue;
+                }
+                for (int r = 0; r < constantDeclaration.RegisterCount; r++)
+                {
+                    var registerKey = new RegisterKey(registerType, constantDeclaration.RegisterIndex + r);
+                    var registerDeclaration = new RegisterDeclaration(registerKey);
+                    _registerDeclarations.Add(registerKey, registerDeclaration);
                 }
             }
 
-            if (_shader.Type == ShaderType.Pixel)
+            foreach (var instruction in _shader.Instructions.Where(i => i.HasDestination))
             {
-                // Find all assignments to color outputs, because pixel shader outputs are not declared.
-                foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
+                if (instruction.Opcode == Opcode.Dcl)
                 {
+                    var registerDeclaration = new RegisterDeclaration(instruction);
+                    RegisterKey registerKey = registerDeclaration.RegisterKey;
+
+                    _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                    switch (registerKey.Type)
+                    {
+                        case RegisterType.Input:
+                        case RegisterType.MiscType:
+                            _methodInputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                        case RegisterType.Output:
+                        case RegisterType.ColorOut:
+                            _methodOutputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                    }
+                }
+                else if (_shader.Type == ShaderType.Pixel)
+                {
+                    // Find all assignments to color outputs, because pixel shader outputs are not declared.
                     int destIndex = instruction.GetDestinationParamIndex();
                     RegisterType registerType = instruction.GetParamRegisterType(destIndex);
                     if (registerType == RegisterType.ColorOut)
                     {
                         int registerNumber = instruction.GetParamRegisterNumber(destIndex);
                         var registerKey = new RegisterKey(registerType, registerNumber);
-                        if (_outputRegisters.ContainsKey(registerKey) == false)
+                        if (_methodOutputRegisters.ContainsKey(registerKey) == false)
                         {
                             var reg = new RegisterDeclaration(registerKey);
-                            _outputRegisters[registerKey] = reg;
+                            _methodOutputRegisters[registerKey] = reg;
                         }
                     }
                 }
@@ -823,7 +839,7 @@ namespace HlslDecompiler
             WriteLine($"struct {inputStructType}");
             WriteLine("{");
             indent = "\t";
-            foreach (var input in _inputRegisters)
+            foreach (var input in _methodInputRegisters.Values)
             {
                 WriteLine($"{input.TypeName} {input.Name} : {input.Semantic};");
             }
@@ -838,7 +854,7 @@ namespace HlslDecompiler
             WriteLine($"struct {outputStructType}");
             WriteLine("{");
             indent = "\t";
-            foreach (var output in _outputRegisters.Values)
+            foreach (var output in _methodOutputRegisters.Values)
             {
                 WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
             }
@@ -849,12 +865,12 @@ namespace HlslDecompiler
 
         private string GetMethodReturnType()
         {
-            switch (_outputRegisters.Count)
+            switch (_methodOutputRegisters.Count)
             {
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    return _outputRegisters.Values.First().TypeName;
+                    return _methodOutputRegisters.Values.First().TypeName;
                 default:
                     return _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
             }
@@ -862,12 +878,12 @@ namespace HlslDecompiler
 
         private string GetMethodSemantic()
         {
-            switch (_outputRegisters.Count)
+            switch (_methodOutputRegisters.Count)
             {
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    string semantic = _outputRegisters.Values.First().Semantic;
+                    string semantic = _methodOutputRegisters.Values.First().Semantic;
                     return $" : {semantic}";
                 default:
                     return string.Empty;
@@ -876,13 +892,13 @@ namespace HlslDecompiler
 
         private string GetMethodParameters()
         {
-            if (_inputRegisters.Count == 0)
+            if (_methodInputRegisters.Count == 0)
             {
                 return string.Empty;
             }
-            else if (_inputRegisters.Count == 1)
+            else if (_methodInputRegisters.Count == 1)
             {
-                var input = _inputRegisters[0];
+                var input = _methodInputRegisters.Values.First();
                 return $"{input.TypeName} {input.Name} : {input.Semantic}";
             }
 
@@ -922,18 +938,18 @@ namespace HlslDecompiler
                 var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
                 string statement = Compile(roots);
 
-                if (_outputRegisters.Count == 1)
+                if (_methodOutputRegisters.Count == 1)
                 {
                     WriteLine($"return {statement};");
                 }
                 else
                 {
-                    var name = _outputRegisters[registerKey].Name;
+                    var name = _methodOutputRegisters[registerKey].Name;
                     WriteLine($"o.{name} = {statement};");
                 }
             }
 
-            if (_outputRegisters.Count > 1)
+            if (_methodOutputRegisters.Count > 1)
             {
                 WriteLine();
                 WriteLine($"return o;");
@@ -969,105 +985,75 @@ namespace HlslDecompiler
 
             if (first is Operation operation)
             {
-                if (operation is AbsoluteOperation)
+                switch (operation)
                 {
-                    return string.Format("abs({0})",
-                        Compile(group.Select(g => g.Children[0])));
-                }
+                    case AbsoluteOperation _:
+                    case CosineOperation _:
+                    case FractionalOperation _:
+                    case NegateOperation _:
+                    case ReciprocalOperation _:
+                    case ReciprocalSquareRootOperation _:
+                    case SignGreaterOrEqualOperation _:
+                    case SignLessOperation _:
+                        {
+                            string name = operation.Mnemonic;
+                            string value = Compile(group.Select(g => g.Children[0]));
+                            return $"{name}({value})";
+                        }
 
-                if (operation is AddOperation)
-                {
-                    return string.Format("{0} + {1}",
-                        Compile(group.Select(g => g.Children[0])),
-                        Compile(group.Select(g => g.Children[1])));
-                }
+                    case AddOperation _:
+                        {
+                            return string.Format("{0} + {1}",
+                                Compile(group.Select(g => g.Children[0])),
+                                Compile(group.Select(g => g.Children[1])));
+                        }
 
-                if (operation is CosineOperation)
-                {
-                    return string.Format("cos({0})",
-                        Compile(group.Select(g => g.Children[0])));
-                }
+                    case SubtractOperation _:
+                        {
+                            return string.Format("{0} - {1}",
+                                Compile(group.Select(g => g.Children[0])),
+                                Compile(group.Select(g => g.Children[1])));
+                        }
 
-                if (operation is FractionalOperation)
-                {
-                    return string.Format("{0} - floor({0})",
-                        Compile(group.Select(g => g.Children[0])));
-                }
+                    case MultiplyOperation _:
+                        {
+                            var multiplicand1 = group.Select(g => g.Children[0]);
+                            var multiplicand2 = group.Select(g => g.Children[1]);
 
-                if (operation is NegateOperation)
-                {
-                    return string.Format("-{0}",
-                        Compile(group.Select(g => g.Children[0])));
-                }
+                            if (multiplicand2.First() is ConstantNode)
+                            {
+                                return string.Format("{0} * {1}",
+                                    Compile(multiplicand2),
+                                    Compile(multiplicand1));
+                            }
 
-                if (operation is ReciprocalOperation)
-                {
-                    return string.Format("rcp({0})",
-                        Compile(group.Select(g => g.Children[0])));
-                }
+                            return string.Format("{0} * {1}",
+                                Compile(multiplicand1),
+                                Compile(multiplicand2));
+                        }
 
-                if (operation is SubtractOperation)
-                {
-                    return string.Format("{0} - {1}",
-                        Compile(group.Select(g => g.Children[0])),
-                        Compile(group.Select(g => g.Children[1])));
-                }
+                    case MaximumOperation _:
+                    case MinimumOperation _:
+                    case PowerOperation _:
+                        {
+                            var value1 = Compile(group.Select(g => g.Children[0]));
+                            var value2 = Compile(group.Select(g => g.Children[1]));
 
-                if (operation is MaximumOperation)
-                {
-                    var value1 = group.Select(g => g.Children[0]);
-                    var value2 = group.Select(g => g.Children[1]);
+                            var name = operation.Mnemonic;
 
-                    return string.Format("max({0}, {1})",
-                        Compile(value1),
-                        Compile(value2));
-                }
+                            return $"{name}({value1}, {value2})";
+                        }
 
-                if (operation is MinimumOperation)
-                {
-                    var value1 = group.Select(g => g.Children[0]);
-                    var value2 = group.Select(g => g.Children[1]);
+                    case LinearInterpolateOperation _:
+                        {
+                            var value1 = Compile(group.Select(g => g.Children[0]));
+                            var value2 = Compile(group.Select(g => g.Children[1]));
+                            var value3 = Compile(group.Select(g => g.Children[2]));
 
-                    return string.Format("min({0}, {1})",
-                        Compile(value1),
-                        Compile(value2));
-                }
+                            var name = "lerp";
 
-                if (operation is MultiplyOperation)
-                {
-                    var multiplicand1 = group.Select(g => g.Children[0]);
-                    var multiplicand2 = group.Select(g => g.Children[1]);
-
-                    if (multiplicand2.First() is ConstantNode)
-                    {
-                        return string.Format("{0} * {1}",
-                            Compile(multiplicand2),
-                            Compile(multiplicand1));
-                    }
-
-                    return string.Format("{0} * {1}",
-                        Compile(multiplicand1),
-                        Compile(multiplicand2));
-                }
-
-                if (operation is ReciprocalSquareRootOperation)
-                {
-                    return string.Format("rsqrt({0})",
-                        Compile(group.Select(g => g.Children[0])));
-                }
-
-                if (operation is SignGreaterOrEqualOperation)
-                {
-                    var value1 = group.Select(g => g.Children[0]);
-                    var value2 = group.Select(g => g.Children[1]);
-                    return $"({Compile(value1)} >= {Compile(value2)}) ? 1 : 0";
-                }
-
-                if (operation is SignLessOperation)
-                {
-                    var value1 = group.Select(g => g.Children[0]);
-                    var value2 = group.Select(g => g.Children[1]);
-                    return $"({Compile(value1)} < {Compile(value2)}) ? 1 : 0";
+                            return $"{name}({value1}, {value2}, {value3})";
+                        }
                 }
             }
 
@@ -1079,14 +1065,11 @@ namespace HlslDecompiler
                 if (first is RegisterInputNode shaderInput)
                 {
                     var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
-                    RegisterType registerType = shaderInput.RegisterComponentKey.Type;
-                    int registerNumber = shaderInput.RegisterComponentKey.Number;
 
                     string swizzle = "";
-                    if (registerType != RegisterType.Sampler)
+                    if (registerKey.Type != RegisterType.Sampler)
                     {
-                        var decl = _registerDeclarations.FirstOrDefault(x =>
-                                x.RegisterKey.Equals(registerKey));
+                        var decl = _registerDeclarations[registerKey];
                         swizzle = GetAstSourceSwizzleName(components, GetRegisterFullLength(decl));
                     }
 
@@ -1109,6 +1092,13 @@ namespace HlslDecompiler
                     string input2 = Compile(dotProductOutputNode.Inputs2);
                     string swizzle = GetAstSourceSwizzleName(components, 4);
                     return $"dot({input1}, {input2}){swizzle}";
+                }
+
+                if (first is NormalizeOutputNode)
+                {
+                    string input = Compile(first.Children);
+                    string swizzle = GetAstSourceSwizzleName(components, 4);
+                    return $"normalize({input}){swizzle}";
                 }
 
                 throw new NotImplementedException();

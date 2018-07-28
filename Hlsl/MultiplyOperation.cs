@@ -11,6 +11,8 @@
         public HlslTreeNode Factor1 => Children[0];
         public HlslTreeNode Factor2 => Children[1];
 
+        public override string Mnemonic => "mul";
+
         public override HlslTreeNode Reduce()
         {
             var factor1 = Factor1.Reduce();
@@ -67,11 +69,6 @@
             Children[0] = factor1;
             Children[1] = factor2;
             return this;
-        }
-
-        public override string ToString()
-        {
-            return $"mul({Factor1}, {Factor2})";
         }
     }
 }

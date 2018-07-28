@@ -7,6 +7,8 @@
             AddChild(value);
         }
 
+        public override string Mnemonic => "mov";
+
         public HlslTreeNode Value => Children[0];
 
         public override HlslTreeNode Reduce()

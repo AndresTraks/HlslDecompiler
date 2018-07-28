@@ -11,9 +11,6 @@
         public HlslTreeNode Minuend => Children[0];
         public HlslTreeNode Subtrahend => Children[1];
 
-        public override string ToString()
-        {
-            return $"sub({Minuend}, {Subtrahend})";
-        }
+        public override string Mnemonic => "sub";
     }
 }

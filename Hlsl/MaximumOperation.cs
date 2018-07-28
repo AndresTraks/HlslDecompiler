@@ -11,9 +11,6 @@
         public HlslTreeNode Value1 => Children[0];
         public HlslTreeNode Value2 => Children[1];
 
-        public override string ToString()
-        {
-            return $"max({Value1}, {Value2})";
-        }
+        public override string Mnemonic => "max";
     }
 }

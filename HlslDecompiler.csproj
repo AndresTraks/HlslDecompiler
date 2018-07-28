@@ -53,6 +53,8 @@
     <Compile Include="Hlsl\LinearInterpolateOperation.cs" />
     <Compile Include="Hlsl\MaximumOperation.cs" />
     <Compile Include="Hlsl\MinimumOperation.cs" />
+    <Compile Include="Hlsl\PowerOperation.cs" />
+    <Compile Include="Hlsl\NormalizeOutputNode.cs" />
     <Compile Include="Hlsl\SignLessOperation.cs" />
     <Compile Include="Hlsl\SignGreaterOrEqualOperation.cs" />
     <Compile Include="Hlsl\ReciprocalSquareRootOperation.cs" />

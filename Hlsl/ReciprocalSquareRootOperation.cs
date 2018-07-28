@@ -7,9 +7,6 @@
             AddChild(value);
         }
 
-        public override string ToString()
-        {
-            return $"rsqrt({Children[0]})";
-        }
+        public override string Mnemonic => "rsqrt";
     }
 }

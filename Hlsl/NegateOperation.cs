@@ -19,9 +19,6 @@
             return base.Reduce();
         }
 
-        public override string ToString()
-        {
-            return $"-({Children[0]})";
-        }
+        public override string Mnemonic => "-";
     }
 }

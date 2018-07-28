@@ -8,9 +8,6 @@
             AddChild(value2);
         }
 
-        public override string ToString()
-        {
-            return $"slt({Children[0]}, {Children[2]})";
-        }
+        public override string Mnemonic => "slt";
     }
 }

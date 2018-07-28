@@ -11,6 +11,8 @@
         public HlslTreeNode Addend1 => Children[0];
         public HlslTreeNode Addend2 => Children[1];
 
+        public override string Mnemonic => "add";
+
         public override HlslTreeNode Reduce()
         {
             var addend1 = Addend1.Reduce();
@@ -53,11 +55,6 @@
             Children[0] = addend1;
             Children[1] = addend2;
             return this;
-        }
-
-        public override string ToString()
-        {
-            return $"add({Addend1}, {Addend2})";
         }
     }
 }

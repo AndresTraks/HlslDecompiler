@@ -162,6 +162,7 @@ namespace HlslDecompiler
                 case Opcode.Min:
                 case Opcode.Mov:
                 case Opcode.Mul:
+                case Opcode.Pow:
                 case Opcode.Rcp:
                 case Opcode.Rsq:
                 case Opcode.SinCos:
@@ -189,6 +190,8 @@ namespace HlslDecompiler
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                            case Opcode.Pow:
+                                return new PowerOperation(inputs[0], inputs[1]);
                             case Opcode.Rcp:
                                 return new ReciprocalOperation(inputs[0]);
                             case Opcode.Rsq:
@@ -211,7 +214,10 @@ namespace HlslDecompiler
                 case Opcode.TexLDL:
                     return CreateTextureLoadOutputNode(instruction, componentIndex);
                 case Opcode.Dp3:
+                case Opcode.Dp4:
                     return CreateDotProductOutputNode(instruction, componentIndex);
+                case Opcode.Nrm:
+                    return CreateNormalizeOutputNode(instruction, componentIndex);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
@@ -225,18 +231,7 @@ namespace HlslDecompiler
             {
                 int inputParameterIndex = i + 1;
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
-                if (_activeOutputs.TryGetValue(inputKey, out HlslTreeNode input) == false)
-                {
-                    if (inputKey.Type == RegisterType.Const)
-                    {
-                        input = new ConstantNode(inputKey.Number);
-                        _activeOutputs[inputKey] = input;
-                    }
-                    else
-                    {
-                        throw new Exception($"Unknown input {inputKey}");
-                    }
-                }
+                HlslTreeNode input = _activeOutputs[inputKey];
                 var modifier = instruction.GetSourceModifier(inputParameterIndex);
                 input = ApplyModifier(input, modifier);
                 inputs[i] = input;
@@ -261,10 +256,8 @@ namespace HlslDecompiler
             for (int component = 0; component < numSamplerOutputComponents; component++)
             {
                 RegisterComponentKey textureCoordsKey = GetParamRegisterComponentKey(instruction, TextureCoordsIndex, component);
-                if (_activeOutputs.TryGetValue(textureCoordsKey, out HlslTreeNode textureCoord))
-                {
-                    texCoords.Add(textureCoord);
-                }
+                HlslTreeNode textureCoord = _activeOutputs[textureCoordsKey];
+                texCoords.Add(textureCoord);
             }
 
             return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent);
@@ -280,6 +273,18 @@ namespace HlslDecompiler
             }
 
             return new DotProductOutputNode(inputs, outputComponent);
+        }
+
+        private HlslTreeNode CreateNormalizeOutputNode(Instruction instruction, int outputComponent)
+        {
+            var inputs = new List<HlslTreeNode>();
+            for (int component = 0; component < 3; component++)
+            {
+                IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
+                inputs.AddRange(componentInput);
+            }
+
+            return new NormalizeOutputNode(inputs, outputComponent);
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)
@@ -306,15 +311,18 @@ namespace HlslDecompiler
                 case Opcode.Abs:
                 case Opcode.Frc:
                 case Opcode.Mov:
+                case Opcode.Nrm:
                 case Opcode.Rcp:
                 case Opcode.Rsq:
                 case Opcode.SinCos:
                     return 1;
                 case Opcode.Add:
                 case Opcode.Dp3:
+                case Opcode.Dp4:
                 case Opcode.Max:
                 case Opcode.Min:
                 case Opcode.Mul:
+                case Opcode.Pow:
                 case Opcode.Sge:
                 case Opcode.Slt:
                 case Opcode.Tex:

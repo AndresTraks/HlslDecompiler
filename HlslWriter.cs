@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.Hlsl;
+using HlslDecompiler.Hlsl.Compiler;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -962,7 +963,7 @@ namespace HlslDecompiler
             List<HlslTreeNode> groupList = group.ToList();
             int componentCount = groupList.Count;
 
-            var subGroups = GroupComponents(groupList);
+            var subGroups = NodeGrouper.GroupComponents(groupList);
             if (subGroups.Count == 0)
             {
                 throw new InvalidOperationException();
@@ -970,17 +971,25 @@ namespace HlslDecompiler
 
             if (subGroups.Count > 1)
             {
+
                 // In float4(x, float), x cannot be promoted from float to float3
                 // In float4(x, y), x cannot be promoted to float2 and y to float2
+                // float4(float2, float2) is allowed
                 var constructorParts = subGroups.Select(Compile);
                 return $"float{componentCount}({string.Join(", ", constructorParts)})";
             }
-
+            
+            if (groupList.Count == 2 && NodeGrouper.IsMatrixMultiplication(groupList[0], groupList[1]))
+            {
+                return "mul(matrix_2x2, position.xy)";
+            }
+            
             var first = group.First();
 
             if (first is ConstantNode constant)
             {
-                return CompileConstant(constant);
+                var components = group.Cast<ConstantNode>().ToArray();
+                return ConstantCompiler.Compile(components);
             }
 
             if (first is Operation operation)
@@ -1105,106 +1114,6 @@ namespace HlslDecompiler
             }
 
             throw new NotImplementedException();
-        }
-
-        private static string CompileConstant(ConstantNode firstConstant)
-        {
-            return firstConstant.Value.ToString(CultureInfo.InvariantCulture);
-        }
-
-        private IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
-        {
-            switch (nodes.Count)
-            {
-                case 0:
-                case 1:
-                    return new List<IList<HlslTreeNode>> { nodes };
-            }
-
-            var groups = new List<IList<HlslTreeNode>>();
-            int n, groupStart = 0;
-            for (n = 1; n < nodes.Count; n++)
-            {
-                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
-                {
-                    groups.Add(nodes.GetRange(groupStart, n - groupStart));
-                    groupStart = n;
-                }
-            }
-            groups.Add(nodes.GetRange(groupStart, n - groupStart));
-            return groups;
-        }
-
-        private bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
-        {
-            if (node1 is ConstantNode constant1 &&
-                node2 is ConstantNode constant2)
-            {
-                return constant1.Value == constant2.Value;
-            }
-
-            if (node1 is RegisterInputNode input1 &&
-                node2 is RegisterInputNode input2)
-            {
-                return input1.RegisterComponentKey.Type == input2.RegisterComponentKey.Type &&
-                       input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number;
-            }
-
-            if (node1 is Operation operation1 &&
-                node2 is Operation operation2)
-            {
-                if (operation1 is AddOperation add1 &&
-                    operation2 is AddOperation add2)
-                {
-                    return add1.Children.Any(c1 => add2.Children.Any(c2 => CanGroupComponents(c1, c2)));
-                }
-                else if (
-                    (operation1 is AbsoluteOperation && operation2 is AbsoluteOperation)
-                    || (operation1 is CosineOperation && operation2 is CosineOperation)
-                    || (operation1 is FractionalOperation && operation2 is FractionalOperation)
-                    || (operation1 is NegateOperation && operation2 is NegateOperation)
-                    || (operation1 is ReciprocalOperation && operation2 is ReciprocalOperation)
-                    || (operation1 is ReciprocalSquareRootOperation && operation2 is ReciprocalSquareRootOperation))
-                {
-                    return CanGroupComponents(operation1.Children[0], operation2.Children[0]);
-                }
-                else if (
-                    (operation1 is MinimumOperation && operation2 is MinimumOperation) ||
-                    (operation1 is SignGreaterOrEqualOperation && operation2 is SignGreaterOrEqualOperation) ||
-                    (operation1 is SignLessOperation && operation2 is SignLessOperation))
-                {
-                    return CanGroupComponents(operation1.Children[0], operation2.Children[0])
-                        && CanGroupComponents(operation1.Children[1], operation2.Children[1]);
-                }
-                else if (operation1 is MultiplyOperation multiply1 &&
-                    operation2 is MultiplyOperation multiply2)
-                {
-                    return multiply1.Children.Any(c1 => multiply2.Children.Any(c2 => CanGroupComponents(c1, c2)));
-                }
-                else if (operation1 is SubtractOperation subtract1 &&
-                    operation2 is SubtractOperation subtract2)
-                {
-                    return subtract1.Subtrahend.Equals(subtract2.Subtrahend);
-                }
-            }
-
-            if (node1 is IHasComponentIndex &&
-                node2 is IHasComponentIndex)
-            {
-                if (node1.Children.Count == node2.Children.Count)
-                {
-                    for (int i = 0; i < node1.Children.Count; i++)
-                    {
-                        if (node1.Children[i].Equals(node2.Children[i]) == false)
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 }

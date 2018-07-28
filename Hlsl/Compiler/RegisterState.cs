@@ -7,6 +7,8 @@ namespace HlslDecompiler.Hlsl
 {
     public sealed class RegisterState
     {
+        public readonly bool ColumnMajorOrder = true;
+
         private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
 
         private ICollection<Constant> _constantDefinitions { get; } = new List<Constant>();
@@ -16,6 +18,166 @@ namespace HlslDecompiler.Hlsl
         public RegisterState(ShaderModel shader)
         {
             Load(shader);
+        }
+
+        public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
+
+        public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
+        public IDictionary<RegisterKey, RegisterDeclaration> MethodOutputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
+
+        public string GetDestinationName(Instruction instruction)
+        {
+            int destIndex = instruction.GetDestinationParamIndex();
+            RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
+
+            string registerName = GetRegisterName(registerKey);
+            registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
+            int registerLength = GetRegisterFullLength(registerKey);
+            string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, true);
+
+            return string.Format("{0}{1}", registerName, writeMaskName);
+        }
+
+        public string GetSourceName(Instruction instruction, int srcIndex)
+        {
+            string sourceRegisterName;
+
+            var registerType = instruction.GetParamRegisterType(srcIndex);
+            switch (registerType)
+            {
+                case RegisterType.Const:
+                case RegisterType.Const2:
+                case RegisterType.Const3:
+                case RegisterType.Const4:
+                case RegisterType.ConstBool:
+                case RegisterType.ConstInt:
+                    sourceRegisterName = GetSourceConstantName(instruction, srcIndex);
+                    if (sourceRegisterName != null)
+                    {
+                        return sourceRegisterName;
+                    }
+
+                    ParameterType parameterType;
+                    switch (registerType)
+                    {
+                        case RegisterType.Const:
+                        case RegisterType.Const2:
+                        case RegisterType.Const3:
+                        case RegisterType.Const4:
+                            parameterType = ParameterType.Float;
+                            break;
+                        case RegisterType.ConstBool:
+                            parameterType = ParameterType.Bool;
+                            break;
+                        case RegisterType.ConstInt:
+                            parameterType = ParameterType.Int;
+                            break;
+                        default:
+                            throw new NotImplementedException();
+                    }
+                    int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
+                    ConstantDeclaration decl = FindConstant(parameterType, registerNumber);
+                    if (decl == null)
+                    {
+                        // Constant register not found in def statements nor the constant table
+                        throw new NotImplementedException();
+                    }
+
+                    if (decl.ParameterClass == ParameterClass.MatrixRows)
+                    {
+                        sourceRegisterName = string.Format("{0}[{1}]", decl.Name, registerNumber - decl.RegisterIndex);
+                    }
+                    else
+                    {
+                        sourceRegisterName = decl.Name;
+                    }
+                    break;
+                default:
+                    RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
+                    sourceRegisterName = GetRegisterName(registerKey);
+                    break;
+            }
+
+            sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
+
+            sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex);
+            return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+        }
+
+        public int GetRegisterFullLength(RegisterKey registerKey)
+        {
+            RegisterDeclaration decl = _registerDeclarations[registerKey];
+            switch (decl.TypeName)
+            {
+                case "float":
+                    return 1;
+                case "float2":
+                    return 2;
+                case "float3":
+                    return 3;
+                case "float4":
+                    return 4;
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
+        public string GetRegisterName(RegisterKey registerKey)
+        {
+            var decl = _registerDeclarations[registerKey];
+            switch (registerKey.Type)
+            {
+                case RegisterType.Texture:
+                    return decl.Name;
+                case RegisterType.Input:
+                    return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                case RegisterType.Output:
+                    return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
+                case RegisterType.Const:
+                    var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
+                    if (constDecl.Rows == 1)
+                    {
+                        return constDecl.Name;
+                    }
+                    string row = (registerKey.Number - constDecl.RegisterIndex).ToString();
+                    return constDecl.Name + $"[{row}]";
+                case RegisterType.Sampler:
+                    ConstantDeclaration samplerDecl = FindConstant(RegisterSet.Sampler, registerKey.Number);
+                    if (samplerDecl != null)
+                    {
+                        return samplerDecl.Name;
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
+                case RegisterType.MiscType:
+                    switch (registerKey.Number)
+                    {
+                        case 0:
+                            return "vFace";
+                        case 1:
+                            return "vPos";
+                        default:
+                            throw new NotImplementedException();
+                    }
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        public ConstantDeclaration FindConstant(RegisterSet set, int index)
+        {
+            return ConstantDeclarations.FirstOrDefault(c =>
+                c.RegisterSet == set &&
+                c.ContainsIndex(index));
+        }
+
+        public ConstantDeclaration FindConstant(ParameterType type, int index)
+        {
+            return ConstantDeclarations.FirstOrDefault(c =>
+                c.ParameterType == type &&
+                c.ContainsIndex(index));
         }
 
         private void Load(ShaderModel shader)
@@ -110,148 +272,6 @@ namespace HlslDecompiler.Hlsl
                         }
                     }
                 }
-            }
-        }
-
-        public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
-
-        public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
-        public IDictionary<RegisterKey, RegisterDeclaration> MethodOutputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
-
-        public string GetDestinationName(Instruction instruction)
-        {
-            int destIndex = instruction.GetDestinationParamIndex();
-            RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
-
-            string registerName = GetRegisterName(registerKey);
-            registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
-            int registerLength = GetRegisterFullLength(registerKey);
-            string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, true);
-
-            return string.Format("{0}{1}", registerName, writeMaskName);
-        }
-
-        public string GetSourceName(Instruction instruction, int srcIndex)
-        {
-            string sourceRegisterName;
-
-            var registerType = instruction.GetParamRegisterType(srcIndex);
-            switch (registerType)
-            {
-                case RegisterType.Const:
-                case RegisterType.Const2:
-                case RegisterType.Const3:
-                case RegisterType.Const4:
-                case RegisterType.ConstBool:
-                case RegisterType.ConstInt:
-                    sourceRegisterName = GetSourceConstantName(instruction, srcIndex);
-                    if (sourceRegisterName != null)
-                    {
-                        return sourceRegisterName;
-                    }
-
-                    ParameterType parameterType;
-                    switch (registerType)
-                    {
-                        case RegisterType.Const:
-                        case RegisterType.Const2:
-                        case RegisterType.Const3:
-                        case RegisterType.Const4:
-                            parameterType = ParameterType.Float;
-                            break;
-                        case RegisterType.ConstBool:
-                            parameterType = ParameterType.Bool;
-                            break;
-                        case RegisterType.ConstInt:
-                            parameterType = ParameterType.Int;
-                            break;
-                        default:
-                            throw new NotImplementedException();
-                    }
-                    int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
-                    var decl = ConstantDeclarations.FirstOrDefault(
-                        x => x.ParameterType == parameterType && x.ContainsIndex(registerNumber));
-                    if (decl == null)
-                    {
-                        // Constant register not found in def statements nor the constant table
-                        throw new NotImplementedException();
-                    }
-
-                    if (decl.ParameterClass == ParameterClass.MatrixRows)
-                    {
-                        sourceRegisterName = string.Format("{0}[{1}]", decl.Name, registerNumber - decl.RegisterIndex);
-                    }
-                    else
-                    {
-                        sourceRegisterName = decl.Name;
-                    }
-                    break;
-                default:
-                    RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
-                    sourceRegisterName = GetRegisterName(registerKey);
-                    break;
-            }
-
-            sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
-
-            sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex);
-            return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
-        }
-
-        public int GetRegisterFullLength(RegisterKey registerKey)
-        {
-            RegisterDeclaration decl = _registerDeclarations[registerKey];
-            switch (decl.TypeName)
-            {
-                case "float":
-                    return 1;
-                case "float2":
-                    return 2;
-                case "float3":
-                    return 3;
-                case "float4":
-                    return 4;
-                default:
-                    throw new InvalidOperationException();
-            }
-        }
-
-        public string GetRegisterName(RegisterKey registerKey)
-        {
-            var decl = _registerDeclarations[registerKey];
-            switch (registerKey.Type)
-            {
-                case RegisterType.Texture:
-                    return decl.Name;
-                case RegisterType.Input:
-                    return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
-                case RegisterType.Output:
-                    return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
-                case RegisterType.Const:
-                    var constDecl = ConstantDeclarations.FirstOrDefault(x => x.ContainsIndex(registerKey.Number));
-                    return constDecl.Name;
-                case RegisterType.Sampler:
-                    var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerKey.Number);
-                    if (samplerDecl != null)
-                    {
-                        return samplerDecl.Name;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                case RegisterType.MiscType:
-                    switch (registerKey.Number)
-                    {
-                        case 0:
-                            return "vFace";
-                        case 1:
-                            return "vPos";
-                        default:
-                            throw new NotImplementedException();
-                    }
-                default:
-                    throw new NotImplementedException();
             }
         }
 

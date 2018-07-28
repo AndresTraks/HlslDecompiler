@@ -126,8 +126,7 @@ namespace HlslDecompiler.Hlsl
             RegisterInputNode c,
             RegisterInputNode d)
         {
-            const bool ColumnMajorOrder = true;
-            if (ColumnMajorOrder)
+            if (_registers.ColumnMajorOrder)
             {
                 Swap(ref b, ref c);
             }

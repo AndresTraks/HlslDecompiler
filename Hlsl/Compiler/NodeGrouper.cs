@@ -5,9 +5,12 @@ namespace HlslDecompiler.Hlsl
 {
     public class NodeGrouper
     {
-        public NodeGrouper(RegisterState registerState)
+        private readonly RegisterState _registers;
+
+        public NodeGrouper(RegisterState registers)
         {
-            MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registerState);
+            MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registers);
+            _registers = registers;
         }
 
         public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
@@ -57,8 +60,19 @@ namespace HlslDecompiler.Hlsl
             if (node1 is RegisterInputNode input1 &&
                 node2 is RegisterInputNode input2)
             {
-                return input1.RegisterComponentKey.Type == input2.RegisterComponentKey.Type &&
-                       input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number;
+                if (input1.RegisterComponentKey.Type == input2.RegisterComponentKey.Type)
+                {
+                    int constIndex1 = input1.RegisterComponentKey.Number;
+                    int constIndex2 = input2.RegisterComponentKey.Number;
+                    if (constIndex1 == constIndex2)
+                    {
+                        return true;
+                    }
+
+                    var constantRegister1 = _registers.FindConstant(ParameterType.Float, constIndex1);
+                    return constantRegister1 != null && constantRegister1.ContainsIndex(constIndex2);
+                }
+                return false;
             }
 
             if (node1 is Operation operation1 &&

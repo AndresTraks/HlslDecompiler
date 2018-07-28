@@ -52,7 +52,6 @@
     <Compile Include="Hlsl\Compiler\ConstantCompiler.cs" />
     <Compile Include="Hlsl\Compiler\MatrixMultiplicationGrouper.cs" />
     <Compile Include="Hlsl\Compiler\NodeCompiler.cs" />
-    <Compile Include="Hlsl\DotProductOutputNode.cs" />
     <Compile Include="Hlsl\Operations\CompareOperation.cs" />
     <Compile Include="Hlsl\Operations\LinearInterpolateOperation.cs" />
     <Compile Include="Hlsl\Operations\MaximumOperation.cs" />
@@ -70,7 +69,7 @@
     <Compile Include="Hlsl\HlslWriter.cs" />
     <Compile Include="Hlsl\Operations\CosineOperation.cs" />
     <Compile Include="Hlsl\Operations\SineOperation.cs" />
-    <Compile Include="Hlsl\RegisterState.cs" />
+    <Compile Include="Hlsl\Compiler\RegisterState.cs" />
     <Compile Include="IHasComponentIndex.cs" />
     <Compile Include="Hlsl\Operations\MoveOperation.cs" />
     <Compile Include="Hlsl\Operations\AbsoluteOperation.cs" />

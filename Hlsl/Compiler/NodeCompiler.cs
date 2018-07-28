@@ -172,14 +172,6 @@ namespace HlslDecompiler.Hlsl.Compiler
                     return $"tex2D({sampler}, {texcoords}){swizzle}";
                 }
 
-                if (first is DotProductOutputNode dotProductOutputNode)
-                {
-                    string input1 = Compile(dotProductOutputNode.Inputs1);
-                    string input2 = Compile(dotProductOutputNode.Inputs2);
-                    string swizzle = GetAstSourceSwizzleName(components, 4);
-                    return $"dot({input1}, {input2}){swizzle}";
-                }
-
                 if (first is NormalizeOutputNode)
                 {
                     string input = Compile(first.Children);

@@ -268,14 +268,16 @@ namespace HlslDecompiler
 
         private HlslTreeNode CreateDotProductOutputNode(Instruction instruction, int outputComponent)
         {
-            var inputs = new List<HlslTreeNode>();
-            for (int component = 0; component < 3; component++)
+            var addends = new List<HlslTreeNode>();
+            int numComponents = instruction.Opcode == Opcode.Dp3 ? 3 : 4;
+            for (int component = 0; component < numComponents; component++)
             {
                 IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
-                inputs.AddRange(componentInput);
+                var multiply = new MultiplyOperation(componentInput[0], componentInput[1]);
+                addends.Add(multiply);
             }
 
-            return new DotProductOutputNode(inputs, outputComponent);
+            return new AddOperation(new AddOperation(addends[0], addends[1]), addends[2]);
         }
 
         private HlslTreeNode CreateNormalizeOutputNode(Instruction instruction, int outputComponent)

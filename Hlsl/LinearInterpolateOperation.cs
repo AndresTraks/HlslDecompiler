@@ -12,5 +12,10 @@
         public HlslTreeNode Amount => Children[0];
         public HlslTreeNode Value1 => Children[1];
         public HlslTreeNode Value2 => Children[2];
+
+        public override string ToString()
+        {
+            return $"lrp({Amount}, {Value1}, {Value2})";
+        }
     }
 }

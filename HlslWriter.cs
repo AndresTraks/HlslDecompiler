@@ -9,23 +9,25 @@ namespace HlslDecompiler
 {
     public class HlslWriter
     {
-        ShaderModel shader;
-        private bool doAstAnalysis;
+        private readonly ShaderModel _shader;
+        private readonly bool doAstAnalysis;
 
         FileStream hlslFile;
         StreamWriter hlslWriter;
         string indent = "";
 
-        int numInputs, numOutputs;
-
         public ICollection<Constant> ConstantDefinitions { get; private set; }
         public ICollection<ConstantInt> ConstantIntDefinitions { get; private set; }
         public ICollection<ConstantDeclaration> ConstantDeclarations { get; private set; }
-        public ICollection<RegisterDeclaration> RegisterDeclarations { get; private set; }
+
+        private ICollection<RegisterDeclaration> _registerDeclarations;
+        private IList<RegisterDeclaration> _inputRegisters;
+        private IList<RegisterDeclaration> _outputRegisters;
+        private HashSet<string> _pixelShaderOutputRegisters;
 
         public HlslWriter(ShaderModel shader, bool doAstAnalysis = false)
         {
-            this.shader = shader;
+            _shader = shader;
             this.doAstAnalysis = doAstAnalysis;
         }
 
@@ -92,7 +94,7 @@ namespace HlslDecompiler
 
         private string GetRegisterName(RegisterType registerType, int registerNumber)
         {
-            var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
+            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
             if (decl != null)
             {
                 switch (registerType)
@@ -100,9 +102,9 @@ namespace HlslDecompiler
                     case RegisterType.Texture:
                         return decl.Name;
                     case RegisterType.Input:
-                        return (numInputs == 1) ? decl.Name : ("i." + decl.Name);
+                        return (_inputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     case RegisterType.Output:
-                        return (numOutputs == 1) ? "o" : ("o." + decl.Name);
+                        return (_outputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Sampler:
                         var samplerDecl = ConstantDeclarations.FirstOrDefault(x => x.RegisterSet == RegisterSet.Sampler && x.RegisterIndex == registerNumber);
                         if (samplerDecl != null)
@@ -171,7 +173,7 @@ namespace HlslDecompiler
         {
             RegisterType registerType = instruction.GetParamRegisterType(paramIndex);
             int registerNumber = instruction.GetParamRegisterNumber(paramIndex);
-            var decl = RegisterDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
+            var decl = _registerDeclarations.FirstOrDefault(x => x.RegisterType == registerType && x.RegisterNumber == registerNumber);
             return GetRegisterFullLength(decl);
         }
 
@@ -625,7 +627,7 @@ namespace HlslDecompiler
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Tex:
-                    if ((shader.MajorVersion == 1 && shader.MinorVersion >= 4) || (shader.MajorVersion > 1))
+                    if ((_shader.MajorVersion == 1 && _shader.MinorVersion >= 4) || (_shader.MajorVersion > 1))
                     {
                         WriteLine("{0} = tex2D({2}, {1});", GetDestinationName(instruction),
                             GetSourceName(instruction, 1), GetSourceName(instruction, 2));
@@ -652,139 +654,34 @@ namespace HlslDecompiler
 
             ConstantDefinitions = new List<Constant>();
             ConstantIntDefinitions = new List<ConstantInt>();
+            ConstantDeclarations = _shader.ParseConstantTable();
 
-            // Look for dcl instructions
-            RegisterDeclarations = new List<RegisterDeclaration>();
-            foreach (var declInstruction in shader.Instructions.Where(x => x.Opcode == Opcode.Dcl))
+            ParseRegisterDeclarations();
+
+            WriteConstantDeclarations();
+
+            if (_inputRegisters.Count > 1)
             {
-                var decl = new RegisterDeclaration(declInstruction);
-                RegisterDeclarations.Add(decl);
+                WriteInputStructureDeclaration();
             }
 
-            // Look for and parse the constant table
-            ConstantDeclarations = shader.ParseConstantTable();
-            if (ConstantDeclarations.Count != 0)
+            if (_outputRegisters.Count > 1)
             {
-                foreach (ConstantDeclaration declaration in ConstantDeclarations)
-                {
-                    string typeName = GetTypeName(declaration);
-                    WriteLine("{0} {1};", typeName, declaration.Name);
-                }
-
-                WriteLine();
+                WriteOutputStructureDeclaration();
             }
 
-            string methodTypeName;
-            string methodParamList = "";
-            string methodSemantic = "";
-
-            // Create the input structure
-            var dclInputs = RegisterDeclarations.Where(x => x.RegisterType == RegisterType.Input || x.RegisterType == RegisterType.MiscType);
-            numInputs = dclInputs.Count();
-            if (numInputs == 0)
-            {
-            }
-            else if (numInputs == 1)
-            {
-                var dclInput = dclInputs.Single();
-                methodParamList = string.Format("{0} {1} : {2}",
-                    dclInput.TypeName, dclInput.Name, dclInput.Semantic);
-            }
-            else
-            {
-                if (shader.Type == ShaderType.Pixel)
-                {
-                    methodParamList = "VS_OUT i";
-                    WriteLine("struct VS_OUT");
-                }
-                else
-                {
-                    methodParamList = "VS_IN i";
-                    WriteLine("struct VS_IN");
-                }
-                WriteLine("{");
-                indent = "\t";
-                foreach (var dclInput in dclInputs)
-                {
-                    WriteLine("{0} {1} : {2};",
-                        dclInput.TypeName, dclInput.Name, dclInput.Semantic);
-                }
-                indent = "";
-                WriteLine("};");
-                WriteLine();
-            }
-
-            // Create the output structure
-            if (shader.Type == ShaderType.Vertex)
-            {
-                var dclOutputs = RegisterDeclarations.Where(x => x.RegisterType == RegisterType.Output || x.RegisterType == RegisterType.ColorOut);
-                numOutputs = dclOutputs.Count();
-                if (numOutputs == 1)
-                {
-                    var dclOutput = dclOutputs.Single();
-                    methodTypeName = dclOutput.TypeName;
-                    methodSemantic = " : " + dclOutput.Semantic;
-                }
-                else
-                {
-                    methodTypeName = "VS_OUT";
-                    WriteLine("struct VS_OUT");
-                    WriteLine("{");
-                    indent = "\t";
-                    foreach (var dclOutput in dclOutputs)
-                    {
-                        WriteLine("{0} {1} : {2};",
-                            dclOutput.TypeName, dclOutput.Name, dclOutput.Semantic);
-                    }
-                    indent = "";
-                    WriteLine("};");
-                    WriteLine();
-                }
-            }
-            else
-            {
-                // Find all assignments to pixel shader color outputs.
-                Dictionary<string, int> colorRegisters = new Dictionary<string, int>();
-                foreach (Instruction instruction in shader.Instructions)
-                {
-                    if (!instruction.HasDestination)
-                    {
-                        continue;
-                    }
-
-                    int destIndex = instruction.GetDestinationParamIndex();
-                    if (instruction.GetParamRegisterType(destIndex) == RegisterType.ColorOut)
-                    {
-                        string registerName = "oC" + instruction.GetParamRegisterNumber(destIndex).ToString();
-                        if (!colorRegisters.ContainsKey(registerName))
-                        {
-                            colorRegisters.Add(registerName, 0);
-                        }
-                    }
-                }
-
-                if (colorRegisters.Count > 1)
-                {
-                    methodTypeName = "PS_OUT";
-                    WriteLine("struct PS_OUT");
-                }
-                else
-                {
-                    methodTypeName = "float4";
-                    methodSemantic = " : COLOR";
-                }
-            }
-
-
-            WriteLine("{0} main({1}){2}", methodTypeName, methodParamList, methodSemantic);
+            string methodReturnType = GetMethodReturnType();
+            string methodParameters = GetMethodParameters();
+            string methodSemantic = GetMethodSemantic();
+            WriteLine("{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
             WriteLine("{");
             indent = "\t";
 
             HlslAst ast = null;
             if (doAstAnalysis)
-           {
+            {
                 var parser = new BytecodeParser();
-                ast = parser.Parse(shader);
+                ast = parser.Parse(_shader);
                 ast.ReduceTree();
             }
             if (ast != null)
@@ -793,13 +690,13 @@ namespace HlslDecompiler
             }
             else
             {
-                WriteLine("{0} o;", methodTypeName);
+                WriteLine("{0} o;", methodReturnType);
                 WriteLine();
 
                 // Find all assignments to temporary variables
                 // and declare the variables.
                 var tempRegisters = new Dictionary<string, int>();
-                foreach (Instruction instruction in shader.Instructions)
+                foreach (Instruction instruction in _shader.Instructions)
                 {
                     if (!instruction.HasDestination)
                     {
@@ -845,7 +742,7 @@ namespace HlslDecompiler
                     WriteLine("{0} {1};", writeMaskName, registerName);
                 }
 
-                foreach (Instruction instruction in shader.Instructions)
+                foreach (Instruction instruction in _shader.Instructions)
                 {
                     WriteInstruction(instruction);
                 }
@@ -858,6 +755,168 @@ namespace HlslDecompiler
 
             hlslWriter.Dispose();
             hlslFile.Dispose();
+        }
+
+        private void ParseRegisterDeclarations()
+        {
+            _registerDeclarations = new List<RegisterDeclaration>();
+            _inputRegisters = new List<RegisterDeclaration>();
+            _outputRegisters = new List<RegisterDeclaration>();
+            foreach (var declInstruction in _shader.Instructions.Where(x => x.Opcode == Opcode.Dcl))
+            {
+                var reg = new RegisterDeclaration(declInstruction);
+                _registerDeclarations.Add(reg);
+
+                switch (reg.RegisterType)
+                {
+                    case RegisterType.Input:
+                    case RegisterType.MiscType:
+                        _inputRegisters.Add(reg);
+                        break;
+                    case RegisterType.Output:
+                    case RegisterType.ColorOut:
+                        _outputRegisters.Add(reg);
+                        break;
+                }
+            }
+
+            if (_shader.Type == ShaderType.Pixel)
+            {
+                // Find all assignments to color outputs, because these outputs are not declared.
+                _pixelShaderOutputRegisters = new HashSet<string>();
+                foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
+                {
+                    int destIndex = instruction.GetDestinationParamIndex();
+                    if (instruction.GetParamRegisterType(destIndex) == RegisterType.ColorOut)
+                    {
+                        string registerName = "oC" + instruction.GetParamRegisterNumber(destIndex).ToString();
+                        _pixelShaderOutputRegisters.Add(registerName);
+                    }
+                }
+            }
+        }
+
+        private void WriteConstantDeclarations()
+        {
+            if (ConstantDeclarations.Count != 0)
+            {
+                foreach (ConstantDeclaration declaration in ConstantDeclarations)
+                {
+                    string typeName = GetTypeName(declaration);
+                    WriteLine("{0} {1};", typeName, declaration.Name);
+                }
+
+                WriteLine();
+            }
+        }
+
+        private void WriteInputStructureDeclaration()
+        {
+            if (_shader.Type == ShaderType.Pixel)
+            {
+                WriteLine("struct VS_OUT");
+            }
+            else
+            {
+                WriteLine("struct VS_IN");
+            }
+            WriteLine("{");
+            indent = "\t";
+            foreach (var dclInput in _inputRegisters)
+            {
+                WriteLine("{0} {1} : {2};",
+                    dclInput.TypeName, dclInput.Name, dclInput.Semantic);
+            }
+            indent = "";
+            WriteLine("};");
+            WriteLine();
+        }
+
+        private void WriteOutputStructureDeclaration()
+        {
+            if (_outputRegisters.Count > 1)
+            {
+                WriteLine("struct VS_OUT");
+                WriteLine("{");
+                indent = "\t";
+                foreach (var output in _outputRegisters)
+                {
+                    WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
+                }
+                indent = "";
+                WriteLine("};");
+                WriteLine();
+            }
+        }
+
+        private string GetMethodReturnType()
+        {
+            if (_shader.Type == ShaderType.Pixel)
+            {
+                switch (_pixelShaderOutputRegisters.Count)
+                {
+                    case 0:
+                        throw new InvalidOperationException();
+                    case 1:
+                        return "float4";
+                    default:
+                        return "PS_OUT";
+                }
+            }
+
+            switch (_outputRegisters.Count)
+            {
+                case 0:
+                    throw new InvalidOperationException();
+                case 1:
+                    return _outputRegisters[0].TypeName;
+                default:
+                    return "VS_OUT";
+            }
+        }
+
+        private string GetMethodSemantic()
+        {
+            if (_shader.Type == ShaderType.Pixel)
+            {
+                switch (_pixelShaderOutputRegisters.Count)
+                {
+                    case 0:
+                        throw new InvalidOperationException();
+                    case 1:
+                        return " : COLOR";
+                    default:
+                        return "PS_OUT";
+                }
+            }
+
+            switch (_outputRegisters.Count)
+            {
+                case 0:
+                    throw new InvalidOperationException();
+                case 1:
+                    string semantic = _outputRegisters[0].Semantic;
+                    return $" : {semantic}";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private string GetMethodParameters()
+        {
+            if (_inputRegisters.Count == 0)
+            {
+                return string.Empty;
+            }
+            else if (_inputRegisters.Count == 1)
+            {
+                var input = _inputRegisters[0];
+                return $"{input.TypeName} {input.Name} : {input.Semantic}";
+            }
+
+            return _shader.Type == ShaderType.Pixel
+                    ? "VS_OUT i"
+                    : "VS_IN i";
         }
 
         private string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs, int registerSize)
@@ -1034,7 +1093,7 @@ namespace HlslDecompiler
                     string swizzle = "";
                     if (registerType != RegisterType.Sampler)
                     {
-                        var decl = RegisterDeclarations.FirstOrDefault(x =>
+                        var decl = _registerDeclarations.FirstOrDefault(x =>
                                 x.RegisterType == registerType &&
                                 x.RegisterNumber == registerNumber);
                         swizzle = GetAstSourceSwizzleName(components, GetRegisterFullLength(decl));

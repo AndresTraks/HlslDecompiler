@@ -111,6 +111,11 @@
     // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549176(v=vs.85).aspx
     public class RegisterDeclaration
     {
+        public RegisterDeclaration(Instruction declInstruction)
+        {
+            DeclInstruction = declInstruction;
+        }
+
         public Instruction DeclInstruction { get; private set; }
 
         public RegisterType RegisterType { get { return DeclInstruction.GetParamRegisterType(1); } }
@@ -138,11 +143,6 @@
                 }
                 return typeName;
             }
-        }
-
-        public RegisterDeclaration(Instruction declInstruction)
-        {
-            DeclInstruction = declInstruction;
         }
 
         public override string ToString()

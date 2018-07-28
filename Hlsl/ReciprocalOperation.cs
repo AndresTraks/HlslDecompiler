@@ -6,5 +6,10 @@
         {
             AddChild(value);
         }
+
+        public override string ToString()
+        {
+            return $"rcp({Children[0]})";
+        }
     }
 }

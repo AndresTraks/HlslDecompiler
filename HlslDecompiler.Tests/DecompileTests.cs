@@ -19,6 +19,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_tex2d_swizzle")]
         [TestCase("ps_tex2d_two_samplers")]
         [TestCase("vs_constant")]
+        //[TestCase("vs_constant_struct")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";

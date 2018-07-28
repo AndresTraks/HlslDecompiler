@@ -6,5 +6,10 @@
         {
             AddChild(value);
         }
+
+        public override string ToString()
+        {
+            return $"cos({Children[0]})";
+        }
     }
 }

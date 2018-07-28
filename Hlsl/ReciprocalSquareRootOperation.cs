@@ -6,5 +6,10 @@
         {
             AddChild(value);
         }
+
+        public override string ToString()
+        {
+            return $"rsqrt({Children[0]})";
+        }
     }
 }

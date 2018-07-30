@@ -135,6 +135,15 @@ namespace HlslDecompiler.Hlsl
                     return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                 case RegisterType.Const:
                     var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
+                    if (ColumnMajorOrder)
+                    {
+                        if (constDecl.Rows == 1)
+                        {
+                            return constDecl.Name;
+                        }
+                        string col = (registerKey.Number - constDecl.RegisterIndex).ToString();
+                        return $"transpose({constDecl.Name})[{col}]";
+                    }
                     if (constDecl.Rows == 1)
                     {
                         return constDecl.Name;

@@ -50,6 +50,7 @@
     <Compile Include="DetectFormat.cs" />
     <Compile Include="FourCC.cs" />
     <Compile Include="Hlsl\Compiler\ConstantCompiler.cs" />
+    <Compile Include="Hlsl\Compiler\DotProductGrouper.cs" />
     <Compile Include="Hlsl\Compiler\MatrixMultiplicationGrouper.cs" />
     <Compile Include="Hlsl\Compiler\NodeCompiler.cs" />
     <Compile Include="Hlsl\Operations\CompareOperation.cs" />

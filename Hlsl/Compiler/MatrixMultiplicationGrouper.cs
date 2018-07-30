@@ -1,6 +1,4 @@
-﻿using System.Linq;
-
-namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl
 {
     public class MatrixMultiplicationGrouper
     {
@@ -136,8 +134,7 @@ namespace HlslDecompiler.Hlsl
             {
                 return null;
             }
-            ConstantDeclaration baseComponent = _registers.ConstantDeclarations.First(
-                constant => constant.RegisterIndex == aKey.RegisterKey.Number);
+            ConstantDeclaration baseComponent = _registers.FindConstant(ParameterType.Float, aKey.Number);
             if (baseComponent.Rows != 2 || baseComponent.Columns != 2)
             {
                 return null;

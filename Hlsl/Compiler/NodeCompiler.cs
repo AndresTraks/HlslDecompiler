@@ -24,7 +24,23 @@ namespace HlslDecompiler.Hlsl.Compiler
 
         public string Compile(List<HlslTreeNode> group)
         {
-            var subGroups = _nodeGrouper.GroupComponents(group);
+            if (group.Count == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(group));
+            }
+
+            if (group.Count == 1)
+            {
+                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(group[0]);
+                if (dotProduct != null)
+                {
+                    string value1 = Compile(dotProduct.Value1);
+                    string value2 = Compile(dotProduct.Value2);
+                    return $"dot({value1}, {value2})";
+                }
+            }
+
+            IList<IList<HlslTreeNode>> subGroups = _nodeGrouper.GroupComponents(group);
             if (subGroups.Count == 0)
             {
                 throw new InvalidOperationException();

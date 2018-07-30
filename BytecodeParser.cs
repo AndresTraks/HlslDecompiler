@@ -218,7 +218,7 @@ namespace HlslDecompiler
                     return CreateTextureLoadOutputNode(instruction, componentIndex);
                 case Opcode.Dp3:
                 case Opcode.Dp4:
-                    return CreateDotProductOutputNode(instruction, componentIndex);
+                    return CreateDotProductNode(instruction, componentIndex);
                 case Opcode.Nrm:
                     return CreateNormalizeOutputNode(instruction, componentIndex);
                 default:
@@ -266,7 +266,7 @@ namespace HlslDecompiler
             return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent);
         }
 
-        private HlslTreeNode CreateDotProductOutputNode(Instruction instruction, int outputComponent)
+        private HlslTreeNode CreateDotProductNode(Instruction instruction, int outputComponent)
         {
             var addends = new List<HlslTreeNode>();
             int numComponents = instruction.Opcode == Opcode.Dp3 ? 3 : 4;
@@ -277,7 +277,7 @@ namespace HlslDecompiler
                 addends.Add(multiply);
             }
 
-            return new AddOperation(new AddOperation(addends[0], addends[1]), addends[2]);
+            return addends.Aggregate((addition, addend) => new AddOperation(addition, addend));
         }
 
         private HlslTreeNode CreateNormalizeOutputNode(Instruction instruction, int outputComponent)

@@ -9,10 +9,12 @@ namespace HlslDecompiler.Hlsl
 
         public NodeGrouper(RegisterState registers)
         {
+            DotProductGrouper = new DotProductGrouper(this);
             MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registers);
             _registers = registers;
         }
 
+        public DotProductGrouper DotProductGrouper { get; }
         public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
 
         public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
@@ -21,14 +23,16 @@ namespace HlslDecompiler.Hlsl
             {
                 case 0:
                 case 1:
-                    return new List<IList<HlslTreeNode>> { nodes };
+                    return new IList<HlslTreeNode>[] { nodes };
             }
 
             var groups = new List<IList<HlslTreeNode>>();
             int n, groupStart = 0;
             for (n = 1; n < nodes.Count; n++)
             {
-                if (!CanGroupComponents(nodes[groupStart], nodes[n]))
+                HlslTreeNode node1 = nodes[groupStart];
+                HlslTreeNode node2 = nodes[n];
+                if (CanGroupComponents(node1, node2) == false)
                 {
                     groups.Add(nodes.GetRange(groupStart, n - groupStart));
                     groupStart = n;
@@ -49,6 +53,11 @@ namespace HlslDecompiler.Hlsl
             if (MatrixMultiplicationGrouper.CanGroup(node1, node2))
             {
                 return true;
+            }
+
+            if (node1.GetType() != node2.GetType())
+            {
+                return false;
             }
 
             if (node1 is ConstantNode constant1 &&

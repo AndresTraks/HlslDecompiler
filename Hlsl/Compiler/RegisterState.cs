@@ -106,6 +106,12 @@ namespace HlslDecompiler.Hlsl
 
         public int GetRegisterFullLength(RegisterKey registerKey)
         {
+            if (registerKey.Type == RegisterType.Const)
+            {
+                var constant = FindConstant(ParameterType.Float, registerKey.Number);
+                return constant.Columns;
+            }
+
             RegisterDeclaration decl = _registerDeclarations[registerKey];
             switch (decl.TypeName)
             {

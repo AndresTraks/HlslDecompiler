@@ -16,7 +16,13 @@
 
         public DotProductContext TryGetDotProductGroup(HlslTreeNode node)
         {
-            DotProductContext dot3 = TryGetDot3ProductGroup(node);
+            var dot4 = TryGetDot4ProductGroup(node);
+            if (dot4 != null)
+            {
+                return dot4;
+            }
+
+            var dot3 = TryGetDot3ProductGroup(node);
             if (dot3 != null)
             {
                 return dot3;
@@ -25,11 +31,50 @@
             return TryGetDot2ProductGroup(node);
         }
 
+        public DotProductContext TryGetDot4ProductGroup(HlslTreeNode node)
+        {
+            // 4 by 4 dot product has a pattern of:
+            // #1  dot3(abc, xyz) + dw
+            // #2  dw + dot3(abc, xyz)
+
+            if (!(node is AddOperation addition))
+            {
+                return null;
+            }
+
+            DotProductContext innerAddition = TryGetDot3ProductGroup(addition.Addend1);
+            if (innerAddition != null)
+            {
+                if (!(addition.Addend2 is MultiplyOperation dw))
+                {
+                    return null;
+                }
+
+                HlslTreeNode a = innerAddition.Value1[0];
+                HlslTreeNode b = innerAddition.Value1[1];
+                HlslTreeNode c = innerAddition.Value1[2];
+                HlslTreeNode d = dw.Factor1;
+                HlslTreeNode x = innerAddition.Value2[0];
+                HlslTreeNode y = innerAddition.Value2[1];
+                HlslTreeNode z = innerAddition.Value2[2];
+                HlslTreeNode w = dw.Factor2;
+                if (_nodeGrouper.CanGroupComponents(c, d))
+                {
+                    if (_nodeGrouper.CanGroupComponents(z, w))
+                    {
+                        return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public DotProductContext TryGetDot3ProductGroup(HlslTreeNode node)
         {
             // 3 by 3 dot product has a pattern of:
-            // #1  (a*x + b*y) + c*z
-            // #2  c*z + (a*x + b*y)
+            // #1  dot(ab, xy) + c*z
+            // #2  c*z + dot(ab, xy)
 
             if (!(node is AddOperation addition))
             {

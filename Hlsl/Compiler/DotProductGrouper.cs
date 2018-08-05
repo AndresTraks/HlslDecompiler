@@ -1,4 +1,6 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿using System;
+
+namespace HlslDecompiler.Hlsl
 {
     public class DotProductGrouper
     {
@@ -9,12 +11,22 @@
             _nodeGrouper = nodeGrouper;
         }
 
-        public bool IsDotProduct(HlslTreeNode node)
+        public DotProductContext TryGetDotProductGroup(HlslTreeNode node, int dimension, bool allowMatrixColumn = false)
         {
-            return TryGetDotProductGroup(node) != null;
+            switch (dimension)
+            {
+                case 2:
+                    return TryGetDot2ProductGroup(node, allowMatrixColumn);
+                case 3:
+                    return TryGetDot3ProductGroup(node);
+                case 4:
+                    return TryGetDot3ProductGroup(node);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(dimension));
+            }
         }
 
-        public DotProductContext TryGetDotProductGroup(HlslTreeNode node)
+        public DotProductContext TryGetDotProductGroup(HlslTreeNode node, bool allowMatrixColumn = false)
         {
             var dot4 = TryGetDot4ProductGroup(node);
             if (dot4 != null)
@@ -28,7 +40,7 @@
                 return dot3;
             }
 
-            return TryGetDot2ProductGroup(node);
+            return TryGetDot2ProductGroup(node, allowMatrixColumn);
         }
 
         public DotProductContext TryGetDot4ProductGroup(HlslTreeNode node)
@@ -81,15 +93,29 @@
                 return null;
             }
 
+            MultiplyOperation cz;
             DotProductContext innerAddition = TryGetDot2ProductGroup(addition.Addend1);
             if (innerAddition == null)
             {
-                return null;
-            }
+                innerAddition = TryGetDot2ProductGroup(addition.Addend2);
+                if (innerAddition == null)
+                {
+                    return null;
+                }
 
-            if (!(addition.Addend2 is MultiplyOperation cz))
+                cz = addition.Addend1 as MultiplyOperation;
+                if (cz == null)
+                {
+                    return null;
+                }
+            }
+            else
             {
-                return null;
+                cz = addition.Addend2 as MultiplyOperation;
+                if (cz == null)
+                {
+                    return null;
+                }
             }
 
             HlslTreeNode a = innerAddition.Value1[0];
@@ -109,56 +135,48 @@
             return null;
         }
 
-        public DotProductContext TryGetDot2ProductGroup(HlslTreeNode node)
+        public DotProductContext TryGetDot2ProductGroup(HlslTreeNode node, bool allowMatrixColumn = false)
         {
             // 2 by 2 dot product has a pattern of:
             // a*x + b*y
 
-            if (!(node is AddOperation addition))
-            {
-                return null;
-            }
-
-            if (!(addition.Addend1 is MultiplyOperation ax))
-            {
-                return null;
-            }
-            if (!(addition.Addend2 is MultiplyOperation by))
+            if (!(node is AddOperation addition) ||
+                !(addition.Addend1 is MultiplyOperation ax) ||
+                !(addition.Addend2 is MultiplyOperation by))
             {
                 return null;
             }
 
             HlslTreeNode a = ax.Factor1;
-            if (a is ConstantNode)
-            {
-                return null;
-            }
             HlslTreeNode b = by.Factor1;
-            if (b is ConstantNode)
-            {
-                return null;
-            }
-            if (_nodeGrouper.CanGroupComponents(a, b) == false)
+            HlslTreeNode x = ax.Factor2;
+            HlslTreeNode y = by.Factor2;
+            if (a is ConstantNode || b is ConstantNode || x is ConstantNode || y is ConstantNode)
             {
                 return null;
             }
 
-            HlslTreeNode x = ax.Factor2;
-            if (x is ConstantNode)
+            if (CanGroupComponents(a, b) == false)
             {
-                return null;
+                if (CanGroupComponents(a, y) == false)
+                {
+                    return null;
+                }
+                Swap(ref b, ref y);
             }
-            HlslTreeNode y = by.Factor2;
-            if (y is ConstantNode)
-            {
-                return null;
-            }
-            if (_nodeGrouper.CanGroupComponents(x, y) == false)
+
+            if (CanGroupComponents(x, y) == false)
             {
                 return null;
             }
 
             return new DotProductContext(new[] { a, b }, new[] { x, y });
+        }
+
+        private bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b)
+        {
+            const bool allowMatrixColumn = true;
+            return _nodeGrouper.CanGroupComponents(a, b, allowMatrixColumn);
         }
 
         private static void Swap(ref HlslTreeNode a, ref HlslTreeNode b)
@@ -181,5 +199,7 @@
 
         public HlslTreeNode[] Value1 { get; }
         public HlslTreeNode[] Value2 { get; }
+
+        public int Dimension => Value1.Length;
     }
 }

@@ -19,6 +19,23 @@ namespace HlslDecompiler.Hlsl
 
         public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
         {
+            List<IList<HlslTreeNode>> groups;
+
+            var multiplicationGroup = MatrixMultiplicationGrouper.TryGetMultiplicationGroup(nodes);
+            if (multiplicationGroup != null)
+            {
+                int dimension = multiplicationGroup.Vector.Length;
+                groups = new List<IList<HlslTreeNode>>(new[]
+                    { nodes.Take(dimension).ToList()
+                });
+                if (dimension < nodes.Count)
+                {
+                    List<HlslTreeNode> rest = nodes.Skip(dimension).ToList();
+                    groups.AddRange(GroupComponents(rest));
+                }
+                return groups;
+            }
+
             switch (nodes.Count)
             {
                 case 0:
@@ -26,19 +43,21 @@ namespace HlslDecompiler.Hlsl
                     return new IList<HlslTreeNode>[] { nodes };
             }
 
-            var groups = new List<IList<HlslTreeNode>>();
-            int n, groupStart = 0;
-            for (n = 1; n < nodes.Count; n++)
+            groups = new List<IList<HlslTreeNode>>();
+
+            int groupStart = 0;
+            int nodeIndex;
+            for (nodeIndex = 1; nodeIndex < nodes.Count; nodeIndex++)
             {
                 HlslTreeNode node1 = nodes[groupStart];
-                HlslTreeNode node2 = nodes[n];
+                HlslTreeNode node2 = nodes[nodeIndex];
                 if (CanGroupComponents(node1, node2) == false)
                 {
-                    groups.Add(nodes.GetRange(groupStart, n - groupStart));
-                    groupStart = n;
+                    groups.Add(nodes.GetRange(groupStart, nodeIndex - groupStart));
+                    groupStart = nodeIndex;
                 }
             }
-            groups.Add(nodes.GetRange(groupStart, n - groupStart));
+            groups.Add(nodes.GetRange(groupStart, nodeIndex - groupStart));
             return groups;
         }
 
@@ -48,13 +67,8 @@ namespace HlslDecompiler.Hlsl
         // =>
         // n.xy = a.xy + b.xy
         // n = a + b
-        public bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2)
+        public bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2, bool allowMatrixColumn = false)
         {
-            if (MatrixMultiplicationGrouper.CanGroup(node1, node2))
-            {
-                return true;
-            }
-
             if (node1.GetType() != node2.GetType())
             {
                 return false;
@@ -78,8 +92,17 @@ namespace HlslDecompiler.Hlsl
                         return true;
                     }
 
-                    var constantRegister1 = _registers.FindConstant(ParameterType.Float, constIndex1);
-                    return constantRegister1 != null && constantRegister1.ContainsIndex(constIndex2);
+                    if (allowMatrixColumn)
+                    {
+                        if (input1.RegisterComponentKey.ComponentIndex !=
+                            input2.RegisterComponentKey.ComponentIndex)
+                        {
+                            return false;
+                        }
+
+                        var constantRegister1 = _registers.FindConstant(ParameterType.Float, constIndex1);
+                        return constantRegister1 != null && constantRegister1.ContainsIndex(constIndex2);
+                    }
                 }
                 return false;
             }

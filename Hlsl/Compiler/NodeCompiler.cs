@@ -39,26 +39,19 @@ namespace HlslDecompiler.Hlsl.Compiler
                     return $"dot({value1}, {value2})";
                 }
             }
-
-            IList<IList<HlslTreeNode>> subGroups = _nodeGrouper.GroupComponents(group);
-            if (subGroups.Count == 0)
+            else
             {
-                throw new InvalidOperationException();
-            }
+                IList<IList<HlslTreeNode>> subGroups = _nodeGrouper.GroupComponents(group);
+                if (subGroups.Count > 1)
+                {
+                    // In float4(x, float), x cannot be promoted from float to float3
+                    // In float4(x, y), x cannot be promoted to float2 and y to float2
+                    // float4(float2, float2) is allowed
+                    var constructorParts = subGroups.Select(Compile);
+                    return $"float{group.Count}({string.Join(", ", constructorParts)})";
+                }
 
-            if (subGroups.Count > 1)
-            {
-                // In float4(x, float), x cannot be promoted from float to float3
-                // In float4(x, y), x cannot be promoted to float2 and y to float2
-                // float4(float2, float2) is allowed
-                var constructorParts = subGroups.Select(Compile);
-                return $"float{group.Count}({string.Join(", ", constructorParts)})";
-            }
-
-            if (group.Count == 2)
-            {
-                MatrixMultiplicationContext multiplication =
-                    _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(group[0], group[1]);
+                var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(group);
                 if (multiplication != null)
                 {
                     string matrixName = multiplication.MatrixDeclaration.Name;

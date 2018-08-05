@@ -1,4 +1,7 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿using System;
+using System.Collections.Generic;
+
+namespace HlslDecompiler.Hlsl
 {
     public class MatrixMultiplicationGrouper
     {
@@ -11,192 +14,164 @@
             _registers = registers;
         }
 
-        public bool CanGroup(HlslTreeNode node1, HlslTreeNode node2)
+        public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> nodes)
         {
-            return TryGetMultiplicationGroup(node1, node2) != null;
-        }
+            const bool allowMatrix = true;
 
-        public MatrixMultiplicationContext TryGetMultiplicationGroup(HlslTreeNode node1, HlslTreeNode node2)
-        {
-            // 2x2(abcd) * 2x1(xy) matrix multiplication has a pattern of:
-            // node1 = a*x + b*y
-            // node2 = c*x + d*y
-
-            // 1x2(xy) * 2x2(abcd) matrix multiplication has a pattern of:
-            // node1 = a*x + c*y
-            // node2 = b*x + d*y
-
-            if (!(node1 is AddOperation add1))
-            {
-                return null;
-            }
-            if (!(node2 is AddOperation add2))
+            var first = nodes[0];
+            var firstDotProductNode = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(first, allowMatrix);
+            if (firstDotProductNode == null)
             {
                 return null;
             }
 
-            if (!(add1.Addend1 is MultiplyOperation ax))
-            {
-                return null;
-            }
-            if (!(add1.Addend2 is MultiplyOperation by))
-            {
-                return null;
-            }
-            if (!(add2.Addend1 is MultiplyOperation cx))
-            {
-                return null;
-            }
-            if (!(add2.Addend2 is MultiplyOperation dy))
+            int dimension = firstDotProductNode.Dimension;
+            if (nodes.Count < dimension)
             {
                 return null;
             }
 
-            HlslTreeNode x = GetCommonFactor(ax, cx);
-            if (x == null)
+            HlslTreeNode[] firstMatrixRow = TryGetMatrixRow(firstDotProductNode);
+            if (firstMatrixRow == null)
             {
                 return null;
-                /*
-                x = GetCommonFactor(ax, dy);
-                if (x == null)
+            }
+
+            HlslTreeNode[] vector = null;
+            var matrixRows = new HlslTreeNode[dimension][];
+            matrixRows[0] = firstMatrixRow;
+            for (int i = 1; i < dimension; i++)
+            {
+                var next = nodes[i];
+                var dotProductNode = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(next, dimension, allowMatrix);
+                if (dotProductNode == null)
                 {
                     return null;
                 }
-                Swap(ref cx, ref dy);
-                */
-            }
-            if (!(GetOther(ax, x) is RegisterInputNode a))
-            {
-                return null;
-            }
-            if (!(GetOther(cx, x) is RegisterInputNode c))
-            {
-                return null;
-            }
 
-            HlslTreeNode y = GetCommonFactor(by, dy);
-            if (y == null)
-            {
-                return null;
-            }
-            if (!(GetOther(by, y) is RegisterInputNode b))
-            {
-                return null;
-            }
-            if (!(GetOther(dy, y) is RegisterInputNode d))
-            {
-                return null;
-            }
-
-            if (_nodeGrouper.CanGroupComponents(x, y) == false)
-            {
-                return null;
-            }
-
-            bool matrixByVector;
-            HlslTreeNode[] vector;
-            ConstantDeclaration matrix = TryGet2x2MatrixDeclaration(a, b, c, d);
-            if (matrix != null)
-            {
-                vector = new[] { x, y };
-                matrixByVector = true;
-            }
-            else
-            {
-                matrix = TryGet2x2MatrixDeclaration(a, c, b, d);
-                if (matrix != null)
+                HlslTreeNode[] matrixRow = TryGetMatrixRow(dotProductNode);
+                if (matrixRow == null)
                 {
-                    vector = new[] { y, x };
-                    matrixByVector = false;
+                    return null;
+                }
+                matrixRows[i] = matrixRow;
+
+                HlslTreeNode[] nextVector = dotProductNode.Value1 == matrixRow
+                    ? dotProductNode.Value2
+                    : dotProductNode.Value1;
+
+                if (vector == null)
+                {
+                    vector = nextVector;
                 }
                 else
                 {
-                    return null;
+                    if (IsVectorEquivalent(vector, nextVector) == false)
+                    {
+                        return null;
+                    }
                 }
             }
 
+            ConstantDeclaration matrix = TryGetMatrixDeclaration(matrixRows);
+            if (matrix == null)
+            {
+                return null;
+            }
+
+            SwizzleVector(vector, firstMatrixRow);
+
+            const bool matrixByVector = false;
             return new MatrixMultiplicationContext(vector, matrix, matrixByVector);
         }
 
-        private ConstantDeclaration TryGet2x2MatrixDeclaration(
-            RegisterInputNode a,
-            RegisterInputNode b,
-            RegisterInputNode c,
-            RegisterInputNode d)
+        private void SwizzleVector(HlslTreeNode[] vector, HlslTreeNode[] firstMatrixRow)
         {
-            if (_registers.ColumnMajorOrder)
+            bool needsSwizzle = false;
+            for (int i = 0; i < firstMatrixRow.Length; i++)
             {
-                Swap(ref b, ref c);
+                var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
+                if (i != component)
+                {
+                    needsSwizzle = true;
+                    break;
+                }
             }
 
-            RegisterComponentKey aKey = a.RegisterComponentKey;
-            if (aKey.Type != RegisterType.Const)
+            if (needsSwizzle)
             {
-                return null;
-            }
-            ConstantDeclaration baseComponent = _registers.FindConstant(ParameterType.Float, aKey.Number);
-            if (baseComponent.Rows != 2 || baseComponent.Columns != 2)
-            {
-                return null;
-            }
+                HlslTreeNode[] vectorCopy = new HlslTreeNode[vector.Length];
+                Array.Copy(vector, vectorCopy, vector.Length);
 
-            RegisterComponentKey cKey = c.RegisterComponentKey;
-            if (cKey.Type != RegisterType.Const || cKey.Number != aKey.Number + 1)
-            {
-                return null;
+                for (int i = 0; i < firstMatrixRow.Length; i++)
+                {
+                    var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
+                    if (i != component)
+                    {
+                        vector[i] = vectorCopy[component];
+                    }
+                }
             }
-
-            RegisterComponentKey bKey = b.RegisterComponentKey;
-            if (bKey.Type != RegisterType.Const || bKey.Number != aKey.Number || bKey.ComponentIndex == aKey.ComponentIndex)
-            {
-                return null;
-            }
-
-            RegisterComponentKey dKey = d.RegisterComponentKey;
-            if (dKey.Type != RegisterType.Const || dKey.Number != cKey.Number || dKey.ComponentIndex == cKey.ComponentIndex)
-            {
-                return null;
-            }
-
-            return baseComponent;
         }
 
-        private HlslTreeNode GetCommonFactor(MultiplyOperation ax, MultiplyOperation cx)
+        private ConstantDeclaration TryGetMatrixDeclaration(HlslTreeNode[][] dotProductNodes)
         {
-            if (_nodeGrouper.AreNodesEquivalent(ax.Factor1, cx.Factor1) ||
-                _nodeGrouper.AreNodesEquivalent(ax.Factor1, cx.Factor2))
+            int dimension = dotProductNodes.Length;
+            var first = dotProductNodes[0];
+            if (first[0] is RegisterInputNode register1)
             {
-                return ax.Factor1;
-            }
-
-            if (_nodeGrouper.AreNodesEquivalent(ax.Factor2, cx.Factor1) ||
-                _nodeGrouper.AreNodesEquivalent(ax.Factor2, cx.Factor2))
-            {
-                return ax.Factor2;
+                var matrixBaseConstant = _registers.FindConstant(register1);
+                if (matrixBaseConstant != null && 
+                    matrixBaseConstant.Rows == dimension && 
+                    matrixBaseConstant.Columns == dimension)
+                {
+                    return matrixBaseConstant;
+                }
             }
 
             return null;
         }
 
-        private HlslTreeNode GetOther(MultiplyOperation ax, HlslTreeNode x)
+        private HlslTreeNode[] TryGetMatrixRow(DotProductContext firstDotProductNode)
         {
-            return _nodeGrouper.AreNodesEquivalent(ax.Factor1, x)
-                ? ax.Factor2
-                : ax.Factor1;
+            if (firstDotProductNode.Value1[0] is RegisterInputNode value1)
+            {
+                ConstantDeclaration constant = _registers.FindConstant(value1);
+                if( constant != null && constant.Rows > 1)
+                {
+                    return firstDotProductNode.Value1;
+                }
+            }
+
+            if (firstDotProductNode.Value2[0] is RegisterInputNode value2)
+            {
+                ConstantDeclaration constant = _registers.FindConstant(value2);
+                if (constant != null && constant.Rows > 1)
+                {
+                    return firstDotProductNode.Value2;
+                }
+            }
+
+            return null;
         }
 
-        private static void Swap(ref MultiplyOperation a, ref MultiplyOperation b)
+        private bool IsVectorEquivalent(HlslTreeNode[] vector1, HlslTreeNode[] vector2)
         {
-            MultiplyOperation temp = a;
-            a = b;
-            b = temp;
-        }
+            int dimension = vector1.Length;
+            if (dimension != vector2.Length)
+            {
+                return false;
+            }
 
-        private static void Swap(ref RegisterInputNode a, ref RegisterInputNode b)
-        {
-            RegisterInputNode temp = a;
-            a = b;
-            b = temp;
+            for (int i = 0; i < dimension; i++)
+            {
+                if (_nodeGrouper.AreNodesEquivalent(vector1[i], vector2[i]) == false)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 

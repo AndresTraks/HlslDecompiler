@@ -181,6 +181,15 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        public ConstantDeclaration FindConstant(RegisterInputNode register)
+        {
+            if (register.RegisterComponentKey.Type != RegisterType.Const)
+            {
+                return null;
+            }
+            return FindConstant(ParameterType.Float, register.RegisterComponentKey.Number);
+        }
+
         public ConstantDeclaration FindConstant(RegisterSet set, int index)
         {
             return ConstantDeclarations.FirstOrDefault(c =>

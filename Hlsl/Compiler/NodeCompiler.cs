@@ -22,16 +22,16 @@ namespace HlslDecompiler.Hlsl.Compiler
             return Compile(group.ToList());
         }
 
-        public string Compile(List<HlslTreeNode> group)
+        public string Compile(List<HlslTreeNode> components)
         {
-            if (group.Count == 0)
+            if (components.Count == 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(group));
+                throw new ArgumentOutOfRangeException(nameof(components));
             }
 
-            if (group.Count == 1)
+            if (components.Count == 1)
             {
-                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(group[0]);
+                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(components[0]);
                 if (dotProduct != null)
                 {
                     string value1 = Compile(dotProduct.Value1);
@@ -41,17 +41,17 @@ namespace HlslDecompiler.Hlsl.Compiler
             }
             else
             {
-                IList<IList<HlslTreeNode>> subGroups = _nodeGrouper.GroupComponents(group);
-                if (subGroups.Count > 1)
+                IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
+                if (componentGroups.Count > 1)
                 {
                     // In float4(x, float), x cannot be promoted from float to float3
                     // In float4(x, y), x cannot be promoted to float2 and y to float2
                     // float4(float2, float2) is allowed
-                    var constructorParts = subGroups.Select(Compile);
-                    return $"float{group.Count}({string.Join(", ", constructorParts)})";
+                    var constructorParts = componentGroups.Select(Compile);
+                    return $"float{components.Count}({string.Join(", ", constructorParts)})";
                 }
 
-                var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(group);
+                var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(components);
                 if (multiplication != null)
                 {
                     string matrixName = multiplication.MatrixDeclaration.Name;
@@ -62,12 +62,12 @@ namespace HlslDecompiler.Hlsl.Compiler
                 }
             }
 
-            var first = group[0];
+            var first = components[0];
 
             if (first is ConstantNode constant)
             {
-                var components = group.Cast<ConstantNode>().ToArray();
-                return _constantCompiler.Compile(components);
+                var constantComponents = components.Cast<ConstantNode>().ToArray();
+                return _constantCompiler.Compile(constantComponents);
             }
 
             if (first is Operation operation)
@@ -84,28 +84,28 @@ namespace HlslDecompiler.Hlsl.Compiler
                     case SignLessOperation _:
                         {
                             string name = operation.Mnemonic;
-                            string value = Compile(group.Select(g => g.Children[0]));
+                            string value = Compile(components.Select(g => g.Children[0]));
                             return $"{name}({value})";
                         }
 
                     case AddOperation _:
                         {
                             return string.Format("{0} + {1}",
-                                Compile(group.Select(g => g.Children[0])),
-                                Compile(group.Select(g => g.Children[1])));
+                                Compile(components.Select(g => g.Children[0])),
+                                Compile(components.Select(g => g.Children[1])));
                         }
 
                     case SubtractOperation _:
                         {
                             return string.Format("{0} - {1}",
-                                Compile(group.Select(g => g.Children[0])),
-                                Compile(group.Select(g => g.Children[1])));
+                                Compile(components.Select(g => g.Children[0])),
+                                Compile(components.Select(g => g.Children[1])));
                         }
 
                     case MultiplyOperation _:
                         {
-                            var multiplicand1 = group.Select(g => g.Children[0]);
-                            var multiplicand2 = group.Select(g => g.Children[1]);
+                            var multiplicand1 = components.Select(g => g.Children[0]);
+                            var multiplicand2 = components.Select(g => g.Children[1]);
 
                             if (multiplicand2.First() is ConstantNode)
                             {
@@ -123,8 +123,8 @@ namespace HlslDecompiler.Hlsl.Compiler
                     case MinimumOperation _:
                     case PowerOperation _:
                         {
-                            var value1 = Compile(group.Select(g => g.Children[0]));
-                            var value2 = Compile(group.Select(g => g.Children[1]));
+                            var value1 = Compile(components.Select(g => g.Children[0]));
+                            var value2 = Compile(components.Select(g => g.Children[1]));
 
                             var name = operation.Mnemonic;
 
@@ -133,9 +133,9 @@ namespace HlslDecompiler.Hlsl.Compiler
 
                     case LinearInterpolateOperation _:
                         {
-                            var value1 = Compile(group.Select(g => g.Children[0]));
-                            var value2 = Compile(group.Select(g => g.Children[1]));
-                            var value3 = Compile(group.Select(g => g.Children[2]));
+                            var value1 = Compile(components.Select(g => g.Children[0]));
+                            var value2 = Compile(components.Select(g => g.Children[1]));
+                            var value3 = Compile(components.Select(g => g.Children[2]));
 
                             var name = "lerp";
 
@@ -144,9 +144,9 @@ namespace HlslDecompiler.Hlsl.Compiler
 
                     case CompareOperation _:
                         {
-                            var value1 = Compile(group.Select(g => g.Children[0]));
-                            var value2 = Compile(group.Select(g => g.Children[1]));
-                            var value3 = Compile(group.Select(g => g.Children[2]));
+                            var value1 = Compile(components.Select(g => g.Children[0]));
+                            var value2 = Compile(components.Select(g => g.Children[1]));
+                            var value3 = Compile(components.Select(g => g.Children[2]));
 
                             return $"{value1} >= 0 ? {value2} : {value3}";
                         }
@@ -156,7 +156,7 @@ namespace HlslDecompiler.Hlsl.Compiler
 
             if (first is IHasComponentIndex component)
             {
-                var components = group.Cast<IHasComponentIndex>();
+                var componentsWithIndices = components.Cast<IHasComponentIndex>();
 
                 if (first is RegisterInputNode shaderInput)
                 {
@@ -165,7 +165,7 @@ namespace HlslDecompiler.Hlsl.Compiler
                     string swizzle = "";
                     if (registerKey.Type != RegisterType.Sampler)
                     {
-                        swizzle = GetAstSourceSwizzleName(components, _registers.GetRegisterFullLength(registerKey));
+                        swizzle = GetAstSourceSwizzleName(componentsWithIndices, _registers.GetRegisterFullLength(registerKey));
                     }
 
                     string name = _registers.GetRegisterName(registerKey);
@@ -174,7 +174,7 @@ namespace HlslDecompiler.Hlsl.Compiler
 
                 if (first is TextureLoadOutputNode textureLoad)
                 {
-                    string swizzle = GetAstSourceSwizzleName(components, 4);
+                    string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
 
                     string sampler = Compile(new[] { textureLoad.SamplerInput });
                     string texcoords = Compile(textureLoad.TextureCoordinateInputs);
@@ -184,7 +184,7 @@ namespace HlslDecompiler.Hlsl.Compiler
                 if (first is NormalizeOutputNode)
                 {
                     string input = Compile(first.Children);
-                    string swizzle = GetAstSourceSwizzleName(components, 4);
+                    string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
                     return $"normalize({input}){swizzle}";
                 }
 

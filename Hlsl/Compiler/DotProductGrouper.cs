@@ -18,9 +18,9 @@ namespace HlslDecompiler.Hlsl
                 case 2:
                     return TryGetDot2ProductGroup(node, allowMatrixColumn);
                 case 3:
-                    return TryGetDot3ProductGroup(node);
+                    return TryGetDot3ProductGroup(node, allowMatrixColumn);
                 case 4:
-                    return TryGetDot3ProductGroup(node);
+                    return TryGetDot4ProductGroup(node, allowMatrixColumn);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(dimension));
             }
@@ -28,13 +28,13 @@ namespace HlslDecompiler.Hlsl
 
         public DotProductContext TryGetDotProductGroup(HlslTreeNode node, bool allowMatrixColumn = false)
         {
-            var dot4 = TryGetDot4ProductGroup(node);
+            var dot4 = TryGetDot4ProductGroup(node, allowMatrixColumn);
             if (dot4 != null)
             {
                 return dot4;
             }
 
-            var dot3 = TryGetDot3ProductGroup(node);
+            var dot3 = TryGetDot3ProductGroup(node, allowMatrixColumn);
             if (dot3 != null)
             {
                 return dot3;
@@ -43,7 +43,7 @@ namespace HlslDecompiler.Hlsl
             return TryGetDot2ProductGroup(node, allowMatrixColumn);
         }
 
-        public DotProductContext TryGetDot4ProductGroup(HlslTreeNode node)
+        private DotProductContext TryGetDot4ProductGroup(HlslTreeNode node, bool allowMatrixColumn)
         {
             // 4 by 4 dot product has a pattern of:
             // #1  dot3(abc, xyz) + dw
@@ -54,7 +54,7 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            DotProductContext innerAddition = TryGetDot3ProductGroup(addition.Addend1);
+            DotProductContext innerAddition = TryGetDot3ProductGroup(addition.Addend1, allowMatrixColumn);
             if (innerAddition != null)
             {
                 if (!(addition.Addend2 is MultiplyOperation dw))
@@ -70,9 +70,9 @@ namespace HlslDecompiler.Hlsl
                 HlslTreeNode y = innerAddition.Value2[1];
                 HlslTreeNode z = innerAddition.Value2[2];
                 HlslTreeNode w = dw.Factor2;
-                if (_nodeGrouper.CanGroupComponents(c, d))
+                if (CanGroupComponents(c, d, allowMatrixColumn))
                 {
-                    if (_nodeGrouper.CanGroupComponents(z, w))
+                    if (CanGroupComponents(z, w, allowMatrixColumn))
                     {
                         return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
                     }
@@ -82,7 +82,7 @@ namespace HlslDecompiler.Hlsl
             return null;
         }
 
-        public DotProductContext TryGetDot3ProductGroup(HlslTreeNode node)
+        private DotProductContext TryGetDot3ProductGroup(HlslTreeNode node, bool allowMatrixColumn)
         {
             // 3 by 3 dot product has a pattern of:
             // #1  dot(ab, xy) + c*z
@@ -94,10 +94,10 @@ namespace HlslDecompiler.Hlsl
             }
 
             MultiplyOperation cz;
-            DotProductContext innerAddition = TryGetDot2ProductGroup(addition.Addend1);
+            DotProductContext innerAddition = TryGetDot2ProductGroup(addition.Addend1, allowMatrixColumn);
             if (innerAddition == null)
             {
-                innerAddition = TryGetDot2ProductGroup(addition.Addend2);
+                innerAddition = TryGetDot2ProductGroup(addition.Addend2, allowMatrixColumn);
                 if (innerAddition == null)
                 {
                     return null;
@@ -124,9 +124,9 @@ namespace HlslDecompiler.Hlsl
             HlslTreeNode x = innerAddition.Value2[0];
             HlslTreeNode y = innerAddition.Value2[1];
             HlslTreeNode z = cz.Factor2;
-            if (_nodeGrouper.CanGroupComponents(b, c))
+            if (CanGroupComponents(b, c, allowMatrixColumn))
             {
-                if (_nodeGrouper.CanGroupComponents(y, z))
+                if (CanGroupComponents(y, z, allowMatrixColumn))
                 {
                     return new DotProductContext(new[] { a, b, c }, new[] { x, y, z });
                 }
@@ -135,7 +135,7 @@ namespace HlslDecompiler.Hlsl
             return null;
         }
 
-        public DotProductContext TryGetDot2ProductGroup(HlslTreeNode node, bool allowMatrixColumn = false)
+        private DotProductContext TryGetDot2ProductGroup(HlslTreeNode node, bool allowMatrixColumn)
         {
             // 2 by 2 dot product has a pattern of:
             // a*x + b*y
@@ -156,16 +156,16 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            if (CanGroupComponents(a, b) == false)
+            if (CanGroupComponents(a, b, allowMatrixColumn) == false)
             {
-                if (CanGroupComponents(a, y) == false)
+                if (CanGroupComponents(a, y, allowMatrixColumn) == false)
                 {
                     return null;
                 }
                 Swap(ref b, ref y);
             }
 
-            if (CanGroupComponents(x, y) == false)
+            if (CanGroupComponents(x, y, allowMatrixColumn) == false)
             {
                 return null;
             }
@@ -173,9 +173,8 @@ namespace HlslDecompiler.Hlsl
             return new DotProductContext(new[] { a, b }, new[] { x, y });
         }
 
-        private bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b)
+        private bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b, bool allowMatrixColumn)
         {
-            const bool allowMatrixColumn = true;
             return _nodeGrouper.CanGroupComponents(a, b, allowMatrixColumn);
         }
 

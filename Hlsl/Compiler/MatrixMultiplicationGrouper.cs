@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -37,7 +38,10 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            HlslTreeNode[] vector = null;
+            HlslTreeNode[] vector = firstDotProductNode.Value1 == firstMatrixRow
+                    ? firstDotProductNode.Value2
+                    : firstDotProductNode.Value1;
+
             var matrixRows = new HlslTreeNode[dimension][];
             matrixRows[0] = firstMatrixRow;
             for (int i = 1; i < dimension; i++)
@@ -59,17 +63,9 @@ namespace HlslDecompiler.Hlsl
                 HlslTreeNode[] nextVector = dotProductNode.Value1 == matrixRow
                     ? dotProductNode.Value2
                     : dotProductNode.Value1;
-
-                if (vector == null)
+                if (IsVectorEquivalent(vector, nextVector) == false)
                 {
-                    vector = nextVector;
-                }
-                else
-                {
-                    if (IsVectorEquivalent(vector, nextVector) == false)
-                    {
-                        return null;
-                    }
+                    return null;
                 }
             }
 
@@ -79,14 +75,23 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            SwizzleVector(vector, firstMatrixRow);
+            bool matrixByVector = firstMatrixRow
+                .Cast<RegisterInputNode>()
+                .All(row => row.ComponentIndex == 0);
 
-            const bool matrixByVector = false;
+            SwizzleVector(vector, firstMatrixRow, matrixByVector);
+
             return new MatrixMultiplicationContext(vector, matrix, matrixByVector);
         }
 
-        private void SwizzleVector(HlslTreeNode[] vector, HlslTreeNode[] firstMatrixRow)
+        private void SwizzleVector(HlslTreeNode[] vector, HlslTreeNode[] firstMatrixRow, bool matrixByVector)
         {
+            if (matrixByVector)
+            {
+                // TODO
+                return;
+            }
+
             bool needsSwizzle = false;
             for (int i = 0; i < firstMatrixRow.Length; i++)
             {

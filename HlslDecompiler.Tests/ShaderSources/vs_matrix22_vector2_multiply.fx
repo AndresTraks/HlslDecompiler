@@ -1,6 +1,17 @@
 float2x2 matrix_2x2;
 
-float4 main(float4 position : POSITION) : POSITION
+struct VS_OUT
 {
-	return float4(mul(matrix_2x2, position.wy), float2(0, 1));
+	float4 position : POSITION;
+	float2 position1 : POSITION1;
+};
+
+VS_OUT main(float4 position : POSITION)
+{
+	VS_OUT o;
+
+	o.position = float4(mul(matrix_2x2, position.xy), mul(matrix_2x2, position.yx));
+	o.position1 = mul(matrix_2x2, abs(position.yx));
+
+	return o;
 }

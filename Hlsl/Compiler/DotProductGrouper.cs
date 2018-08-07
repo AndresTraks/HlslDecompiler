@@ -54,28 +54,44 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
+            MultiplyOperation dw;
             DotProductContext innerAddition = TryGetDot3ProductGroup(addition.Addend1, allowMatrixColumn);
-            if (innerAddition != null)
+            if (innerAddition == null)
             {
-                if (!(addition.Addend2 is MultiplyOperation dw))
+                innerAddition = TryGetDot3ProductGroup(addition.Addend2, allowMatrixColumn);
+                if (innerAddition == null)
                 {
                     return null;
                 }
 
-                HlslTreeNode a = innerAddition.Value1[0];
-                HlslTreeNode b = innerAddition.Value1[1];
-                HlslTreeNode c = innerAddition.Value1[2];
-                HlslTreeNode d = dw.Factor1;
-                HlslTreeNode x = innerAddition.Value2[0];
-                HlslTreeNode y = innerAddition.Value2[1];
-                HlslTreeNode z = innerAddition.Value2[2];
-                HlslTreeNode w = dw.Factor2;
-                if (CanGroupComponents(c, d, allowMatrixColumn))
+                dw = addition.Addend1 as MultiplyOperation;
+                if (dw == null)
                 {
-                    if (CanGroupComponents(z, w, allowMatrixColumn))
-                    {
-                        return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
-                    }
+                    return null;
+                }
+            }
+            else
+            {
+                dw = addition.Addend2 as MultiplyOperation;
+                if (dw == null)
+                {
+                    return null;
+                }
+            }
+
+            HlslTreeNode a = innerAddition.Value1[0];
+            HlslTreeNode b = innerAddition.Value1[1];
+            HlslTreeNode c = innerAddition.Value1[2];
+            HlslTreeNode d = dw.Factor1;
+            HlslTreeNode x = innerAddition.Value2[0];
+            HlslTreeNode y = innerAddition.Value2[1];
+            HlslTreeNode z = innerAddition.Value2[2];
+            HlslTreeNode w = dw.Factor2;
+            if (CanGroupComponents(c, d, allowMatrixColumn))
+            {
+                if (CanGroupComponents(z, w, allowMatrixColumn))
+                {
+                    return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
                 }
             }
 

@@ -1,9 +1,12 @@
 vs_3_0
-def c2, 1, 2, 0, 0
 dcl_position v0
 dcl_position o0
-mul r0.xy, c0.xy, v0.yx
-add o0.x, r0.y, r0.x
-mul r0.xy, c1.xy, v0.yx
-add o0.y, r0.y, r0.x
-mov o0.zw, c2.xy
+dcl_position1 o1.xy
+mul r0, c0.xyxy, v0.xyyx
+add o0.xz, r0.yy, r0.xy
+mul r0, c1.xyxy, v0.xyyx
+add o0.yw, r0.xy, r0.xx
+mul r0.xy, c0.xy, v0.yx_abs
+add o1.x, r0.y, r0.x
+mul r0.xy, c1.xy, v0.yx_abs
+add o1.y, r0.y, r0.x

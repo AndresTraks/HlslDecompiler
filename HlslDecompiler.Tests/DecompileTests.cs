@@ -24,8 +24,10 @@ namespace HlslDecompiler.Tests
         [TestCase("vs_dot_product")]
         [TestCase("vs_matrix22_vector2_multiply")]
         [TestCase("vs_matrix33_vector3_multiply")]
+        [TestCase("vs_matrix44_vector4_multiply")]
         [TestCase("vs_vector2_matrix22_multiply")]
         [TestCase("vs_vector3_matrix33_multiply")]
+        [TestCase("vs_vector4_matrix44_multiply")]
         public void DecompileTest(string baseFilename)
         {
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{baseFilename}.fxc";

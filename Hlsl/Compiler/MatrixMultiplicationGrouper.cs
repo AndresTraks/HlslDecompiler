@@ -15,11 +15,11 @@ namespace HlslDecompiler.Hlsl
             _registers = registers;
         }
 
-        public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> nodes)
+        public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> components)
         {
             const bool allowMatrix = true;
 
-            var first = nodes[0];
+            var first = components[0];
             var firstDotProductNode = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(first, allowMatrix);
             if (firstDotProductNode == null)
             {
@@ -27,7 +27,7 @@ namespace HlslDecompiler.Hlsl
             }
 
             int dimension = firstDotProductNode.Dimension;
-            if (nodes.Count < dimension)
+            if (components.Count < dimension)
             {
                 return null;
             }
@@ -46,7 +46,7 @@ namespace HlslDecompiler.Hlsl
             matrixRows[0] = firstMatrixRow;
             for (int i = 1; i < dimension; i++)
             {
-                var next = nodes[i];
+                var next = components[i];
                 var dotProductNode = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(next, dimension, allowMatrix);
                 if (dotProductNode == null)
                 {
@@ -63,7 +63,7 @@ namespace HlslDecompiler.Hlsl
                 HlslTreeNode[] nextVector = dotProductNode.Value1 == matrixRow
                     ? dotProductNode.Value2
                     : dotProductNode.Value1;
-                if (IsVectorEquivalent(vector, nextVector) == false)
+                if (NodeGrouper.IsVectorEquivalent(vector, nextVector) == false)
                 {
                     return null;
                 }
@@ -158,25 +158,6 @@ namespace HlslDecompiler.Hlsl
             }
 
             return null;
-        }
-
-        private bool IsVectorEquivalent(HlslTreeNode[] vector1, HlslTreeNode[] vector2)
-        {
-            int dimension = vector1.Length;
-            if (dimension != vector2.Length)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < dimension; i++)
-            {
-                if (_nodeGrouper.AreNodesEquivalent(vector1[i], vector2[i]) == false)
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 

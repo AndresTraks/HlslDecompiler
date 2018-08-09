@@ -22,6 +22,7 @@ namespace HlslDecompiler.Tests
         [TestCase("vs_constant")]
         [TestCase("vs_constant_struct")]
         [TestCase("vs_dot_product")]
+        [TestCase("vs_length")]
         [TestCase("vs_matrix22_vector2_multiply")]
         [TestCase("vs_matrix33_vector3_multiply")]
         [TestCase("vs_matrix44_vector4_multiply")]

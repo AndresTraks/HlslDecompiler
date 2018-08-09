@@ -2,19 +2,21 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace HlslDecompiler.Hlsl.Compiler
+namespace HlslDecompiler.Hlsl
 {
     public sealed class NodeCompiler
     {
         private readonly RegisterState _registers;
         private readonly NodeGrouper _nodeGrouper;
         private readonly ConstantCompiler _constantCompiler;
+        private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
 
         public NodeCompiler(RegisterState registers)
         {
             _registers = registers;
             _nodeGrouper = new NodeGrouper(registers);
             _constantCompiler = new ConstantCompiler(_nodeGrouper);
+            _matrixMultiplicationCompiler = new MatrixMultiplicationCompiler(this);
         }
 
         public string Compile(IEnumerable<HlslTreeNode> group)
@@ -31,7 +33,15 @@ namespace HlslDecompiler.Hlsl.Compiler
 
             if (components.Count == 1)
             {
-                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(components[0]);
+                HlslTreeNode singleComponent = components[0];
+                HlslTreeNode[] vector = _nodeGrouper.LengthGrouper.TryGetLengthContext(singleComponent);
+                if (vector != null)
+                {
+                    string value = Compile(vector);
+                    return $"length({value})";
+                }
+
+                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(singleComponent);
                 if (dotProduct != null)
                 {
                     string value1 = Compile(dotProduct.Value1);
@@ -54,11 +64,7 @@ namespace HlslDecompiler.Hlsl.Compiler
                 var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(components);
                 if (multiplication != null)
                 {
-                    string matrixName = multiplication.MatrixDeclaration.Name;
-                    string vector = Compile(multiplication.Vector);
-                    return multiplication.IsMatrixByVector
-                        ? $"mul({matrixName}, {vector})"
-                        : $"mul({vector}, {matrixName})";
+                    return _matrixMultiplicationCompiler.Compile(multiplication);
                 }
             }
 

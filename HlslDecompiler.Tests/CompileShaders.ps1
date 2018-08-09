@@ -20,6 +20,7 @@ $vertexShaderSources = @(
     "vs_constant",
     "vs_constant_struct",
     "vs_dot_product",
+    "vs_length",
     "vs_matrix22_vector2_multiply",
     "vs_matrix33_vector3_multiply",
     "vs_matrix44_vector4_multiply",

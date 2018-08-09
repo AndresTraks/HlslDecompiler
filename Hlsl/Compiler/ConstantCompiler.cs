@@ -1,7 +1,7 @@
 ﻿using System.Globalization;
 using System.Linq;
 
-namespace HlslDecompiler.Hlsl.Compiler
+namespace HlslDecompiler.Hlsl
 {
     public sealed class ConstantCompiler
     {
@@ -23,7 +23,7 @@ namespace HlslDecompiler.Hlsl.Compiler
                 return CompileConstant(first);
             }
 
-            if (group.All(c => _nodeGrouper.AreNodesEquivalent(c, first)))
+            if (group.All(c => NodeGrouper.AreNodesEquivalent(c, first)))
             {
                 return CompileConstant(first);
             }

@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.Hlsl;
-using HlslDecompiler.Hlsl.Compiler;
 using System;
 using System.Collections.Generic;
 using System.IO;

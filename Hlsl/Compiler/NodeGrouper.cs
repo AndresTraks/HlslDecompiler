@@ -10,11 +10,13 @@ namespace HlslDecompiler.Hlsl
         public NodeGrouper(RegisterState registers)
         {
             DotProductGrouper = new DotProductGrouper(this);
+            LengthGrouper = new LengthGrouper(this);
             MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registers);
             _registers = registers;
         }
 
         public DotProductGrouper DotProductGrouper { get; }
+        public LengthGrouper LengthGrouper { get; }
         public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
 
         public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
@@ -164,7 +166,26 @@ namespace HlslDecompiler.Hlsl
             return false;
         }
 
-        public bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
+        public static bool IsVectorEquivalent(HlslTreeNode[] vector1, HlslTreeNode[] vector2)
+        {
+            int dimension = vector1.Length;
+            if (dimension != vector2.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < dimension; i++)
+            {
+                if (AreNodesEquivalent(vector1[i], vector2[i]) == false)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public static bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
         {
             if (node1 is ConstantNode constant1 &&
                 node2 is ConstantNode constant2)

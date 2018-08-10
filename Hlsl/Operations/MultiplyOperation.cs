@@ -66,6 +66,16 @@
                 }
             }
 
+            if (factor1 is DivisionOperation reciprocalDivision)
+            {
+                if (reciprocalDivision.Dividend is ConstantNode one && one.Value == 1)
+                {
+                    var division = new DivisionOperation(factor2, reciprocalDivision.Divisor);
+                    Replace(division);
+                    return division;
+                }
+            }
+
             Children[0] = factor1;
             Children[1] = factor2;
             return this;

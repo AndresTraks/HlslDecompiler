@@ -12,15 +12,24 @@ namespace HlslDecompiler.Hlsl
             DotProductGrouper = new DotProductGrouper(this);
             LengthGrouper = new LengthGrouper(this);
             MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registers);
+            NormalizeGrouper = new NormalizeGrouper(this);
             _registers = registers;
         }
 
         public DotProductGrouper DotProductGrouper { get; }
         public LengthGrouper LengthGrouper { get; }
         public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
+        public NormalizeGrouper NormalizeGrouper { get; }
 
         public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
         {
+            switch (nodes.Count)
+            {
+                case 0:
+                case 1:
+                    return new IList<HlslTreeNode>[] { nodes };
+            }
+
             List<IList<HlslTreeNode>> groups;
 
             var multiplicationGroup = MatrixMultiplicationGrouper.TryGetMultiplicationGroup(nodes);
@@ -38,11 +47,19 @@ namespace HlslDecompiler.Hlsl
                 return groups;
             }
 
-            switch (nodes.Count)
+            var normalizeGroup = NormalizeGrouper.TryGetContext(nodes);
+            if (normalizeGroup != null)
             {
-                case 0:
-                case 1:
-                    return new IList<HlslTreeNode>[] { nodes };
+                int dimension = normalizeGroup.Length;
+                groups = new List<IList<HlslTreeNode>>(new[]
+                    { nodes.Take(dimension).ToList()
+                });
+                if (dimension < nodes.Count)
+                {
+                    List<HlslTreeNode> rest = nodes.Skip(dimension).ToList();
+                    groups.AddRange(GroupComponents(rest));
+                }
+                return groups;
             }
 
             groups = new List<IList<HlslTreeNode>>();

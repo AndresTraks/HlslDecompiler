@@ -51,6 +51,7 @@
     <Compile Include="FourCC.cs" />
     <Compile Include="Hlsl\Compiler\ConstantCompiler.cs" />
     <Compile Include="Hlsl\Compiler\DotProductGrouper.cs" />
+    <Compile Include="Hlsl\Compiler\NormalizeGrouper.cs" />
     <Compile Include="Hlsl\Compiler\LengthGrouper.cs" />
     <Compile Include="Hlsl\Compiler\MatrixMultiplicationCompiler.cs" />
     <Compile Include="Hlsl\Compiler\MatrixMultiplicationGrouper.cs" />
@@ -59,6 +60,7 @@
     <Compile Include="Hlsl\Operations\LinearInterpolateOperation.cs" />
     <Compile Include="Hlsl\Operations\MaximumOperation.cs" />
     <Compile Include="Hlsl\Operations\MinimumOperation.cs" />
+    <Compile Include="Hlsl\Operations\DivisionOperation.cs" />
     <Compile Include="Hlsl\Operations\PowerOperation.cs" />
     <Compile Include="Hlsl\NormalizeOutputNode.cs" />
     <Compile Include="Hlsl\Operations\SquareRootOperation.cs" />

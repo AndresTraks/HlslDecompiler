@@ -1,13 +1,11 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class NegateOperation : Operation
+    public class NegateOperation : UnaryOperation
     {
         public NegateOperation(HlslTreeNode value)
         {
             AddChild(value);
         }
-
-        public HlslTreeNode Value => Children[0];
 
         public override string Mnemonic => "-";
 

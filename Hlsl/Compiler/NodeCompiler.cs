@@ -66,6 +66,13 @@ namespace HlslDecompiler.Hlsl
                 {
                     return _matrixMultiplicationCompiler.Compile(multiplication);
                 }
+
+                var normalize = _nodeGrouper.NormalizeGrouper.TryGetContext(components);
+                if (normalize != null)
+                {
+                    var vector = Compile(normalize);
+                    return $"normalize({vector})";
+                }
             }
 
             var first = components[0];
@@ -80,15 +87,9 @@ namespace HlslDecompiler.Hlsl
             {
                 switch (operation)
                 {
-                    case AbsoluteOperation _:
-                    case CosineOperation _:
-                    case FractionalOperation _:
-                    case NegateOperation _:
-                    case ReciprocalOperation _:
-                    case ReciprocalSquareRootOperation _:
+                    case UnaryOperation _:
                     case SignGreaterOrEqualOperation _:
                     case SignLessOperation _:
-                    case SquareRootOperation _:
                         {
                             string name = operation.Mnemonic;
                             string value = Compile(components.Select(g => g.Children[0]));
@@ -124,6 +125,13 @@ namespace HlslDecompiler.Hlsl
                             return string.Format("{0} * {1}",
                                 Compile(multiplicand1),
                                 Compile(multiplicand2));
+                        }
+
+                    case DivisionOperation _:
+                        {
+                            return string.Format("{0} / {1}",
+                                Compile(components.Select(g => g.Children[0])),
+                                Compile(components.Select(g => g.Children[1])));
                         }
 
                     case MaximumOperation _:

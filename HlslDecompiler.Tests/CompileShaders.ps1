@@ -24,6 +24,7 @@ $vertexShaderSources = @(
     "vs_matrix22_vector2_multiply",
     "vs_matrix33_vector3_multiply",
     "vs_matrix44_vector4_multiply",
+    "vs_normalize",
     "vs_vector2_matrix22_multiply",
     "vs_vector3_matrix33_multiply",
     "vs_vector4_matrix44_multiply"

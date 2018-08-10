@@ -61,6 +61,7 @@
     <Compile Include="Hlsl\Operations\MinimumOperation.cs" />
     <Compile Include="Hlsl\Operations\PowerOperation.cs" />
     <Compile Include="Hlsl\NormalizeOutputNode.cs" />
+    <Compile Include="Hlsl\Operations\SquareRootOperation.cs" />
     <Compile Include="Hlsl\Operations\SignLessOperation.cs" />
     <Compile Include="Hlsl\Operations\SignGreaterOrEqualOperation.cs" />
     <Compile Include="Hlsl\Operations\ReciprocalSquareRootOperation.cs" />
@@ -73,6 +74,7 @@
     <Compile Include="Hlsl\Operations\CosineOperation.cs" />
     <Compile Include="Hlsl\Operations\SineOperation.cs" />
     <Compile Include="Hlsl\Compiler\RegisterState.cs" />
+    <Compile Include="Hlsl\Operations\UnaryOperation.cs" />
     <Compile Include="IHasComponentIndex.cs" />
     <Compile Include="Hlsl\Operations\MoveOperation.cs" />
     <Compile Include="Hlsl\Operations\AbsoluteOperation.cs" />

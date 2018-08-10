@@ -52,6 +52,20 @@
                 return mul;
             }
 
+            if (addend1 is NegateOperation negate1 && addend2 is NegateOperation == false)
+            {
+                var sub = new SubtractOperation(addend2, negate1.Value);
+                Replace(sub);
+                return sub;
+            }
+
+            if (addend1 is NegateOperation == false && addend2 is NegateOperation negate2)
+            {
+                var sub = new SubtractOperation(addend1, negate2.Value);
+                Replace(sub);
+                return sub;
+            }
+
             Children[0] = addend1;
             Children[1] = addend2;
             return this;

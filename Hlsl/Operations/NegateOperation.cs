@@ -7,18 +7,19 @@
             AddChild(value);
         }
 
+        public HlslTreeNode Value => Children[0];
+
+        public override string Mnemonic => "-";
+
         public override HlslTreeNode Reduce()
         {
-            var value = Children[0];
-            if (value is NegateOperation)
+            if (Value is NegateOperation negate)
             {
-                var newValue = value.Children[0];
+                var newValue = negate.Value;
                 Replace(newValue);
                 return newValue;
             }
             return base.Reduce();
         }
-
-        public override string Mnemonic => "-";
     }
 }

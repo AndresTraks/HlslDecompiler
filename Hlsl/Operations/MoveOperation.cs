@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class MoveOperation : Operation
+    public class MoveOperation : UnaryOperation
     {
         public MoveOperation(HlslTreeNode value)
         {
@@ -8,8 +8,6 @@
         }
 
         public override string Mnemonic => "mov";
-
-        public HlslTreeNode Value => Children[0];
 
         public override HlslTreeNode Reduce()
         {

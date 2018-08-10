@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class CosineOperation : Operation
+    public class CosineOperation : UnaryOperation
     {
         public CosineOperation(HlslTreeNode value)
         {

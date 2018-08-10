@@ -88,6 +88,7 @@ namespace HlslDecompiler.Hlsl
                     case ReciprocalSquareRootOperation _:
                     case SignGreaterOrEqualOperation _:
                     case SignLessOperation _:
+                    case SquareRootOperation _:
                         {
                             string name = operation.Mnemonic;
                             string value = Compile(components.Select(g => g.Children[0]));

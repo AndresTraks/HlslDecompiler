@@ -11,17 +11,12 @@
 
         public HlslTreeNode[] TryGetLengthContext(HlslTreeNode node)
         {
-            if (!(node is ReciprocalOperation reciprocal))
+            if (!(node is SquareRootOperation squareRoot))
             {
                 return null;
             }
 
-            if (!(reciprocal.Value is ReciprocalSquareRootOperation reciprocalSquareRoot))
-            {
-                return null;
-            }
-
-            DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(reciprocalSquareRoot.Value);
+            DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(squareRoot.Value);
             if (dotProduct == null)
             {
                 return null;

@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class FractionalOperation : Operation
+    public class FractionalOperation : UnaryOperation
     {
         public FractionalOperation(HlslTreeNode value)
         {

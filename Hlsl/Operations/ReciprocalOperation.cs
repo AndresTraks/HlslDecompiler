@@ -1,14 +1,26 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class ReciprocalOperation : Operation
+    public class ReciprocalOperation : UnaryOperation
     {
         public ReciprocalOperation(HlslTreeNode value)
         {
             AddChild(value);
         }
 
-        public HlslTreeNode Value => Children[0];
-
         public override string Mnemonic => "rcp";
+
+        public override HlslTreeNode Reduce()
+        {
+            switch (Value)
+            {
+                case ReciprocalSquareRootOperation reciprocalSquareRoot:
+                    {
+                        var newValue = new SquareRootOperation(reciprocalSquareRoot.Value);
+                        Replace(newValue);
+                        return newValue;
+                    }
+            }
+            return base.Reduce();
+        }
     }
 }

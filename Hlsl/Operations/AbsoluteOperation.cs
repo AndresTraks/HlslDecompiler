@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class AbsoluteOperation : Operation
+    public class AbsoluteOperation : UnaryOperation
     {
         public AbsoluteOperation(HlslTreeNode value)
         {

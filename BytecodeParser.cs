@@ -66,20 +66,23 @@ namespace HlslDecompiler
                 {
                     var registerKey = new RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
                     var destinationKey = new RegisterComponentKey(registerKey, 0);
-                    var shaderInput = new RegisterInputNode(destinationKey, 0);
+                    int samplerTextureDimension;
                     switch (constant.ParameterType)
                     {
-                    case ParameterType.Sampler1D:
-                        shaderInput.SamplerTextureDimension = 1;
-                        break;
-                    case ParameterType.Sampler2D:
-                        shaderInput.SamplerTextureDimension = 2;
-                        break;
-                    case ParameterType.Sampler3D:
-                    case ParameterType.SamplerCube:
-                        shaderInput.SamplerTextureDimension = 3;
-                        break;
+                        case ParameterType.Sampler1D:
+                            samplerTextureDimension = 1;
+                            break;
+                        case ParameterType.Sampler2D:
+                            samplerTextureDimension = 2;
+                            break;
+                        case ParameterType.Sampler3D:
+                        case ParameterType.SamplerCube:
+                            samplerTextureDimension = 3;
+                            break;
+                        default:
+                            throw new InvalidOperationException();
                     }
+                    var shaderInput = new RegisterInputNode(destinationKey, samplerTextureDimension);
                     _samplers.Add(registerKey, shaderInput);
                 }
                 else
@@ -90,7 +93,7 @@ namespace HlslDecompiler
                         for (int i = 0; i < 4; i++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, i);
-                            var shaderInput = new RegisterInputNode(destinationKey, i);
+                            var shaderInput = new RegisterInputNode(destinationKey);
                             _activeOutputs.Add(destinationKey, shaderInput);
                         }
                     }
@@ -145,7 +148,7 @@ namespace HlslDecompiler
             {
                 case Opcode.Dcl:
                     {
-                        var shaderInput = new RegisterInputNode(destinationKey, componentIndex);
+                        var shaderInput = new RegisterInputNode(destinationKey);
                         return shaderInput;
                     }
                 case Opcode.Def:

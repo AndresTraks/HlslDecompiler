@@ -205,17 +205,15 @@ namespace HlslDecompiler.Hlsl
                 if (operation1 is AddOperation add1 &&
                     operation2 is AddOperation add2)
                 {
-                    return add1.Children.Any(c1 => add2.Children.Any(c2 => AreNodesEquivalent(c1, c2)));
+                    return (AreNodesEquivalent(add1.Addend1, add2.Addend1) && AreNodesEquivalent(add1.Addend2, add2.Addend2))
+                        || (AreNodesEquivalent(add1.Addend1, add2.Addend2) && AreNodesEquivalent(add1.Addend2, add2.Addend1));
                 }
                 else if (
-                    (operation1 is AbsoluteOperation && operation2 is AbsoluteOperation)
-                    || (operation1 is CosineOperation && operation2 is CosineOperation)
-                    || (operation1 is FractionalOperation && operation2 is FractionalOperation)
-                    || (operation1 is NegateOperation && operation2 is NegateOperation)
-                    || (operation1 is ReciprocalOperation && operation2 is ReciprocalOperation)
-                    || (operation1 is ReciprocalSquareRootOperation && operation2 is ReciprocalSquareRootOperation))
+                    (operation1 is UnaryOperation unaryOperation1 &&
+                    operation2 is UnaryOperation unaryOperation2 &&
+                    unaryOperation1.GetType() == unaryOperation2.GetType()))
                 {
-                    return AreNodesEquivalent(operation1.Children[0], operation2.Children[0]);
+                    return AreNodesEquivalent(unaryOperation1.Value, unaryOperation2.Value);
                 }
                 else if (
                     (operation1 is MinimumOperation && operation2 is MinimumOperation) ||
@@ -228,7 +226,8 @@ namespace HlslDecompiler.Hlsl
                 else if (operation1 is MultiplyOperation multiply1 &&
                          operation2 is MultiplyOperation multiply2)
                 {
-                    return multiply1.Children.Any(c1 => multiply2.Children.Any(c2 => AreNodesEquivalent(c1, c2)));
+                    return (AreNodesEquivalent(multiply1.Factor1, multiply2.Factor1) && AreNodesEquivalent(multiply1.Factor2, multiply2.Factor2))
+                        || (AreNodesEquivalent(multiply1.Factor1, multiply2.Factor2) && AreNodesEquivalent(multiply1.Factor2, multiply2.Factor1));
                 }
                 else if (operation1 is SubtractOperation subtract1 &&
                          operation2 is SubtractOperation subtract2)

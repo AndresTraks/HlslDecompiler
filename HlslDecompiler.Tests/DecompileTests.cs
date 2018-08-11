@@ -8,6 +8,7 @@ namespace HlslDecompiler.Tests
     {
         [TestCase("ps_constant")]
         [TestCase("ps_constant_struct")]
+        [TestCase("ps_dot_product2_add")]
         [TestCase("ps_texcoord")]
         [TestCase("ps_texcoord_modifier")]
         [TestCase("ps_texcoord_swizzle")]

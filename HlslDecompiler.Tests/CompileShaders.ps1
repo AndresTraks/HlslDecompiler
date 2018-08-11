@@ -3,6 +3,7 @@ $generateAssemblyListing = $False;
 $pixelShaderSources = @(
     "ps_constant",
     "ps_constant_struct",
+    "ps_dot_product2_add",
     "ps_texcoord",
     "ps_texcoord_modifier",
     "ps_texcoord_swizzle",

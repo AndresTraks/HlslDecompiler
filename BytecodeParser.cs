@@ -219,30 +219,16 @@ namespace HlslDecompiler
                 case Opcode.Tex:
                 case Opcode.TexLDL:
                     return CreateTextureLoadOutputNode(instruction, componentIndex);
+                case Opcode.DP2Add:
+                    return CreateDotProduct2AddNode(instruction);
                 case Opcode.Dp3:
                 case Opcode.Dp4:
-                    return CreateDotProductNode(instruction, componentIndex);
+                    return CreateDotProductNode(instruction);
                 case Opcode.Nrm:
                     return CreateNormalizeOutputNode(instruction, componentIndex);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
-        }
-
-        private HlslTreeNode[] GetInputs(Instruction instruction, int componentIndex)
-        {
-            int numInputs = GetNumInputs(instruction.Opcode);
-            var inputs = new HlslTreeNode[numInputs];
-            for (int i = 0; i < numInputs; i++)
-            {
-                int inputParameterIndex = i + 1;
-                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
-                HlslTreeNode input = _activeOutputs[inputKey];
-                var modifier = instruction.GetSourceModifier(inputParameterIndex);
-                input = ApplyModifier(input, modifier);
-                inputs[i] = input;
-            }
-            return inputs;
         }
 
         private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -269,7 +255,20 @@ namespace HlslDecompiler
             return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent);
         }
 
-        private HlslTreeNode CreateDotProductNode(Instruction instruction, int outputComponent)
+        private HlslTreeNode CreateDotProduct2AddNode(Instruction instruction)
+        {
+            var vector1 = GetInputComponents(instruction, 1, 2);
+            var vector2 = GetInputComponents(instruction, 2, 2);
+            var add = GetInputComponents(instruction, 3, 1)[0];
+
+            var dp2 = new AddOperation(
+                new MultiplyOperation(vector1[0], vector2[0]),
+                new MultiplyOperation(vector1[1], vector2[1]));
+
+            return new AddOperation(dp2, add);
+        }
+
+        private HlslTreeNode CreateDotProductNode(Instruction instruction)
         {
             var addends = new List<HlslTreeNode>();
             int numComponents = instruction.Opcode == Opcode.Dp3 ? 3 : 4;
@@ -293,6 +292,36 @@ namespace HlslDecompiler
             }
 
             return new NormalizeOutputNode(inputs, outputComponent);
+        }
+
+        private HlslTreeNode[] GetInputs(Instruction instruction, int componentIndex)
+        {
+            int numInputs = GetNumInputs(instruction.Opcode);
+            var inputs = new HlslTreeNode[numInputs];
+            for (int i = 0; i < numInputs; i++)
+            {
+                int inputParameterIndex = i + 1;
+                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
+                HlslTreeNode input = _activeOutputs[inputKey];
+                var modifier = instruction.GetSourceModifier(inputParameterIndex);
+                input = ApplyModifier(input, modifier);
+                inputs[i] = input;
+            }
+            return inputs;
+        }
+
+        private HlslTreeNode[] GetInputComponents(Instruction instruction, int inputParameterIndex, int numComponents)
+        {
+            var components = new HlslTreeNode[numComponents];
+            for (int i = 0; i < numComponents; i++)
+            {
+                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, i);
+                HlslTreeNode input = _activeOutputs[inputKey];
+                var modifier = instruction.GetSourceModifier(inputParameterIndex);
+                input = ApplyModifier(input, modifier);
+                components[i] = input;
+            }
+            return components;
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)
@@ -336,6 +365,7 @@ namespace HlslDecompiler
                 case Opcode.Tex:
                     return 2;
                 case Opcode.Cmp:
+                case Opcode.DP2Add:
                 case Opcode.Lrp:
                 case Opcode.Mad:
                     return 3;

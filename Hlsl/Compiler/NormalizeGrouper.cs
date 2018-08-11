@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -27,7 +28,7 @@ namespace HlslDecompiler.Hlsl
 
             int dimension = firstLengthContext.Length;
 
-            if (NodeGrouper.AreNodesEquivalent(firstDivision.Dividend, firstLengthContext[0]) == false)
+            if (firstLengthContext.Any(c => NodeGrouper.AreNodesEquivalent(firstDivision.Dividend, c)) == false)
             {
                 return null;
             }
@@ -50,13 +51,17 @@ namespace HlslDecompiler.Hlsl
                     return null;
                 }
 
-                if (NodeGrouper.AreNodesEquivalent(nextDivision.Dividend, firstLengthContext[i]) == false)
+                if (firstLengthContext.Any(c => NodeGrouper.AreNodesEquivalent(nextDivision.Dividend, c)) == false)
                 {
                     return null;
                 }
             }
 
-            return firstLengthContext;
+            return components
+                .Take(dimension)
+                .Cast<DivisionOperation>()
+                .Select(c => c.Dividend)
+                .ToArray();
         }
     }
 }

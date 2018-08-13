@@ -4,12 +4,12 @@
     {
         public PowerOperation(HlslTreeNode value, HlslTreeNode power)
         {
-            AddChild(value);
-            AddChild(power);
+            AddInput(value);
+            AddInput(power);
         }
 
-        public HlslTreeNode Value => Children[0];
-        public HlslTreeNode Power => Children[1];
+        public HlslTreeNode Value => Inputs[0];
+        public HlslTreeNode Power => Inputs[1];
 
         public override string Mnemonic => "pow";
     }

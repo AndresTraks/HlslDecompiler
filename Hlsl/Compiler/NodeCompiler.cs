@@ -92,28 +92,28 @@ namespace HlslDecompiler.Hlsl
                     case SignLessOperation _:
                         {
                             string name = operation.Mnemonic;
-                            string value = Compile(components.Select(g => g.Children[0]));
+                            string value = Compile(components.Select(g => g.Inputs[0]));
                             return $"{name}({value})";
                         }
 
                     case AddOperation _:
                         {
                             return string.Format("{0} + {1}",
-                                Compile(components.Select(g => g.Children[0])),
-                                Compile(components.Select(g => g.Children[1])));
+                                Compile(components.Select(g => g.Inputs[0])),
+                                Compile(components.Select(g => g.Inputs[1])));
                         }
 
                     case SubtractOperation _:
                         {
                             return string.Format("{0} - {1}",
-                                Compile(components.Select(g => g.Children[0])),
-                                Compile(components.Select(g => g.Children[1])));
+                                Compile(components.Select(g => g.Inputs[0])),
+                                Compile(components.Select(g => g.Inputs[1])));
                         }
 
                     case MultiplyOperation _:
                         {
-                            var multiplicand1 = components.Select(g => g.Children[0]);
-                            var multiplicand2 = components.Select(g => g.Children[1]);
+                            var multiplicand1 = components.Select(g => g.Inputs[0]);
+                            var multiplicand2 = components.Select(g => g.Inputs[1]);
 
                             if (multiplicand2.First() is ConstantNode)
                             {
@@ -130,16 +130,16 @@ namespace HlslDecompiler.Hlsl
                     case DivisionOperation _:
                         {
                             return string.Format("{0} / {1}",
-                                Compile(components.Select(g => g.Children[0])),
-                                Compile(components.Select(g => g.Children[1])));
+                                Compile(components.Select(g => g.Inputs[0])),
+                                Compile(components.Select(g => g.Inputs[1])));
                         }
 
                     case MaximumOperation _:
                     case MinimumOperation _:
                     case PowerOperation _:
                         {
-                            var value1 = Compile(components.Select(g => g.Children[0]));
-                            var value2 = Compile(components.Select(g => g.Children[1]));
+                            var value1 = Compile(components.Select(g => g.Inputs[0]));
+                            var value2 = Compile(components.Select(g => g.Inputs[1]));
 
                             var name = operation.Mnemonic;
 
@@ -148,9 +148,9 @@ namespace HlslDecompiler.Hlsl
 
                     case LinearInterpolateOperation _:
                         {
-                            var value1 = Compile(components.Select(g => g.Children[0]));
-                            var value2 = Compile(components.Select(g => g.Children[1]));
-                            var value3 = Compile(components.Select(g => g.Children[2]));
+                            var value1 = Compile(components.Select(g => g.Inputs[0]));
+                            var value2 = Compile(components.Select(g => g.Inputs[1]));
+                            var value3 = Compile(components.Select(g => g.Inputs[2]));
 
                             var name = "lerp";
 
@@ -159,9 +159,9 @@ namespace HlslDecompiler.Hlsl
 
                     case CompareOperation _:
                         {
-                            var value1 = Compile(components.Select(g => g.Children[0]));
-                            var value2 = Compile(components.Select(g => g.Children[1]));
-                            var value3 = Compile(components.Select(g => g.Children[2]));
+                            var value1 = Compile(components.Select(g => g.Inputs[0]));
+                            var value2 = Compile(components.Select(g => g.Inputs[1]));
+                            var value3 = Compile(components.Select(g => g.Inputs[2]));
 
                             return $"{value1} >= 0 ? {value2} : {value3}";
                         }
@@ -198,7 +198,7 @@ namespace HlslDecompiler.Hlsl
 
                 if (first is NormalizeOutputNode)
                 {
-                    string input = Compile(first.Children);
+                    string input = Compile(first.Inputs);
                     string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
                     return $"normalize({input}){swizzle}";
                 }

@@ -4,7 +4,7 @@
     {
         public NegateOperation(HlslTreeNode value)
         {
-            AddChild(value);
+            AddInput(value);
         }
 
         public override string Mnemonic => "-";
@@ -13,7 +13,13 @@
         {
             if (Value is NegateOperation negate)
             {
-                var newValue = negate.Value;
+                HlslTreeNode newValue = negate.Value;
+                Replace(newValue);
+                return newValue;
+            }
+            if (Value is ConstantNode constant)
+            {
+                var newValue = new ConstantNode(-constant.Value);
                 Replace(newValue);
                 return newValue;
             }

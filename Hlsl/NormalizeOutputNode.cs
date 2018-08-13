@@ -8,7 +8,7 @@ namespace HlslDecompiler.Hlsl
         {
             foreach (HlslTreeNode input in inputs)
             {
-                AddChild(input);
+                AddInput(input);
             }
 
             ComponentIndex = componentIndex;

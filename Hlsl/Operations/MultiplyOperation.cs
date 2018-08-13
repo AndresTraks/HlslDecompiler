@@ -4,12 +4,12 @@
     {
         public MultiplyOperation(HlslTreeNode factor1, HlslTreeNode factor2)
         {
-            AddChild(factor1);
-            AddChild(factor2);
+            AddInput(factor1);
+            AddInput(factor2);
         }
 
-        public HlslTreeNode Factor1 => Children[0];
-        public HlslTreeNode Factor2 => Children[1];
+        public HlslTreeNode Factor1 => Inputs[0];
+        public HlslTreeNode Factor2 => Inputs[1];
 
         public override string Mnemonic => "mul";
 
@@ -76,8 +76,8 @@
                 }
             }
 
-            Children[0] = factor1;
-            Children[1] = factor2;
+            Inputs[0] = factor1;
+            Inputs[1] = factor2;
             return this;
         }
     }

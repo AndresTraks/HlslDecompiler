@@ -4,7 +4,7 @@
     {
         public SquareRootOperation(HlslTreeNode value)
         {
-            AddChild(value);
+            AddInput(value);
         }
 
         public override string Mnemonic => "sqrt";

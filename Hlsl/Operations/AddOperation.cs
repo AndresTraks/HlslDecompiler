@@ -4,12 +4,12 @@
     {
         public AddOperation(HlslTreeNode addend1, HlslTreeNode addend2)
         {
-            AddChild(addend1);
-            AddChild(addend2);
+            AddInput(addend1);
+            AddInput(addend2);
         }
 
-        public HlslTreeNode Addend1 => Children[0];
-        public HlslTreeNode Addend2 => Children[1];
+        public HlslTreeNode Addend1 => Inputs[0];
+        public HlslTreeNode Addend2 => Inputs[1];
 
         public override string Mnemonic => "add";
 
@@ -66,8 +66,8 @@
                 return sub;
             }
 
-            Children[0] = addend1;
-            Children[1] = addend2;
+            Inputs[0] = addend1;
+            Inputs[1] = addend2;
             return this;
         }
     }

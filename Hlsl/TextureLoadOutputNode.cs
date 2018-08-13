@@ -7,17 +7,17 @@ namespace HlslDecompiler.Hlsl
     {
         public TextureLoadOutputNode(RegisterInputNode sampler, IEnumerable<HlslTreeNode> textureCoords, int componentIndex)
         {
-            AddChild(sampler);
+            AddInput(sampler);
             foreach (HlslTreeNode textureCoord in textureCoords)
             {
-                AddChild(textureCoord);
+                AddInput(textureCoord);
             }
 
             ComponentIndex = componentIndex;
         }
 
-        public RegisterInputNode SamplerInput => (RegisterInputNode)Children[0];
-        public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Children.Skip(1);
+        public RegisterInputNode SamplerInput => (RegisterInputNode)Inputs[0];
+        public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Inputs.Skip(1);
         public int ComponentIndex { get; }
     }
 }

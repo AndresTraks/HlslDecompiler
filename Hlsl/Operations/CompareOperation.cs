@@ -4,9 +4,9 @@
     {
         public CompareOperation(HlslTreeNode value, HlslTreeNode lessValue, HlslTreeNode greaterEqualValue)
         {
-            AddChild(value);
-            AddChild(lessValue);
-            AddChild(greaterEqualValue);
+            AddInput(value);
+            AddInput(lessValue);
+            AddInput(greaterEqualValue);
         }
 
         public override string Mnemonic => "cmp";

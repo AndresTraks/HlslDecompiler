@@ -4,12 +4,12 @@
     {
         public DivisionOperation(HlslTreeNode dividend, HlslTreeNode divisor)
         {
-            AddChild(dividend);
-            AddChild(divisor);
+            AddInput(dividend);
+            AddInput(divisor);
         }
 
-        public HlslTreeNode Dividend => Children[0];
-        public HlslTreeNode Divisor => Children[1];
+        public HlslTreeNode Dividend => Inputs[0];
+        public HlslTreeNode Divisor => Inputs[1];
 
         public override string Mnemonic => "div";
     }

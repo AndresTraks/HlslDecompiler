@@ -4,7 +4,7 @@
     {
         public SineOperation(HlslTreeNode value)
         {
-            AddChild(value);
+            AddInput(value);
         }
 
         public override string Mnemonic => "sin";

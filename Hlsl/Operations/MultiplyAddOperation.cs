@@ -4,21 +4,21 @@
     {
         public MultiplyAddOperation(HlslTreeNode factor1, HlslTreeNode factor2, HlslTreeNode addend)
         {
-            AddChild(factor1);
-            AddChild(factor2);
-            AddChild(addend);
+            AddInput(factor1);
+            AddInput(factor2);
+            AddInput(addend);
         }
 
-        public HlslTreeNode Factor1 => Children[0];
-        public HlslTreeNode Factor2 => Children[1];
-        public HlslTreeNode Addend => Children[2];
+        public HlslTreeNode Factor1 => Inputs[0];
+        public HlslTreeNode Factor2 => Inputs[1];
+        public HlslTreeNode Addend => Inputs[2];
 
         public override string Mnemonic => "madd";
 
         public override HlslTreeNode Reduce()
         {
-            Factor1.Parents.Remove(this);
-            Factor2.Parents.Remove(this);
+            Factor1.Outputs.Remove(this);
+            Factor2.Outputs.Remove(this);
             var multiplication = new MultiplyOperation(Factor1, Factor2);
 
             var addition = new AddOperation(multiplication, Addend);

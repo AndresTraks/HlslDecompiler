@@ -2,6 +2,6 @@
 {
     public abstract class UnaryOperation : Operation
     {
-        public HlslTreeNode Value => Children[0];
+        public HlslTreeNode Value => Inputs[0];
     }
 }

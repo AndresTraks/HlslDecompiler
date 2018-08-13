@@ -132,7 +132,7 @@ namespace HlslDecompiler.Hlsl
                 if (operation1 is AddOperation add1 &&
                     operation2 is AddOperation add2)
                 {
-                    return add1.Children.Any(c1 => add2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                    return add1.Inputs.Any(c1 => add2.Inputs.Any(c2 => CanGroupComponents(c1, c2)));
                 }
                 else if (
                     (operation1 is AbsoluteOperation && operation2 is AbsoluteOperation)
@@ -142,20 +142,20 @@ namespace HlslDecompiler.Hlsl
                     || (operation1 is ReciprocalOperation && operation2 is ReciprocalOperation)
                     || (operation1 is ReciprocalSquareRootOperation && operation2 is ReciprocalSquareRootOperation))
                 {
-                    return CanGroupComponents(operation1.Children[0], operation2.Children[0]);
+                    return CanGroupComponents(operation1.Inputs[0], operation2.Inputs[0]);
                 }
                 else if (
                     (operation1 is MinimumOperation && operation2 is MinimumOperation) ||
                     (operation1 is SignGreaterOrEqualOperation && operation2 is SignGreaterOrEqualOperation) ||
                     (operation1 is SignLessOperation && operation2 is SignLessOperation))
                 {
-                    return CanGroupComponents(operation1.Children[0], operation2.Children[0])
-                        && CanGroupComponents(operation1.Children[1], operation2.Children[1]);
+                    return CanGroupComponents(operation1.Inputs[0], operation2.Inputs[0])
+                        && CanGroupComponents(operation1.Inputs[1], operation2.Inputs[1]);
                 }
                 else if (operation1 is MultiplyOperation multiply1 &&
                          operation2 is MultiplyOperation multiply2)
                 {
-                    return multiply1.Children.Any(c1 => multiply2.Children.Any(c2 => CanGroupComponents(c1, c2)));
+                    return multiply1.Inputs.Any(c1 => multiply2.Inputs.Any(c2 => CanGroupComponents(c1, c2)));
                 }
                 else if (operation1 is SubtractOperation subtract1 &&
                          operation2 is SubtractOperation subtract2)
@@ -167,11 +167,11 @@ namespace HlslDecompiler.Hlsl
             if (node1 is IHasComponentIndex &&
                 node2 is IHasComponentIndex)
             {
-                if (node1.Children.Count == node2.Children.Count)
+                if (node1.Inputs.Count == node2.Inputs.Count)
                 {
-                    for (int i = 0; i < node1.Children.Count; i++)
+                    for (int i = 0; i < node1.Inputs.Count; i++)
                     {
-                        if (node1.Children[i].Equals(node2.Children[i]) == false)
+                        if (node1.Inputs[i].Equals(node2.Inputs[i]) == false)
                         {
                             return false;
                         }
@@ -237,8 +237,8 @@ namespace HlslDecompiler.Hlsl
                     (operation1 is SignGreaterOrEqualOperation && operation2 is SignGreaterOrEqualOperation) ||
                     (operation1 is SignLessOperation && operation2 is SignLessOperation))
                 {
-                    return AreNodesEquivalent(operation1.Children[0], operation2.Children[0])
-                        && AreNodesEquivalent(operation1.Children[1], operation2.Children[1]);
+                    return AreNodesEquivalent(operation1.Inputs[0], operation2.Inputs[0])
+                        && AreNodesEquivalent(operation1.Inputs[1], operation2.Inputs[1]);
                 }
                 else if (operation1 is MultiplyOperation multiply1 &&
                          operation2 is MultiplyOperation multiply2)
@@ -256,11 +256,11 @@ namespace HlslDecompiler.Hlsl
             if (node1 is IHasComponentIndex &&
                 node2 is IHasComponentIndex)
             {
-                if (node1.Children.Count == node2.Children.Count)
+                if (node1.Inputs.Count == node2.Inputs.Count)
                 {
-                    for (int i = 0; i < node1.Children.Count; i++)
+                    for (int i = 0; i < node1.Inputs.Count; i++)
                     {
-                        if (node1.Children[i].Equals(node2.Children[i]) == false)
+                        if (node1.Inputs[i].Equals(node2.Inputs[i]) == false)
                         {
                             return false;
                         }

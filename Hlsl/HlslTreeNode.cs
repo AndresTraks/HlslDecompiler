@@ -5,50 +5,50 @@ namespace HlslDecompiler
 {
     public class HlslTreeNode
     {
-        public IList<HlslTreeNode> Children { get; } = new List<HlslTreeNode>();
-        public IList<HlslTreeNode> Parents { get; } = new List<HlslTreeNode>();
+        public IList<HlslTreeNode> Inputs { get; } = new List<HlslTreeNode>();
+        public IList<HlslTreeNode> Outputs { get; } = new List<HlslTreeNode>();
 
         public virtual HlslTreeNode Reduce()
         {
-            for (int i = 0; i < Children.Count; i++)
+            for (int i = 0; i < Inputs.Count; i++)
             {
-                Children[i] = Children[i].Reduce();
+                Inputs[i] = Inputs[i].Reduce();
             }
             return this;
         }
 
         public void Replace(HlslTreeNode with)
         {
-            foreach (var child in Children)
+            foreach (var input in Inputs)
             {
-                child.Parents.Remove(this);
+                input.Outputs.Remove(this);
             }
-            foreach (var parent in Parents)
+            foreach (var output in Outputs)
             {
-                for (int i = 0; i < parent.Children.Count; i++)
+                for (int i = 0; i < output.Inputs.Count; i++)
                 {
-                    if (parent.Children[i] == this)
+                    if (output.Inputs[i] == this)
                     {
-                        parent.Children[i] = with;
+                        output.Inputs[i] = with;
                     }
                 }
-                with.Parents.Add(parent);
+                with.Outputs.Add(output);
             }
         }
 
-        protected void AddChild(HlslTreeNode node)
+        protected void AddInput(HlslTreeNode node)
         {
-            Children.Add(node);
-            node.Parents.Add(this);
+            Inputs.Add(node);
+            node.Outputs.Add(this);
             AssertLoopFree();
         }
 
         private void AssertLoopFree()
         {
-            foreach (HlslTreeNode parent in Parents)
+            foreach (HlslTreeNode output in Outputs)
             {
-                AssertLoopFree(parent);
-                if (this == parent)
+                AssertLoopFree(output);
+                if (this == output)
                 {
                     throw new InvalidOperationException();
                 }
@@ -57,7 +57,7 @@ namespace HlslDecompiler
 
         private void AssertLoopFree(HlslTreeNode parent)
         {
-            foreach (HlslTreeNode upperParent in parent.Parents)
+            foreach (HlslTreeNode upperParent in parent.Outputs)
             {
                 if (this == upperParent)
                 {

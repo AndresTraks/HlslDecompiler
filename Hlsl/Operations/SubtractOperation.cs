@@ -4,13 +4,24 @@
     {
         public SubtractOperation(HlslTreeNode minuend, HlslTreeNode subtrahend)
         {
-            AddChild(minuend);
-            AddChild(subtrahend);
+            AddInput(minuend);
+            AddInput(subtrahend);
         }
 
-        public HlslTreeNode Minuend => Children[0];
-        public HlslTreeNode Subtrahend => Children[1];
+        public HlslTreeNode Minuend => Inputs[0];
+        public HlslTreeNode Subtrahend => Inputs[1];
 
         public override string Mnemonic => "sub";
+
+        public override HlslTreeNode Reduce()
+        {
+            if (Subtrahend is ConstantNode constant && constant.Value == 0)
+            {
+                var newValue = Minuend.Reduce();
+                Replace(newValue);
+                return newValue;
+            }
+            return base.Reduce();
+        }
     }
 }

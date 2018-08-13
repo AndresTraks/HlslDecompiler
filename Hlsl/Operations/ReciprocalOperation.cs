@@ -4,7 +4,7 @@
     {
         public ReciprocalOperation(HlslTreeNode value)
         {
-            AddChild(value);
+            AddInput(value);
         }
 
         public override string Mnemonic => "rcp";

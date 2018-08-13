@@ -4,8 +4,8 @@
     {
         public SignGreaterOrEqualOperation(HlslTreeNode value1, HlslTreeNode value2)
         {
-            AddChild(value1);
-            AddChild(value2);
+            AddInput(value1);
+            AddInput(value2);
         }
 
         public override string Mnemonic => "sge";

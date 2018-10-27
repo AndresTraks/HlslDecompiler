@@ -1,6 +1,7 @@
 $generateAssemblyListing = $False;
 
 $pixelShaderSources = @(
+    "ps_conditional",
     "ps_constant",
     "ps_constant_struct",
     "ps_dot_product2_add",

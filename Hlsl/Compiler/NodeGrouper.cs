@@ -162,6 +162,13 @@ namespace HlslDecompiler.Hlsl
                 {
                     return CanGroupComponents(subtract1.Subtrahend, subtract2.Subtrahend);
                 }
+                else if (operation1 is CompareOperation compare1 &&
+                         operation2 is CompareOperation compare2)
+                {
+                    return AreNodesEquivalent(compare1.Value, compare2.Value) &&
+                        CanGroupComponents(compare1.LessValue, compare2.LessValue) &&
+                        CanGroupComponents(compare1.GreaterEqualValue, compare2.GreaterEqualValue);
+                }
             }
 
             if (node1 is IHasComponentIndex &&

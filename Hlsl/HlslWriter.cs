@@ -426,7 +426,7 @@ namespace HlslDecompiler
             {
                 var registerKey = rootGroup.Key;
                 var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
-                string statement = compiler.Compile(roots);
+                string statement = compiler.Compile(roots, 4);
 
                 if (_registers.MethodOutputRegisters.Count == 1)
                 {

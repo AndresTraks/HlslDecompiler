@@ -9,6 +9,10 @@
             AddInput(greaterEqualValue);
         }
 
+        public HlslTreeNode Value => Inputs[0];
+        public HlslTreeNode LessValue => Inputs[1];
+        public HlslTreeNode GreaterEqualValue => Inputs[2];
+
         public override string Mnemonic => "cmp";
     }
 }

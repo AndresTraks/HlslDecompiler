@@ -11,6 +11,8 @@ namespace HlslDecompiler.Hlsl
         private readonly ConstantCompiler _constantCompiler;
         private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
 
+        public const int PromoteToAnyVectorSize = -1;
+
         public NodeCompiler(RegisterState registers)
         {
             _registers = registers;
@@ -19,12 +21,12 @@ namespace HlslDecompiler.Hlsl
             _matrixMultiplicationCompiler = new MatrixMultiplicationCompiler(this);
         }
 
-        public string Compile(IEnumerable<HlslTreeNode> group)
+        public string Compile(IEnumerable<HlslTreeNode> group, int promoteToVectorSize = PromoteToAnyVectorSize)
         {
-            return Compile(group.ToList());
+            return Compile(group.ToList(), promoteToVectorSize);
         }
 
-        public string Compile(List<HlslTreeNode> components)
+        public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
         {
             if (components.Count == 0)
             {
@@ -57,7 +59,7 @@ namespace HlslDecompiler.Hlsl
                     // In float4(x, float), x cannot be promoted from float to float3
                     // In float4(x, y), x cannot be promoted to float2 and y to float2
                     // float4(float2, float2) is allowed
-                    var constructorParts = componentGroups.Select(Compile);
+                    var constructorParts = componentGroups.Select(g => Compile(g));
                     return $"float{components.Count}({string.Join(", ", constructorParts)})";
                 }
 
@@ -79,137 +81,157 @@ namespace HlslDecompiler.Hlsl
 
             if (first is ConstantNode constant)
             {
-                var constantComponents = components.Cast<ConstantNode>().ToArray();
-                return _constantCompiler.Compile(constantComponents);
+                return CompileConstant(components);
             }
 
             if (first is Operation operation)
             {
-                switch (operation)
-                {
-                    case UnaryOperation _:
-                    case SignGreaterOrEqualOperation _:
-                    case SignLessOperation _:
-                        {
-                            string name = operation.Mnemonic;
-                            string value = Compile(components.Select(g => g.Inputs[0]));
-                            return $"{name}({value})";
-                        }
-
-                    case AddOperation _:
-                        {
-                            return string.Format("{0} + {1}",
-                                Compile(components.Select(g => g.Inputs[0])),
-                                Compile(components.Select(g => g.Inputs[1])));
-                        }
-
-                    case SubtractOperation _:
-                        {
-                            return string.Format("{0} - {1}",
-                                Compile(components.Select(g => g.Inputs[0])),
-                                Compile(components.Select(g => g.Inputs[1])));
-                        }
-
-                    case MultiplyOperation _:
-                        {
-                            var multiplicand1 = components.Select(g => g.Inputs[0]);
-                            var multiplicand2 = components.Select(g => g.Inputs[1]);
-
-                            if (multiplicand2.First() is ConstantNode)
-                            {
-                                return string.Format("{0} * {1}",
-                                    Compile(multiplicand2),
-                                    Compile(multiplicand1));
-                            }
-
-                            return string.Format("{0} * {1}",
-                                Compile(multiplicand1),
-                                Compile(multiplicand2));
-                        }
-
-                    case DivisionOperation _:
-                        {
-                            return string.Format("{0} / {1}",
-                                Compile(components.Select(g => g.Inputs[0])),
-                                Compile(components.Select(g => g.Inputs[1])));
-                        }
-
-                    case MaximumOperation _:
-                    case MinimumOperation _:
-                    case PowerOperation _:
-                        {
-                            var value1 = Compile(components.Select(g => g.Inputs[0]));
-                            var value2 = Compile(components.Select(g => g.Inputs[1]));
-
-                            var name = operation.Mnemonic;
-
-                            return $"{name}({value1}, {value2})";
-                        }
-
-                    case LinearInterpolateOperation _:
-                        {
-                            var value1 = Compile(components.Select(g => g.Inputs[0]));
-                            var value2 = Compile(components.Select(g => g.Inputs[1]));
-                            var value3 = Compile(components.Select(g => g.Inputs[2]));
-
-                            var name = "lerp";
-
-                            return $"{name}({value1}, {value2}, {value3})";
-                        }
-
-                    case CompareOperation _:
-                        {
-                            var value1 = Compile(components.Select(g => g.Inputs[0]));
-                            var value2 = Compile(components.Select(g => g.Inputs[1]));
-                            var value3 = Compile(components.Select(g => g.Inputs[2]));
-
-                            return $"{value1} >= 0 ? {value2} : {value3}";
-                        }
-                }
+                return CompileOperation(operation, components, promoteToVectorSize);
             }
-
 
             if (first is IHasComponentIndex component)
             {
-                var componentsWithIndices = components.Cast<IHasComponentIndex>();
-
-                if (first is RegisterInputNode shaderInput)
-                {
-                    var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
-
-                    string swizzle = "";
-                    if (registerKey.Type != RegisterType.Sampler)
-                    {
-                        swizzle = GetAstSourceSwizzleName(componentsWithIndices, _registers.GetRegisterFullLength(registerKey));
-                    }
-
-                    string name = _registers.GetRegisterName(registerKey);
-                    return $"{name}{swizzle}";
-                }
-
-                if (first is TextureLoadOutputNode textureLoad)
-                {
-                    string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
-
-                    string sampler = Compile(new[] { textureLoad.SamplerInput });
-                    string texcoords = Compile(textureLoad.TextureCoordinateInputs);
-                    return $"tex2D({sampler}, {texcoords}){swizzle}";
-                }
-
-                if (first is NormalizeOutputNode)
-                {
-                    string input = Compile(first.Inputs);
-                    string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
-                    return $"normalize({input}){swizzle}";
-                }
-
-                throw new NotImplementedException();
+                return CompileNodesWithComponents(components, first, promoteToVectorSize);
             }
 
             throw new NotImplementedException();
         }
 
-        private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs, int registerSize)
+        private string CompileConstant(List<HlslTreeNode> components)
+        {
+            var constantComponents = components.Cast<ConstantNode>().ToArray();
+            return _constantCompiler.Compile(constantComponents);
+        }
+
+        private string CompileOperation(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
+        {
+            switch (operation)
+            {
+                case UnaryOperation _:
+                case SignGreaterOrEqualOperation _:
+                case SignLessOperation _:
+                    {
+                        string name = operation.Mnemonic;
+                        string value = Compile(components.Select(g => g.Inputs[0]));
+                        return $"{name}({value})";
+                    }
+
+                case AddOperation _:
+                    {
+                        return string.Format("{0} + {1}",
+                            Compile(components.Select(g => g.Inputs[0])),
+                            Compile(components.Select(g => g.Inputs[1])));
+                    }
+
+                case SubtractOperation _:
+                    {
+                        return string.Format("{0} - {1}",
+                            Compile(components.Select(g => g.Inputs[0])),
+                            Compile(components.Select(g => g.Inputs[1])));
+                    }
+
+                case MultiplyOperation _:
+                    {
+                        var multiplicand1 = components.Select(g => g.Inputs[0]);
+                        var multiplicand2 = components.Select(g => g.Inputs[1]);
+
+                        if (multiplicand2.First() is ConstantNode)
+                        {
+                            return string.Format("{0} * {1}",
+                                Compile(multiplicand2, promoteToVectorSize),
+                                Compile(multiplicand1, promoteToVectorSize));
+                        }
+
+                        return string.Format("{0} * {1}",
+                            Compile(multiplicand1, promoteToVectorSize),
+                            Compile(multiplicand2, promoteToVectorSize));
+                    }
+
+                case DivisionOperation _:
+                    {
+                        return string.Format("{0} / {1}",
+                            Compile(components.Select(g => g.Inputs[0])),
+                            Compile(components.Select(g => g.Inputs[1])));
+                    }
+
+                case MaximumOperation _:
+                case MinimumOperation _:
+                case PowerOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        var value2 = Compile(components.Select(g => g.Inputs[1]));
+
+                        var name = operation.Mnemonic;
+
+                        return $"{name}({value1}, {value2})";
+                    }
+
+                case LinearInterpolateOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        var value2 = Compile(components.Select(g => g.Inputs[1]));
+                        var value3 = Compile(components.Select(g => g.Inputs[2]));
+
+                        var name = "lerp";
+
+                        return $"{name}({value1}, {value2}, {value3})";
+                    }
+
+                case CompareOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
+                        var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
+
+                        return $"{value1} >= 0 ? {value2} : {value3}";
+                    }
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private string CompileNodesWithComponents(List<HlslTreeNode> components, HlslTreeNode first, int promoteToVectorSize)
+        {
+            var componentsWithIndices = components.Cast<IHasComponentIndex>();
+
+            if (first is RegisterInputNode shaderInput)
+            {
+                var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
+
+                string swizzle = "";
+                if (registerKey.Type != RegisterType.Sampler)
+                {
+                    swizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                        _registers.GetRegisterFullLength(registerKey),
+                        promoteToVectorSize);
+                }
+
+                string name = _registers.GetRegisterName(registerKey);
+                return $"{name}{swizzle}";
+            }
+
+            if (first is TextureLoadOutputNode textureLoad)
+            {
+                string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+
+                string sampler = Compile(new[] { textureLoad.SamplerInput });
+                string texcoords = Compile(textureLoad.TextureCoordinateInputs);
+                return $"tex2D({sampler}, {texcoords}){swizzle}";
+            }
+
+            if (first is NormalizeOutputNode)
+            {
+                string input = Compile(first.Inputs);
+                string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+                return $"normalize({input}){swizzle}";
+            }
+
+            throw new NotImplementedException();
+        }
+
+        private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,
+            int registerSize, 
+            int promoteToVectorSize = PromoteToAnyVectorSize)
         {
             string swizzleName = "";
             foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
@@ -222,7 +244,7 @@ namespace HlslDecompiler.Hlsl
                 return "";
             }
 
-            if (swizzleName.Distinct().Count() == 1)
+            if (promoteToVectorSize == PromoteToAnyVectorSize && swizzleName.Distinct().Count() == 1)
             {
                 return "." + swizzleName.First();
             }

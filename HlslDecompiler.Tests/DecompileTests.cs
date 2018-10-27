@@ -6,6 +6,7 @@ namespace HlslDecompiler.Tests
     [TestFixture]
     public class DecompileTests
     {
+        [TestCase("ps_conditional")]
         [TestCase("ps_constant")]
         [TestCase("ps_constant_struct")]
         [TestCase("ps_dot_product2_add")]

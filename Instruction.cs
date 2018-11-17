@@ -296,6 +296,11 @@ namespace HlslDecompiler
             return BitConverter.ToSingle(GetParamBytes(index), 0);
         }
 
+        public float GetParamInt(int index)
+        {
+            return BitConverter.ToInt32(GetParamBytes(index), 0);
+        }
+
         public RegisterKey GetParamRegisterKey(int index)
         {
             return new RegisterKey(

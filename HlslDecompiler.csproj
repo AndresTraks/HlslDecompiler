@@ -51,6 +51,7 @@
     <Compile Include="FourCC.cs" />
     <Compile Include="Hlsl\Compiler\ConstantCompiler.cs" />
     <Compile Include="Hlsl\Compiler\DotProductGrouper.cs" />
+    <Compile Include="Hlsl\Compiler\AssociativityTester.cs" />
     <Compile Include="Hlsl\Compiler\NormalizeGrouper.cs" />
     <Compile Include="Hlsl\Compiler\LengthGrouper.cs" />
     <Compile Include="Hlsl\Compiler\MatrixMultiplicationCompiler.cs" />

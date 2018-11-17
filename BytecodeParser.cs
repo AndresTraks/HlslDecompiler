@@ -89,6 +89,10 @@ namespace HlslDecompiler
                 {
                     for (int r = 0; r < constant.RegisterCount; r++)
                     {
+                        if (constant.ParameterType != ParameterType.Float)
+                        {
+                            throw new NotImplementedException();
+                        }
                         var registerKey = new RegisterKey(RegisterType.Const, constant.RegisterIndex + r);
                         for (int i = 0; i < 4; i++)
                         {
@@ -155,6 +159,15 @@ namespace HlslDecompiler
                     {
                         var constant = new ConstantNode(instruction.GetParamSingle(componentIndex + 1));
                         return constant;
+                    }
+                case Opcode.DefI:
+                    {
+                        var constant = new ConstantNode(instruction.GetParamInt(componentIndex + 1));
+                        return constant;
+                    }
+                case Opcode.DefB:
+                    {
+                        throw new NotImplementedException();
                     }
                 case Opcode.Abs:
                 case Opcode.Add:

@@ -43,6 +43,17 @@
                 {
                     return new ConstantNode(value1 * constant2.Value);
                 }
+
+                // TODO: Replace with division by x only if dividend is an addition of x addends
+                /*
+                if (IsFractional(value1))
+                {
+                    ConstantNode divisor = new ConstantNode(1 / value1);
+                    var division = new DivisionOperation(factor2, divisor);
+                    Replace(division);
+                    return division;
+                }
+                */
             }
 
             if (constant2 != null)
@@ -64,6 +75,17 @@
                     Replace(negation);
                     return negation;
                 }
+
+                // TODO: Replace with division by x only if dividend is an addition of x addends
+                /*
+                if (IsFractional(value2))
+                {
+                    ConstantNode divisor = new ConstantNode(1 / value2);
+                    var division = new DivisionOperation(factor1, divisor);
+                    Replace(division);
+                    return division;
+                }
+                */
             }
 
             if (factor1 is DivisionOperation reciprocalDivision)
@@ -79,6 +101,18 @@
             Inputs[0] = factor1;
             Inputs[1] = factor2;
             return this;
+        }
+
+        private static bool IsFractional(float value1)
+        {
+            if (value1 > 0 && value1 < 1)
+            {
+                return value1 == 0.5f ||
+                    value1 == 0.25f ||
+                    value1 == 0.1f;
+            }
+
+            return false;
         }
     }
 }

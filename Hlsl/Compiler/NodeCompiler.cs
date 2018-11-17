@@ -107,6 +107,17 @@ namespace HlslDecompiler.Hlsl
         {
             switch (operation)
             {
+                case NegateOperation _:
+                    {
+                        string name = operation.Mnemonic;
+                        IEnumerable<HlslTreeNode> input = components.Select(g => g.Inputs[0]);
+                        bool isAssociative = AssociativityTester.TestForMultiplication(input.First());
+                        string value = Compile(input);
+                        return isAssociative
+                            ? $"-{value}"
+                            : $"-({value})";
+                    }
+
                 case UnaryOperation _:
                 case SignGreaterOrEqualOperation _:
                 case SignLessOperation _:
@@ -135,23 +146,38 @@ namespace HlslDecompiler.Hlsl
                         var multiplicand1 = components.Select(g => g.Inputs[0]);
                         var multiplicand2 = components.Select(g => g.Inputs[1]);
 
-                        if (multiplicand2.First() is ConstantNode)
+                        if (!(multiplicand1.First() is ConstantNode) && multiplicand2.First() is ConstantNode)
                         {
-                            return string.Format("{0} * {1}",
-                                Compile(multiplicand2, promoteToVectorSize),
-                                Compile(multiplicand1, promoteToVectorSize));
+                            var temp = multiplicand1;
+                            multiplicand1 = multiplicand2;
+                            multiplicand2 = temp;
                         }
 
-                        return string.Format("{0} * {1}",
+                        bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
+                        bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First());
+                        string format =
+                            (firstIsAssociative ? "{0}" : "({0})") +
+                            " * " +
+                            (secondIsAssociative ? "{1}" : "({1})");
+
+                        return string.Format(format,
                             Compile(multiplicand1, promoteToVectorSize),
                             Compile(multiplicand2, promoteToVectorSize));
                     }
 
                 case DivisionOperation _:
                     {
+                        var dividend = components.Select(g => g.Inputs[0]);
+                        var divisor = components.Select(g => g.Inputs[1]);
+
+                        bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor.First());
+                        string format = divisorIsAssociative
+                            ? "{0} / {1}"
+                            : "{0} / ({1})";
+
                         return string.Format("{0} / {1}",
-                            Compile(components.Select(g => g.Inputs[0])),
-                            Compile(components.Select(g => g.Inputs[1])));
+                            Compile(dividend),
+                            Compile(divisor));
                     }
 
                 case MaximumOperation _:

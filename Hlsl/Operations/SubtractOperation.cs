@@ -21,6 +21,12 @@
                 Replace(newValue);
                 return newValue;
             }
+            if (Subtrahend is NegateOperation negation)
+            {
+                var addition = new AddOperation(Minuend.Reduce(), negation.Value.Reduce());
+                Replace(addition);
+                return addition;
+            }
             return base.Reduce();
         }
     }

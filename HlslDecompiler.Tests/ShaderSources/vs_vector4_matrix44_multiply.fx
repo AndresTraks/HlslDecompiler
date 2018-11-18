@@ -5,15 +5,17 @@ struct VS_OUT
 	float4 position : POSITION;
 	float4 position1 : POSITION1;
 	float4 position2 : POSITION2;
+	float4 position3 : POSITION3;
 };
 
 VS_OUT main(float4 position : POSITION)
 {
 	VS_OUT o;
 
-	o.position = mul(matrix_4x4, position);
-	o.position1 = mul(matrix_4x4, position.yxzw);
-	o.position2 = mul(matrix_4x4, abs(position.yxzw));
+	o.position = mul(position, matrix_4x4);
+	o.position1 = mul(position.yxzw, matrix_4x4);
+	o.position2 = mul(abs(position.yxzw), matrix_4x4);
+	o.position3 = mul(float4(5, 2, 3, 4) * position, matrix_4x4);
 
 	return o;
 }

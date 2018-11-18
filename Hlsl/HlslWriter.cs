@@ -421,26 +421,27 @@ namespace HlslDecompiler
             var compiler = new NodeCompiler(_registers);
 
             var rootGroups = ast.Roots.GroupBy(r => r.Key.RegisterKey);
-
-            foreach (var rootGroup in rootGroups)
+            if (_registers.MethodOutputRegisters.Count == 1)
             {
+                var rootGroup = rootGroups.Single();
                 var registerKey = rootGroup.Key;
                 var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
                 string statement = compiler.Compile(roots, 4);
 
-                if (_registers.MethodOutputRegisters.Count == 1)
-                {
-                    WriteLine($"return {statement};");
-                }
-                else
-                {
-                    var name = _registers.MethodOutputRegisters[registerKey].Name;
-                    WriteLine($"o.{name} = {statement};");
-                }
+                WriteLine($"return {statement};");
             }
-
-            if (_registers.MethodOutputRegisters.Count > 1)
+            else
             {
+                foreach (var rootGroup in rootGroups)
+                {
+                    var registerKey = rootGroup.Key;
+                    var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
+                    RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[registerKey];
+                    string statement = compiler.Compile(roots, roots.Count);
+
+                    WriteLine($"o.{outputRegister.Name} = {statement};");
+                }
+
                 WriteLine();
                 WriteLine($"return o;");
             }

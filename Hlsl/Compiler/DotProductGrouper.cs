@@ -89,6 +89,11 @@ namespace HlslDecompiler.Hlsl
             HlslTreeNode w = dw.Factor2;
             if (CanGroupComponents(c, d, allowMatrixColumn))
             {
+                if (allowMatrixColumn && SharesMatrixColumnOrRow(c, d))
+                {
+                    // If one of the arguments is a matrix, allow the other argument to be arbitrary.
+                    return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
+                }
                 if (CanGroupComponents(z, w, allowMatrixColumn))
                 {
                     return new DotProductContext(new[] { a, b, c, d }, new[] { x, y, z, w });
@@ -142,6 +147,11 @@ namespace HlslDecompiler.Hlsl
             HlslTreeNode z = cz.Factor2;
             if (CanGroupComponents(b, c, allowMatrixColumn))
             {
+                if (allowMatrixColumn && SharesMatrixColumnOrRow(a, b))
+                {
+                    // If one of the arguments is a matrix, allow the other argument to be arbitrary.
+                    return new DotProductContext(new[] { a, b, c }, new[] { x, y, z });
+                }
                 if (CanGroupComponents(y, z, allowMatrixColumn))
                 {
                     return new DotProductContext(new[] { a, b, c }, new[] { x, y, z });
@@ -176,12 +186,21 @@ namespace HlslDecompiler.Hlsl
             {
                 if (CanGroupComponents(a, y, allowMatrixColumn) == false)
                 {
+                    if (allowMatrixColumn && SharesMatrixColumnOrRow(x, y))
+                    {
+                        // If one of the arguments is a matrix, allow the other argument to be arbitrary.
+                        return new DotProductContext(new[] { a, b }, new[] { x, y });
+                    }
                     return null;
                 }
                 Swap(ref b, ref y);
             }
 
-            if (CanGroupComponents(x, y, allowMatrixColumn) == false)
+            if (allowMatrixColumn && SharesMatrixColumnOrRow(a, b))
+            {
+                // If one of the arguments is a matrix, allow the other argument to be arbitrary.
+            }
+            else if (CanGroupComponents(x, y, allowMatrixColumn) == false)
             {
                 return null;
             }
@@ -192,6 +211,13 @@ namespace HlslDecompiler.Hlsl
         private bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b, bool allowMatrixColumn)
         {
             return _nodeGrouper.CanGroupComponents(a, b, allowMatrixColumn);
+        }
+
+        private bool SharesMatrixColumnOrRow(HlslTreeNode a, HlslTreeNode b)
+        {
+            return a is RegisterInputNode ar
+                && b is RegisterInputNode br 
+                && _nodeGrouper.SharesMatrixColumnOrRow(ar, br);
         }
 
         private static void Swap(ref HlslTreeNode a, ref HlslTreeNode b)

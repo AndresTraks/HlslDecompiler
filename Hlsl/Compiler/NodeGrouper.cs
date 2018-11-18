@@ -104,23 +104,14 @@ namespace HlslDecompiler.Hlsl
             {
                 if (input1.RegisterComponentKey.Type == input2.RegisterComponentKey.Type)
                 {
-                    int constIndex1 = input1.RegisterComponentKey.Number;
-                    int constIndex2 = input2.RegisterComponentKey.Number;
-                    if (constIndex1 == constIndex2)
+                    if (input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number)
                     {
                         return true;
                     }
 
                     if (allowMatrixColumn)
                     {
-                        if (input1.RegisterComponentKey.ComponentIndex !=
-                            input2.RegisterComponentKey.ComponentIndex)
-                        {
-                            return false;
-                        }
-
-                        var constantRegister1 = _registers.FindConstant(ParameterType.Float, constIndex1);
-                        return constantRegister1 != null && constantRegister1.ContainsIndex(constIndex2);
+                        return SharesMatrixColumnOrRow(input1, input2);
                     }
                 }
                 return false;
@@ -188,6 +179,48 @@ namespace HlslDecompiler.Hlsl
             }
 
             return false;
+        }
+
+        public bool SharesMatrixColumnOrRow(RegisterInputNode input1, RegisterInputNode input2)
+        {
+            return SharesMatrixColumn(input1, input2)
+                || SharesMatrixRow(input1, input2);
+        }
+
+        public bool SharesMatrixColumn(RegisterInputNode input1, RegisterInputNode input2)
+        {
+            if (input1.RegisterComponentKey.ComponentIndex !=
+                input2.RegisterComponentKey.ComponentIndex)
+            {
+                return false;
+            }
+
+            int constIndex1 = input1.RegisterComponentKey.Number;
+            int constIndex2 = input2.RegisterComponentKey.Number;
+            var constantRegister = _registers.FindConstant(ParameterType.Float, constIndex1);
+            return constantRegister != null
+                && constantRegister.ContainsIndex(constIndex2)
+                && IsMatrixConstantRegister(constantRegister);
+        }
+
+        public bool SharesMatrixRow(RegisterInputNode input1, RegisterInputNode input2)
+        {
+            if (input1.RegisterComponentKey.RegisterKey !=
+                input2.RegisterComponentKey.RegisterKey)
+            {
+                return false;
+            }
+
+            int constIndex = input1.RegisterComponentKey.Number;
+            var constantRegister = _registers.FindConstant(ParameterType.Float, constIndex);
+            return constantRegister != null
+                && IsMatrixConstantRegister(constantRegister);
+        }
+
+        private static bool IsMatrixConstantRegister(ConstantDeclaration constantRegister)
+        {
+            return constantRegister.ParameterClass == ParameterClass.MatrixColumns
+                || constantRegister.ParameterClass == ParameterClass.MatrixRows;
         }
 
         public static bool IsVectorEquivalent(HlslTreeNode[] vector1, HlslTreeNode[] vector2)

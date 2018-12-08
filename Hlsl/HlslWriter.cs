@@ -412,7 +412,7 @@ namespace HlslDecompiler
             }
 
             return _shader.Type == ShaderType.Pixel
-                    ? "VS_OUT i"
+                    ? "PS_IN i"
                     : "VS_IN i";
         }
 

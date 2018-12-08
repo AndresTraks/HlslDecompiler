@@ -14,6 +14,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_texcoord_modifier")]
         [TestCase("ps_texcoord_swizzle")]
         [TestCase("ps_float4_construct")]
+        [TestCase("ps_float4_construct2")]
         [TestCase("ps_float4_constant")]
         [TestCase("ps_multiply_subtract")]
         [TestCase("ps_absolute_multiply")]

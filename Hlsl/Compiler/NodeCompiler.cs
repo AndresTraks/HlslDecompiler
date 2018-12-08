@@ -56,11 +56,7 @@ namespace HlslDecompiler.Hlsl
                 IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
                 if (componentGroups.Count > 1)
                 {
-                    // In float4(x, float), x cannot be promoted from float to float3
-                    // In float4(x, y), x cannot be promoted to float2 and y to float2
-                    // float4(float2, float2) is allowed
-                    var constructorParts = componentGroups.Select(g => Compile(g));
-                    return $"float{components.Count}({string.Join(", ", constructorParts)})";
+                    return CompileVectorConstructor(components, componentGroups);
                 }
 
                 var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(components);
@@ -81,7 +77,7 @@ namespace HlslDecompiler.Hlsl
 
             if (first is ConstantNode constant)
             {
-                return CompileConstant(components);
+                return CompileConstant(components, promoteToVectorSize);
             }
 
             if (first is Operation operation)
@@ -97,7 +93,37 @@ namespace HlslDecompiler.Hlsl
             throw new NotImplementedException();
         }
 
-        private string CompileConstant(List<HlslTreeNode> components)
+        private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)
+        {
+            UngroupConstantGroups(componentGroups);
+
+            IEnumerable<string> compiledConstructorParts = componentGroups.Select(Compile);
+            return $"float{components.Count}({string.Join(", ", compiledConstructorParts)})";
+        }
+
+        private static void UngroupConstantGroups(IList<IList<HlslTreeNode>> componentGroups)
+        {
+            int i = 0;
+            while (i < componentGroups.Count)
+            {
+                var componentGroup = componentGroups[i];
+                if (componentGroup.All(c => c is ConstantNode))
+                {
+                    componentGroups.RemoveAt(i);
+                    foreach (var groupComponent in componentGroup)
+                    {
+                        componentGroups.Insert(i, new[] { groupComponent });
+                        i++;
+                    }
+                }
+                else
+                {
+                    i++;
+                }
+            }
+        }
+
+        private string CompileConstant(List<HlslTreeNode> components, int promoteToVectorSize)
         {
             var constantComponents = components.Cast<ConstantNode>().ToArray();
             return _constantCompiler.Compile(constantComponents);

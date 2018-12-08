@@ -9,6 +9,7 @@ $pixelShaderSources = @(
     "ps_texcoord_modifier",
     "ps_texcoord_swizzle",
     "ps_float4_construct",
+    "ps_float4_construct2",
     "ps_float4_constant",
     "ps_multiply_subtract",
     "ps_absolute_multiply",

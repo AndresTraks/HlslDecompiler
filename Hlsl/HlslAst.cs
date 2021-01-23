@@ -1,7 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using HlslDecompiler.DirectXShaderModel;
+using System.Collections.Generic;
 using System.Linq;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.Hlsl
 {
     public class HlslAst
     {

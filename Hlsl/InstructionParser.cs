@@ -1,9 +1,9 @@
-﻿using HlslDecompiler.Hlsl;
+﻿using HlslDecompiler.DirectXShaderModel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.Hlsl
 {
     class BytecodeParser
     {

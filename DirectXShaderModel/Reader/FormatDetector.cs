@@ -6,11 +6,11 @@ namespace HlslDecompiler
     enum ShaderFileFormat
     {
         Unknown,
-        Hlsl,
+        ShaderModel,
         Rgxa
     }
 
-    class DetectFormat
+    class FormatDetector
     {
         public static ShaderFileFormat Detect(Stream stream)
         {
@@ -30,7 +30,7 @@ namespace HlslDecompiler
                     signature = reader.ReadUInt32();
                     if (signature == 0xFFFE0300 || signature == 0xFFFF0300)
                     {
-                        format = ShaderFileFormat.Hlsl;
+                        format = ShaderFileFormat.ShaderModel;
                     }
                 }
             }

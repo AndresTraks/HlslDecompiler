@@ -1,4 +1,4 @@
-﻿namespace HlslDecompiler
+﻿namespace HlslDecompiler.DirectXShaderModel
 {
     public class RegisterKey
     {

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.DirectXShaderModel;
+using System;
 using System.IO;
 
 namespace HlslDecompiler
@@ -15,69 +16,21 @@ namespace HlslDecompiler
 
             string inputFilename = args[0];
             string baseFilename = Path.GetFileNameWithoutExtension(inputFilename);
+            
+            // Try to simplify HLSL expressions by doing AST analysis
+            bool doAstAnalysis = false;
 
             using (var inputStream = File.Open(inputFilename, FileMode.Open, FileAccess.Read))
             {
-                ShaderModel shader;
-                AsmWriter writer;
-                HlslWriter hlslWriter;
-
-                var format = DetectFormat.Detect(inputStream);
+                var format = FormatDetector.Detect(inputStream);
                 switch (format)
                 {
+                    case ShaderFileFormat.ShaderModel:
+                        ReadShaderModel(baseFilename, inputStream, doAstAnalysis);
+                        break;
                     case ShaderFileFormat.Rgxa:
-                        using (var input = new RgxaReader(inputStream, true))
-                        {
-                            int ivs = 0, ips = 0;
-                            while (true)
-                            {
-                                shader = input.ReadShader();
-                                if (shader == null)
-                                {
-                                    break;
-                                }
-
-                                string outFilename;
-                                if (shader.Type == ShaderType.Vertex)
-                                {
-                                    outFilename = $"{baseFilename}_vs{ivs}";
-                                    ivs++;
-                                }
-                                else
-                                {
-                                    outFilename = $"{baseFilename}_ps{ips}";
-                                    ips++;
-                                }
-                                Console.WriteLine(outFilename);
-
-                                //shader.ToFile(outFilename.fxc", outFilename, i));
-
-                                writer = new AsmWriter(shader);
-                                writer.Write(outFilename + ".asm");
-
-                                hlslWriter = new HlslWriter(shader);
-                                hlslWriter.Write(outFilename + ".fx");
-
-                                Console.WriteLine();
-                            } 
-                        }
+                        ReadRgxa(baseFilename, inputStream, doAstAnalysis);
                         break;
-
-                    case ShaderFileFormat.Hlsl:
-                        using (var input = new ShaderReader(inputStream, true))
-                        {
-                            Console.WriteLine();
-                            Console.WriteLine("{0}", baseFilename);
-                            shader = input.ReadShader();
-
-                            writer = new AsmWriter(shader);
-                            writer.Write($"{baseFilename}.asm");
-
-                            hlslWriter = new HlslWriter(shader);
-                            hlslWriter.Write($"{baseFilename}.fx");
-                        }
-                        break;
-
                     case ShaderFileFormat.Unknown:
                         Console.WriteLine("Unknown file format!");
                         break;
@@ -85,6 +38,61 @@ namespace HlslDecompiler
             }
 
             Console.ReadKey();
+        }
+
+        private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis)
+        {
+            using (var input = new ShaderReader(inputStream, true))
+            {
+                Console.WriteLine();
+                Console.WriteLine("{0}", baseFilename);
+                var shader = input.ReadShader();
+
+                AsmWriter writer = new AsmWriter(shader);
+                writer.Write($"{baseFilename}.asm");
+
+                var hlslWriter = new HlslWriter(shader, doAstAnalysis);
+                hlslWriter.Write($"{baseFilename}.fx");
+            }
+        }
+
+        private static void ReadRgxa(string baseFilename, FileStream inputStream, bool doAstAnalysis)
+        {
+            using (var input = new RgxaReader(inputStream, true))
+            {
+                int ivs = 0, ips = 0;
+                while (true)
+                {
+                    ShaderModel shader = input.ReadShader();
+                    if (shader == null)
+                    {
+                        break;
+                    }
+
+                    string outFilename;
+                    if (shader.Type == ShaderType.Vertex)
+                    {
+                        outFilename = $"{baseFilename}_vs{ivs}";
+                        ivs++;
+                    }
+                    else
+                    {
+                        outFilename = $"{baseFilename}_ps{ips}";
+                        ips++;
+                    }
+                    Console.WriteLine(outFilename);
+
+                    //shader.ToFile("outFilename.fxc");
+
+                    var writer = new AsmWriter(shader);
+                    writer.Write(outFilename + ".asm");
+
+                    var hlslWriter = new HlslWriter(shader, doAstAnalysis);
+                    hlslWriter.Write(outFilename + ".fx");
+
+                    Console.WriteLine();
+                }
+            }
         }
     }
 }

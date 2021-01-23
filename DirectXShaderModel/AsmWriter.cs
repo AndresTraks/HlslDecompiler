@@ -2,7 +2,7 @@
 using System.Globalization;
 using System.IO;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.DirectXShaderModel
 {
     public class AsmWriter
     {

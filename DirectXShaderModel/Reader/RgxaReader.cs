@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.DirectXShaderModel
 {
     enum Location
     {

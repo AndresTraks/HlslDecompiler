@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using HlslDecompiler.DirectXShaderModel;
+using NUnit.Framework;
 using System.IO;
 
 namespace HlslDecompiler.Tests

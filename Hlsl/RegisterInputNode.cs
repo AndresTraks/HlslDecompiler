@@ -1,4 +1,6 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿using HlslDecompiler.DirectXShaderModel;
+
+namespace HlslDecompiler.Hlsl
 {
     public class RegisterInputNode : HlslTreeNode, IHasComponentIndex
     {

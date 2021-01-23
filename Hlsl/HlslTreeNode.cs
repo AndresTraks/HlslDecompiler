@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.Hlsl
 {
     public class HlslTreeNode
     {

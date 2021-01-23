@@ -1,7 +1,7 @@
 ﻿using System.IO;
 using System.Text;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.DirectXShaderModel
 {
     public class ShaderReader : BinaryReader
     {

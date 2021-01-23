@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.DirectXShaderModel;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -11,8 +12,8 @@ namespace HlslDecompiler.Hlsl
 
         private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
 
-        private ICollection<Constant> _constantDefinitions { get; } = new List<Constant>();
-        private ICollection<ConstantInt> _constantIntDefinitions { get; } = new List<ConstantInt>();
+        private ICollection<ConstantRegister> _constantDefinitions { get; } = new List<ConstantRegister>();
+        private ICollection<ConstantIntRegister> _constantIntDefinitions { get; } = new List<ConstantIntRegister>();
         private readonly IDictionary<RegisterKey, RegisterDeclaration> _registerDeclarations = new Dictionary<RegisterKey, RegisterDeclaration>();
 
         public RegisterState(ShaderModel shader)
@@ -270,7 +271,7 @@ namespace HlslDecompiler.Hlsl
                 }
                 else if (instruction.Opcode == Opcode.Def)
                 {
-                    var constant = new Constant(
+                    var constant = new ConstantRegister(
                         instruction.GetParamRegisterNumber(0),
                         instruction.GetParamSingle(1),
                         instruction.GetParamSingle(2),
@@ -280,7 +281,7 @@ namespace HlslDecompiler.Hlsl
                 }
                 else if (instruction.Opcode == Opcode.DefI)
                 {
-                    var constantInt = new ConstantInt(instruction.GetParamRegisterNumber(0),
+                    var constantInt = new ConstantIntRegister(instruction.GetParamRegisterNumber(0),
                         instruction.Params[1],
                         instruction.Params[2],
                         instruction.Params[3],

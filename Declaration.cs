@@ -126,7 +126,8 @@ namespace HlslDecompiler
         {
             RegisterType type = registerKey.Type;
             if (type != RegisterType.ColorOut &&
-                type != RegisterType.Const)
+                type != RegisterType.Const &&
+                type != RegisterType.Temp)
             {
                 throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));
             }

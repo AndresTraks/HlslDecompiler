@@ -83,9 +83,17 @@ namespace HlslDecompiler.Hlsl
                         throw new NotImplementedException();
                     }
 
-                    if (decl.ParameterClass == ParameterClass.MatrixRows)
+                    if ((decl.ParameterClass == ParameterClass.MatrixRows && ColumnMajorOrder) ||
+                        (decl.ParameterClass == ParameterClass.MatrixColumns && !ColumnMajorOrder))
                     {
-                        sourceRegisterName = string.Format("{0}[{1}]", decl.Name, registerNumber - decl.RegisterIndex);
+                        int row = registerNumber - decl.RegisterIndex;
+                        sourceRegisterName = $"{decl.Name}[{row}]";
+                    }
+                    else if ((decl.ParameterClass == ParameterClass.MatrixColumns && ColumnMajorOrder) ||
+                        (decl.ParameterClass == ParameterClass.MatrixRows && !ColumnMajorOrder))
+                    {
+                        int column = registerNumber - decl.RegisterIndex;
+                        sourceRegisterName = $"transpose({decl.Name})[{column}]";
                     }
                     else
                     {
@@ -138,24 +146,23 @@ namespace HlslDecompiler.Hlsl
                 case RegisterType.Input:
                     return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                 case RegisterType.Output:
+                case RegisterType.ColorOut:
                     return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                 case RegisterType.Const:
                     var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
-                    if (ColumnMajorOrder)
-                    {
-                        if (constDecl.Rows == 1)
-                        {
-                            return constDecl.Name;
-                        }
-                        string col = (registerKey.Number - constDecl.RegisterIndex).ToString();
-                        return $"transpose({constDecl.Name})[{col}]";
-                    }
                     if (constDecl.Rows == 1)
                     {
                         return constDecl.Name;
                     }
+                    if (ColumnMajorOrder)
+                    {
+                        int column = registerKey.Number - constDecl.RegisterIndex;
+                        return $"transpose({constDecl.Name})[{column}]";
+                    }
                     string row = (registerKey.Number - constDecl.RegisterIndex).ToString();
                     return constDecl.Name + $"[{row}]";
+                case RegisterType.Temp:
+                    return "r" + registerKey.Number;
                 case RegisterType.Sampler:
                     ConstantDeclaration samplerDecl = FindConstant(RegisterSet.Sampler, registerKey.Number);
                     if (samplerDecl != null)
@@ -280,19 +287,39 @@ namespace HlslDecompiler.Hlsl
                         instruction.Params[4]);
                     _constantIntDefinitions.Add(constantInt);
                 }
-                else if (shader.Type == ShaderType.Pixel)
+                else
                 {
-                    // Find all assignments to color outputs, because pixel shader outputs are not declared.
                     int destIndex = instruction.GetDestinationParamIndex();
                     RegisterType registerType = instruction.GetParamRegisterType(destIndex);
+                    // Find assignments to color outputs, since pixel shader outputs are not pre-declared
                     if (registerType == RegisterType.ColorOut)
                     {
-                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                        var registerKey = new RegisterKey(registerType, registerNumber);
-                        if (MethodOutputRegisters.ContainsKey(registerKey) == false)
+                        if (shader.Type == ShaderType.Pixel)
                         {
-                            var reg = new RegisterDeclaration(registerKey);
-                            MethodOutputRegisters[registerKey] = reg;
+                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                            var registerKey = new RegisterKey(registerType, registerNumber);
+                            if (MethodOutputRegisters.ContainsKey(registerKey) == false)
+                            {
+                                var reg = new RegisterDeclaration(registerKey);
+                                MethodOutputRegisters[registerKey] = reg;
+
+                                if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                {
+                                    var registerDeclaration = new RegisterDeclaration(registerKey);
+                                    _registerDeclarations.Add(registerKey, registerDeclaration);
+                                }
+                            }
+                        }
+                    }
+                    // Find assignments to temporary registers, since they are not pre-declared
+                    else if (registerType == RegisterType.Temp)
+                    {
+                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                        RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = new RegisterDeclaration(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
                         }
                     }
                 }

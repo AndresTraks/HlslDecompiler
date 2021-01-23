@@ -298,18 +298,17 @@ namespace HlslDecompiler
             WriteLine("{");
             indent = "\t";
 
-            if (_registers.MethodOutputRegisters.Count > 1)
-            {
-                var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
-                WriteLine($"{outputStructType} o;");
-                WriteLine();
-            }
-
-            HlslAst ast = null;
             if (_doAstAnalysis)
             {
+                if (_registers.MethodOutputRegisters.Count > 1)
+                {
+                    var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+                    WriteLine($"{outputStructType} o;");
+                    WriteLine();
+                }
+
                 var parser = new BytecodeParser();
-                ast = parser.Parse(_shader);
+                HlslAst ast = parser.Parse(_shader);
                 ast.ReduceTree();
 
                 WriteAst(ast);
@@ -449,16 +448,21 @@ namespace HlslDecompiler
 
         private void WriteInstructionList()
         {
-            // Find all assignments to temporary variables
-            // and declare the variables.
-            var tempRegisters = new Dictionary<string, int>();
+            WriteTemporaryVariableDeclarations();
             foreach (Instruction instruction in _shader.Instructions)
             {
-                if (!instruction.HasDestination)
-                {
-                    continue;
-                }
+                WriteInstruction(instruction);
+            }
 
+            WriteLine();
+            WriteLine("return o;");
+        }
+
+        private void WriteTemporaryVariableDeclarations()
+        {
+            var tempRegisters = new Dictionary<string, int>();
+            foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
+            {
                 int destIndex = instruction.GetDestinationParamIndex();
                 if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
                 {
@@ -497,14 +501,6 @@ namespace HlslDecompiler
                 }
                 WriteLine("{0} {1};", writeMaskName, registerName);
             }
-
-            foreach (Instruction instruction in _shader.Instructions)
-            {
-                WriteInstruction(instruction);
-            }
-
-            WriteLine();
-            WriteLine("return o;");
         }
     }
 }

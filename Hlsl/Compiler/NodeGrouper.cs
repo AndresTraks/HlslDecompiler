@@ -161,6 +161,11 @@ namespace HlslDecompiler.Hlsl
                         CanGroupComponents(compare1.LessValue, compare2.LessValue) &&
                         CanGroupComponents(compare1.GreaterEqualValue, compare2.GreaterEqualValue);
                 }
+                else if (operation1 is ClipOperation clip1 &&
+                         operation2 is ClipOperation clip2)
+                {
+                    return CanGroupComponents(clip1.Value, clip2.Value);
+                }
             }
 
             if (node1 is IHasComponentIndex &&
@@ -267,8 +272,8 @@ namespace HlslDecompiler.Hlsl
                         || (AreNodesEquivalent(add1.Addend1, add2.Addend2) && AreNodesEquivalent(add1.Addend2, add2.Addend1));
                 }
                 else if (
-                    (operation1 is UnaryOperation unaryOperation1 &&
-                    operation2 is UnaryOperation unaryOperation2 &&
+                    (operation1 is ConsumerOperation unaryOperation1 &&
+                    operation2 is ConsumerOperation unaryOperation2 &&
                     unaryOperation1.GetType() == unaryOperation2.GetType()))
                 {
                     return AreNodesEquivalent(unaryOperation1.Value, unaryOperation2.Value);

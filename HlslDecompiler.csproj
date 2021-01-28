@@ -87,7 +87,8 @@
     <Compile Include="Hlsl\Operations\CosineOperation.cs" />
     <Compile Include="Hlsl\Operations\SineOperation.cs" />
     <Compile Include="Hlsl\Compiler\RegisterState.cs" />
-    <Compile Include="Hlsl\Operations\UnaryOperation.cs" />
+    <Compile Include="Hlsl\Operations\ConsumerOperation.cs" />
+    <Compile Include="Hlsl\Operations\ClipOperation.cs" />
     <Compile Include="IHasComponentIndex.cs" />
     <Compile Include="Hlsl\Operations\MoveOperation.cs" />
     <Compile Include="Hlsl\Operations\AbsoluteOperation.cs" />

@@ -8,10 +8,15 @@ namespace HlslDecompiler.Hlsl
     class BytecodeParser
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
+        private Dictionary<RegisterComponentKey, HlslTreeNode> _noOutputInstructions;
         private Dictionary<RegisterKey, HlslTreeNode> _samplers;
 
         public HlslAst Parse(ShaderModel shader)
         {
+            _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+            _noOutputInstructions = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+            _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
+
             LoadConstantOutputs(shader);
 
             int instructionPointer = 0;
@@ -50,15 +55,13 @@ namespace HlslDecompiler.Hlsl
                     .Where(o => o.Key.Type == RegisterType.Output)
                     .ToDictionary(o => o.Key, o => o.Value);
             }
-            return new HlslAst(roots);
+
+            return new HlslAst(roots, _noOutputInstructions);
         }
 
         private void LoadConstantOutputs(ShaderModel shader)
         {
             IList<ConstantDeclaration> constantTable = shader.ParseConstantTable();
-
-            _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-            _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
 
             foreach (var constant in constantTable)
             {
@@ -120,7 +123,14 @@ namespace HlslDecompiler.Hlsl
 
                 foreach (var output in newOutputs)
                 {
-                    _activeOutputs[output.Key] = output.Value;
+                    if (instruction.Opcode == Opcode.TexKill)
+                    {
+                        _noOutputInstructions[output.Key] = output.Value;
+                    }
+                    else
+                    {
+                        _activeOutputs[output.Key] = output.Value;
+                    }
                 }
             }
         }
@@ -185,6 +195,7 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.SinCos:
                 case Opcode.Sge:
                 case Opcode.Slt:
+                case Opcode.TexKill:
                     {
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
@@ -225,6 +236,8 @@ namespace HlslDecompiler.Hlsl
                                 return new SignGreaterOrEqualOperation(inputs[0], inputs[1]);
                             case Opcode.Slt:
                                 return new SignLessOperation(inputs[0], inputs[1]);
+                            case Opcode.TexKill:
+                                return new ClipOperation(inputs[0]);
                             default:
                                 throw new NotImplementedException();
                         }
@@ -313,10 +326,14 @@ namespace HlslDecompiler.Hlsl
             var inputs = new HlslTreeNode[numInputs];
             for (int i = 0; i < numInputs; i++)
             {
-                int inputParameterIndex = i + 1;
+                int inputParameterIndex = i;
+                if (instruction.Opcode != Opcode.TexKill)
+                {
+                    inputParameterIndex++;
+                }
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
                 HlslTreeNode input = _activeOutputs[inputKey];
-                var modifier = instruction.GetSourceModifier(inputParameterIndex);
+                SourceModifier modifier = instruction.GetSourceModifier(inputParameterIndex);
                 input = ApplyModifier(input, modifier);
                 inputs[i] = input;
             }
@@ -365,6 +382,7 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Rcp:
                 case Opcode.Rsq:
                 case Opcode.SinCos:
+                case Opcode.TexKill:
                     return 1;
                 case Opcode.Add:
                 case Opcode.Dp3:

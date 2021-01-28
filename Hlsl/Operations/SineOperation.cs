@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class SineOperation : UnaryOperation
+    public class SineOperation : ConsumerOperation
     {
         public SineOperation(HlslTreeNode value)
         {

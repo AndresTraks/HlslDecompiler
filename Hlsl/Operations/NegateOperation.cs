@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class NegateOperation : UnaryOperation
+    public class NegateOperation : ConsumerOperation
     {
         public NegateOperation(HlslTreeNode value)
         {

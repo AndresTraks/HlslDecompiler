@@ -420,31 +420,39 @@ namespace HlslDecompiler
         {
             var compiler = new NodeCompiler(_registers);
 
+            var noOutputInstructionRoots = ast.NoOutputInstructions.GroupBy(r => r.Key.RegisterKey);
+            foreach (var rootGroup in noOutputInstructionRoots)
+            {
+                string statement = CompileRootStatement(compiler, rootGroup);
+                WriteLine($"{statement};");
+            }
+
             var rootGroups = ast.Roots.GroupBy(r => r.Key.RegisterKey);
             if (_registers.MethodOutputRegisters.Count == 1)
             {
-                var rootGroup = rootGroups.Single();
-                var registerKey = rootGroup.Key;
-                var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
-                string statement = compiler.Compile(roots, 4);
-
+                string statement = CompileRootStatement(compiler, rootGroups.Single());
                 WriteLine($"return {statement};");
             }
             else
             {
                 foreach (var rootGroup in rootGroups)
                 {
-                    var registerKey = rootGroup.Key;
-                    var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
-                    RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[registerKey];
-                    string statement = compiler.Compile(roots, roots.Count);
-
+                    RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
+                    string statement = CompileRootStatement(compiler, rootGroup);
                     WriteLine($"o.{outputRegister.Name} = {statement};");
                 }
 
                 WriteLine();
                 WriteLine($"return o;");
             }
+        }
+
+        private static string CompileRootStatement(NodeCompiler compiler, 
+            IGrouping<RegisterKey, KeyValuePair<RegisterComponentKey, HlslTreeNode>> rootGroup)
+        {
+            var registerKey = rootGroup.Key;
+            var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
+            return compiler.Compile(roots, roots.Count);
         }
 
         private void WriteInstructionList()

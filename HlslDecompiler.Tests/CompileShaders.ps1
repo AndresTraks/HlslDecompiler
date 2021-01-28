@@ -16,7 +16,8 @@ $pixelShaderSources = @(
     "ps_negate_absolute",
     "ps_tex2d",
     "ps_tex2d_swizzle",
-    "ps_tex2d_two_samplers"
+    "ps_tex2d_two_samplers",
+    "ps_clip"
 );
 
 $vertexShaderSources = @(

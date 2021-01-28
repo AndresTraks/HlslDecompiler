@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class ReciprocalOperation : UnaryOperation
+    public class ReciprocalOperation : ConsumerOperation
     {
         public ReciprocalOperation(HlslTreeNode value)
         {

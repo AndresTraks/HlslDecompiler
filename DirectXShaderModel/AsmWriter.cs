@@ -268,6 +268,9 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("texldl {0}, {1}, {2}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case Opcode.TexKill:
+                    WriteLine("texkill {0}", GetDestinationName(instruction));
+                    break;
                 case Opcode.Comment:
                 case Opcode.End:
                     break;

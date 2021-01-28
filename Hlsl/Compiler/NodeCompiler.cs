@@ -145,7 +145,7 @@ namespace HlslDecompiler.Hlsl
                             : $"-({value})";
                     }
 
-                case UnaryOperation _:
+                case ConsumerOperation _:
                 case SignGreaterOrEqualOperation _:
                 case SignLessOperation _:
                     {

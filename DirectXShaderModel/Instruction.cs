@@ -296,7 +296,7 @@ namespace HlslDecompiler.DirectXShaderModel
         public int GetDestinationMaskedLength()
         {
             int writeMask = GetDestinationWriteMask();
-            for (int i = 3; i != 0; i--)
+            for (int i = 3; i >= 0; i--)
             {
                 if ((writeMask & (1 << i)) != 0)
                 {

@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl
 {
-    public class MoveOperation : UnaryOperation
+    public class MoveOperation : ConsumerOperation
     {
         public MoveOperation(HlslTreeNode value)
         {

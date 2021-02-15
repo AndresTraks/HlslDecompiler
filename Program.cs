@@ -46,12 +46,12 @@ namespace HlslDecompiler
             {
                 Console.WriteLine();
                 Console.WriteLine("{0}", baseFilename);
-                var shader = input.ReadShader();
+                ShaderModel shader = input.ReadShader();
 
                 AsmWriter writer = new AsmWriter(shader);
                 writer.Write($"{baseFilename}.asm");
 
-                var hlslWriter = new HlslWriter(shader, doAstAnalysis);
+                var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
                 hlslWriter.Write($"{baseFilename}.fx");
             }
         }
@@ -87,12 +87,21 @@ namespace HlslDecompiler
                     var writer = new AsmWriter(shader);
                     writer.Write(outFilename + ".asm");
 
-                    var hlslWriter = new HlslWriter(shader, doAstAnalysis);
+                    var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
                     hlslWriter.Write(outFilename + ".fx");
 
                     Console.WriteLine();
                 }
             }
+        }
+
+        private static HlslWriter CreateHlslWriter(ShaderModel shader, bool doAstAnalysis)
+        {
+            if (doAstAnalysis)
+            {
+                return new HlslAstWriter(shader);
+            }
+            return new HlslSimpleWriter(shader);
         }
     }
 }

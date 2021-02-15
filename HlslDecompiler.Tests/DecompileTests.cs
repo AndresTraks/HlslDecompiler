@@ -54,7 +54,7 @@ namespace HlslDecompiler.Tests
             var asmWriter = new AsmWriter(shader);
             asmWriter.Write(asmOutputFilename);
 
-            var hlslWriter = new HlslWriter(shader, true);
+            var hlslWriter = new HlslAstWriter(shader);
             hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal");

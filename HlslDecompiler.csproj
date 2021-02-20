@@ -46,6 +46,8 @@
   <ItemGroup>
     <Compile Include="Hlsl\Compiler\ConstantIntRegister.cs" />
     <Compile Include="Hlsl\Compiler\ConstantRegister.cs" />
+    <Compile Include="Hlsl\HlslSimpleWriter.cs" />
+    <Compile Include="Hlsl\HlslAstWriter.cs" />
     <Compile Include="Hlsl\InstructionParser.cs" />
     <Compile Include="DirectXShaderModel\Declaration.cs" />
     <Compile Include="DirectXShaderModel\Reader\FormatDetector.cs" />

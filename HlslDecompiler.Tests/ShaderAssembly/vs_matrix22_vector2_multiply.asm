@@ -8,5 +8,5 @@ mad o0, c0.xyxy, v0.xxyy, r0
 mul r0.xy, c1.xy, v0.xx_abs
 mad o1.xy, c0.xy, v0.yy_abs, r0.xy
 add r0.xy, v0.xy, v0.xy
-mul r0.yz, r0.yy, c1.xx
+mul r0.yz, r0.yy, c1.xy
 mad o2.xy, c0.xy, r0.xx, r0.yz

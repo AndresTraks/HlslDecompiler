@@ -62,7 +62,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 int numConstants = ctabReader.ReadInt32();
                 long constantInfoPosition = ctabReader.ReadInt32();
                 ShaderFlags shaderFlags = (ShaderFlags)ctabReader.ReadInt32();
-                Console.WriteLine("Flags = {0}", shaderFlags);
+                Console.WriteLine("Flags: {0}", shaderFlags);
 
                 long shaderModelPosition = ctabReader.ReadInt32();
                 //Console.WriteLine("ctabStart = {0}, shaderModelPosition = {1}", ctabStart, shaderModelPosition);
@@ -70,11 +70,11 @@ namespace HlslDecompiler.DirectXShaderModel
 
                 ctabStream.Position = creatorPosition;
                 string compilerInfo = ReadStringNullTerminated(ctabStream);
-                Console.WriteLine(compilerInfo);
+                Console.WriteLine("Compiler: " + compilerInfo);
 
                 ctabStream.Position = shaderModelPosition;
                 string shaderModel = ReadStringNullTerminated(ctabStream);
-                Console.WriteLine(shaderModel);
+                Console.WriteLine("Shader model: " + shaderModel);
 
 
                 for (int i = 0; i < numConstants; i++)

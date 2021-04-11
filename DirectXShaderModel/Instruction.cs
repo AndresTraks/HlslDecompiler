@@ -339,42 +339,42 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public string GetSourceSwizzleName(int srcIndex)
         {
-            int swizzleLength;
+            int destinationMask;
             if (Opcode == Opcode.Dp4)
             {
-                swizzleLength = 4;
+                destinationMask = 15;
             }
             else if (Opcode == Opcode.Dp3)
             {
-                swizzleLength = 3;
-            }
-            else if (HasDestination)
-            {
-                swizzleLength = GetDestinationMaskLength();
+                destinationMask = 7;
             }
             else
             {
-                swizzleLength = 4;
+                destinationMask = GetDestinationWriteMask();
             }
 
-            string swizzleName = "";
             byte[] swizzle = GetSourceSwizzleComponents(srcIndex);
-            for (int i = 0; i < swizzleLength; i++)
+
+            string swizzleName = "";
+            for (int i = 0; i < 4; i++)
             {
-                switch (swizzle[i])
+                if ((destinationMask & (1 << i)) != 0)
                 {
-                    case 0:
-                        swizzleName += "x";
-                        break;
-                    case 1:
-                        swizzleName += "y";
-                        break;
-                    case 2:
-                        swizzleName += "z";
-                        break;
-                    case 3:
-                        swizzleName += "w";
-                        break;
+                    switch (swizzle[i])
+                    {
+                        case 0:
+                            swizzleName += "x";
+                            break;
+                        case 1:
+                            swizzleName += "y";
+                            break;
+                        case 2:
+                            swizzleName += "z";
+                            break;
+                        case 3:
+                            swizzleName += "w";
+                            break;
+                    }
                 }
             }
             switch (swizzleName)

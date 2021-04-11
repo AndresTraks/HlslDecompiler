@@ -6,4 +6,4 @@ mad oC0, v0.xxxy, c0.xyyx, c0.yyxy
 mad oC1, v0.xxxy, c0.yyxx, c0.yxyy
 mad oC2, v0.x, c0.yyyx, c0.yxzy
 mov oC3.xy, v0.xy
-mov oC3.zw, v1.xy
+mov oC3.zw, v1.zw

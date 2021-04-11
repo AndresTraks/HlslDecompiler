@@ -8,28 +8,25 @@ namespace HlslDecompiler
     {
         static void Main(string[] args)
         {
-            if (args.Length != 1)
+            var options = CommandLineOptions.Parse(args);
+            if (options.InputFilename == null)
             {
                 Console.WriteLine("Expected input filename");
                 return;
             }
 
-            string inputFilename = args[0];
-            string baseFilename = Path.GetFileNameWithoutExtension(inputFilename);
-            
-            // Try to simplify HLSL expressions by doing AST analysis
-            bool doAstAnalysis = false;
+            string baseFilename = Path.GetFileNameWithoutExtension(options.InputFilename);
 
-            using (var inputStream = File.Open(inputFilename, FileMode.Open, FileAccess.Read))
+            using (var inputStream = File.Open(options.InputFilename, FileMode.Open, FileAccess.Read))
             {
                 var format = FormatDetector.Detect(inputStream);
                 switch (format)
                 {
                     case ShaderFileFormat.ShaderModel:
-                        ReadShaderModel(baseFilename, inputStream, doAstAnalysis);
+                        ReadShaderModel(baseFilename, inputStream, options.DoAstAnalysis);
                         break;
                     case ShaderFileFormat.Rgxa:
-                        ReadRgxa(baseFilename, inputStream, doAstAnalysis);
+                        ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
                         break;
                     case ShaderFileFormat.Unknown:
                         Console.WriteLine("Unknown file format!");
@@ -37,22 +34,24 @@ namespace HlslDecompiler
                 }
             }
 
-            Console.ReadKey();
+            Console.WriteLine("Finished.");
         }
 
         private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis)
         {
             using (var input = new ShaderReader(inputStream, true))
             {
-                Console.WriteLine();
-                Console.WriteLine("{0}", baseFilename);
                 ShaderModel shader = input.ReadShader();
 
                 AsmWriter writer = new AsmWriter(shader);
-                writer.Write($"{baseFilename}.asm");
+                string asmFilename = $"{baseFilename}.asm";
+                Console.WriteLine("Writing {0}", asmFilename);
+                writer.Write(asmFilename);
 
                 var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
-                hlslWriter.Write($"{baseFilename}.fx");
+                string hlslFilename = $"{baseFilename}.fx";
+                Console.WriteLine("Writing {0}", hlslFilename);
+                hlslWriter.Write(hlslFilename);
             }
         }
 
@@ -89,8 +88,6 @@ namespace HlslDecompiler
 
                     var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
                     hlslWriter.Write(outFilename + ".fx");
-
-                    Console.WriteLine();
                 }
             }
         }

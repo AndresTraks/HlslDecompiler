@@ -340,17 +340,18 @@ namespace HlslDecompiler.DirectXShaderModel
         public string GetSourceSwizzleName(int srcIndex)
         {
             int destinationMask;
-            if (Opcode == Opcode.Dp4)
+            switch (Opcode)
             {
-                destinationMask = 15;
-            }
-            else if (Opcode == Opcode.Dp3)
-            {
-                destinationMask = 7;
-            }
-            else
-            {
-                destinationMask = GetDestinationWriteMask();
+                case Opcode.Dp3:
+                    destinationMask = 7;
+                    break;
+                case Opcode.Dp4:
+                case Opcode.IfC:
+                    destinationMask = 15;
+                    break;
+                default:
+                    destinationMask = GetDestinationWriteMask();
+                    break;
             }
 
             byte[] swizzle = GetSourceSwizzleComponents(srcIndex);

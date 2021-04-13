@@ -14,17 +14,5 @@
         public HlslTreeNode Addend => Inputs[2];
 
         public override string Mnemonic => "madd";
-
-        public override HlslTreeNode Reduce()
-        {
-            Factor1.Outputs.Remove(this);
-            Factor2.Outputs.Remove(this);
-            var multiplication = new MultiplyOperation(Factor1, Factor2);
-
-            var addition = new AddOperation(multiplication, Addend);
-            Replace(addition);
-
-            return addition.Reduce();
-        }
     }
 }

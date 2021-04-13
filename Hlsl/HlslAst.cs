@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.TemplateMatch;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -18,8 +19,11 @@ namespace HlslDecompiler.Hlsl
 
         public void ReduceTree()
         {
-            Roots = Roots.ToDictionary(r => r.Key, r => r.Value.Reduce());
-            NoOutputInstructions = NoOutputInstructions.ToDictionary(r => r.Key, r => r.Value.Reduce());
+            var templateMatcher = new TemplateMatcher();
+            Roots = Roots.ToDictionary(r => r.Key,
+                r => templateMatcher.Reduce(r.Value));
+            NoOutputInstructions = NoOutputInstructions.ToDictionary(r => r.Key,
+                r => templateMatcher.Reduce(r.Value));
         }
     }
 }

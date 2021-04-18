@@ -1,4 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.TemplateMatch;
+using HlslDecompiler.Operations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,25 +36,7 @@ namespace HlslDecompiler.Hlsl
                 throw new ArgumentOutOfRangeException(nameof(components));
             }
 
-            if (components.Count == 1)
-            {
-                HlslTreeNode singleComponent = components[0];
-                HlslTreeNode[] vector = _nodeGrouper.LengthGrouper.TryGetLengthContext(singleComponent);
-                if (vector != null)
-                {
-                    string value = Compile(vector);
-                    return $"length({value})";
-                }
-
-                DotProductContext dotProduct = _nodeGrouper.DotProductGrouper.TryGetDotProductGroup(singleComponent);
-                if (dotProduct != null)
-                {
-                    string value1 = Compile(dotProduct.Value1);
-                    string value2 = Compile(dotProduct.Value2);
-                    return $"dot({value1}, {value2})";
-                }
-            }
-            else
+            if (components.Count > 1)
             {
                 IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
                 if (componentGroups.Count > 1)
@@ -76,7 +60,7 @@ namespace HlslDecompiler.Hlsl
 
             var first = components[0];
 
-            if (first is ConstantNode constant)
+            if (first is ConstantNode)
             {
                 return CompileConstant(components, promoteToVectorSize);
             }
@@ -86,9 +70,14 @@ namespace HlslDecompiler.Hlsl
                 return CompileOperation(operation, components, promoteToVectorSize);
             }
 
-            if (first is IHasComponentIndex component)
+            if (first is IHasComponentIndex)
             {
                 return CompileNodesWithComponents(components, first, promoteToVectorSize);
+            }
+
+            if (first is GroupNode group)
+            {
+                return Compile(group.Inputs);
             }
 
             throw new NotImplementedException();
@@ -237,6 +226,17 @@ namespace HlslDecompiler.Hlsl
                         var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
                         return $"{value1} >= 0 ? {value2} : {value3}";
+                    }
+                case DotProductOperation _:
+                    {
+                        var x = Compile(components.Select(g => g.Inputs[0]));
+                        var y = Compile(components.Select(g => g.Inputs[1]));
+                        return $"dot({x}, {y})";
+                    }
+                case LengthOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        return $"length({value1})";
                     }
                 default:
                     throw new NotImplementedException();

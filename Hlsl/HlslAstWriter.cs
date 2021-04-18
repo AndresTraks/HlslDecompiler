@@ -23,7 +23,7 @@ namespace HlslDecompiler
 
             var parser = new BytecodeParser();
             HlslAst ast = parser.Parse(_shader);
-            ast.ReduceTree();
+            ast.ReduceTree(new NodeGrouper(_registers));
 
             WriteAst(ast);
         }

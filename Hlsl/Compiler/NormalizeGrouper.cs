@@ -5,63 +5,50 @@ namespace HlslDecompiler.Hlsl
 {
     public class NormalizeGrouper
     {
-        private readonly NodeGrouper _nodeGrouper;
-
-        public NormalizeGrouper(NodeGrouper nodeGrouper)
-        {
-            _nodeGrouper = nodeGrouper;
-        }
-
         public HlslTreeNode[] TryGetContext(IList<HlslTreeNode> components)
         {
             var firstComponent = components[0];
-            if (!(firstComponent is DivisionOperation firstDivision))
+            if (!(firstComponent is DivisionOperation firstDivision) ||
+                !(firstDivision.Divisor is LengthOperation firstLength))
             {
                 return null;
             }
 
-            var firstLengthContext = _nodeGrouper.LengthGrouper.TryGetLengthContext(firstDivision.Divisor);
-            if (firstLengthContext == null)
+            if (!firstLength.X.Inputs.Any(c => NodeGrouper.AreNodesEquivalent(firstDivision.Dividend, c)))
             {
                 return null;
             }
 
-            int dimension = firstLengthContext.Length;
-
-            if (firstLengthContext.Any(c => NodeGrouper.AreNodesEquivalent(firstDivision.Dividend, c)) == false)
+            int normalizeComponentCount = 1;
+            for (int i = 1; i < components.Count; i++)
             {
-                return null;
+                if (IsNormalizeGroupComponent(components[i], firstDivision, firstLength))
+                {
+                    normalizeComponentCount++;
+                }
+                else
+                {
+                    break;
+                }
             }
 
-            for (int i = 1; i < dimension; i++)
+            if (normalizeComponentCount < 2)
             {
-                if (i >= components.Count)
-                {
-                    return null;
-                }
-
-                var nextComponent = components[i];
-                if (!(nextComponent is DivisionOperation nextDivision))
-                {
-                    return null;
-                }
-
-                if (NodeGrouper.AreNodesEquivalent(nextDivision.Divisor, firstDivision.Divisor) == false)
-                {
-                    return null;
-                }
-
-                if (firstLengthContext.Any(c => NodeGrouper.AreNodesEquivalent(nextDivision.Dividend, c)) == false)
-                {
-                    return null;
-                }
+                return null;
             }
 
             return components
-                .Take(dimension)
+                .Take(normalizeComponentCount)
                 .Cast<DivisionOperation>()
                 .Select(c => c.Dividend)
                 .ToArray();
+        }
+
+        private static bool IsNormalizeGroupComponent(HlslTreeNode nextComponent, DivisionOperation firstDivision, LengthOperation firstLength)
+        {
+            return nextComponent is DivisionOperation nextDivision
+                && NodeGrouper.AreNodesEquivalent(nextDivision.Divisor, firstDivision.Divisor)
+                && firstLength.X.Inputs.Any(c => NodeGrouper.AreNodesEquivalent(nextDivision.Dividend, c));
         }
     }
 }

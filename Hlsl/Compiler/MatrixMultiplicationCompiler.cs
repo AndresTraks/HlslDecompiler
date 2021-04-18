@@ -12,7 +12,7 @@
         public string Compile(MatrixMultiplicationContext context)
         {
             string matrixName = context.MatrixDeclaration.Name;
-            string vector = nodeCompiler.Compile(context.Vector);
+            string vector = nodeCompiler.Compile(context.Vector.Inputs);
             return context.IsMatrixByVector
                 ? $"mul({matrixName}, {vector})"
                 : $"mul({vector}, {matrixName})";

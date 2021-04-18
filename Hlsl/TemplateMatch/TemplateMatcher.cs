@@ -4,9 +4,11 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
 {
     public class TemplateMatcher
     {
-        private static List<INodeTemplate> _templates;
+        private List<INodeTemplate> _templates;
+        private List<IGroupTemplate> _groupTemplates;
+        private NodeGrouper _nodeGrouper;
 
-        public TemplateMatcher()
+        public TemplateMatcher(NodeGrouper nodeGrouper)
         {
             _templates = new List<INodeTemplate>
             {
@@ -30,11 +32,33 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
                 new SubtractNegateTemplate(),
                 new SubtractZeroTemplate(this)
             };
+            _groupTemplates = new List<IGroupTemplate>
+            {
+                new DotProduct2Template(this),
+                new DotProduct3Template(this),
+                new DotProduct4Template(this),
+                new LengthTemplate()
+            };
+            _nodeGrouper = nodeGrouper;
         }
 
         public HlslTreeNode Reduce(HlslTreeNode node)
         {
             return ReduceDepthFirst(node);
+        }
+
+        public bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b, bool allowMatrixColumn)
+        {
+            return _nodeGrouper.CanGroupComponents(a, b, allowMatrixColumn);
+        }
+
+        public bool SharesMatrixColumnOrRow(HlslTreeNode x, HlslTreeNode y)
+        {
+            if (x is RegisterInputNode r1 && y is RegisterInputNode r2)
+            {
+                return _nodeGrouper.SharesMatrixColumnOrRow(r1, r2);
+            }
+            return false;
         }
 
         private HlslTreeNode ReduceDepthFirst(HlslTreeNode node)
@@ -53,6 +77,16 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
                 if (template.Match(node))
                 {
                     var replacement = template.Reduce(node);
+                    Replace(node, replacement);
+                    return ReduceDepthFirst(replacement);
+                }
+            }
+            foreach (IGroupTemplate template in _groupTemplates)
+            {
+                IGroupContext groupContext = template.Match(node);
+                if (groupContext != null)
+                {
+                    var replacement = template.Reduce(node, groupContext);
                     Replace(node, replacement);
                     return ReduceDepthFirst(replacement);
                 }

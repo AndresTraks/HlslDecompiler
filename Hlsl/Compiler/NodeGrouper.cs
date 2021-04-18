@@ -10,15 +10,11 @@ namespace HlslDecompiler.Hlsl
 
         public NodeGrouper(RegisterState registers)
         {
-            DotProductGrouper = new DotProductGrouper(this);
-            LengthGrouper = new LengthGrouper(this);
-            MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(this, registers);
-            NormalizeGrouper = new NormalizeGrouper(this);
+            MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(registers);
+            NormalizeGrouper = new NormalizeGrouper();
             _registers = registers;
         }
 
-        public DotProductGrouper DotProductGrouper { get; }
-        public LengthGrouper LengthGrouper { get; }
         public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
         public NormalizeGrouper NormalizeGrouper { get; }
 
@@ -149,6 +145,12 @@ namespace HlslDecompiler.Hlsl
                 {
                     return multiply1.Inputs.Any(c1 => multiply2.Inputs.Any(c2 => CanGroupComponents(c1, c2)));
                 }
+                else if (operation1 is DivisionOperation divison1 &&
+                         operation2 is DivisionOperation divison2)
+                {
+                    return AreNodesEquivalent(divison1.Dividend, divison2.Dividend)
+                        && CanGroupComponents(divison1.Divisor, divison1.Divisor);
+                }
                 else if (operation1 is SubtractOperation subtract1 &&
                          operation2 is SubtractOperation subtract2)
                 {
@@ -166,10 +168,15 @@ namespace HlslDecompiler.Hlsl
                 {
                     return CanGroupComponents(clip1.Value, clip2.Value);
                 }
+                else if (operation1 is LengthOperation length1 &&
+                         operation2 is LengthOperation length2)
+                {
+                    return CanGroupComponents(length1.X, length2.X);
+                }
             }
 
-            if (node1 is IHasComponentIndex &&
-                node2 is IHasComponentIndex)
+            if ((node1 is IHasComponentIndex && node2 is IHasComponentIndex) ||
+                (node1 is GroupNode && node2 is GroupNode))
             {
                 if (node1.Inputs.Count == node2.Inputs.Count)
                 {
@@ -229,10 +236,10 @@ namespace HlslDecompiler.Hlsl
                 || constantRegister.ParameterClass == ParameterClass.MatrixRows;
         }
 
-        public static bool IsVectorEquivalent(HlslTreeNode[] vector1, HlslTreeNode[] vector2)
+        public static bool IsVectorEquivalent(IList<HlslTreeNode> vector1, IList<HlslTreeNode> vector2)
         {
-            int dimension = vector1.Length;
-            if (dimension != vector2.Length)
+            int dimension = vector1.Count;
+            if (dimension != vector2.Count)
             {
                 return false;
             }
@@ -297,16 +304,21 @@ namespace HlslDecompiler.Hlsl
                 {
                     return subtract1.Subtrahend.Equals(subtract2.Subtrahend);
                 }
+                else if (operation1 is LengthOperation length1 &&
+                         operation2 is LengthOperation length2)
+                {
+                    return AreNodesEquivalent(length1.X, length2.X);
+                }
             }
 
-            if (node1 is IHasComponentIndex &&
-                node2 is IHasComponentIndex)
+            if ((node1 is IHasComponentIndex && node2 is IHasComponentIndex) ||
+                (node1 is GroupNode && node2 is GroupNode))
             {
                 if (node1.Inputs.Count == node2.Inputs.Count)
                 {
                     for (int i = 0; i < node1.Inputs.Count; i++)
                     {
-                        if (node1.Inputs[i].Equals(node2.Inputs[i]) == false)
+                        if (!AreNodesEquivalent(node1.Inputs[i], node2.Inputs[i]))
                         {
                             return false;
                         }

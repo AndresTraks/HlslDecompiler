@@ -17,9 +17,9 @@ namespace HlslDecompiler.Hlsl
             NoOutputInstructions = noOutputInstructions;
         }
 
-        public void ReduceTree()
+        public void ReduceTree(NodeGrouper nodeGrouper)
         {
-            var templateMatcher = new TemplateMatcher();
+            var templateMatcher = new TemplateMatcher(nodeGrouper);
             Roots = Roots.ToDictionary(r => r.Key,
                 r => templateMatcher.Reduce(r.Value));
             NoOutputInstructions = NoOutputInstructions.ToDictionary(r => r.Key,

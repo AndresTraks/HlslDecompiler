@@ -73,6 +73,9 @@
     <Content Include="ShaderAssembly\ps_float4_construct2.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="ShaderAssembly\vs_matrix23_vector2_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="ShaderAssembly\vs_normalize.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -86,6 +89,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderAssembly\vs_matrix33_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ShaderAssembly\vs_vector2_matrix32_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderAssembly\vs_vector4_matrix44_multiply.asm">
@@ -121,6 +127,9 @@
     <Content Include="ShaderSources\ps_float4_construct2.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="ShaderSources\vs_matrix23_vector2_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="ShaderSources\vs_normalize.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -131,6 +140,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderSources\vs_matrix44_vector4_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ShaderSources\vs_vector2_matrix32_multiply.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderSources\vs_vector4_matrix44_multiply.fx">
@@ -205,6 +217,9 @@
     <None Include="CompiledShaders\ps_dot_product2_add.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="CompiledShaders\vs_matrix23_vector2_multiply.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="CompiledShaders\vs_normalize.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -218,6 +233,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="CompiledShaders\vs_matrix33_vector3_multiply.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="CompiledShaders\vs_vector2_matrix32_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="CompiledShaders\vs_vector4_matrix44_multiply.fxc">

@@ -128,8 +128,8 @@ namespace HlslDecompiler.Hlsl
             {
                 var matrixBaseConstant = _registers.FindConstant(register1);
                 if (matrixBaseConstant != null && 
-                    matrixBaseConstant.Rows == dimension && 
-                    matrixBaseConstant.Columns == dimension)
+                    (matrixBaseConstant.Rows == dimension ||
+                    matrixBaseConstant.Columns == dimension))
                 {
                     return matrixBaseConstant;
                 }

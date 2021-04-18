@@ -236,25 +236,6 @@ namespace HlslDecompiler.Hlsl
                 || constantRegister.ParameterClass == ParameterClass.MatrixRows;
         }
 
-        public static bool IsVectorEquivalent(IList<HlslTreeNode> vector1, IList<HlslTreeNode> vector2)
-        {
-            int dimension = vector1.Count;
-            if (dimension != vector2.Count)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < dimension; i++)
-            {
-                if (AreNodesEquivalent(vector1[i], vector2[i]) == false)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
         public static bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
         {
             if (node1 is ConstantNode constant1 &&

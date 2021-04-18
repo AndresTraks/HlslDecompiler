@@ -30,6 +30,7 @@ $vertexShaderSources = @(
     "vs_matrix33_vector3_multiply",
     "vs_matrix44_vector4_multiply",
     "vs_normalize",
+    "vs_submatrix43_vector3_multiply",
     "vs_vector2_matrix22_multiply",
     "vs_vector2_matrix32_multiply",
     "vs_vector3_matrix33_multiply",

@@ -91,6 +91,9 @@
     <Content Include="ShaderAssembly\vs_matrix33_vector3_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="ShaderAssembly\vs_submatrix43_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="ShaderAssembly\vs_vector2_matrix32_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -125,6 +128,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderSources\ps_float4_construct2.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="ShaderSources\vs_submatrix43_vector3_multiply.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ShaderSources\vs_matrix23_vector2_multiply.fx">
@@ -233,6 +239,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="CompiledShaders\vs_matrix33_vector3_multiply.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="CompiledShaders\vs_submatrix43_vector3_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="CompiledShaders\vs_vector2_matrix32_multiply.fxc">

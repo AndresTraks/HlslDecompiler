@@ -33,7 +33,7 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            GroupNode firstMatrixRow = TryGetMatrixRow(firstDot);
+            GroupNode firstMatrixRow = TryGetMatrixRow(firstDot, firstDot, 0);
             if (firstMatrixRow == null)
             {
                 return null;
@@ -43,19 +43,19 @@ namespace HlslDecompiler.Hlsl
                     ? firstDot.Y
                     : firstDot.X;
 
-            var matrixRows = new GroupNode[dimension];
-            matrixRows[0] = firstMatrixRow;
-            for (int i = 1; i < dimension; i++)
+            var matrixRows = new List<GroupNode>();
+            matrixRows.Add(firstMatrixRow);
+            for (int i = 1; i < components.Count; i++)
             {
                 if (!(components[i] is DotProductOperation nextDot))
                 {
-                    return null;
+                    break;
                 }
 
-                GroupNode matrixRow = TryGetMatrixRow(nextDot);
+                GroupNode matrixRow = TryGetMatrixRow(nextDot, firstDot, i);
                 if (matrixRow == null)
                 {
-                    return null;
+                    break;
                 }
 
                 GroupNode nextVector = nextDot.X == matrixRow
@@ -63,10 +63,15 @@ namespace HlslDecompiler.Hlsl
                     : nextDot.X;
                 if (!NodeGrouper.AreNodesEquivalent(vector, nextVector))
                 {
-                    return null;
+                    break;
                 }
 
-                matrixRows[i] = matrixRow;
+                matrixRows.Add(matrixRow);
+            }
+
+            if (matrixRows.Count < 2)
+            {
+                return null;
             }
 
             ConstantDeclaration matrix = TryGetMatrixDeclaration(matrixRows);
@@ -81,7 +86,7 @@ namespace HlslDecompiler.Hlsl
 
             vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
-            return new MatrixMultiplicationContext(vector, matrix, matrixByVector);
+            return new MatrixMultiplicationContext(vector, matrix, matrixByVector, matrixRows.Count);
         }
 
         private GroupNode SwizzleVector(GroupNode vector, GroupNode firstMatrixRow, bool matrixByVector)
@@ -120,9 +125,9 @@ namespace HlslDecompiler.Hlsl
             return vectorSwizzled;
         }
 
-        private ConstantDeclaration TryGetMatrixDeclaration(GroupNode[] dotProductNodes)
+        private ConstantDeclaration TryGetMatrixDeclaration(IList<GroupNode> dotProductNodes)
         {
-            int dimension = dotProductNodes.Length;
+            int dimension = dotProductNodes.Count;
             var first = dotProductNodes[0];
             if (first[0] is RegisterInputNode register1)
             {
@@ -138,23 +143,55 @@ namespace HlslDecompiler.Hlsl
             return null;
         }
 
-        private GroupNode TryGetMatrixRow(DotProductOperation dot)
+        private GroupNode TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
         {
-            if (dot.X.Inputs[0] is RegisterInputNode value1)
+            if (dot.X.Inputs[0] is RegisterInputNode constantRegister)
             {
-                ConstantDeclaration constant = _registers.FindConstant(value1);
-                if( constant != null && constant.Rows > 1)
+                ConstantDeclaration constant = _registers.FindConstant(constantRegister);
+                if(constant != null && constant.Rows > 1)
                 {
-                    return dot.X;
+                    if (row == 0)
+                    {
+                        return dot.X;
+                    }
+                    var firstConstantRegister =  firstDot.X.Inputs[0] as RegisterInputNode;
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister.RegisterComponentKey.RegisterKey.Type &&
+                        firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister.RegisterComponentKey.RegisterKey.Number &&
+                        firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex)
+                    {
+                        return dot.X;
+                    }
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister.RegisterComponentKey.RegisterKey.Type &&
+                        firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister.RegisterComponentKey.RegisterKey.Number &&
+                        firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister.RegisterComponentKey.ComponentIndex)
+                    {
+                        return dot.X;
+                    }
                 }
             }
 
-            if (dot.Y.Inputs[0] is RegisterInputNode value2)
+            if (dot.Y.Inputs[0] is RegisterInputNode constantRegister1)
             {
-                ConstantDeclaration constant = _registers.FindConstant(value2);
+                ConstantDeclaration constant = _registers.FindConstant(constantRegister1);
                 if (constant != null && constant.Rows > 1)
                 {
-                    return dot.Y;
+                    if (row == 0)
+                    {
+                        return dot.Y;
+                    }
+                    var firstConstantRegister = firstDot.Y.Inputs[0] as RegisterInputNode;
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister1.RegisterComponentKey.RegisterKey.Type &&
+                        firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
+                        firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister1.RegisterComponentKey.ComponentIndex)
+                    {
+                        return dot.Y;
+                    }
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister1.RegisterComponentKey.RegisterKey.Type &&
+                        firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
+                        firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister1.RegisterComponentKey.ComponentIndex)
+                    {
+                        return dot.Y;
+                    }
                 }
             }
 
@@ -167,16 +204,19 @@ namespace HlslDecompiler.Hlsl
         public MatrixMultiplicationContext(
             GroupNode vector,
             ConstantDeclaration matrix,
-            bool matrixByVector)
+            bool matrixByVector,
+            int matrixRowCount)
         {
             Vector = vector;
             MatrixDeclaration = matrix;
             IsMatrixByVector = matrixByVector;
+            MatrixRowCount = matrixRowCount;
         }
 
         public GroupNode Vector { get; }
 
         public ConstantDeclaration MatrixDeclaration { get; }
         public bool IsMatrixByVector { get; }
+        public int MatrixRowCount { get; }
     }
 }

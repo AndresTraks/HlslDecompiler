@@ -32,7 +32,7 @@ namespace HlslDecompiler.Hlsl
             var multiplicationGroup = MatrixMultiplicationGrouper.TryGetMultiplicationGroup(nodes);
             if (multiplicationGroup != null)
             {
-                int dimension = multiplicationGroup.Vector.Length;
+                int dimension = multiplicationGroup.MatrixRowCount;
                 groups = new List<IList<HlslTreeNode>>(new[]
                     { nodes.Take(dimension).ToList()
                 });

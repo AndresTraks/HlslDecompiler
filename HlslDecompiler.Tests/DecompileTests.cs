@@ -33,6 +33,7 @@ namespace HlslDecompiler.Tests
         [TestCase("vs_matrix33_vector3_multiply")]
         [TestCase("vs_matrix44_vector4_multiply")]
         [TestCase("vs_normalize")]
+        [TestCase("vs_submatrix43_vector3_multiply")]
         [TestCase("vs_vector2_matrix22_multiply")]
         [TestCase("vs_vector2_matrix32_multiply")]
         [TestCase("vs_vector3_matrix33_multiply")]

@@ -240,6 +240,8 @@ namespace HlslDecompiler.DirectXShaderModel
                     {
                         throw new NotImplementedException();
                     }
+                case RegisterType.Loop:
+                    return "aL";
                 default:
                     throw new NotImplementedException();
             }

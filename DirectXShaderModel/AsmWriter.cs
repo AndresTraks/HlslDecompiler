@@ -69,16 +69,13 @@ namespace HlslDecompiler.DirectXShaderModel
 
         string GetDestinationName(Instruction instruction)
         {
-            var resultModifier = instruction.GetDestinationResultModifier();
-            if (resultModifier != ResultModifier.None)
+            int destIndex = instruction.GetDestinationParamIndex();
+            string registerName = instruction.GetParamRegisterName(destIndex);
+            if (instruction.Opcode == Opcode.Loop)
             {
-                Console.WriteLine(resultModifier);
-                //throw new NotImplementedException();
+                return registerName;
             }
 
-            int destIndex = instruction.GetDestinationParamIndex();
-
-            string registerName = instruction.GetParamRegisterName(destIndex);
             const int registerLength = 4;
             string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, false);
 
@@ -88,6 +85,10 @@ namespace HlslDecompiler.DirectXShaderModel
         string GetSourceName(Instruction instruction, int srcIndex)
         {
             string sourceRegisterName = instruction.GetParamRegisterName(srcIndex);
+            if (instruction.Opcode == Opcode.Loop)
+            {
+                return sourceRegisterName;
+            }
             sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex);
             return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
         }
@@ -114,15 +115,15 @@ namespace HlslDecompiler.DirectXShaderModel
             switch (instruction.Opcode)
             {
                 case Opcode.Abs:
-                    WriteLine("abs {0}, {1}", GetDestinationName(instruction),
+                    WriteLine("abs{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Add:
-                    WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("add{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Cmp:
-                    WriteLine("cmp {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                    WriteLine("cmp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case Opcode.Dcl:
@@ -155,11 +156,11 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case Opcode.Dp3:
-                    WriteLine("dp3 {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("dp3{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Dp4:
-                    WriteLine("dp4 {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("dp4{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Else:
@@ -169,7 +170,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("endif");
                     break;
                 case Opcode.Exp:
-                    WriteLine("exp {0}, {1}", GetDestinationName(instruction),
+                    WriteLine("exp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Frc:
@@ -184,57 +185,66 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 0), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Log:
-                    WriteLine("log {0}, {1}", GetDestinationName(instruction),
+                    WriteLine("log{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
+                    break;
+                case Opcode.Loop:
+                    WriteLine("loop {0}, {1}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Lrp:
-                    WriteLine("lrp {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                    WriteLine("lrp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case Opcode.Mad:
-                    WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                    WriteLine("mad{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case Opcode.Max:
-                    WriteLine("max {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("max{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Min:
-                    WriteLine("min {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("min{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Mov:
-                    WriteLine("mov {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("mov{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 case Opcode.MovA:
-                    WriteLine("mova {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("mova{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 case Opcode.Mul:
-                    WriteLine("mul {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("mul{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Nop:
                     WriteLine("nop");
                     break;
                 case Opcode.Nrm:
-                    WriteLine("nrm {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("nrm{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 case Opcode.Pow:
-                    WriteLine("pow {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("pow{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Rcp:
-                    WriteLine("rcp {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("rcp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 case Opcode.Rsq:
-                    WriteLine("rsq {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("rsq{0} {1}, {2}", GetModifier(instruction),GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 case Opcode.Sge:
-                    WriteLine("sge {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("sge{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Slt:
-                    WriteLine("slt {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("slt{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.SinCos:
@@ -250,7 +260,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     }
                     break;
                 case Opcode.Sub:
-                    WriteLine("sub {0}, {1}, {2}", GetDestinationName(instruction),
+                    WriteLine("sub{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Tex:
@@ -279,6 +289,24 @@ namespace HlslDecompiler.DirectXShaderModel
                     Console.WriteLine(instruction.Opcode);
                     //throw new NotImplementedException();
                     break;
+            }
+        }
+
+        private static string GetModifier(Instruction instruction)
+        {
+            ResultModifier resultModifier = instruction.GetDestinationResultModifier();
+            switch (resultModifier)
+            {
+                case ResultModifier.None:
+                    return string.Empty;
+                case ResultModifier.Centroid:
+                    return "_centroid";
+                case ResultModifier.PartialPrecision:
+                    return "_pp";
+                case ResultModifier.Saturate:
+                    return "_sat";
+                default:
+                    throw new NotSupportedException("Not supported result modifier " + resultModifier);
             }
         }
     }

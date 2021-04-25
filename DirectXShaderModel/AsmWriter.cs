@@ -169,6 +169,9 @@ namespace HlslDecompiler.DirectXShaderModel
                 case Opcode.Endif:
                     WriteLine("endif");
                     break;
+                case Opcode.EndLoop:
+                    WriteLine("endloop");
+                    break;
                 case Opcode.Exp:
                     WriteLine("exp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1));

@@ -265,6 +265,8 @@ namespace HlslDecompiler
                     WriteLine("clip({0});", GetDestinationName(instruction));
                     break;
                 case Opcode.Def:
+                case Opcode.DefB:
+                case Opcode.DefI:
                 case Opcode.Dcl:
                 case Opcode.Comment:
                 case Opcode.End:

@@ -184,6 +184,8 @@ namespace HlslDecompiler.Hlsl
                         default:
                             throw new NotImplementedException();
                     }
+                case RegisterType.Loop:
+                    return "aL";
                 default:
                     throw new NotImplementedException();
             }
@@ -248,8 +250,22 @@ namespace HlslDecompiler.Hlsl
                 }
             }
 
-            foreach (var instruction in shader.Instructions.Where(i => i.HasDestination))
+            foreach (var instruction in shader.Instructions)
             {
+                if (!instruction.HasDestination)
+                {
+                    if (instruction.Opcode == Opcode.Loop)
+                    {
+                        RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = new RegisterDeclaration(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                        }
+                    }
+                    continue;
+                }
+
                 if (instruction.Opcode == Opcode.Dcl)
                 {
                     var registerDeclaration = new RegisterDeclaration(instruction);

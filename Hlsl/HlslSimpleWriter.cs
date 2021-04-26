@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -121,6 +122,10 @@ namespace HlslDecompiler
                     indent = indent.Substring(0, indent.Length - 1);
                     WriteLine("}");
                     break;
+                case Opcode.EndLoop:
+                    indent = indent.Substring(0, indent.Length - 1);
+                    WriteLine("}");
+                    break;
                 case Opcode.Exp:
                     WriteLine("{0} = exp2({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
@@ -180,6 +185,21 @@ namespace HlslDecompiler
                     break;
                 case Opcode.Log:
                     WriteLine("{0} = log2({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case Opcode.Loop:
+                    ConstantIntRegister intRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(1));
+                    uint end = intRegister.Value[0];
+                    uint start = intRegister.Value[1];
+                    uint stride = intRegister.Value[2];
+                    if (stride == 1)
+                    {
+                        WriteLine("for (int i = {0}; i < {1}; i++) {{", start, end);
+                    }
+                    else
+                    {
+                        WriteLine("for (int i = {0}; i < {1}; i += {2}) {{", start, end, stride);
+                    }
+                    indent += "\t";
                     break;
                 case Opcode.Lrp:
                     WriteLine("{0} = lerp({2}, {3}, {1});", GetDestinationName(instruction),

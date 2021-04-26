@@ -109,8 +109,18 @@ namespace HlslDecompiler.Hlsl
 
             sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
 
+            sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
             sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex);
             return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+        }
+
+        private string GetRelativeAddressingName(Instruction instruction, int srcIndex)
+        {
+            if (instruction.Params.HasRelativeAddressing(srcIndex))
+            {
+                return "[i]";
+            }
+            return string.Empty;
         }
 
         public int GetRegisterFullLength(RegisterKey registerKey)
@@ -212,6 +222,11 @@ namespace HlslDecompiler.Hlsl
             return ConstantDeclarations.FirstOrDefault(c =>
                 c.ParameterType == type &&
                 c.ContainsIndex(index));
+        }
+
+        public ConstantIntRegister FindConstantIntRegister(int index)
+        {
+            return _constantIntDefinitions.FirstOrDefault(c => c.RegisterIndex == index);
         }
 
         private void Load(ShaderModel shader)

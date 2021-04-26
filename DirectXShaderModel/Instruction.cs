@@ -15,8 +15,8 @@ namespace HlslDecompiler.DirectXShaderModel
 
     public class Instruction
     {
-        public Opcode Opcode { get; private set; }
-        public uint[] Params { get; private set; }
+        public Opcode Opcode { get; }
+        public ParamCollection Params { get; }
 
         public int Modifier { get; set; }
         public bool Predicated { get; set; }
@@ -135,10 +135,21 @@ namespace HlslDecompiler.DirectXShaderModel
             }
         }
 
-        public Instruction(Opcode opcode, int numParams)
+        public Instruction(Opcode opcode, uint[] paramTokens)
         {
             Opcode = opcode;
-            Params = new uint[numParams];
+            switch (opcode)
+            {
+                case Opcode.Comment:
+                case Opcode.Def:
+                case Opcode.DefB:
+                case Opcode.DefI:
+                    Params = new ParamCollection(paramTokens);
+                    break;
+                default:
+                    Params = new ParamRelativeCollection(paramTokens);
+                    break;
+            }
         }
 
         byte[] GetParamBytes(int index)
@@ -166,6 +177,12 @@ namespace HlslDecompiler.DirectXShaderModel
         public RegisterType GetParamRegisterType(int index)
         {
             uint p = Params[index];
+            return (RegisterType)(((p >> 28) & 0x7) | ((p >> 8) & 0x18));
+        }
+
+        public RegisterType GetRelativeParamRegisterType(int index)
+        {
+            uint p = Params.GetRelativeToken(index);
             return (RegisterType)(((p >> 28) & 0x7) | ((p >> 8) & 0x18));
         }
 
@@ -246,7 +263,21 @@ namespace HlslDecompiler.DirectXShaderModel
                     throw new NotImplementedException();
             }
 
-            return $"{registerTypeName}{registerNumber}";
+            string relativeAddressing = string.Empty;
+            if (Params.HasRelativeAddressing(index))
+            {
+                RegisterType relativeType = GetRelativeParamRegisterType(index);
+                switch (relativeType)
+                {
+                    case RegisterType.Loop:
+                        relativeAddressing = "[aL]";
+                        break;
+                    default:
+                        throw new NotSupportedException(relativeType.ToString());
+                }
+            }
+
+            return $"{registerTypeName}{registerNumber}{relativeAddressing}";
         }
 
         public int GetDestinationParamIndex()

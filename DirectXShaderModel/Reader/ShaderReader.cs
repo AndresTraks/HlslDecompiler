@@ -45,12 +45,12 @@ namespace HlslDecompiler.DirectXShaderModel
                 size = (int)((instructionToken >> 24) & 0x0f);
             }
 
-            var instruction = new Instruction(opcode, size);
-
+            uint[] paramTokens = new uint[size];
             for (int i = 0; i < size; i++)
             {
-                instruction.Params[i] = ReadUInt32();
+                paramTokens[i] = ReadUInt32();
             }
+            var instruction = new Instruction(opcode, paramTokens);
 
             if (opcode != Opcode.Comment)
             {

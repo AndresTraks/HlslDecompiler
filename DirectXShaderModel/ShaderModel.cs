@@ -97,8 +97,8 @@ namespace HlslDecompiler.DirectXShaderModel
                 return null;
             }
 
-            byte[] constantTable = new byte[ctabComment.Params.Length * 4];
-            for (int i = 1; i < ctabComment.Params.Length; i++)
+            byte[] constantTable = new byte[ctabComment.Params.Count * 4];
+            for (int i = 1; i < ctabComment.Params.Count; i++)
             {
                 constantTable[i * 4 - 4] = (byte)(ctabComment.Params[i] & 0xFF);
                 constantTable[i * 4 - 3] = (byte)((ctabComment.Params[i] >> 8) & 0xFF);
@@ -155,12 +155,12 @@ namespace HlslDecompiler.DirectXShaderModel
                     uint instruction =
                         (uint)i.Opcode |
                         (uint)(i.Modifier << 16) |
-                        ((uint)(i.Params.Length << (i.Opcode == Opcode.Comment ? 16 : 24))) |
+                        ((uint)(i.Params.Count << (i.Opcode == Opcode.Comment ? 16 : 24))) |
                         (i.Predicated ? (uint)(0x10000000) : 0);
                     writer.Write(instruction);
-                    foreach (uint param in i.Params)
+                    for (int p = 0; p < i.Params.Count; p++)
                     {
-                        writer.Write(param);
+                        writer.Write(i.Params[p]);
                     }
                 }
             }

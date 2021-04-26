@@ -12,7 +12,7 @@
             {
                 case Opcode.Dcl:
                     // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549176(v=vs.85).aspx
-                    Assert(instruction.Params.Length == 2);
+                    Assert(instruction.Params.Count == 2);
                     uint param0 = instruction.Params[0];
                     switch (instruction.GetParamRegisterType(1))
                     {
@@ -30,7 +30,7 @@
                     break;
                 case Opcode.Def:
                     {
-                        Assert(instruction.Params.Length == 5);
+                        Assert(instruction.Params.Count == 5);
                         var registerType = instruction.GetParamRegisterType(0);
                         Assert(
                             registerType == RegisterType.Const ||
@@ -41,7 +41,7 @@
                     break;
                 case Opcode.DefI:
                     {
-                        Assert(instruction.Params.Length == 5);
+                        Assert(instruction.Params.Count == 5);
                         var registerType = instruction.GetParamRegisterType(0);
                         Assert(registerType == RegisterType.ConstInt);
                     }

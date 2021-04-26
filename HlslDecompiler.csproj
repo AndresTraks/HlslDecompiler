@@ -45,6 +45,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CommandLineOptions.cs" />
+    <Compile Include="DirectXShaderModel\ParamRelativeCollection.cs" />
+    <Compile Include="DirectXShaderModel\ParamCollection.cs" />
     <Compile Include="Hlsl\Compiler\ConstantIntRegister.cs" />
     <Compile Include="Hlsl\Compiler\ConstantRegister.cs" />
     <Compile Include="Hlsl\HlslSimpleWriter.cs" />

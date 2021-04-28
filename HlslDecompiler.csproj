@@ -1,165 +1,18 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{0580D991-FD83-4B26-9ED0-90843C663CB9}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>HlslDecompiler</RootNamespace>
-    <AssemblyName>HlslDecompiler</AssemblyName>
-    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
+    <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
+    <Compile Remove="HlslDecompiler.Tests\**" />
+    <EmbeddedResource Remove="HlslDecompiler.Tests\**" />
+    <None Remove="HlslDecompiler.Tests\**" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="CommandLineOptions.cs" />
-    <Compile Include="DirectXShaderModel\ParamRelativeCollection.cs" />
-    <Compile Include="DirectXShaderModel\ParamCollection.cs" />
-    <Compile Include="Hlsl\Compiler\ConstantIntRegister.cs" />
-    <Compile Include="Hlsl\Compiler\ConstantRegister.cs" />
-    <Compile Include="Hlsl\HlslSimpleWriter.cs" />
-    <Compile Include="Hlsl\HlslAstWriter.cs" />
-    <Compile Include="Hlsl\InstructionParser.cs" />
-    <Compile Include="DirectXShaderModel\Declaration.cs" />
-    <Compile Include="DirectXShaderModel\Reader\FormatDetector.cs" />
-    <Compile Include="DirectXShaderModel\DeclUsage.cs" />
-    <Compile Include="DirectXShaderModel\Opcode.cs" />
-    <Compile Include="DirectXShaderModel\ParameterClass.cs" />
-    <Compile Include="DirectXShaderModel\ParameterType.cs" />
-    <Compile Include="DirectXShaderModel\RegisterSet.cs" />
-    <Compile Include="DirectXShaderModel\RegisterType.cs" />
-    <Compile Include="DirectXShaderModel\ResultModifier.cs" />
-    <Compile Include="DirectXShaderModel\SamplerTextureType.cs" />
-    <Compile Include="DirectXShaderModel\SourceModifier.cs" />
-    <Compile Include="FourCC.cs" />
-    <Compile Include="Hlsl\Compiler\ConstantCompiler.cs" />
-    <Compile Include="Hlsl\Compiler\AssociativityTester.cs" />
-    <Compile Include="Hlsl\Compiler\NormalizeGrouper.cs" />
-    <Compile Include="Hlsl\Compiler\MatrixMultiplicationCompiler.cs" />
-    <Compile Include="Hlsl\Compiler\MatrixMultiplicationGrouper.cs" />
-    <Compile Include="Hlsl\Compiler\NodeCompiler.cs" />
-    <Compile Include="Hlsl\Operations\CompareOperation.cs" />
-    <Compile Include="Hlsl\Operations\DotProductOperation.cs" />
-    <Compile Include="Hlsl\GroupNode.cs" />
-    <Compile Include="Hlsl\Operations\LinearInterpolateOperation.cs" />
-    <Compile Include="Hlsl\Operations\MaximumOperation.cs" />
-    <Compile Include="Hlsl\Operations\LengthOperation.cs" />
-    <Compile Include="Hlsl\Operations\MinimumOperation.cs" />
-    <Compile Include="Hlsl\Operations\DivisionOperation.cs" />
-    <Compile Include="Hlsl\Operations\PowerOperation.cs" />
-    <Compile Include="Hlsl\NormalizeOutputNode.cs" />
-    <Compile Include="Hlsl\Operations\SquareRootOperation.cs" />
-    <Compile Include="Hlsl\Operations\SignLessOperation.cs" />
-    <Compile Include="Hlsl\Operations\SignGreaterOrEqualOperation.cs" />
-    <Compile Include="Hlsl\Operations\ReciprocalSquareRootOperation.cs" />
-    <Compile Include="Hlsl\Operations\ReciprocalOperation.cs" />
-    <Compile Include="Hlsl\Operations\FractionalOperation.cs" />
-    <Compile Include="Hlsl\ConstantNode.cs" />
-    <Compile Include="Hlsl\HlslAst.cs" />
-    <Compile Include="Hlsl\HlslTreeNode.cs" />
-    <Compile Include="Hlsl\HlslWriter.cs" />
-    <Compile Include="Hlsl\Operations\CosineOperation.cs" />
-    <Compile Include="Hlsl\Operations\SineOperation.cs" />
-    <Compile Include="Hlsl\Compiler\RegisterState.cs" />
-    <Compile Include="Hlsl\Operations\ConsumerOperation.cs" />
-    <Compile Include="Hlsl\Operations\ClipOperation.cs" />
-    <Compile Include="Hlsl\TemplateMatch\LengthContext.cs" />
-    <Compile Include="Hlsl\TemplateMatch\LengthTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\DotProduct4Template.cs" />
-    <Compile Include="Hlsl\TemplateMatch\DotProduct3Template.cs" />
-    <Compile Include="Hlsl\TemplateMatch\DotProductContext.cs" />
-    <Compile Include="Hlsl\TemplateMatch\DotProduct2Template.cs" />
-    <Compile Include="Hlsl\TemplateMatch\IGroupContext.cs" />
-    <Compile Include="Hlsl\TemplateMatch\IGroupTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyConstantsTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\AddNegateTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\AddSelfTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\AddConstantsTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\AddZeroTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\AddNegativeTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyNegativeOneTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyConstantTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyOneTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyReciprocalDivisionTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyZeroTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\NegateNegateTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\NegateConstantTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\NodeTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MoveTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\MultiplyAddTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\INodeTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\ReciprocalSquareRootTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\ReciprocalReciprocalSquareRootTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\SubtractNegateTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\SubtractZeroTemplate.cs" />
-    <Compile Include="Hlsl\TemplateMatch\TemplateMatcher.cs" />
-    <Compile Include="IHasComponentIndex.cs" />
-    <Compile Include="Hlsl\Operations\MoveOperation.cs" />
-    <Compile Include="Hlsl\Operations\AbsoluteOperation.cs" />
-    <Compile Include="Hlsl\Operations\AddOperation.cs" />
-    <Compile Include="Hlsl\Operations\MultiplyAddOperation.cs" />
-    <Compile Include="Hlsl\Operations\MultiplyOperation.cs" />
-    <Compile Include="Hlsl\Operations\NegateOperation.cs" />
-    <Compile Include="Hlsl\Operations\Operation.cs" />
-    <Compile Include="Hlsl\RegisterInputNode.cs" />
-    <Compile Include="Hlsl\Operations\SubtractOperation.cs" />
-    <Compile Include="Hlsl\TextureLoadOutputNode.cs" />
-    <Compile Include="DirectXShaderModel\Instruction.cs" />
-    <Compile Include="DirectXShaderModel\InstructionVerifier.cs" />
-    <Compile Include="Hlsl\Compiler\NodeGrouper.cs" />
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="DirectXShaderModel\RegisterKey.cs" />
-    <Compile Include="DirectXShaderModel\RegisterComponentKey.cs" />
-    <Compile Include="DirectXShaderModel\Reader\RgxaReader.cs" />
-    <Compile Include="DirectXShaderModel\ShaderFlags.cs" />
-    <Compile Include="DirectXShaderModel\ShaderModel.cs" />
-    <Compile Include="DirectXShaderModel\ShaderType.cs" />
-    <Compile Include="DirectXShaderModel\Reader\ShaderReader.cs" />
-    <Compile Include="DirectXShaderModel\AsmWriter.cs" />
+    <PackageReference Include="NUnit" Version="3.12.0" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
-  </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+
 </Project>

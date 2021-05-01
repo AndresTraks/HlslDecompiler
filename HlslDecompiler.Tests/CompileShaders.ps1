@@ -68,6 +68,7 @@ function Compile {
         Write-Error "HLSL compiler fxc.exe not found."
         return
     }
+    Write-Host "Using $fxc"
 
     ForEach ($shaderSource in $pixelShaderSources) {
         Write-Host "Compiling $shaderSource..."

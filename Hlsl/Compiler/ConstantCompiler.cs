@@ -1,18 +1,11 @@
-﻿using System.Globalization;
+﻿using HlslDecompiler.Util;
+using System.Globalization;
 using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
     public sealed class ConstantCompiler
     {
-        private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
-        private readonly NodeGrouper _nodeGrouper;
-
-        public ConstantCompiler(NodeGrouper nodeGrouper)
-        {
-            _nodeGrouper = nodeGrouper;
-        }
-
         public string Compile(ConstantNode[] group)
         {
             ConstantNode first = group[0];
@@ -34,7 +27,7 @@ namespace HlslDecompiler.Hlsl
 
         private string CompileConstant(ConstantNode firstConstant)
         {
-            return firstConstant.Value.ToString(_culture);
+            return ConstantFormatter.Format(firstConstant.Value);
         }
     }
 }

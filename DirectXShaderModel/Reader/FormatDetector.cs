@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using HlslDecompiler.Util;
+using System.IO;
 using System.Text;
 
 namespace HlslDecompiler

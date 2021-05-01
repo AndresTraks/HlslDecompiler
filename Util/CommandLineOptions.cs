@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.Util
 {
     public class CommandLineOptions
     {

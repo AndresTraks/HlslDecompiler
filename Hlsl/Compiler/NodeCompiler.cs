@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using HlslDecompiler.Hlsl.TemplateMatch;
 using HlslDecompiler.Operations;
 using System;
 using System.Collections.Generic;
@@ -20,7 +19,7 @@ namespace HlslDecompiler.Hlsl
         {
             _registers = registers;
             _nodeGrouper = new NodeGrouper(registers);
-            _constantCompiler = new ConstantCompiler(_nodeGrouper);
+            _constantCompiler = new ConstantCompiler();
             _matrixMultiplicationCompiler = new MatrixMultiplicationCompiler(this);
         }
 

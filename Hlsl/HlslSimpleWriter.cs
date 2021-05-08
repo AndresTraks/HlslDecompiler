@@ -191,13 +191,14 @@ namespace HlslDecompiler
                     uint end = intRegister.Value[0];
                     uint start = intRegister.Value[1];
                     uint stride = intRegister.Value[2];
+                    string loopVariable = "i0";
                     if (stride == 1)
                     {
-                        WriteLine("for (int i = {0}; i < {1}; i++) {{", start, end);
+                        WriteLine("for (int {2} = {0}; {2} < {1}; {2}++) {{", start, end, loopVariable);
                     }
                     else
                     {
-                        WriteLine("for (int i = {0}; i < {1}; i += {2}) {{", start, end, stride);
+                        WriteLine("for (int {3} = {0}; {3} < {1}; {3} += {2}) {{", start, end, stride, loopVariable);
                     }
                     indent += "\t";
                     break;

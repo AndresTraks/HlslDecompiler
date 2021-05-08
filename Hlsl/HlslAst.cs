@@ -7,11 +7,11 @@ namespace HlslDecompiler.Hlsl
 {
     public class HlslAst
     {
-        public Dictionary<RegisterComponentKey, HlslTreeNode> Roots { get; private set; }
-        public Dictionary<RegisterComponentKey, HlslTreeNode> NoOutputInstructions { get; private set; }
+        public Dictionary<RegisterKey, HlslTreeNode> Roots { get; private set; }
+        public Dictionary<RegisterKey, HlslTreeNode> NoOutputInstructions { get; private set; }
 
-        public HlslAst(Dictionary<RegisterComponentKey, HlslTreeNode> roots,
-            Dictionary<RegisterComponentKey, HlslTreeNode> noOutputInstructions)
+        public HlslAst(Dictionary<RegisterKey, HlslTreeNode> roots,
+            Dictionary<RegisterKey, HlslTreeNode> noOutputInstructions)
         {
             Roots = roots;
             NoOutputInstructions = noOutputInstructions;

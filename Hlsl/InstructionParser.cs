@@ -8,55 +8,72 @@ namespace HlslDecompiler.Hlsl
     class BytecodeParser
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
-        private Dictionary<RegisterComponentKey, HlslTreeNode> _noOutputInstructions;
+        private Dictionary<RegisterKey, HlslTreeNode> _noOutputInstructions;
         private Dictionary<RegisterKey, HlslTreeNode> _samplers;
 
         public HlslAst Parse(ShaderModel shader)
         {
             _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-            _noOutputInstructions = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+            _noOutputInstructions = new Dictionary<RegisterKey, HlslTreeNode>();
             _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
 
             LoadConstantOutputs(shader);
 
             int instructionPointer = 0;
-            bool ifBlock = false;
             while (instructionPointer < shader.Instructions.Count)
             {
                 var instruction = shader.Instructions[instructionPointer];
-                if (ifBlock)
+                if (instruction.HasDestination)
                 {
-                    if (instruction.Opcode == Opcode.Else)
-                    {
-                        ifBlock = false;
-                    }
+                    ParseAssignmentInstruction(instruction);
                 }
                 else
                 {
-                    if (instruction.Opcode == Opcode.IfC)
+                    switch (instruction.Opcode)
                     {
-                        ifBlock = true;
+                        case Opcode.If:
+                        case Opcode.IfC:
+                        case Opcode.Else:
+                        case Opcode.Loop:
+                        case Opcode.Rep:
+                        case Opcode.End:
+                        case Opcode.Endif:
+                        case Opcode.EndLoop:
+                        case Opcode.EndRep:
+                            ParseControlInstruction(instruction);
+                            break;
+                        case Opcode.Comment:
+                            break;
+                        default:
+                            throw new NotImplementedException();
                     }
-                    ParseInstruction(instruction);
                 }
                 instructionPointer++;
             }
 
-            Dictionary<RegisterComponentKey, HlslTreeNode> roots;
-            if (shader.Type == ShaderType.Pixel)
-            {
-                roots = _activeOutputs
-                    .Where(o => o.Key.Type == RegisterType.ColorOut)
-                    .ToDictionary(o => o.Key, o => o.Value);
-            }
-            else
-            {
-                roots = _activeOutputs
-                    .Where(o => o.Key.Type == RegisterType.Output)
-                    .ToDictionary(o => o.Key, o => o.Value);
-            }
-
+            Dictionary<RegisterKey, HlslTreeNode> roots = GroupOutputs(shader);
             return new HlslAst(roots, _noOutputInstructions);
+        }
+
+        public Dictionary<RegisterKey, HlslTreeNode> GroupOutputs(ShaderModel shader)
+        {
+            var registerType = shader.Type == ShaderType.Pixel
+                ? RegisterType.ColorOut
+                : RegisterType.Output;
+            var outputsByRegister = _activeOutputs
+                .Where(o => o.Key.Type == registerType)
+                .OrderBy(o => o.Key.ComponentIndex)
+                .GroupBy(o => o.Key.RegisterKey);
+            var groupsByRegister = outputsByRegister
+                .ToDictionary(
+                    o => o.Key,
+                    o => (HlslTreeNode)new GroupNode(o.Select(o => o.Value).ToArray()));
+            return groupsByRegister;
+        }
+
+        private void ParseControlInstruction(Instruction instruction)
+        {
+            // TODO
         }
 
         private void LoadConstantOutputs(ShaderModel shader)
@@ -108,29 +125,26 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
-        private void ParseInstruction(Instruction instruction)
+        private void ParseAssignmentInstruction(Instruction instruction)
         {
-            if (instruction.HasDestination)
+            var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+
+            RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+            foreach (RegisterComponentKey destinationKey in destinationKeys)
             {
-                var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+                HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                newOutputs[destinationKey] = instructionTree;
+            }
 
-                RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
-                foreach (RegisterComponentKey destinationKey in destinationKeys)
+            foreach (var output in newOutputs)
+            {
+                if (instruction.Opcode == Opcode.TexKill)
                 {
-                    HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
-                    newOutputs[destinationKey] = instructionTree;
+                    _noOutputInstructions[output.Key.RegisterKey] = output.Value;
                 }
-
-                foreach (var output in newOutputs)
+                else
                 {
-                    if (instruction.Opcode == Opcode.TexKill)
-                    {
-                        _noOutputInstructions[output.Key] = output.Value;
-                    }
-                    else
-                    {
-                        _activeOutputs[output.Key] = output.Value;
-                    }
+                    _activeOutputs[output.Key] = output.Value;
                 }
             }
         }

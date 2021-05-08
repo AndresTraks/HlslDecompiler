@@ -23,6 +23,11 @@ namespace HlslDecompiler.Hlsl
             _matrixMultiplicationCompiler = new MatrixMultiplicationCompiler(this);
         }
 
+        public string Compile(HlslTreeNode node)
+        {
+            return Compile(new List<HlslTreeNode>() { node });
+        }
+
         public string Compile(IEnumerable<HlslTreeNode> group, int promoteToVectorSize = PromoteToAnyVectorSize)
         {
             return Compile(group.ToList(), promoteToVectorSize);

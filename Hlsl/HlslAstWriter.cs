@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -32,39 +33,29 @@ namespace HlslDecompiler
         {
             var compiler = new NodeCompiler(_registers);
 
-            var noOutputInstructionRoots = ast.NoOutputInstructions.GroupBy(r => r.Key.RegisterKey);
-            foreach (var rootGroup in noOutputInstructionRoots)
+            foreach (var rootGroup in ast.NoOutputInstructions)
             {
-                string statement = CompileRootStatement(compiler, rootGroup);
+                string statement = compiler.Compile(rootGroup.Value);
                 WriteLine($"{statement};");
             }
 
-            var rootGroups = ast.Roots.GroupBy(r => r.Key.RegisterKey);
-            if (_registers.MethodOutputRegisters.Count == 1)
+            if (ast.Roots.Count == 1)
             {
-                string statement = CompileRootStatement(compiler, rootGroups.Single());
+                string statement = compiler.Compile(ast.Roots.Single().Value);
                 WriteLine($"return {statement};");
             }
             else
             {
-                foreach (var rootGroup in rootGroups)
+                foreach (var rootGroup in ast.Roots)
                 {
                     RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
-                    string statement = CompileRootStatement(compiler, rootGroup);
+                    string statement = compiler.Compile(rootGroup.Value);
                     WriteLine($"o.{outputRegister.Name} = {statement};");
                 }
 
                 WriteLine();
                 WriteLine($"return o;");
             }
-        }
-
-        private static string CompileRootStatement(NodeCompiler compiler, 
-            IGrouping<RegisterKey, KeyValuePair<RegisterComponentKey, HlslTreeNode>> rootGroup)
-        {
-            var registerKey = rootGroup.Key;
-            var roots = rootGroup.OrderBy(r => r.Key.ComponentIndex).Select(r => r.Value).ToList();
-            return compiler.Compile(roots, roots.Count);
         }
     }
 }

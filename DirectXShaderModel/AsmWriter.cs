@@ -173,6 +173,9 @@ namespace HlslDecompiler.DirectXShaderModel
                 case Opcode.EndLoop:
                     WriteLine("endloop");
                     break;
+                case Opcode.EndRep:
+                    WriteLine("endrep");
+                    break;
                 case Opcode.Exp:
                     WriteLine("exp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
@@ -234,6 +237,9 @@ namespace HlslDecompiler.DirectXShaderModel
                 case Opcode.Pow:
                     WriteLine("pow{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case Opcode.Rep:
+                    WriteLine("rep {0}", GetDestinationName(instruction));
                     break;
                 case Opcode.Rcp:
                     WriteLine("rcp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),

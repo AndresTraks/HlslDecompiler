@@ -1,48 +1,15 @@
 $generateAssemblyListing = $False;
 
-$pixelShaderSources = @(
-    "ps_conditional",
-    "ps_constant",
-    "ps_constant_struct",
-    "ps_dot_product2_add",
-    "ps_texcoord",
-    "ps_texcoord_modifier",
-    "ps_texcoord_swizzle",
-    "ps_float4_construct",
-    "ps_float4_construct2",
-    "ps_float4_constant",
-    "ps_multiply_subtract",
-    "ps_absolute_multiply",
-    "ps_negate_absolute",
-    "ps_tex2d",
-    "ps_tex2d_swizzle",
-    "ps_tex2d_two_samplers",
-    "ps_clip"
-);
-
-$vertexShaderSources = @(
-    "vs_constant",
-    "vs_constant_struct",
-    "vs_dot_product",
-    "vs_length",
-    "vs_matrix22_vector2_multiply",
-    "vs_matrix23_vector2_multiply",
-    "vs_matrix33_vector3_multiply",
-    "vs_matrix44_vector4_multiply",
-    "vs_normalize",
-    "vs_submatrix43_vector3_multiply",
-    "vs_vector2_matrix22_multiply",
-    "vs_vector2_matrix32_multiply",
-    "vs_vector3_matrix33_multiply",
-    "vs_vector4_matrix44_multiply"
-);
-
 $fxc_paths = @(
-    "C:\Program Files (x86)\Windows Kits\10\bin\x64\fxc.exe",
-    "C:\Program Files (x86)\Windows Kits\8.1\bin\x64\fxc.exe",
-    "C:\Program Files (x86)\Windows Kits\10\bin\x86\fxc.exe",
-    "C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe"
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x64\fxc.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\8.1\bin\x64\fxc.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x86\fxc.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\8.1\bin\x86\fxc.exe"
 );
+
+function FindFxc {
+    $fxc_paths | Where { Test-Path -Path $_ -PathType Leaf } | Select -First 1
+}
 
 function RunProgram($program, $arguments) {
     $info = New-Object System.Diagnostics.ProcessStartInfo
@@ -62,35 +29,34 @@ function RunProgram($program, $arguments) {
     }
 }
 
-function Compile {
-    $fxc = $fxc_paths | Where { Test-Path -Path $_ -PathType Leaf } | Select -First 1
+function CompileShader($basename, $profile, $fxc) {
+    Write-Host "Compiling $basename..."
+    if ($generateAssemblyListing) {
+        $assemblyListingArg = " /Fc ShaderAssembly\$basename.asm"
+    } else {
+        $assemblyListingArg = ""
+    }
+    $arguments = "/T $profile ShaderSources/$basename.fx /Fo CompiledShaders/$basename.fxc$assemblyListingArg"
+    RunProgram $fxc $arguments
+}
+
+function CompileByType($shaderType, $fxc) {
+    $profile = "$($shaderType)_3_0"
+    ForEach ($shaderSource in Get-ChildItem "ShaderSources\$($shaderType)_*.fx") {
+        CompileShader $shaderSource.Basename $profile $fxc
+    }
+}
+
+function CompileAll {
+    $fxc = FindFxc
     if (-Not $fxc) {
         Write-Error "HLSL compiler fxc.exe not found."
         return
     }
     Write-Host "Using $fxc"
 
-    ForEach ($shaderSource in $pixelShaderSources) {
-        Write-Host "Compiling $shaderSource..."
-        if ($generateAssemblyListing) {
-            $assemblyListingArg = " /Fc ShaderAssembly/$shaderSource.asm"
-        } else {
-            $assemblyListingArg = ""
-        }
-        $arguments = "/T ps_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc$assemblyListingArg"
-        RunProgram $fxc $arguments
-    }
-    
-    ForEach ($shaderSource in $vertexShaderSources) {
-        Write-Host "Compiling $shaderSource..."
-        if ($generateAssemblyListing) {
-            $assemblyListingArg = " /Fc ShaderAssembly/$shaderSource.asm"
-        } else {
-            $assemblyListingArg = ""
-        }
-        $arguments = "/T vs_3_0 ShaderSources/$shaderSource.fx /Fo CompiledShaders/$shaderSource.fxc$assemblyListingArg"
-        RunProgram $fxc $arguments
-    }
+    CompileByType "ps" $fxc
+    CompileByType "vs" $fxc
 }
 
-Compile
+CompileAll

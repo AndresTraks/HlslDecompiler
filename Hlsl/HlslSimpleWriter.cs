@@ -8,6 +8,8 @@ namespace HlslDecompiler
 {
     public class HlslSimpleWriter : HlslWriter
     {
+        private int _loopVariableIndex = -1;
+
         public HlslSimpleWriter(ShaderModel shader)
             : base(shader)
         {
@@ -123,8 +125,10 @@ namespace HlslDecompiler
                     WriteLine("}");
                     break;
                 case Opcode.EndLoop:
+                case Opcode.EndRep:
                     indent = indent.Substring(0, indent.Length - 1);
                     WriteLine("}");
+                    _loopVariableIndex--;
                     break;
                 case Opcode.Exp:
                     WriteLine("{0} = exp2({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
@@ -191,7 +195,8 @@ namespace HlslDecompiler
                     uint end = intRegister.Value[0];
                     uint start = intRegister.Value[1];
                     uint stride = intRegister.Value[2];
-                    string loopVariable = "i0";
+                    _loopVariableIndex++;
+                    string loopVariable = "i" + _loopVariableIndex;
                     if (stride == 1)
                     {
                         WriteLine("for (int {2} = {0}; {2} < {1}; {2}++) {{", start, end, loopVariable);
@@ -237,6 +242,12 @@ namespace HlslDecompiler
                     break;
                 case Opcode.Rcp:
                     WriteLine("{0} = 1 / {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case Opcode.Rep:
+                    ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(0));
+                    _loopVariableIndex++;
+                    WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex);
+                    indent += "\t";
                     break;
                 case Opcode.Rsq:
                     WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));

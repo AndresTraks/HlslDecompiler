@@ -39,7 +39,7 @@ namespace HlslDecompiler.Hlsl
             return string.Format("{0}{1}", registerName, writeMaskName);
         }
 
-        public string GetSourceName(Instruction instruction, int srcIndex)
+        public string GetSourceName(D3D9Instruction instruction, int srcIndex)
         {
             string sourceRegisterName;
 
@@ -116,7 +116,7 @@ namespace HlslDecompiler.Hlsl
 
         private string GetRelativeAddressingName(Instruction instruction, int srcIndex)
         {
-            if (instruction.Params.HasRelativeAddressing(srcIndex))
+            if (instruction is D3D9Instruction d3D9Instruction  && d3D9Instruction.Params.HasRelativeAddressing(srcIndex))
             {
                 return "[i]";
             }
@@ -265,100 +265,190 @@ namespace HlslDecompiler.Hlsl
                 }
             }
 
-            foreach (var instruction in shader.Instructions)
+            if (shader.MajorVersion <= 3)
             {
-                if (!instruction.HasDestination)
+                foreach (D3D9Instruction instruction in shader.Instructions)
                 {
-                    if (instruction.Opcode == Opcode.Loop)
+                    if (!instruction.HasDestination)
                     {
-                        RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
-                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        if (instruction.Opcode == Opcode.Loop)
                         {
-                            var registerDeclaration = new RegisterDeclaration(registerKey);
-                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                            RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
+                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            {
+                                var registerDeclaration = new RegisterDeclaration(registerKey);
+                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (instruction.Opcode == Opcode.Dcl)
+                    {
+                        var registerDeclaration = new RegisterDeclaration(instruction);
+                        RegisterKey registerKey = registerDeclaration.RegisterKey;
+
+                        _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                        switch (registerKey.Type)
+                        {
+                            case RegisterType.Input:
+                            case RegisterType.MiscType:
+                                MethodInputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                            case RegisterType.Output:
+                            case RegisterType.ColorOut:
+                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                        }
+                        switch (registerKey.OperandType)
+                        {
+                            case OperandType.Output:
+                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
                         }
                     }
-                    continue;
-                }
-
-                if (instruction.Opcode == Opcode.Dcl)
-                {
-                    var registerDeclaration = new RegisterDeclaration(instruction);
-                    RegisterKey registerKey = registerDeclaration.RegisterKey;
-
-                    _registerDeclarations.Add(registerKey, registerDeclaration);
-
-                    switch (registerKey.Type)
+                    else if (instruction.Opcode == Opcode.Def)
                     {
-                        case RegisterType.Input:
-                        case RegisterType.MiscType:
-                            MethodInputRegisters.Add(registerKey, registerDeclaration);
-                            break;
-                        case RegisterType.Output:
-                        case RegisterType.ColorOut:
-                            MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                            break;
+                        var constant = new ConstantRegister(
+                            instruction.GetParamRegisterNumber(0),
+                            instruction.GetParamSingle(1),
+                            instruction.GetParamSingle(2),
+                            instruction.GetParamSingle(3),
+                            instruction.GetParamSingle(4));
+                        _constantDefinitions.Add(constant);
                     }
-                }
-                else if (instruction.Opcode == Opcode.Def)
-                {
-                    var constant = new ConstantRegister(
-                        instruction.GetParamRegisterNumber(0),
-                        instruction.GetParamSingle(1),
-                        instruction.GetParamSingle(2),
-                        instruction.GetParamSingle(3),
-                        instruction.GetParamSingle(4));
-                    _constantDefinitions.Add(constant);
-                }
-                else if (instruction.Opcode == Opcode.DefI)
-                {
-                    var constantInt = new ConstantIntRegister(instruction.GetParamRegisterNumber(0),
-                        instruction.Params[1],
-                        instruction.Params[2],
-                        instruction.Params[3],
-                        instruction.Params[4]);
-                    _constantIntDefinitions.Add(constantInt);
-                }
-                else
-                {
-                    int destIndex = instruction.GetDestinationParamIndex();
-                    RegisterType registerType = instruction.GetParamRegisterType(destIndex);
-                    // Find assignments to color outputs, since pixel shader outputs are not pre-declared
-                    if (registerType == RegisterType.ColorOut)
+                    else if (instruction.Opcode == Opcode.DefI)
                     {
-                        if (shader.Type == ShaderType.Pixel)
+                        var constantInt = new ConstantIntRegister(instruction.GetParamRegisterNumber(0),
+                            instruction.Params[1],
+                            instruction.Params[2],
+                            instruction.Params[3],
+                            instruction.Params[4]);
+                        _constantIntDefinitions.Add(constantInt);
+                    }
+                    else
+                    {
+                        int destIndex = instruction.GetDestinationParamIndex();
+                        RegisterType registerType = instruction.GetParamRegisterType(destIndex);
+                        // Find assignments to color outputs, since pixel shader outputs are not pre-declared
+                        if (registerType == RegisterType.ColorOut)
                         {
-                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            var registerKey = new RegisterKey(registerType, registerNumber);
-                            if (MethodOutputRegisters.ContainsKey(registerKey) == false)
+                            if (shader.Type == ShaderType.Pixel)
                             {
-                                var reg = new RegisterDeclaration(registerKey);
-                                MethodOutputRegisters[registerKey] = reg;
-
-                                if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                                var registerKey = new RegisterKey(registerType, registerNumber);
+                                if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                                 {
-                                    var registerDeclaration = new RegisterDeclaration(registerKey);
-                                    _registerDeclarations.Add(registerKey, registerDeclaration);
+                                    var reg = new RegisterDeclaration(registerKey);
+                                    MethodOutputRegisters[registerKey] = reg;
+
+                                    if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                    {
+                                        var registerDeclaration = new RegisterDeclaration(registerKey);
+                                        _registerDeclarations.Add(registerKey, registerDeclaration);
+                                    }
                                 }
                             }
                         }
-                    }
-                    // Find assignments to temporary registers, since they are not pre-declared
-                    else if (registerType == RegisterType.Temp)
-                    {
-                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                        RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
-                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        // Find assignments to temporary registers, since they are not pre-declared
+                        else if (registerType == RegisterType.Temp)
                         {
-                            var registerDeclaration = new RegisterDeclaration(registerKey);
-                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                            RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
+                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            {
+                                var registerDeclaration = new RegisterDeclaration(registerKey);
+                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                foreach (D3D10Instruction instruction in shader.Instructions)
+                {
+                    if (!instruction.HasDestination)
+                    {
+                        if (instruction.Opcode == D3D10Opcode.Loop)
+                        {
+                            RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
+                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            {
+                                var registerDeclaration = new RegisterDeclaration(registerKey);
+                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (instruction.Opcode == D3D10Opcode.DclOutput)
+                    {
+                        var registerDeclaration = new RegisterDeclaration(instruction);
+                        RegisterKey registerKey = registerDeclaration.RegisterKey;
+
+                        _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                        switch (registerKey.Type)
+                        {
+                            case RegisterType.Input:
+                            case RegisterType.MiscType:
+                                MethodInputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                            case RegisterType.Output:
+                            case RegisterType.ColorOut:
+                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                        }
+                        switch (registerKey.OperandType)
+                        {
+                            case OperandType.Output:
+                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        int destIndex = instruction.GetDestinationParamIndex();
+                        OperandType operandType = instruction.GetParamOperandType(destIndex);
+                        // Find assignments to color outputs, since pixel shader outputs are not pre-declared
+                        if (operandType == OperandType.Output)
+                        {
+                            if (shader.Type == ShaderType.Pixel)
+                            {
+                                int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                                var registerKey = new RegisterKey(operandType);
+                                if (MethodOutputRegisters.ContainsKey(registerKey) == false)
+                                {
+                                    var reg = new RegisterDeclaration(registerKey);
+                                    MethodOutputRegisters[registerKey] = reg;
+
+                                    if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                    {
+                                        var registerDeclaration = new RegisterDeclaration(registerKey);
+                                        _registerDeclarations.Add(registerKey, registerDeclaration);
+                                    }
+                                }
+                            }
+                        }
+                        // Find assignments to temporary registers, since they are not pre-declared
+                        else if (operandType == OperandType.Temp)
+                        {
+                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                            RegisterKey registerKey = new RegisterKey(operandType);
+                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            {
+                                var registerDeclaration = new RegisterDeclaration(registerKey);
+                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                            }
                         }
                     }
                 }
             }
         }
 
-        private string GetSourceConstantName(Instruction instruction, int srcIndex)
+        private string GetSourceConstantName(D3D9Instruction instruction, int srcIndex)
         {
             var registerType = instruction.GetParamRegisterType(srcIndex);
             int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
@@ -465,7 +555,8 @@ namespace HlslDecompiler.Hlsl
                         }
                         else
                         {
-                            if (instruction.Opcode == Opcode.If || instruction.Opcode == Opcode.IfC)
+                            if (instruction is D3D9Instruction d3D9Instruction
+                                && (d3D9Instruction.Opcode == Opcode.If || d3D9Instruction.Opcode == Opcode.IfC))
                             {
                                 // TODO
                             }

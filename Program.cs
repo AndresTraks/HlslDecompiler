@@ -23,7 +23,7 @@ namespace HlslDecompiler
                 var format = FormatDetector.Detect(inputStream);
                 switch (format)
                 {
-                    case ShaderFileFormat.ShaderModel:
+                    case ShaderFileFormat.ShaderModel3:
                         ReadShaderModel(baseFilename, inputStream, options.DoAstAnalysis);
                         break;
                     case ShaderFileFormat.Rgxa:

@@ -1,6 +1,5 @@
 ﻿using HlslDecompiler.Util;
 using System;
-using System.Globalization;
 using System.IO;
 
 namespace HlslDecompiler.DirectXShaderModel
@@ -16,11 +15,6 @@ namespace HlslDecompiler.DirectXShaderModel
             this.shader = shader;
         }
 
-        void WriteLine()
-        {
-            asmWriter.WriteLine();
-        }
-
         void WriteLine(string value)
         {
             asmWriter.WriteLine(value);
@@ -31,48 +25,11 @@ namespace HlslDecompiler.DirectXShaderModel
             asmWriter.WriteLine(format, args);
         }
 
-        static string ApplyModifier(SourceModifier modifier, string value)
-        {
-            switch (modifier)
-            {
-                case SourceModifier.None:
-                    return value;
-                case SourceModifier.Negate:
-                    return $"-{value}";
-                case SourceModifier.Bias:
-                    return $"{value}_bias";
-                case SourceModifier.BiasAndNegate:
-                    return $"-{value}_bias";
-                case SourceModifier.Sign:
-                    return $"{value}_bx2";
-                case SourceModifier.SignAndNegate:
-                    return $"-{value}_bx2";
-                case SourceModifier.Complement:
-                    throw new NotImplementedException();
-                case SourceModifier.X2:
-                    return $"{value}_x2";
-                case SourceModifier.X2AndNegate:
-                    return $"-{value}_x2";
-                case SourceModifier.DivideByZ:
-                    return $"{value}_dz";
-                case SourceModifier.DivideByW:
-                    return $"{value}_dw";
-                case SourceModifier.Abs:
-                    return $"{value}_abs";
-                case SourceModifier.AbsAndNegate:
-                    return $"-{value}_abs";
-                case SourceModifier.Not:
-                    throw new NotImplementedException();
-                default:
-                    throw new NotImplementedException();
-            }
-        }
-
         string GetDestinationName(Instruction instruction)
         {
             int destIndex = instruction.GetDestinationParamIndex();
             string registerName = instruction.GetParamRegisterName(destIndex);
-            if (instruction.Opcode == Opcode.Loop)
+            if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Opcode == Opcode.Loop)
             {
                 return registerName;
             }
@@ -85,13 +42,16 @@ namespace HlslDecompiler.DirectXShaderModel
 
         string GetSourceName(Instruction instruction, int srcIndex)
         {
-            string sourceRegisterName = instruction.GetParamRegisterName(srcIndex);
-            if (instruction.Opcode == Opcode.Loop)
+            string sourceName = instruction.GetParamRegisterName(srcIndex);
+            if (instruction is D3D9Instruction d3D9Instruction)
             {
-                return sourceRegisterName;
+                if (d3D9Instruction.Opcode != Opcode.Loop)
+                {
+                    sourceName += instruction.GetSourceSwizzleName(srcIndex);
+                    sourceName = ApplyModifier(d3D9Instruction.GetSourceModifier(srcIndex), sourceName);
+                }
             }
-            sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex);
-            return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+            return sourceName;
         }
 
         public void Write(string asmFilename)
@@ -104,14 +64,21 @@ namespace HlslDecompiler.DirectXShaderModel
 
             foreach (Instruction instruction in shader.Instructions)
             {
-                WriteInstruction(instruction);
+                if (instruction is D3D10Instruction d3D10Instruction)
+                {
+                    WriteD3D10Instruction(d3D10Instruction);
+                }
+                else
+                {
+                    WriteInstruction(instruction as D3D9Instruction);
+                }
             }
 
             asmWriter.Dispose();
             asmFile.Dispose();
         }
 
-        private void WriteInstruction(Instruction instruction)
+        private void WriteInstruction(D3D9Instruction instruction)
         {
             switch (instruction.Opcode)
             {
@@ -302,7 +269,30 @@ namespace HlslDecompiler.DirectXShaderModel
             }
         }
 
-        private static string GetModifier(Instruction instruction)
+        private void WriteD3D10Instruction(D3D10Instruction instruction)
+        {
+            switch (instruction.Opcode)
+            {
+                case D3D10Opcode.Add:
+                    break;
+                case D3D10Opcode.DclInputPS:
+                    WriteLine("dcl_input_ps linear");
+                    break;
+                case D3D10Opcode.DclTemps:
+                    WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
+                    break;
+                case D3D10Opcode.Mov:
+                    WriteLine("mov {0}, {1}", GetDestinationName(instruction), "v0.w");
+                    break;
+                default:
+                    WriteLine(instruction.Opcode.ToString());
+                    Console.WriteLine(instruction.Opcode);
+                    //throw new NotImplementedException();
+                    break;
+            }
+        }
+
+        private static string GetModifier(D3D9Instruction instruction)
         {
             ResultModifier resultModifier = instruction.GetDestinationResultModifier();
             switch (resultModifier)
@@ -317,6 +307,43 @@ namespace HlslDecompiler.DirectXShaderModel
                     return "_sat";
                 default:
                     throw new NotSupportedException("Not supported result modifier " + resultModifier);
+            }
+        }
+
+        static string ApplyModifier(SourceModifier modifier, string value)
+        {
+            switch (modifier)
+            {
+                case SourceModifier.None:
+                    return value;
+                case SourceModifier.Negate:
+                    return $"-{value}";
+                case SourceModifier.Bias:
+                    return $"{value}_bias";
+                case SourceModifier.BiasAndNegate:
+                    return $"-{value}_bias";
+                case SourceModifier.Sign:
+                    return $"{value}_bx2";
+                case SourceModifier.SignAndNegate:
+                    return $"-{value}_bx2";
+                case SourceModifier.Complement:
+                    throw new NotImplementedException();
+                case SourceModifier.X2:
+                    return $"{value}_x2";
+                case SourceModifier.X2AndNegate:
+                    return $"-{value}_x2";
+                case SourceModifier.DivideByZ:
+                    return $"{value}_dz";
+                case SourceModifier.DivideByW:
+                    return $"{value}_dw";
+                case SourceModifier.Abs:
+                    return $"{value}_abs";
+                case SourceModifier.AbsAndNegate:
+                    return $"-{value}_abs";
+                case SourceModifier.Not:
+                    throw new NotImplementedException();
+                default:
+                    throw new NotImplementedException();
             }
         }
     }

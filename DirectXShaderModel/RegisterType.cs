@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    // https://msdn.microsoft.com/en-us/library/windows/hardware/ff569707%28v=vs.85%29.aspx
+    // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d9types/ne-d3d9types-_d3dshader_param_register_type
     public enum RegisterType
     {
         Temp,

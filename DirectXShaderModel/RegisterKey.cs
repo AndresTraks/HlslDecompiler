@@ -8,8 +8,14 @@
             Number = registerNumber;
         }
 
+        public RegisterKey(OperandType operandType)
+        {
+            OperandType = operandType;
+        }
+
         public int Number { get; }
         public RegisterType Type { get; }
+        public OperandType OperandType { get; }
 
 
         public override bool Equals(object obj)

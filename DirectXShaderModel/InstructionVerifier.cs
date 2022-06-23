@@ -3,7 +3,7 @@
     public class InstructionVerifier
     {
         [System.Diagnostics.Conditional("DEBUG")]
-        public static void Verify(Instruction instruction)
+        public static void Verify(D3D9Instruction instruction)
         {
             //Assert(currentInstruction.Modifier == 0);
             Assert(!instruction.Predicated);
@@ -65,6 +65,12 @@
         private static void Assert(bool condition)
         {
             System.Diagnostics.Debug.Assert(condition);
+        }
+
+        [System.Diagnostics.Conditional("DEBUG")]
+        public static void Verify(D3D10Instruction instruction)
+        {
+            // TODO
         }
     }
 }

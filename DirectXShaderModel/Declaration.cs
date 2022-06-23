@@ -44,7 +44,14 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public RegisterDeclaration(Instruction declInstruction)
         {
-            RegisterKey = declInstruction.GetParamRegisterKey(1);
+            if (declInstruction is D3D10Instruction d3D10Instruction)
+            {
+                RegisterKey = new RegisterKey(d3D10Instruction.GetParamOperandType(0));
+            }
+            else
+            {
+                RegisterKey = declInstruction.GetParamRegisterKey(1);
+            }
             Semantic = declInstruction.GetDeclSemantic();
             _maskedLength = declInstruction.GetDestinationMaskedLength();
         }

@@ -92,7 +92,9 @@ namespace HlslDecompiler.DirectXShaderModel
         private byte[] GetConstantTableData()
         {
             int ctabToken = FourCC.Make("CTAB");
-            var ctabComment = Instructions.FirstOrDefault(x => x.Opcode == Opcode.Comment && x.Params[0] == ctabToken);
+            var ctabComment = Instructions
+                .OfType<D3D9Instruction>()
+                .FirstOrDefault(x => x.Opcode == Opcode.Comment && x.Params[0] == ctabToken);
             if (ctabComment == null)
             {
                 return null;
@@ -151,7 +153,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 writer.Write((byte)MajorVersion);
                 writer.Write((ushort)Type);
 
-                foreach (Instruction i in Instructions)
+                foreach (D3D9Instruction i in Instructions)
                 {
                     uint instruction =
                         (uint)i.Opcode |

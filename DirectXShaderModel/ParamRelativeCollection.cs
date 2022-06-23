@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    public class ParamRelativeCollection : ParamCollection
+    public class ParamRelativeCollection : D3D9ParamCollection
     {
         public override int Count
         {

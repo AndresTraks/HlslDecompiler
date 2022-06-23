@@ -1,7 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
-using System;
-using System.Collections.Generic;
 using System.Linq;
 
 namespace HlslDecompiler

@@ -21,7 +21,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
             while (true)
             {
-                Instruction instruction = ReadInstruction();
+                D3D9Instruction instruction = ReadInstruction();
                 InstructionVerifier.Verify(instruction);
                 shader.Instructions.Add(instruction);
                 if (instruction.Opcode == Opcode.End) break;
@@ -30,7 +30,7 @@ namespace HlslDecompiler.DirectXShaderModel
             return shader;
         }
 
-        private Instruction ReadInstruction()
+        private D3D9Instruction ReadInstruction()
         {
             uint instructionToken = ReadUInt32();
             Opcode opcode = (Opcode)(instructionToken & 0xffff);
@@ -50,7 +50,7 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 paramTokens[i] = ReadUInt32();
             }
-            var instruction = new Instruction(opcode, paramTokens);
+            var instruction = new D3D9Instruction(opcode, paramTokens);
 
             if (opcode != Opcode.Comment)
             {

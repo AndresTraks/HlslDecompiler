@@ -47,7 +47,11 @@ namespace HlslDecompiler
 
         protected string GetSourceName(Instruction instruction, int srcIndex)
         {
-            return _registers.GetSourceName(instruction, srcIndex);
+            if (instruction is D3D10Instruction)
+            {
+                throw new NotImplementedException();
+            }
+            return _registers.GetSourceName(instruction as D3D9Instruction, srcIndex);
         }
 
         private static string GetConstantTypeName(ConstantDeclaration declaration)

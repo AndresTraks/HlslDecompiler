@@ -7,7 +7,8 @@ namespace HlslDecompiler
     enum ShaderFileFormat
     {
         Unknown,
-        ShaderModel,
+        ShaderModel3,
+        Dxbc,
         Rgxa
     }
 
@@ -31,7 +32,7 @@ namespace HlslDecompiler
                     signature = reader.ReadUInt32();
                     if (signature == 0xFFFE0300 || signature == 0xFFFF0300)
                     {
-                        format = ShaderFileFormat.ShaderModel;
+                        format = ShaderFileFormat.ShaderModel3;
                     }
                 }
             }

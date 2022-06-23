@@ -23,7 +23,10 @@ namespace HlslDecompiler
             WriteTemporaryVariableDeclarations();
             foreach (Instruction instruction in _shader.Instructions)
             {
-                WriteInstruction(instruction);
+                if (instruction is D3D9Instruction d9Instruction)
+                {
+                    WriteInstruction(d9Instruction);
+                }
             }
 
             WriteLine();
@@ -68,7 +71,7 @@ namespace HlslDecompiler
             foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
             {
                 int destIndex = instruction.GetDestinationParamIndex();
-                if (instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
+                if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
                 {
                     int writeMask = instruction.GetDestinationWriteMask();
 
@@ -86,7 +89,7 @@ namespace HlslDecompiler
             return tempRegisters;
         }
 
-        private void WriteInstruction(Instruction instruction)
+        private void WriteInstruction(D3D9Instruction instruction)
         {
             switch (instruction.Opcode)
             {

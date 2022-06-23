@@ -30,20 +30,19 @@ function RunProgram($program, $arguments) {
 }
 
 function CompileShader($basename, $profile, $fxc) {
-    Write-Host "Compiling $basename..."
+    Write-Host "Compiling $profile\$basename..."
     if ($generateAssemblyListing) {
-        $assemblyListingArg = " /Fc ShaderAssembly\$basename.asm"
+        $assemblyListingArg = " /Fc ShaderAssembly\$profile\$basename.asm"
     } else {
         $assemblyListingArg = ""
     }
-    $arguments = "/T $profile ShaderSources/$basename.fx /Fo CompiledShaders/$basename.fxc$assemblyListingArg"
+    $arguments = "/T $profile ShaderSources\$profile\$basename.fx /Fo CompiledShaders/$profile/$basename.fxc$assemblyListingArg"
     RunProgram $fxc $arguments
 }
 
-function CompileByType($shaderType, $fxc) {
-    $profile = "$($shaderType)_3_0"
-    ForEach ($shaderSource in Get-ChildItem "ShaderSources\$($shaderType)_*.fx") {
-        CompileShader $shaderSource.Basename $profile $fxc
+function CompileByProfile($profile, $fxc) {
+    ForEach ($shaderSource in Get-ChildItem "ShaderSources\$($profile)\*.fx") {
+        CompileShader "$($shaderSource.Basename)" $profile $fxc
     }
 }
 
@@ -55,8 +54,10 @@ function CompileAll {
     }
     Write-Host "Using $fxc"
 
-    CompileByType "ps" $fxc
-    CompileByType "vs" $fxc
+    CompileByProfile "ps_3_0" $fxc
+    CompileByProfile "ps_4_0" $fxc
+    CompileByProfile "vs_3_0" $fxc
+    CompileByProfile "vs_4_0" $fxc
 }
 
 CompileAll

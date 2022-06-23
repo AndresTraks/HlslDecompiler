@@ -1,7 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
 
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -17,288 +17,556 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="CompiledShaders\ps_absolute_multiply.fxc">
+    <None Update="CompiledShaders\ps_3_0\absolute_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_clip.fxc">
+    <None Update="CompiledShaders\ps_3_0\clip.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_conditional.fxc">
+    <None Update="CompiledShaders\ps_3_0\conditional.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_constant.fxc">
+    <None Update="CompiledShaders\ps_3_0\constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_constant_struct.fxc">
+    <None Update="CompiledShaders\ps_3_0\constant_struct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_dot_product2_add.fxc">
+    <None Update="CompiledShaders\ps_3_0\dot_product2_add.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_float4_constant.fxc">
+    <None Update="CompiledShaders\ps_3_0\float4_constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_float4_construct.fxc">
+    <None Update="CompiledShaders\ps_3_0\float4_construct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_float4_construct2.fxc">
+    <None Update="CompiledShaders\ps_3_0\float4_construct2.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_multiply_subtract.fxc">
+    <None Update="CompiledShaders\ps_3_0\multiply_subtract.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_negate_absolute.fxc">
+    <None Update="CompiledShaders\ps_3_0\negate_absolute.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_tex2d.fxc">
+    <None Update="CompiledShaders\ps_3_0\tex2d.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_tex2d_swizzle.fxc">
+    <None Update="CompiledShaders\ps_3_0\tex2d_swizzle.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_tex2d_two_samplers.fxc">
+    <None Update="CompiledShaders\ps_3_0\tex2d_two_samplers.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_texcoord.fxc">
+    <None Update="CompiledShaders\ps_3_0\texcoord.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_texcoord_modifier.fxc">
+    <None Update="CompiledShaders\ps_3_0\texcoord_modifier.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\ps_texcoord_swizzle.fxc">
+    <None Update="CompiledShaders\ps_3_0\texcoord_swizzle.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_constant.fxc">
+    <None Update="CompiledShaders\ps_4_0\absolute_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_constant_struct.fxc">
+    <None Update="CompiledShaders\ps_4_0\clip.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_dot_product.fxc">
+    <None Update="CompiledShaders\ps_4_0\conditional.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_length.fxc">
+    <None Update="CompiledShaders\ps_4_0\constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_matrix22_vector2_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\constant_struct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_matrix23_vector2_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\dot_product2_add.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_matrix33_vector3_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\float4_constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_matrix44_vector4_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\float4_construct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_normalize.fxc">
+    <None Update="CompiledShaders\ps_4_0\float4_construct2.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_submatrix43_vector3_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\multiply_negate.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_vector2_matrix22_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\multiply_subtract.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_vector2_matrix32_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\negate_absolute.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_vector3_matrix33_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\sample_2d.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="CompiledShaders\vs_vector4_matrix44_multiply.fxc">
+    <None Update="CompiledShaders\ps_4_0\sample_2d_swizzle.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_absolute_multiply.asm">
+    <None Update="CompiledShaders\ps_4_0\sample_2d_two_samplers.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_clip.asm">
+    <None Update="CompiledShaders\ps_4_0\texcoord.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_conditional.asm">
+    <None Update="CompiledShaders\ps_4_0\texcoord_modifier.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_constant.asm">
+    <None Update="CompiledShaders\ps_4_0\texcoord_swizzle.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_constant_struct.asm">
+    <None Update="CompiledShaders\vs_3_0\constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_dot_product2_add.asm">
+    <None Update="CompiledShaders\vs_3_0\constant_struct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_float4_constant.asm">
+    <None Update="CompiledShaders\vs_3_0\dot_product.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_float4_construct.asm">
+    <None Update="CompiledShaders\vs_3_0\length.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_float4_construct2.asm">
+    <None Update="CompiledShaders\vs_3_0\matrix22_vector2_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_multiply_subtract.asm">
+    <None Update="CompiledShaders\vs_3_0\matrix23_vector2_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_negate_absolute.asm">
+    <None Update="CompiledShaders\vs_3_0\matrix33_vector3_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_tex2d.asm">
+    <None Update="CompiledShaders\vs_3_0\matrix44_vector4_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_tex2d_swizzle.asm">
+    <None Update="CompiledShaders\vs_3_0\normalize.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_tex2d_two_samplers.asm">
+    <None Update="CompiledShaders\vs_3_0\submatrix43_vector3_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_texcoord.asm">
+    <None Update="CompiledShaders\vs_3_0\vector2_matrix22_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_texcoord_modifier.asm">
+    <None Update="CompiledShaders\vs_3_0\vector2_matrix32_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\ps_texcoord_swizzle.asm">
+    <None Update="CompiledShaders\vs_3_0\vector3_matrix33_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_constant.asm">
+    <None Update="CompiledShaders\vs_3_0\vector4_matrix44_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_constant_struct.asm">
+    <None Update="CompiledShaders\vs_4_0\constant.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_dot_product.asm">
+    <None Update="CompiledShaders\vs_4_0\constant_struct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_length.asm">
+    <None Update="CompiledShaders\vs_4_0\dot_product.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_matrix22_vector2_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\length.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_matrix23_vector2_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\matrix22_vector2_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_matrix33_vector3_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\matrix23_vector2_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_matrix44_vector4_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\matrix33_vector3_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_normalize.asm">
+    <None Update="CompiledShaders\vs_4_0\matrix44_vector4_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_submatrix43_vector3_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\normalize.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_vector2_matrix22_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\submatrix43_vector3_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_vector2_matrix32_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\vector2_matrix22_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_vector3_matrix33_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\vector2_matrix32_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderAssembly\vs_vector4_matrix44_multiply.asm">
+    <None Update="CompiledShaders\vs_4_0\vector3_matrix33_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_absolute_multiply.fx">
+    <None Update="CompiledShaders\vs_4_0\vector4_matrix44_multiply.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_clip.fx">
+    <None Update="ShaderAssembly\ps_3_0\absolute_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_conditional.fx">
+    <None Update="ShaderAssembly\ps_3_0\clip.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_constant.fx">
+    <None Update="ShaderAssembly\ps_3_0\conditional.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_constant_struct.fx">
+    <None Update="ShaderAssembly\ps_3_0\constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_dot_product2_add.fx">
+    <None Update="ShaderAssembly\ps_3_0\constant_struct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_float4_constant.fx">
+    <None Update="ShaderAssembly\ps_3_0\dot_product2_add.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_float4_construct.fx">
+    <None Update="ShaderAssembly\ps_3_0\float4_constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_float4_construct2.fx">
+    <None Update="ShaderAssembly\ps_3_0\float4_construct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_multiply_negate.fx">
+    <None Update="ShaderAssembly\ps_3_0\float4_construct2.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_multiply_subtract.fx">
+    <None Update="ShaderAssembly\ps_3_0\multiply_subtract.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_negate_absolute.fx">
+    <None Update="ShaderAssembly\ps_3_0\negate_absolute.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_tex2d.fx">
+    <None Update="ShaderAssembly\ps_3_0\tex2d.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_tex2d_swizzle.fx">
+    <None Update="ShaderAssembly\ps_3_0\tex2d_swizzle.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_tex2d_two_samplers.fx">
+    <None Update="ShaderAssembly\ps_3_0\tex2d_two_samplers.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_texcoord.fx">
+    <None Update="ShaderAssembly\ps_3_0\texcoord.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_texcoord_modifier.fx">
+    <None Update="ShaderAssembly\ps_3_0\texcoord_modifier.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\ps_texcoord_swizzle.fx">
+    <None Update="ShaderAssembly\ps_3_0\texcoord_swizzle.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_constant.fx">
+    <None Update="ShaderAssembly\ps_4_0\absolute_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_constant_struct.fx">
+    <None Update="ShaderAssembly\ps_4_0\clip.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_dot_product.fx">
+    <None Update="ShaderAssembly\ps_4_0\conditional.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_length.fx">
+    <None Update="ShaderAssembly\ps_4_0\constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_matrix22_vector2_multiply.fx">
+    <None Update="ShaderAssembly\ps_4_0\constant_struct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_matrix23_vector2_multiply.fx">
+    <None Update="ShaderAssembly\ps_4_0\dot_product2_add.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_matrix33_vector3_multiply.fx">
+    <None Update="ShaderAssembly\ps_4_0\float4_constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_matrix44_vector4_multiply.fx">
+    <None Update="ShaderAssembly\ps_4_0\float4_construct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_normalize.fx">
+    <None Update="ShaderAssembly\ps_4_0\float4_construct2.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_submatrix43_vector3_multiply.fx">
+    <None Update="ShaderAssembly\vs_3_0\constant.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_vector2_matrix22_multiply.fx">
+    <None Update="ShaderAssembly\vs_3_0\constant_struct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_vector2_matrix32_multiply.fx">
+    <None Update="ShaderAssembly\vs_3_0\dot_product.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_vector3_matrix33_multiply.fx">
+    <None Update="ShaderAssembly\vs_3_0\length.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="ShaderSources\vs_vector4_matrix44_multiply.fx">
+    <None Update="ShaderAssembly\vs_3_0\matrix22_vector2_multiply.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderAssembly\vs_3_0\matrix23_vector2_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\matrix33_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\matrix44_vector4_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\normalize.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\submatrix43_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\vector2_matrix22_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\vector2_matrix32_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\vector3_matrix33_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\vector4_matrix44_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\constant.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\constant_struct.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\dot_product.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\length.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\matrix22_vector2_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\matrix23_vector2_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\matrix33_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\matrix44_vector4_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\normalize.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\submatrix43_vector3_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\vector2_matrix22_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\vector2_matrix32_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\vector3_matrix33_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\vector4_matrix44_multiply.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\absolute_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\clip.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\conditional.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\constant_struct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\dot_product2_add.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\float4_constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\float4_construct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\float4_construct2.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\multiply_negate.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\multiply_subtract.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\negate_absolute.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\tex2d.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\tex2d_swizzle.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\tex2d_two_samplers.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\texcoord.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\texcoord_modifier.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\texcoord_swizzle.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\absolute_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\clip.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\conditional.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\constant_struct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\dot_product2_add.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\float4_constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\float4_construct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\float4_construct2.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\multiply_negate.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\multiply_subtract.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\negate_absolute.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\tex2d.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\tex2d_swizzle.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\sample_2d_two_samplers.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\texcoord.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\texcoord_modifier.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\texcoord_swizzle.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\constant_struct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\dot_product.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\length.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\matrix22_vector2_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\matrix23_vector2_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\matrix33_vector3_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\matrix44_vector4_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\normalize.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\submatrix43_vector3_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\vector2_matrix22_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\vector2_matrix32_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\vector3_matrix33_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\vector4_matrix44_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\constant_struct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\dot_product.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\length.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\matrix22_vector2_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\matrix23_vector2_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\matrix33_vector3_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\matrix44_vector4_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\normalize.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\submatrix43_vector3_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\vector2_matrix22_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\vector2_matrix32_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\vector3_matrix33_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\vector4_matrix44_multiply.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="CompiledShaders\ps_3_0\" />
+    <Folder Include="ShaderAssembly\vs_3_0\" />
+    <Folder Include="ShaderAssembly\ps_3_0\" />
+    <Folder Include="ShaderSources\vs_3_0\" />
   </ItemGroup>
 
 </Project>

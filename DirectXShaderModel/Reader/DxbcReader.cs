@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.Util;
+using System;
 using System.IO;
 using System.Text;
 
@@ -64,18 +65,23 @@ namespace HlslDecompiler.DirectXShaderModel
 
         private D3D10Instruction ReadInstruction()
         {
-            uint instructionToken = ReadUInt32();
-            D3D10Opcode opcode = (D3D10Opcode)(instructionToken & 0x3FF);
+            uint opcodeToken = ReadUInt32();
+            D3D10Opcode opcode = (D3D10Opcode)(opcodeToken & 0x7FF);
 
-            int paramCount = (int)((instructionToken >> 24) & 0xFF) - 1;
-            bool isExtended = (instructionToken & 0x80000000) != 0;
+            int operandCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
 
-            uint[] paramTokens = new uint[paramCount];
-            for (int i = 0; i < paramCount; i++)
+            bool isExtended = (opcodeToken & 0x80000000) != 0;
+            if (isExtended)
             {
-                paramTokens[i] = ReadUInt32();
+                throw new NotImplementedException();
             }
-            var instruction = new D3D10Instruction(opcode, paramTokens);
+
+            uint[] operandTokens = new uint[operandCount];
+            for (int i = 0; i < operandCount; i++)
+            {
+                operandTokens[i] = ReadUInt32();
+            }
+            var instruction = new D3D10Instruction(opcode, operandTokens);
             return instruction;
         }
     }

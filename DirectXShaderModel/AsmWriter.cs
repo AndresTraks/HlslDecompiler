@@ -51,6 +51,15 @@ namespace HlslDecompiler.DirectXShaderModel
                     sourceName = ApplyModifier(d3D9Instruction.GetSourceModifier(srcIndex), sourceName);
                 }
             }
+            else if (instruction is D3D10Instruction d3D10Instruction)
+            {
+                var operandType = d3D10Instruction.GetOperandType(srcIndex);
+                if (operandType != OperandType.Immediate32)
+                {
+                    sourceName += instruction.GetSourceSwizzleName(srcIndex);
+                    sourceName = ApplyModifier(d3D10Instruction.GetOperandModifier(srcIndex), sourceName);
+                }
+            }
             return sourceName;
         }
 
@@ -274,15 +283,38 @@ namespace HlslDecompiler.DirectXShaderModel
             switch (instruction.Opcode)
             {
                 case D3D10Opcode.Add:
+                    WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case D3D10Opcode.DclInputPS:
-                    WriteLine("dcl_input_ps linear");
+                    WriteLine("dcl_input_ps linear {0}", GetDestinationName(instruction));
+                    break;
+                case D3D10Opcode.DclOutput:
+                    WriteLine("dcl_output {0}", GetDestinationName(instruction));
                     break;
                 case D3D10Opcode.DclTemps:
                     WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                     break;
+                case D3D10Opcode.Discard:
+                    WriteLine("discard_nz {0}", instruction.GetParamInt(0));
+                    break;
+                case D3D10Opcode.Dp2:
+                    WriteLine("dp2 {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Mad:
+                    WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    break;
                 case D3D10Opcode.Mov:
-                    WriteLine("mov {0}, {1}", GetDestinationName(instruction), "v0.w");
+                    WriteLine("mov {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.Mul:
+                    WriteLine("mul {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Ret:
+                    WriteLine("ret");
                     break;
                 default:
                     WriteLine(instruction.Opcode.ToString());
@@ -307,6 +339,23 @@ namespace HlslDecompiler.DirectXShaderModel
                     return "_sat";
                 default:
                     throw new NotSupportedException("Not supported result modifier " + resultModifier);
+            }
+        }
+
+        private static string ApplyModifier(D3D10OperandModifier modifier, string value)
+        {
+            switch (modifier)
+            {
+                case D3D10OperandModifier.None:
+                    return value;
+                case D3D10OperandModifier.Neg:
+                    return $"-{value}";
+                case D3D10OperandModifier.Abs:
+                    return $"|{value}|";
+                case D3D10OperandModifier.Neg | D3D10OperandModifier.Abs:
+                    return $"-|{value}|";
+                default:
+                    throw new NotSupportedException("Not supported operand modifier " + modifier);
             }
         }
 

@@ -411,7 +411,7 @@ namespace HlslDecompiler.Hlsl
                     else
                     {
                         int destIndex = instruction.GetDestinationParamIndex();
-                        OperandType operandType = instruction.GetParamOperandType(destIndex);
+                        OperandType operandType = instruction.GetOperandType(destIndex);
                         // Find assignments to color outputs, since pixel shader outputs are not pre-declared
                         if (operandType == OperandType.Output)
                         {

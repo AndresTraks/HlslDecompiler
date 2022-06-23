@@ -25,13 +25,21 @@ namespace HlslDecompiler.Hlsl
                 var instruction = shader.Instructions[instructionPointer];
                 if (instruction is D3D10Instruction d3D10Instruction)
                 {
-                    switch (d3D10Instruction.Opcode)
+                    if (d3D10Instruction.HasDestination)
                     {
-                        case D3D10Opcode.Discard:
-                        case D3D10Opcode.Ret:
-                            break;
-                        default:
-                            throw new NotImplementedException();
+                        ParseAssignmentInstruction(d3D10Instruction);
+                    }
+                    else
+                    {
+                        switch (d3D10Instruction.Opcode)
+                        {
+                            case D3D10Opcode.DclTemps:
+                            case D3D10Opcode.Discard:
+                            case D3D10Opcode.Ret:
+                                break;
+                            default:
+                                throw new NotImplementedException();
+                        }
                     }
                 }
                 else if (instruction is D3D9Instruction d3D9Instruction)
@@ -167,6 +175,23 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        private void ParseAssignmentInstruction(D3D10Instruction instruction)
+        {
+            var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+
+            RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+            foreach (RegisterComponentKey destinationKey in destinationKeys)
+            {
+                HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                newOutputs[destinationKey] = instructionTree;
+            }
+
+            foreach (var output in newOutputs)
+            {
+                _activeOutputs[output.Key] = output.Value;
+            }
+        }
+
         private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
         {
             int index = instruction.GetDestinationParamIndex();
@@ -289,6 +314,48 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        private HlslTreeNode CreateInstructionTree(D3D10Instruction instruction, RegisterComponentKey destinationKey)
+        {
+            int componentIndex = destinationKey.ComponentIndex;
+
+            switch (instruction.Opcode)
+            {
+                case D3D10Opcode.DclInputPS:
+                case D3D10Opcode.DclInputPSSgv:
+                case D3D10Opcode.DclOutput:
+                case D3D10Opcode.DclOutputSgv:
+                    {
+                        var shaderInput = new RegisterInputNode(destinationKey);
+                        return shaderInput;
+                    }
+                case D3D10Opcode.Mov:
+                case D3D10Opcode.Add:
+                case D3D10Opcode.Frc:
+                case D3D10Opcode.Mad:
+                case D3D10Opcode.Max:
+                case D3D10Opcode.Min:
+                case D3D10Opcode.Mul:
+                case D3D10Opcode.Rsq:
+                case D3D10Opcode.SinCos:
+                    {
+                        HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
+                        switch (instruction.Opcode)
+                        {
+                            case D3D10Opcode.Mad:
+                                return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                            case D3D10Opcode.Mov:
+                                return new MoveOperation(inputs[0]);
+                            case D3D10Opcode.Mul:
+                                return new MultiplyOperation(inputs[0], inputs[1]);
+                            default:
+                                throw new NotImplementedException();
+                        }
+                    }
+                default:
+                    throw new NotImplementedException($"{instruction.Opcode} not implemented");
+            }
+        }
+
         private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
         {
             const int TextureCoordsIndex = 1;
@@ -379,12 +446,33 @@ namespace HlslDecompiler.Hlsl
                     }
                     RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
                     HlslTreeNode input = _activeOutputs[inputKey];
-                    if (instruction is D3D9Instruction d3D9Instruction2)
-                    {
-                        SourceModifier modifier = d3D9Instruction2.GetSourceModifier(inputParameterIndex);
-                        input = ApplyModifier(input, modifier);
-                    }
+                    SourceModifier modifier = d3D9Instruction.GetSourceModifier(inputParameterIndex);
+                    input = ApplyModifier(input, modifier);
                     inputs[i] = input;
+                }
+                return inputs;
+            }
+            else if (instruction is D3D10Instruction d3D10Instruction)
+            {
+                int numInputs = GetNumInputs(d3D10Instruction.Opcode);
+                var inputs = new HlslTreeNode[numInputs];
+                for (int i = 0; i < numInputs; i++)
+                {
+                    int inputParameterIndex = i + 1;
+                    var operandType = d3D10Instruction.GetOperandType(inputParameterIndex);
+                    if (operandType == OperandType.Immediate32)
+                    {
+                        inputs[i] = new ConstantNode(d3D10Instruction.GetParamSingle(inputParameterIndex, componentIndex));
+                    }
+                    else
+                    {
+                        var inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
+                        HlslTreeNode input = _activeOutputs[inputKey];
+                        // TODO:
+                        //SourceModifier modifier = d3D10Instruction.GetSourceModifier(inputParameterIndex);
+                        //input = ApplyModifier(input, modifier);
+                        inputs[i] = input;
+                    }
                 }
                 return inputs;
             }
@@ -454,6 +542,29 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.DP2Add:
                 case Opcode.Lrp:
                 case Opcode.Mad:
+                    return 3;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private static int GetNumInputs(D3D10Opcode opcode)
+        {
+            switch (opcode)
+            {
+                case D3D10Opcode.Frc:
+                case D3D10Opcode.Mov:
+                case D3D10Opcode.Rsq:
+                case D3D10Opcode.SinCos:
+                    return 1;
+                case D3D10Opcode.Add:
+                case D3D10Opcode.Dp3:
+                case D3D10Opcode.Dp4:
+                case D3D10Opcode.Max:
+                case D3D10Opcode.Min:
+                case D3D10Opcode.Mul:
+                    return 2;
+                case D3D10Opcode.Mad:
                     return 3;
                 default:
                     throw new NotImplementedException();

@@ -1,16 +1,17 @@
 ﻿using System;
+using System.Globalization;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
     public class D3D10Instruction : Instruction
     {
         public D3D10Opcode Opcode { get; }
-        public D3D10ParamCollection ParamTokens { get; }
+        public D3D10OperandTokenCollection OperandTokens { get; }
 
         public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens)
         {
             Opcode = opcode;
-            ParamTokens = new D3D10ParamCollection(paramTokens);
+            OperandTokens = new D3D10OperandTokenCollection(paramTokens);
         }
 
         public override bool HasDestination
@@ -20,9 +21,11 @@ namespace HlslDecompiler.DirectXShaderModel
                 switch (Opcode)
                 {
                     case D3D10Opcode.Add:
+                    case D3D10Opcode.DclIndexableTemp:
+                    case D3D10Opcode.DclInputPSSgv:
                     case D3D10Opcode.DclInputPS:
+                    case D3D10Opcode.DclOutputSgv:
                     case D3D10Opcode.DclOutput:
-                    case D3D10Opcode.DclTemps:
                     case D3D10Opcode.Dp2:
                     case D3D10Opcode.GE:
                     case D3D10Opcode.Mad:
@@ -50,11 +53,87 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override int GetDestinationParamIndex()
         {
-            throw new NotImplementedException();
+            return 0;
         }
 
         public override int GetDestinationWriteMask()
         {
+            int destinationParamIndex = GetDestinationParamIndex();
+
+            D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(destinationParamIndex);
+            if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+            {
+                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
+                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                {
+                    Span<uint> span = OperandTokens.GetSpan(destinationParamIndex);
+                    int mask = (int)((span[0] >> 4) & 0xF);
+                    return mask;
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                {
+                    int mask = 0;
+                    int dimension = GetOperandIndexDimension(destinationParamIndex);
+                    for (int i = 0; i < dimension; i++)
+                    {
+                        int swizzle = GetOperandComponentSwizzle(destinationParamIndex, i);
+                        if (swizzle != i)
+                        {
+                            mask |= 1 << swizzle;
+                        }
+                    }
+                    return mask;
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                {
+                    throw new NotImplementedException();
+                }
+            }
+            throw new NotImplementedException();
+        }
+
+        private int GetOperandIndexDimension(int index)
+        {
+            Span<uint> span = OperandTokens.GetSpan(index);
+            return (int)((span[0] >> 20) & 3);
+        }
+
+        private D3D10OperandNumComponents GetOperandComponentSelection(int index)
+        {
+            Span<uint> span = OperandTokens.GetSpan(index);
+            return (D3D10OperandNumComponents)(span[0] & 3);
+        }
+
+        private D3D10ComponentSelectionMode GetOperandComponentSelectionMode(int index)
+        {
+            Span<uint> span = OperandTokens.GetSpan(index);
+            return (D3D10ComponentSelectionMode)((span[0] >> 2) & 3);
+        }
+
+        private int GetOperandComponentSwizzle(int index, int component)
+        {
+            D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(index);
+            if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+            {
+                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(index);
+                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                {
+                    Span<uint> span = OperandTokens.GetSpan(index);
+                    int mask = (int)((span[0] >> 4) & 0xF);
+                    throw new NotImplementedException();
+                    //return component;
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                {
+                    Span<uint> span = OperandTokens.GetSpan(index);
+                    int swizzle = (int)((span[0] >> 2) & 3);
+                    return (swizzle >> (2 * component)) & 3;
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                {
+                    throw new NotImplementedException();
+                }
+            }
             throw new NotImplementedException();
         }
 
@@ -65,17 +144,93 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override int GetSourceSwizzle(int srcIndex)
         {
+            D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(srcIndex);
+            if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+            {
+                return (0 << 0) | (1 << 2) | (2 << 4) | (3 << 6);
+            }
+            else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+            {
+                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(srcIndex);
+                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                {
+                    return (0 << 0) | (1 << 2) | (2 << 4) | (3 << 6);
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                {
+                    Span<uint> span = OperandTokens.GetSpan(srcIndex);
+                    return (int)((span[0] >> 4) & 0xFF);
+                }
+                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                {
+                    Span<uint> span = OperandTokens.GetSpan(srcIndex);
+                    int component = (int)((span[0] >> 4) & 3);
+                    return component * 0x55;
+                }
+            }
             throw new NotImplementedException();
         }
 
         public override string GetSourceSwizzleName(int srcIndex)
         {
-            throw new NotImplementedException();
+            int destinationMask;
+            switch (Opcode)
+            {
+                case D3D10Opcode.Dp3:
+                    destinationMask = 7;
+                    break;
+                case D3D10Opcode.Dp4:
+                    destinationMask = 15;
+                    break;
+                default:
+                    destinationMask = GetDestinationWriteMask();
+                    break;
+            }
+
+            byte[] swizzle = GetSourceSwizzleComponents(srcIndex);
+
+            string swizzleName = "";
+            for (int i = 0; i < 4; i++)
+            {
+                if ((destinationMask & (1 << i)) != 0)
+                {
+                    switch (swizzle[i])
+                    {
+                        case 0:
+                            swizzleName += "x";
+                            break;
+                        case 1:
+                            swizzleName += "y";
+                            break;
+                        case 2:
+                            swizzleName += "z";
+                            break;
+                        case 3:
+                            swizzleName += "w";
+                            break;
+                    }
+                }
+            }
+            switch (swizzleName)
+            {
+                case "xyzw":
+                    return "";
+                case "xxxx":
+                    return ".x";
+                case "yyyy":
+                    return ".y";
+                case "zzzz":
+                    return ".z";
+                case "wwww":
+                    return ".w";
+                default:
+                    return "." + swizzleName;
+            }
         }
 
         public override string GetDeclSemantic()
         {
-            switch (GetParamOperandType(0))
+            switch (GetOperandType(0))
             {
                 case OperandType.Output:
                     return "sem";
@@ -85,48 +240,118 @@ namespace HlslDecompiler.DirectXShaderModel
             }
         }
 
+        private byte[] GetOperandValueBytes(int index, int componentIndex)
+        {
+            Span<uint> span = OperandTokens.GetSpan(index);
+            uint value;
+            if (Opcode == D3D10Opcode.DclTemps)
+            {
+                value = span[0];
+            }
+            else
+            {
+                var componentSelection = GetOperandComponentSelection(index);
+                if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+                {
+                    value = span[1];
+                }
+                else
+                {
+                    value = span[1 + componentIndex];
+                }
+            }
+            return BitConverter.GetBytes(value);
+        }
+
         public override float GetParamSingle(int index)
         {
-            throw new NotImplementedException();
+            return BitConverter.ToSingle(GetOperandValueBytes(index, 0), 0);
+        }
+
+
+        public float GetParamSingle(int index, int componentIndex)
+        {
+            return BitConverter.ToSingle(GetOperandValueBytes(index, componentIndex), 0);
         }
 
         public override float GetParamInt(int index)
         {
-            throw new NotImplementedException();
+            return BitConverter.ToInt32(GetOperandValueBytes(index, 0), 0);
         }
 
-        private Span<uint> GetParamSpan(int index)
+        public D3D10OperandModifier GetOperandModifier(int index)
         {
-            int paramCount = 0;
-            for (int i = 0; i < ParamTokens.Count; i++)
+            Span<uint> span = OperandTokens.GetSpan(index);
+            if ((span[0] & 0x80000000f) == 0)
             {
-                uint param = ParamTokens.Tokens[i];
-                int numComponents = (int)(param & 3);
-                numComponents.ToString();
+                throw new InvalidOperationException();
             }
-            return new Span<uint>(ParamTokens.Tokens, 0, 1);
+            return (D3D10OperandModifier) ((span[1] >> 6) & 0xFF);
         }
 
         public override RegisterKey GetParamRegisterKey(int index)
         {
             return new RegisterKey(
-                GetParamOperandType(index));
+                GetOperandType(index));
         }
 
-        public OperandType GetParamOperandType(int index)
+        public OperandType GetOperandType(int index)
         {
-            uint p = ParamTokens.Tokens[index];
-            return (OperandType)((p >> 12) & 0xFF);
+            Span<uint> span = OperandTokens.GetSpan(index);
+            return (OperandType)((span[0] >> 12) & 0xFF);
         }
 
         public override string GetParamRegisterName(int index)
         {
-            throw new NotImplementedException();
+            var operandType = GetOperandType(index);
+            if (operandType == OperandType.Immediate32)
+            {
+                var componentSelection = GetOperandComponentSelection(index);
+                if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+                {
+                    string immediate = GetParamSingle(index).ToString("F6", CultureInfo.InvariantCulture);
+                    return $"l({immediate})";
+                }
+                else
+                {
+                    string immediate0 = GetParamSingle(index, 0).ToString("F6", CultureInfo.InvariantCulture);
+                    string immediate1 = GetParamSingle(index, 1).ToString("F6", CultureInfo.InvariantCulture);
+                    string immediate2 = GetParamSingle(index, 2).ToString("F6", CultureInfo.InvariantCulture);
+                    string immediate3 = GetParamSingle(index, 3).ToString("F6", CultureInfo.InvariantCulture);
+                    return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
+                }
+            }
+
+            int registerNumber = GetParamRegisterNumber(index);
+
+            string registerTypeName;
+            switch (operandType)
+            {
+                case OperandType.Input:
+                    registerTypeName = "v";
+                    break;
+                case OperandType.Output:
+                    registerTypeName = "o";
+                    break;
+                case OperandType.Temp:
+                    registerTypeName = "r";
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+
+            return $"{registerTypeName}{registerNumber}";
         }
 
         public override int GetParamRegisterNumber(int index)
         {
-            throw new NotImplementedException();
+            Span<uint> span = OperandTokens.GetSpan(index);
+            bool isExtended = (span[0] & 0x80000000) != 0;
+            if (isExtended)
+            {
+                return (int)span[2];
+            }
+            return (int) span[1];
         }
 
         public override string ToString()

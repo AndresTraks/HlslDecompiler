@@ -2,15 +2,19 @@
 {
     public class RegisterKey
     {
+        private readonly bool isD3D10Type;
+
         public RegisterKey(RegisterType registerType, int registerNumber)
         {
             Type = registerType;
             Number = registerNumber;
+            isD3D10Type = false;
         }
 
         public RegisterKey(OperandType operandType)
         {
             OperandType = operandType;
+            isD3D10Type = true;
         }
 
         public int Number { get; }
@@ -26,19 +30,25 @@
             }
             return
                 other.Number == Number &&
-                other.Type == Type;
+                other.Type == Type &&
+                other.OperandType == OperandType;
         }
 
         public override int GetHashCode()
         {
             int hashCode = 
                 Number.GetHashCode() ^
-                Type.GetHashCode();
+                Type.GetHashCode() ^
+                OperandType.GetHashCode();
             return hashCode;
         }
 
         public override string ToString()
         {
+            if (isD3D10Type)
+            {
+                return $"{OperandType}{Number}";
+            }
             return $"{Type}{Number}";
         }
     }

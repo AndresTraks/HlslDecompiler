@@ -46,7 +46,7 @@ namespace HlslDecompiler.DirectXShaderModel
         {
             if (declInstruction is D3D10Instruction d3D10Instruction)
             {
-                RegisterKey = new RegisterKey(d3D10Instruction.GetParamOperandType(0));
+                RegisterKey = new RegisterKey(d3D10Instruction.GetOperandType(0));
             }
             else
             {

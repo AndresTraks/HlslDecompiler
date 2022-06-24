@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.Util;
+using System;
 using System.Globalization;
 
 namespace HlslDecompiler.DirectXShaderModel
@@ -24,14 +25,25 @@ namespace HlslDecompiler.DirectXShaderModel
                     case D3D10Opcode.DclIndexableTemp:
                     case D3D10Opcode.DclInputPSSgv:
                     case D3D10Opcode.DclInputPS:
+                    case D3D10Opcode.DclInput:
                     case D3D10Opcode.DclOutputSgv:
                     case D3D10Opcode.DclOutput:
                     case D3D10Opcode.Dp2:
+                    case D3D10Opcode.Dp3:
+                    case D3D10Opcode.Dp4:
                     case D3D10Opcode.GE:
                     case D3D10Opcode.Mad:
                     case D3D10Opcode.Mov:
                     case D3D10Opcode.MovC:
                     case D3D10Opcode.Mul:
+                    case D3D10Opcode.Rsq:
+                    case D3D10Opcode.Sample:
+                    case D3D10Opcode.SampleC:
+                    case D3D10Opcode.SampleCLZ:
+                    case D3D10Opcode.SampleL:
+                    case D3D10Opcode.SampleD:
+                    case D3D10Opcode.SampleB:
+                    case D3D10Opcode.Sqrt:
                         return true;
                     default:
                         return false;
@@ -98,7 +110,7 @@ namespace HlslDecompiler.DirectXShaderModel
             return (int)((span[0] >> 20) & 3);
         }
 
-        private D3D10OperandNumComponents GetOperandComponentSelection(int index)
+        public D3D10OperandNumComponents GetOperandComponentSelection(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
             return (D3D10OperandNumComponents)(span[0] & 3);
@@ -292,7 +304,8 @@ namespace HlslDecompiler.DirectXShaderModel
         public override RegisterKey GetParamRegisterKey(int index)
         {
             return new RegisterKey(
-                GetOperandType(index));
+                GetOperandType(index),
+                GetParamRegisterNumber(index));
         }
 
         public OperandType GetOperandType(int index)
@@ -304,24 +317,6 @@ namespace HlslDecompiler.DirectXShaderModel
         public override string GetParamRegisterName(int index)
         {
             var operandType = GetOperandType(index);
-            if (operandType == OperandType.Immediate32)
-            {
-                var componentSelection = GetOperandComponentSelection(index);
-                if (componentSelection == D3D10OperandNumComponents.Operand1Component)
-                {
-                    string immediate = GetParamSingle(index).ToString("F6", CultureInfo.InvariantCulture);
-                    return $"l({immediate})";
-                }
-                else
-                {
-                    string immediate0 = GetParamSingle(index, 0).ToString("F6", CultureInfo.InvariantCulture);
-                    string immediate1 = GetParamSingle(index, 1).ToString("F6", CultureInfo.InvariantCulture);
-                    string immediate2 = GetParamSingle(index, 2).ToString("F6", CultureInfo.InvariantCulture);
-                    string immediate3 = GetParamSingle(index, 3).ToString("F6", CultureInfo.InvariantCulture);
-                    return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
-                }
-            }
-
             int registerNumber = GetParamRegisterNumber(index);
 
             string registerTypeName;
@@ -335,6 +330,9 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case OperandType.Temp:
                     registerTypeName = "r";
+                    break;
+                case OperandType.ConstantBuffer:
+                    registerTypeName = "cb";
                     break;
                 default:
                     throw new NotImplementedException();

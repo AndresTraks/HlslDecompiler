@@ -40,26 +40,49 @@ namespace HlslDecompiler.DirectXShaderModel
             return $"{registerName}{writeMaskName}";
         }
 
-        string GetSourceName(Instruction instruction, int srcIndex)
+        private static string GetSourceName(D3D9Instruction instruction, int srcIndex)
         {
             string sourceName = instruction.GetParamRegisterName(srcIndex);
-            if (instruction is D3D9Instruction d3D9Instruction)
+            if (instruction.Opcode != Opcode.Loop)
             {
-                if (d3D9Instruction.Opcode != Opcode.Loop)
+                sourceName += instruction.GetSourceSwizzleName(srcIndex);
+                sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
+            }
+            return sourceName;
+        }
+
+        private static string GetSourceName(D3D10Instruction instruction, int srcIndex)
+        {
+            var operandType = instruction.GetOperandType(srcIndex);
+            if (operandType == OperandType.Immediate32)
+            {
+                var componentSelection = instruction.GetOperandComponentSelection(srcIndex);
+                if (componentSelection == D3D10OperandNumComponents.Operand1Component)
                 {
-                    sourceName += instruction.GetSourceSwizzleName(srcIndex);
-                    sourceName = ApplyModifier(d3D9Instruction.GetSourceModifier(srcIndex), sourceName);
+                    string immediate;
+                    if (instruction.Opcode == D3D10Opcode.Discard)
+                    {
+                        immediate = instruction.GetParamInt(srcIndex).ToString();
+                    }
+                    else
+                    {
+                        immediate = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex));
+                    }
+                    return $"l({immediate})";
+                }
+                else
+                {
+                    string immediate0 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 0));
+                    string immediate1 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 1));
+                    string immediate2 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 2));
+                    string immediate3 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 3));
+                    return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
                 }
             }
-            else if (instruction is D3D10Instruction d3D10Instruction)
-            {
-                var operandType = d3D10Instruction.GetOperandType(srcIndex);
-                if (operandType != OperandType.Immediate32)
-                {
-                    sourceName += instruction.GetSourceSwizzleName(srcIndex);
-                    sourceName = ApplyModifier(d3D10Instruction.GetOperandModifier(srcIndex), sourceName);
-                }
-            }
+
+            string sourceName = instruction.GetParamRegisterName(srcIndex);
+            sourceName += instruction.GetSourceSwizzleName(srcIndex);
+            sourceName = ApplyModifier(instruction.GetOperandModifier(srcIndex), sourceName);
             return sourceName;
         }
 
@@ -289,6 +312,9 @@ namespace HlslDecompiler.DirectXShaderModel
                 case D3D10Opcode.DclInputPS:
                     WriteLine("dcl_input_ps linear {0}", GetDestinationName(instruction));
                     break;
+                case D3D10Opcode.DclInput:
+                    WriteLine("dcl_input {0}", GetDestinationName(instruction));
+                    break;
                 case D3D10Opcode.DclOutput:
                     WriteLine("dcl_output {0}", GetDestinationName(instruction));
                     break;
@@ -296,10 +322,18 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                     break;
                 case D3D10Opcode.Discard:
-                    WriteLine("discard_nz {0}", instruction.GetParamInt(0));
+                    WriteLine("discard_nz {0}", GetSourceName(instruction, 0));
                     break;
                 case D3D10Opcode.Dp2:
                     WriteLine("dp2 {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Dp3:
+                    WriteLine("dp3 {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Dp4:
+                    WriteLine("dp4 {0}, {1}, {2}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case D3D10Opcode.Mad:
@@ -315,6 +349,10 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case D3D10Opcode.Ret:
                     WriteLine("ret");
+                    break;
+                case D3D10Opcode.Rsq:
+                    WriteLine("rsq {0}, {1}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
                     break;
                 default:
                     WriteLine(instruction.Opcode.ToString());

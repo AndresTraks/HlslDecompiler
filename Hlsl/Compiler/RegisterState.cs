@@ -418,7 +418,7 @@ namespace HlslDecompiler.Hlsl
                             if (shader.Type == ShaderType.Pixel)
                             {
                                 int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                                var registerKey = new RegisterKey(operandType);
+                                var registerKey = new RegisterKey(operandType, registerNumber);
                                 if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                                 {
                                     var reg = new RegisterDeclaration(registerKey);
@@ -436,7 +436,7 @@ namespace HlslDecompiler.Hlsl
                         else if (operandType == OperandType.Temp)
                         {
                             int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            RegisterKey registerKey = new RegisterKey(operandType);
+                            RegisterKey registerKey = new RegisterKey(operandType, registerNumber);
                             if (!_registerDeclarations.TryGetValue(registerKey, out _))
                             {
                                 var registerDeclaration = new RegisterDeclaration(registerKey);

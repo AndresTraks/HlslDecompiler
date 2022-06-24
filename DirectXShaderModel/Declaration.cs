@@ -37,21 +37,14 @@ namespace HlslDecompiler.DirectXShaderModel
         }
     }
 
-    // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549176(v=vs.85).aspx
+    // https://docs.microsoft.com/en-us/windows-hardware/drivers/display/dcl-instruction
     public class RegisterDeclaration
     {
         private readonly int _maskedLength;
 
         public RegisterDeclaration(Instruction declInstruction)
         {
-            if (declInstruction is D3D10Instruction d3D10Instruction)
-            {
-                RegisterKey = new RegisterKey(d3D10Instruction.GetOperandType(0));
-            }
-            else
-            {
-                RegisterKey = declInstruction.GetParamRegisterKey(1);
-            }
+            RegisterKey = declInstruction.GetParamRegisterKey(declInstruction.GetDestinationParamIndex());
             Semantic = declInstruction.GetDeclSemantic();
             _maskedLength = declInstruction.GetDestinationMaskedLength();
         }

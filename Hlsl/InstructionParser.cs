@@ -33,6 +33,9 @@ namespace HlslDecompiler.Hlsl
                     {
                         switch (d3D10Instruction.Opcode)
                         {
+                            case D3D10Opcode.DclConstantBuffer:
+                            case D3D10Opcode.DclResource:
+                            case D3D10Opcode.DclSampler:
                             case D3D10Opcode.DclTemps:
                             case D3D10Opcode.Discard:
                             case D3D10Opcode.Ret:
@@ -322,6 +325,7 @@ namespace HlslDecompiler.Hlsl
             {
                 case D3D10Opcode.DclInputPS:
                 case D3D10Opcode.DclInputPSSgv:
+                case D3D10Opcode.DclInput:
                 case D3D10Opcode.DclOutput:
                 case D3D10Opcode.DclOutputSgv:
                     {
@@ -341,16 +345,31 @@ namespace HlslDecompiler.Hlsl
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
                         {
+                            case D3D10Opcode.Add:
+                                return new AddOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                             case D3D10Opcode.Mov:
                                 return new MoveOperation(inputs[0]);
                             case D3D10Opcode.Mul:
                                 return new MultiplyOperation(inputs[0], inputs[1]);
+                            case D3D10Opcode.Rsq:
+                                return new ReciprocalSquareRootOperation(inputs[0]);
                             default:
                                 throw new NotImplementedException();
                         }
                     }
+                case D3D10Opcode.Sample:
+                case D3D10Opcode.SampleC:
+                case D3D10Opcode.SampleCLZ:
+                case D3D10Opcode.SampleL:
+                case D3D10Opcode.SampleD:
+                case D3D10Opcode.SampleB:
+                    return CreateTextureLoadOutputNode(instruction, componentIndex);
+                case D3D10Opcode.Dp2:
+                case D3D10Opcode.Dp3:
+                case D3D10Opcode.Dp4:
+                    return CreateDotProductNode(instruction);
                 default:
                     throw new NotImplementedException($"{instruction.Opcode} not implemented");
             }
@@ -403,7 +422,20 @@ namespace HlslDecompiler.Hlsl
             }
             else if (instruction is D3D10Instruction d3d10instruction)
             {
-                numComponents = d3d10instruction.Opcode == D3D10Opcode.Dp3 ? 3 : 4;
+                switch (d3d10instruction.Opcode)
+                {
+                    case D3D10Opcode.Dp2:
+                        numComponents = 2;
+                        break;
+                    case D3D10Opcode.Dp3:
+                        numComponents = 3;
+                        break;
+                    case D3D10Opcode.Dp4:
+                        numComponents = 4;
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
             else
             {
@@ -558,6 +590,7 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.SinCos:
                     return 1;
                 case D3D10Opcode.Add:
+                case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.Max:

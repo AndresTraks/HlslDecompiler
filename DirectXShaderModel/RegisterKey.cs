@@ -11,9 +11,10 @@
             isD3D10Type = false;
         }
 
-        public RegisterKey(OperandType operandType)
+        public RegisterKey(OperandType operandType, int registerNumber)
         {
             OperandType = operandType;
+            Number = registerNumber;
             isD3D10Type = true;
         }
 

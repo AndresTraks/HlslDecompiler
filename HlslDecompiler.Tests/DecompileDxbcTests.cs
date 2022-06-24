@@ -17,6 +17,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_4_0", "float4_construct")]
         [TestCase("ps_4_0", "float4_construct2")]
         [TestCase("ps_4_0", "float4_constant")]
+        [TestCase("ps_4_0", "multiply_negate")]
         [TestCase("ps_4_0", "multiply_subtract")]
         [TestCase("ps_4_0", "absolute_multiply")]
         [TestCase("ps_4_0", "negate_absolute")]

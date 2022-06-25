@@ -104,6 +104,37 @@ namespace HlslDecompiler.DirectXShaderModel
             throw new NotImplementedException();
         }
 
+        public string GetInterpolationModeName()
+        {
+            switch (GetInterpolationMode())
+            {
+                case D3D10InterpolationMode.Undefined:
+                    return "";
+                case D3D10InterpolationMode.Constant:
+                    return "constant";
+                case D3D10InterpolationMode.Linear:
+                    return "linear";
+                case D3D10InterpolationMode.LinearCentroid:
+                    return "linearCentroid";
+                case D3D10InterpolationMode.LinearNoPerspective:
+                    return "linearNoPerspective";
+                case D3D10InterpolationMode.LinearNoPerspectiveCentroid:
+                    return "linearNoPerspectiveCentroid";
+                case D3D10InterpolationMode.LinearSample:
+                    return "linearSample";
+                case D3D10InterpolationMode.LinearNoPerspectiveSample:
+                    return "linearNoPerspectiveSample";
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private D3D10InterpolationMode GetInterpolationMode()
+        {
+            Span<uint> span = OperandTokens.GetSpan(0);
+            return (D3D10InterpolationMode)((span[0] >> 11) & 0xF);
+        }
+
         private int GetOperandIndexDimension(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
@@ -242,14 +273,24 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override string GetDeclSemantic()
         {
+            string name;
             switch (GetOperandType(0))
             {
+                case OperandType.Input:
+                    name = "SV_Position";
+                    break;
                 case OperandType.Output:
-                    return "sem";
-                //return GetDeclUsage().ToString().ToUpper();
+                    name = "SV_Target";
+                    break;
                 default:
                     throw new NotImplementedException();
             }
+            int declIndex = (int) OperandTokens.GetSpan(0)[1];
+            if (declIndex != 0)
+            {
+                name += declIndex;
+            }
+            return name;
         }
 
         private byte[] GetOperandValueBytes(int index, int componentIndex)

@@ -203,7 +203,7 @@ namespace HlslDecompiler.Hlsl
 
         public ConstantDeclaration FindConstant(RegisterInputNode register)
         {
-            if (register.RegisterComponentKey.Type != RegisterType.Const)
+            if (register.RegisterComponentKey.RegisterKey.Type != RegisterType.Const)
             {
                 return null;
             }
@@ -390,21 +390,24 @@ namespace HlslDecompiler.Hlsl
 
                         _registerDeclarations.Add(registerKey, registerDeclaration);
 
-                        switch (registerKey.Type)
-                        {
-                            case RegisterType.Input:
-                            case RegisterType.MiscType:
-                                MethodInputRegisters.Add(registerKey, registerDeclaration);
-                                break;
-                            case RegisterType.Output:
-                            case RegisterType.ColorOut:
-                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                                break;
-                        }
                         switch (registerKey.OperandType)
                         {
                             case OperandType.Output:
                                 MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                        }
+                    }
+                    else if (instruction.Opcode == D3D10Opcode.DclInputPS)
+                    {
+                        var registerDeclaration = new RegisterDeclaration(instruction);
+                        RegisterKey registerKey = registerDeclaration.RegisterKey;
+
+                        _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                        switch (registerKey.OperandType)
+                        {
+                            case OperandType.Input:
+                                MethodInputRegisters.Add(registerKey, registerDeclaration);
                                 break;
                         }
                     }

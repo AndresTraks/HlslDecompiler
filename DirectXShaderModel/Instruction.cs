@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace HlslDecompiler.DirectXShaderModel
+﻿namespace HlslDecompiler.DirectXShaderModel
 {
     enum IfComparison
     {

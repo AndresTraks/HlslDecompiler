@@ -52,12 +52,20 @@ namespace HlslDecompiler.DirectXShaderModel
         public RegisterDeclaration(RegisterKey registerKey)
         {
             RegisterType type = registerKey.Type;
-            if (type != RegisterType.ColorOut &&
-                type != RegisterType.Const &&
-                type != RegisterType.Temp &&
-                type != RegisterType.Loop)
+            switch (type)
             {
-                throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));
+                case RegisterType.ColorOut:
+                case RegisterType.Const:
+                case RegisterType.Const2:
+                case RegisterType.Const3:
+                case RegisterType.Const4:
+                case RegisterType.ConstBool:
+                case RegisterType.ConstInt:
+                case RegisterType.Temp:
+                case RegisterType.Loop:
+                    break;
+                default:
+                    throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));
             }
 
             RegisterKey = registerKey;
@@ -99,7 +107,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override string ToString()
         {
-            return RegisterKey.Type + " " + Name;
+            return RegisterKey.ToString() + " " + Name;
         }
     }
 }

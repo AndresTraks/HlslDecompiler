@@ -1,4 +1,4 @@
-float4 main(float4 texcoord : TEXCOORD) : SV_Target
+float4 main(float4 sv_position : TEXCOORD) : SV_Target
 {
-	return float4(3 * texcoord.xw - 1, 8, abs(3 * texcoord.x));
+	return float4(3 * sv_position.xw - 1, 8, abs(3 * sv_position.x));
 }

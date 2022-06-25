@@ -14,7 +14,7 @@ namespace HlslDecompiler
         StreamWriter hlslWriter;
         protected string indent = "";
 
-        public RegisterState _registers;
+        protected RegisterState _registers;
 
         public HlslWriter(ShaderModel shader)
         {

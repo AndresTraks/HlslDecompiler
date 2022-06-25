@@ -590,9 +590,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="CompiledShaders\ps_3_0\" />
     <Folder Include="ShaderAssembly\vs_3_0\" />
-    <Folder Include="ShaderAssembly\ps_3_0\" />
     <Folder Include="ShaderSources\vs_3_0\" />
   </ItemGroup>
 

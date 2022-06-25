@@ -86,14 +86,22 @@ namespace HlslDecompiler.Hlsl
 
         public Dictionary<RegisterKey, HlslTreeNode> GroupOutputs(ShaderModel shader)
         {
-            var registerType = shader.Type == ShaderType.Pixel
-                ? RegisterType.ColorOut
-                : RegisterType.Output;
-            var outputsByRegister = _activeOutputs
-                .Where(o => o.Key.Type == registerType)
-                .OrderBy(o => o.Key.ComponentIndex)
-                .GroupBy(o => o.Key.RegisterKey);
+            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByRegister;
+            if (shader.MajorVersion <= 3)
+            {
+                var registerType = shader.Type == ShaderType.Pixel
+                    ? RegisterType.ColorOut
+                    : RegisterType.Output;
+                outputsByRegister = _activeOutputs.Where(o => o.Key.RegisterKey.Type == registerType);
+            }
+            else
+            {
+                var operandType = OperandType.Output;
+                outputsByRegister = _activeOutputs.Where(o => o.Key.RegisterKey.OperandType == operandType);
+            }
             var groupsByRegister = outputsByRegister
+                .OrderBy(o => o.Key.ComponentIndex)
+                .GroupBy(o => o.Key.RegisterKey)
                 .ToDictionary(
                     o => o.Key,
                     o => (HlslTreeNode)new GroupNode(o.Select(o => o.Value).ToArray()));
@@ -138,11 +146,19 @@ namespace HlslDecompiler.Hlsl
                 {
                     for (int r = 0; r < constant.RegisterCount; r++)
                     {
-                        if (constant.ParameterType != ParameterType.Float)
+                        RegisterType registerType;
+                        switch (constant.ParameterType)
                         {
-                            throw new NotImplementedException();
+                            case ParameterType.Bool:
+                                registerType = RegisterType.ConstBool;
+                                break;
+                            case ParameterType.Float:
+                                registerType = RegisterType.Const;
+                                break;
+                            default:
+                                throw new NotImplementedException();
                         }
-                        var registerKey = new RegisterKey(RegisterType.Const, constant.RegisterIndex + r);
+                        var registerKey = new RegisterKey(registerType, constant.RegisterIndex + r);
                         for (int i = 0; i < 4; i++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, i);
@@ -341,6 +357,7 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.Mul:
                 case D3D10Opcode.Rsq:
                 case D3D10Opcode.SinCos:
+                case D3D10Opcode.Sqrt:
                     {
                         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                         switch (instruction.Opcode)
@@ -355,6 +372,8 @@ namespace HlslDecompiler.Hlsl
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Rsq:
                                 return new ReciprocalSquareRootOperation(inputs[0]);
+                            case D3D10Opcode.Sqrt:
+                                return new SquareRootOperation(inputs[0]);
                             default:
                                 throw new NotImplementedException();
                         }
@@ -587,6 +606,7 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.Frc:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.Rsq:
+                case D3D10Opcode.Sqrt:
                 case D3D10Opcode.SinCos:
                     return 1;
                 case D3D10Opcode.Add:

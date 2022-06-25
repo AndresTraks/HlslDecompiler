@@ -310,7 +310,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case D3D10Opcode.DclInputPS:
-                    WriteLine("dcl_input_ps linear {0}", GetDestinationName(instruction));
+                    WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
                     break;
                 case D3D10Opcode.DclInput:
                     WriteLine("dcl_input {0}", GetDestinationName(instruction));

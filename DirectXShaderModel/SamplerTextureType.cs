@@ -3,9 +3,9 @@
     // D3DSAMPLER_TEXTURE_TYPE
     public enum SamplerTextureType
     {
-        Unknown = 1,
-        TwoD = 2,
-        Cube = 4,
-        Volume = 8
+        Unknown    = 0,
+        TwoD       = 2,
+        Cube       = 3,
+        Volume     = 4
     }
 }

@@ -85,6 +85,9 @@ namespace HlslDecompiler
                         case ParameterType.Sampler2D:
                         case ParameterType.Sampler3D:
                             return "sampler";
+
+                        case ParameterType.SamplerCube:
+                            return "samplerCUBE";
                         default:
                             throw new NotImplementedException();
                     }

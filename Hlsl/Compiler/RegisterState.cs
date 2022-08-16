@@ -362,6 +362,16 @@ namespace HlslDecompiler.Hlsl
                                 _registerDeclarations.Add(registerKey, registerDeclaration);
                             }
                         }
+                        else if (registerType == RegisterType.Addr)
+                        {
+                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                            RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
+                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            {
+                                var registerDeclaration = new RegisterDeclaration(registerKey);
+                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                            }
+                        }
                     }
                 }
             }

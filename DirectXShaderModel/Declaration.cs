@@ -63,6 +63,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 case RegisterType.ConstInt:
                 case RegisterType.Temp:
                 case RegisterType.Loop:
+                case RegisterType.Addr:
                     break;
                 default:
                     throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));

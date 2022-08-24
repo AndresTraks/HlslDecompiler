@@ -155,13 +155,13 @@ namespace HlslDecompiler.Hlsl
                         return dot.X;
                     }
                     var firstConstantRegister =  firstDot.X.Inputs[0] as RegisterInputNode;
-                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister.RegisterComponentKey.RegisterKey.Type &&
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex)
                     {
                         return dot.X;
                     }
-                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister.RegisterComponentKey.RegisterKey.Type &&
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister.RegisterComponentKey.ComponentIndex)
                     {
@@ -180,13 +180,13 @@ namespace HlslDecompiler.Hlsl
                         return dot.Y;
                     }
                     var firstConstantRegister = firstDot.Y.Inputs[0] as RegisterInputNode;
-                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister1.RegisterComponentKey.RegisterKey.Type &&
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister1.RegisterComponentKey.ComponentIndex)
                     {
                         return dot.Y;
                     }
-                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.Type == constantRegister1.RegisterComponentKey.RegisterKey.Type &&
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister1.RegisterComponentKey.ComponentIndex)
                     {

@@ -256,7 +256,7 @@ namespace HlslDecompiler.Hlsl
                 var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
 
                 string swizzle = "";
-                if (registerKey.Type != RegisterType.Sampler)
+                if (!(registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Sampler))
                 {
                     swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                         _registers.GetRegisterFullLength(registerKey),

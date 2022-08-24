@@ -24,9 +24,11 @@ namespace HlslDecompiler.DirectXShaderModel
                     case D3D10Opcode.Add:
                     case D3D10Opcode.DclIndexableTemp:
                     case D3D10Opcode.DclInputPSSgv:
+                    case D3D10Opcode.DclInputPSSiv:
                     case D3D10Opcode.DclInputPS:
                     case D3D10Opcode.DclInput:
                     case D3D10Opcode.DclOutputSgv:
+                    case D3D10Opcode.DclOutputSiv:
                     case D3D10Opcode.DclOutput:
                     case D3D10Opcode.Dp2:
                     case D3D10Opcode.Dp3:
@@ -344,7 +346,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override RegisterKey GetParamRegisterKey(int index)
         {
-            return new RegisterKey(
+            return new D3D10RegisterKey(
                 GetOperandType(index),
                 GetParamRegisterNumber(index));
         }

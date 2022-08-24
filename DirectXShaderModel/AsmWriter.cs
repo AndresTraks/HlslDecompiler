@@ -312,6 +312,9 @@ namespace HlslDecompiler.DirectXShaderModel
                 case D3D10Opcode.DclInputPS:
                     WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
                     break;
+                case D3D10Opcode.DclInputPSSiv:
+                    WriteLine("dcl_input_sv {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
+                    break;
                 case D3D10Opcode.DclInput:
                     WriteLine("dcl_input {0}", GetDestinationName(instruction));
                     break;

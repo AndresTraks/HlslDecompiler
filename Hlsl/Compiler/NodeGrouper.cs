@@ -99,7 +99,7 @@ namespace HlslDecompiler.Hlsl
             if (node1 is RegisterInputNode input1 &&
                 node2 is RegisterInputNode input2)
             {
-                if (input1.RegisterComponentKey.RegisterKey.Type == input2.RegisterComponentKey.RegisterKey.Type)
+                if (input1.RegisterComponentKey.RegisterKey.TypeEquals(input2.RegisterComponentKey.RegisterKey))
                 {
                     if (input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number)
                     {

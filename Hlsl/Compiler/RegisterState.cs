@@ -125,7 +125,7 @@ namespace HlslDecompiler.Hlsl
 
         public int GetRegisterFullLength(RegisterKey registerKey)
         {
-            if (registerKey.Type == RegisterType.Const)
+            if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Const)
             {
                 var constant = FindConstant(ParameterType.Float, registerKey.Number);
                 return constant.Columns;
@@ -149,61 +149,76 @@ namespace HlslDecompiler.Hlsl
 
         public string GetRegisterName(RegisterKey registerKey)
         {
-            var decl = _registerDeclarations[registerKey];
-            switch (registerKey.Type)
+            if (registerKey is D3D9RegisterKey d3D9RegisterKey)
             {
-                case RegisterType.Texture:
-                    return decl.Name;
-                case RegisterType.Input:
-                    return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
-                case RegisterType.Output:
-                case RegisterType.ColorOut:
-                    return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
-                case RegisterType.Const:
-                    var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
-                    if (constDecl.Rows == 1)
-                    {
-                        return constDecl.Name;
-                    }
-                    if (ColumnMajorOrder)
-                    {
-                        int column = registerKey.Number - constDecl.RegisterIndex;
-                        return $"transpose({constDecl.Name})[{column}]";
-                    }
-                    string row = (registerKey.Number - constDecl.RegisterIndex).ToString();
-                    return constDecl.Name + $"[{row}]";
-                case RegisterType.Temp:
-                    return "r" + registerKey.Number;
-                case RegisterType.Sampler:
-                    ConstantDeclaration samplerDecl = FindConstant(RegisterSet.Sampler, registerKey.Number);
-                    if (samplerDecl != null)
-                    {
-                        return samplerDecl.Name;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                case RegisterType.MiscType:
-                    switch (registerKey.Number)
-                    {
-                        case 0:
-                            return "vFace";
-                        case 1:
-                            return "vPos";
-                        default:
+                var decl = _registerDeclarations[registerKey];
+                switch (d3D9RegisterKey.Type)
+                {
+                    case RegisterType.Texture:
+                        return decl.Name;
+                    case RegisterType.Input:
+                        return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                    case RegisterType.Output:
+                    case RegisterType.ColorOut:
+                        return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
+                    case RegisterType.Const:
+                        var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
+                        if (constDecl.Rows == 1)
+                        {
+                            return constDecl.Name;
+                        }
+                        if (ColumnMajorOrder)
+                        {
+                            int column = registerKey.Number - constDecl.RegisterIndex;
+                            return $"transpose({constDecl.Name})[{column}]";
+                        }
+                        string row = (registerKey.Number - constDecl.RegisterIndex).ToString();
+                        return constDecl.Name + $"[{row}]";
+                    case RegisterType.Temp:
+                        return "r" + registerKey.Number;
+                    case RegisterType.Sampler:
+                        ConstantDeclaration samplerDecl = FindConstant(RegisterSet.Sampler, registerKey.Number);
+                        if (samplerDecl != null)
+                        {
+                            return samplerDecl.Name;
+                        }
+                        else
+                        {
                             throw new NotImplementedException();
-                    }
-                case RegisterType.Loop:
-                    return "aL";
-                default:
-                    throw new NotImplementedException();
+                        }
+                    case RegisterType.MiscType:
+                        switch (registerKey.Number)
+                        {
+                            case 0:
+                                return "vFace";
+                            case 1:
+                                return "vPos";
+                            default:
+                                throw new NotImplementedException();
+                        }
+                    case RegisterType.Loop:
+                        return "aL";
+                    default:
+                        throw new NotImplementedException();
+                }
             }
+            else if (registerKey is D3D10RegisterKey d3D10RegisterKey)
+            {
+                var decl = _registerDeclarations[registerKey];
+                switch (d3D10RegisterKey.OperandType)
+                {
+                    case OperandType.Input:
+                        return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                    default:
+                        throw new NotImplementedException();
+                }
+            }
+            throw new NotImplementedException();
         }
 
         public ConstantDeclaration FindConstant(RegisterInputNode register)
         {
-            if (register.RegisterComponentKey.RegisterKey.Type != RegisterType.Const)
+            if (register.RegisterComponentKey.RegisterKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type != RegisterType.Const)
             {
                 return null;
             }
@@ -259,7 +274,7 @@ namespace HlslDecompiler.Hlsl
                 }
                 for (int r = 0; r < constantDeclaration.RegisterCount; r++)
                 {
-                    var registerKey = new RegisterKey(registerType, constantDeclaration.RegisterIndex + r);
+                    var registerKey = new D3D9RegisterKey(registerType, constantDeclaration.RegisterIndex + r);
                     var registerDeclaration = new RegisterDeclaration(registerKey);
                     _registerDeclarations.Add(registerKey, registerDeclaration);
                 }
@@ -273,7 +288,7 @@ namespace HlslDecompiler.Hlsl
                     {
                         if (instruction.Opcode == Opcode.Loop)
                         {
-                            RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
+                            D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
                             if (!_registerDeclarations.TryGetValue(registerKey, out _))
                             {
                                 var registerDeclaration = new RegisterDeclaration(registerKey);
@@ -290,22 +305,28 @@ namespace HlslDecompiler.Hlsl
 
                         _registerDeclarations.Add(registerKey, registerDeclaration);
 
-                        switch (registerKey.Type)
+                        if (registerKey is D3D9RegisterKey d3d9RegisterKey)
                         {
-                            case RegisterType.Input:
-                            case RegisterType.MiscType:
-                                MethodInputRegisters.Add(registerKey, registerDeclaration);
-                                break;
-                            case RegisterType.Output:
-                            case RegisterType.ColorOut:
-                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                                break;
+                            switch (d3d9RegisterKey.Type)
+                            {
+                                case RegisterType.Input:
+                                case RegisterType.MiscType:
+                                    MethodInputRegisters.Add(registerKey, registerDeclaration);
+                                    break;
+                                case RegisterType.Output:
+                                case RegisterType.ColorOut:
+                                    MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                    break;
+                            }
                         }
-                        switch (registerKey.OperandType)
+                        else if (registerKey is D3D10RegisterKey d3d10RegisterKey)
                         {
-                            case OperandType.Output:
-                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                                break;
+                            switch (d3d10RegisterKey.OperandType)
+                            {
+                                case OperandType.Output:
+                                    MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                    break;
+                            }
                         }
                     }
                     else if (instruction.Opcode == Opcode.Def)
@@ -337,7 +358,7 @@ namespace HlslDecompiler.Hlsl
                             if (shader.Type == ShaderType.Pixel)
                             {
                                 int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                                var registerKey = new RegisterKey(registerType, registerNumber);
+                                var registerKey = new D3D9RegisterKey(registerType, registerNumber);
                                 if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                                 {
                                     var reg = new RegisterDeclaration(registerKey);
@@ -355,7 +376,7 @@ namespace HlslDecompiler.Hlsl
                         else if (registerType == RegisterType.Temp)
                         {
                             int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
+                            D3D9RegisterKey registerKey = new D3D9RegisterKey(registerType, registerNumber);
                             if (!_registerDeclarations.TryGetValue(registerKey, out _))
                             {
                                 var registerDeclaration = new RegisterDeclaration(registerKey);
@@ -365,7 +386,7 @@ namespace HlslDecompiler.Hlsl
                         else if (registerType == RegisterType.Addr)
                         {
                             int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            RegisterKey registerKey = new RegisterKey(registerType, registerNumber);
+                            D3D9RegisterKey registerKey = new D3D9RegisterKey(registerType, registerNumber);
                             if (!_registerDeclarations.TryGetValue(registerKey, out _))
                             {
                                 var registerDeclaration = new RegisterDeclaration(registerKey);
@@ -381,22 +402,13 @@ namespace HlslDecompiler.Hlsl
                 {
                     if (!instruction.HasDestination)
                     {
-                        if (instruction.Opcode == D3D10Opcode.Loop)
-                        {
-                            RegisterKey registerKey = new RegisterKey(RegisterType.Loop, 0);
-                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                            {
-                                var registerDeclaration = new RegisterDeclaration(registerKey);
-                                _registerDeclarations.Add(registerKey, registerDeclaration);
-                            }
-                        }
                         continue;
                     }
 
                     if (instruction.Opcode == D3D10Opcode.DclOutput)
                     {
                         var registerDeclaration = new RegisterDeclaration(instruction);
-                        RegisterKey registerKey = registerDeclaration.RegisterKey;
+                        D3D10RegisterKey registerKey = (D3D10RegisterKey) registerDeclaration.RegisterKey;
 
                         _registerDeclarations.Add(registerKey, registerDeclaration);
 
@@ -407,10 +419,11 @@ namespace HlslDecompiler.Hlsl
                                 break;
                         }
                     }
-                    else if (instruction.Opcode == D3D10Opcode.DclInputPS)
+                    else if (instruction.Opcode == D3D10Opcode.DclInputPS ||
+                        instruction.Opcode == D3D10Opcode.DclInputPSSiv)
                     {
                         var registerDeclaration = new RegisterDeclaration(instruction);
-                        RegisterKey registerKey = registerDeclaration.RegisterKey;
+                        D3D10RegisterKey registerKey = (D3D10RegisterKey) registerDeclaration.RegisterKey;
 
                         _registerDeclarations.Add(registerKey, registerDeclaration);
 
@@ -431,7 +444,7 @@ namespace HlslDecompiler.Hlsl
                             if (shader.Type == ShaderType.Pixel)
                             {
                                 int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                                var registerKey = new RegisterKey(operandType, registerNumber);
+                                var registerKey = new D3D10RegisterKey(operandType, registerNumber);
                                 if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                                 {
                                     var reg = new RegisterDeclaration(registerKey);
@@ -449,7 +462,7 @@ namespace HlslDecompiler.Hlsl
                         else if (operandType == OperandType.Temp)
                         {
                             int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            RegisterKey registerKey = new RegisterKey(operandType, registerNumber);
+                            D3D10RegisterKey registerKey = new D3D10RegisterKey(operandType, registerNumber);
                             if (!_registerDeclarations.TryGetValue(registerKey, out _))
                             {
                                 var registerDeclaration = new RegisterDeclaration(registerKey);

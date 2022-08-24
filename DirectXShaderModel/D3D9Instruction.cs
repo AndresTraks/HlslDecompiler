@@ -320,7 +320,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override RegisterKey GetParamRegisterKey(int index)
         {
-            return new RegisterKey(
+            return new D3D9RegisterKey(
                 GetParamRegisterType(index),
                 GetParamRegisterNumber(index));
         }

@@ -49,7 +49,7 @@ namespace HlslDecompiler.DirectXShaderModel
             _maskedLength = declInstruction.GetDestinationMaskedLength();
         }
 
-        public RegisterDeclaration(RegisterKey registerKey)
+        public RegisterDeclaration(D3D9RegisterKey registerKey)
         {
             RegisterType type = registerKey.Type;
             switch (type)
@@ -77,6 +77,21 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 default:
                     Semantic = "COLOR" + registerKey.Number;
+                    break;
+            }
+            _maskedLength = 4;
+        }
+
+        public RegisterDeclaration(D3D10RegisterKey registerKey)
+        {
+            RegisterKey = registerKey;
+            switch (registerKey.Number)
+            {
+                case 0:
+                    Semantic = "SV_Target";
+                    break;
+                default:
+                    Semantic = "SV_Target" + registerKey.Number;
                     break;
             }
             _maskedLength = 4;

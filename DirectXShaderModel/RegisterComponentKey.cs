@@ -6,7 +6,7 @@ namespace HlslDecompiler.DirectXShaderModel
     {
         public RegisterComponentKey(RegisterType registerType, int registerNumber, int componentIndex)
         {
-            RegisterKey = new RegisterKey(registerType, registerNumber);
+            RegisterKey = new D3D9RegisterKey(registerType, registerNumber);
             ComponentIndex = componentIndex;
         }
 
@@ -20,7 +20,6 @@ namespace HlslDecompiler.DirectXShaderModel
         public int ComponentIndex { get; }
 
         public int Number => RegisterKey.Number;
-        public RegisterType Type => RegisterKey.Type;
 
         private string Component
         {

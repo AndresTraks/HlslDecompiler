@@ -92,12 +92,12 @@ namespace HlslDecompiler.Hlsl
                 var registerType = shader.Type == ShaderType.Pixel
                     ? RegisterType.ColorOut
                     : RegisterType.Output;
-                outputsByRegister = _activeOutputs.Where(o => o.Key.RegisterKey.Type == registerType);
+                outputsByRegister = _activeOutputs.Where(o => ((D3D9RegisterKey) o.Key.RegisterKey).Type == registerType);
             }
             else
             {
                 var operandType = OperandType.Output;
-                outputsByRegister = _activeOutputs.Where(o => o.Key.RegisterKey.OperandType == operandType);
+                outputsByRegister = _activeOutputs.Where(o => ((D3D10RegisterKey)o.Key.RegisterKey).OperandType == operandType);
             }
             var groupsByRegister = outputsByRegister
                 .OrderBy(o => o.Key.ComponentIndex)
@@ -121,7 +121,7 @@ namespace HlslDecompiler.Hlsl
             {
                 if (constant.RegisterSet == RegisterSet.Sampler)
                 {
-                    var registerKey = new RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
+                    var registerKey = new D3D9RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
                     var destinationKey = new RegisterComponentKey(registerKey, 0);
                     int samplerTextureDimension;
                     switch (constant.ParameterType)
@@ -158,7 +158,7 @@ namespace HlslDecompiler.Hlsl
                             default:
                                 throw new NotImplementedException();
                         }
-                        var registerKey = new RegisterKey(registerType, constant.RegisterIndex + r);
+                        var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
                         for (int i = 0; i < 4; i++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, i);
@@ -216,7 +216,7 @@ namespace HlslDecompiler.Hlsl
             int index = instruction.GetDestinationParamIndex();
             RegisterKey registerKey = instruction.GetParamRegisterKey(index);
 
-            if (registerKey.Type == RegisterType.Sampler)
+            if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type  == RegisterType.Sampler)
             {
                 yield break;
             }
@@ -341,9 +341,11 @@ namespace HlslDecompiler.Hlsl
             {
                 case D3D10Opcode.DclInputPS:
                 case D3D10Opcode.DclInputPSSgv:
+                case D3D10Opcode.DclInputPSSiv:
                 case D3D10Opcode.DclInput:
                 case D3D10Opcode.DclOutput:
                 case D3D10Opcode.DclOutputSgv:
+                case D3D10Opcode.DclOutputSiv:
                     {
                         var shaderInput = new RegisterInputNode(destinationKey);
                         return shaderInput;
@@ -519,9 +521,8 @@ namespace HlslDecompiler.Hlsl
                     {
                         var inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
                         HlslTreeNode input = _activeOutputs[inputKey];
-                        // TODO:
-                        //SourceModifier modifier = d3D10Instruction.GetSourceModifier(inputParameterIndex);
-                        //input = ApplyModifier(input, modifier);
+                        D3D10OperandModifier modifier = d3D10Instruction.GetOperandModifier(inputParameterIndex);
+                        input = ApplyModifier(input, modifier);
                         inputs[i] = input;
                     }
                 }
@@ -559,6 +560,21 @@ namespace HlslDecompiler.Hlsl
                 case SourceModifier.AbsAndNegate:
                     return new NegateOperation(new AbsoluteOperation(input));
                 case SourceModifier.None:
+                    return input;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private static HlslTreeNode ApplyModifier(HlslTreeNode input, D3D10OperandModifier modifier)
+        {
+            switch (modifier)
+            {
+                case D3D10OperandModifier.Abs:
+                    return new AbsoluteOperation(input);
+                case D3D10OperandModifier.Neg:
+                    return new NegateOperation(input);
+                case D3D10OperandModifier.None:
                     return input;
                 default:
                     throw new NotImplementedException();

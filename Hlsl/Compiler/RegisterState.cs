@@ -282,191 +282,203 @@ namespace HlslDecompiler.Hlsl
 
             if (shader.MajorVersion <= 3)
             {
-                foreach (D3D9Instruction instruction in shader.Instructions)
-                {
-                    if (!instruction.HasDestination)
-                    {
-                        if (instruction.Opcode == Opcode.Loop)
-                        {
-                            D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
-                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                            {
-                                var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
-                                _registerDeclarations.Add(registerKey, registerDeclaration);
-                            }
-                        }
-                        continue;
-                    }
-
-                    if (instruction.Opcode == Opcode.Dcl)
-                    {
-                        RegisterDeclaration registerDeclaration = CreateRegisterDeclarationFromD3D9Dcl(instruction);
-                        RegisterKey registerKey = registerDeclaration.RegisterKey;
-
-                        _registerDeclarations.Add(registerKey, registerDeclaration);
-
-                        if (registerKey is D3D9RegisterKey d3d9RegisterKey)
-                        {
-                            switch (d3d9RegisterKey.Type)
-                            {
-                                case RegisterType.Input:
-                                case RegisterType.MiscType:
-                                    MethodInputRegisters.Add(registerKey, registerDeclaration);
-                                    break;
-                                case RegisterType.Output:
-                                case RegisterType.ColorOut:
-                                    MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                                    break;
-                            }
-                        }
-                        else if (registerKey is D3D10RegisterKey d3d10RegisterKey)
-                        {
-                            switch (d3d10RegisterKey.OperandType)
-                            {
-                                case OperandType.Output:
-                                    MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                                    break;
-                            }
-                        }
-                    }
-                    else if (instruction.Opcode == Opcode.Def)
-                    {
-                        var constant = new ConstantRegister(
-                            instruction.GetParamRegisterNumber(0),
-                            instruction.GetParamSingle(1),
-                            instruction.GetParamSingle(2),
-                            instruction.GetParamSingle(3),
-                            instruction.GetParamSingle(4));
-                        _constantDefinitions.Add(constant);
-                    }
-                    else if (instruction.Opcode == Opcode.DefI)
-                    {
-                        var constantInt = new ConstantIntRegister(instruction.GetParamRegisterNumber(0),
-                            instruction.Params[1],
-                            instruction.Params[2],
-                            instruction.Params[3],
-                            instruction.Params[4]);
-                        _constantIntDefinitions.Add(constantInt);
-                    }
-                    else
-                    {
-                        int destIndex = instruction.GetDestinationParamIndex();
-                        RegisterType registerType = instruction.GetParamRegisterType(destIndex);
-                        // Find assignments to color outputs, since pixel shader outputs are not pre-declared
-                        if (registerType == RegisterType.ColorOut)
-                        {
-                            if (shader.Type == ShaderType.Pixel)
-                            {
-                                int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                                var registerKey = new D3D9RegisterKey(registerType, registerNumber);
-                                if (MethodOutputRegisters.ContainsKey(registerKey) == false)
-                                {
-                                    var reg = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
-                                    MethodOutputRegisters[registerKey] = reg;
-
-                                    if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                                    {
-                                        var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
-                                        _registerDeclarations.Add(registerKey, registerDeclaration);
-                                    }
-                                }
-                            }
-                        }
-                        // Find assignments to temporary registers, since they are not pre-declared
-                        else if (registerType == RegisterType.Temp)
-                        {
-                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            D3D9RegisterKey registerKey = new D3D9RegisterKey(registerType, registerNumber);
-                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                            {
-                                var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
-                                _registerDeclarations.Add(registerKey, registerDeclaration);
-                            }
-                        }
-                        else if (registerType == RegisterType.Addr)
-                        {
-                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            D3D9RegisterKey registerKey = new D3D9RegisterKey(registerType, registerNumber);
-                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                            {
-                                var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
-                                _registerDeclarations.Add(registerKey, registerDeclaration);
-                            }
-                        }
-                    }
-                }
+                LoadD3D9State(shader);
             }
             else
             {
-                foreach (D3D10Instruction instruction in shader.Instructions)
+                LoadD3D10State(shader);
+            }
+        }
+
+        private void LoadD3D9State(ShaderModel shader)
+        {
+            foreach (D3D9Instruction instruction in shader.Instructions)
+            {
+                if (!instruction.HasDestination)
                 {
-                    if (!instruction.HasDestination)
+                    if (instruction.Opcode == Opcode.Loop)
                     {
-                        continue;
+                        D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                        }
                     }
+                    continue;
+                }
 
-                    if (instruction.Opcode == D3D10Opcode.DclOutput)
+                if (instruction.Opcode == Opcode.Dcl)
+                {
+                    RegisterDeclaration registerDeclaration = CreateRegisterDeclarationFromD3D9Dcl(instruction);
+                    RegisterKey registerKey = registerDeclaration.RegisterKey;
+
+                    _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                    if (registerKey is D3D9RegisterKey d3d9RegisterKey)
                     {
-                        var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, shader);
-                        D3D10RegisterKey registerKey = (D3D10RegisterKey) registerDeclaration.RegisterKey;
-
-                        _registerDeclarations.Add(registerKey, registerDeclaration);
-
-                        switch (registerKey.OperandType)
+                        switch (d3d9RegisterKey.Type)
+                        {
+                            case RegisterType.Input:
+                            case RegisterType.MiscType:
+                                MethodInputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                            case RegisterType.Output:
+                            case RegisterType.ColorOut:
+                                MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                                break;
+                        }
+                    }
+                    else if (registerKey is D3D10RegisterKey d3d10RegisterKey)
+                    {
+                        switch (d3d10RegisterKey.OperandType)
                         {
                             case OperandType.Output:
                                 MethodOutputRegisters.Add(registerKey, registerDeclaration);
                                 break;
                         }
                     }
-                    else if (instruction.Opcode == D3D10Opcode.DclInputPS ||
-                        instruction.Opcode == D3D10Opcode.DclInputPSSiv)
+                }
+                else if (instruction.Opcode == Opcode.Def)
+                {
+                    var constant = new ConstantRegister(
+                        instruction.GetParamRegisterNumber(0),
+                        instruction.GetParamSingle(1),
+                        instruction.GetParamSingle(2),
+                        instruction.GetParamSingle(3),
+                        instruction.GetParamSingle(4));
+                    _constantDefinitions.Add(constant);
+                }
+                else if (instruction.Opcode == Opcode.DefI)
+                {
+                    var constantInt = new ConstantIntRegister(instruction.GetParamRegisterNumber(0),
+                        instruction.Params[1],
+                        instruction.Params[2],
+                        instruction.Params[3],
+                        instruction.Params[4]);
+                    _constantIntDefinitions.Add(constantInt);
+                }
+                else
+                {
+                    int destIndex = instruction.GetDestinationParamIndex();
+                    RegisterType registerType = instruction.GetParamRegisterType(destIndex);
+                    // Find assignments to color outputs, since pixel shader outputs are not pre-declared
+                    if (registerType == RegisterType.ColorOut)
                     {
-                        var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, shader);
-                        D3D10RegisterKey registerKey = (D3D10RegisterKey) registerDeclaration.RegisterKey;
-
-                        _registerDeclarations.Add(registerKey, registerDeclaration);
-
-                        switch (registerKey.OperandType)
+                        if (shader.Type == ShaderType.Pixel)
                         {
-                            case OperandType.Input:
-                                MethodInputRegisters.Add(registerKey, registerDeclaration);
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        int destIndex = instruction.GetDestinationParamIndex();
-                        OperandType operandType = instruction.GetOperandType(destIndex);
-                        // Find assignments to color outputs, since pixel shader outputs are not pre-declared
-                        if (operandType == OperandType.Output)
-                        {
-                            if (shader.Type == ShaderType.Pixel)
+                            int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                            var registerKey = new D3D9RegisterKey(registerType, registerNumber);
+                            if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                             {
-                                int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                                var registerKey = new D3D10RegisterKey(operandType, registerNumber);
-                                if (MethodOutputRegisters.ContainsKey(registerKey) == false)
-                                {
-                                    var reg = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
-                                    MethodOutputRegisters[registerKey] = reg;
+                                var reg = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
+                                MethodOutputRegisters[registerKey] = reg;
 
-                                    if (!_registerDeclarations.TryGetValue(registerKey, out _))
-                                    {
-                                        var registerDeclaration = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
-                                        _registerDeclarations.Add(registerKey, registerDeclaration);
-                                    }
+                                if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                {
+                                    var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
+                                    _registerDeclarations.Add(registerKey, registerDeclaration);
                                 }
                             }
                         }
-                        // Find assignments to temporary registers, since they are not pre-declared
-                        else if (operandType == OperandType.Temp)
+                    }
+                    // Find assignments to temporary registers, since they are not pre-declared
+                    else if (registerType == RegisterType.Temp)
+                    {
+                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                        var registerKey = new D3D9RegisterKey(registerType, registerNumber);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                        }
+                    }
+                    else if (registerType == RegisterType.Addr)
+                    {
+                        int registerNumber = instruction.GetParamRegisterNumber(destIndex);
+                        var registerKey = new D3D9RegisterKey(registerType, registerNumber);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = CreateRegisterDeclarationFromD3D9RegistryKey(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void LoadD3D10State(ShaderModel shader)
+        {
+            foreach (D3D10Instruction instruction in shader.Instructions)
+            {
+                if (!instruction.HasDestination)
+                {
+                    continue;
+                }
+
+                if (instruction.Opcode == D3D10Opcode.DclTemps)
+                {
+                    int numTemps = (int) instruction.GetParamInt(0);
+                    for (int registerNumber = 0; registerNumber < numTemps; registerNumber++)
+                    {
+                        var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
+                        if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                        {
+                            var registerDeclaration = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
+                            _registerDeclarations.Add(registerKey, registerDeclaration);
+                        }
+                    }
+                }
+                else if (instruction.Opcode == D3D10Opcode.DclOutput)
+                {
+                    var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, shader);
+                    D3D10RegisterKey registerKey = (D3D10RegisterKey)registerDeclaration.RegisterKey;
+
+                    _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                    switch (registerKey.OperandType)
+                    {
+                        case OperandType.Output:
+                            MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                    }
+                }
+                else if (instruction.Opcode == D3D10Opcode.DclInputPS ||
+                    instruction.Opcode == D3D10Opcode.DclInputPSSiv)
+                {
+                    var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, shader);
+                    D3D10RegisterKey registerKey = (D3D10RegisterKey)registerDeclaration.RegisterKey;
+
+                    _registerDeclarations.Add(registerKey, registerDeclaration);
+
+                    switch (registerKey.OperandType)
+                    {
+                        case OperandType.Input:
+                            MethodInputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                    }
+                }
+                else
+                {
+                    int destIndex = instruction.GetDestinationParamIndex();
+                    OperandType operandType = instruction.GetOperandType(destIndex);
+                    // Find assignments to color outputs, since pixel shader outputs are not pre-declared
+                    if (operandType == OperandType.Output)
+                    {
+                        if (shader.Type == ShaderType.Pixel)
                         {
                             int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                            D3D10RegisterKey registerKey = new D3D10RegisterKey(operandType, registerNumber);
-                            if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                            var registerKey = new D3D10RegisterKey(operandType, registerNumber);
+                            if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                             {
-                                var registerDeclaration = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
-                                _registerDeclarations.Add(registerKey, registerDeclaration);
+                                var reg = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
+                                MethodOutputRegisters[registerKey] = reg;
+
+                                if (!_registerDeclarations.TryGetValue(registerKey, out _))
+                                {
+                                    var registerDeclaration = CreateRegisterDeclarationFromD3D10RegistryKey(registerKey);
+                                    _registerDeclarations.Add(registerKey, registerDeclaration);
+                                }
                             }
                         }
                     }

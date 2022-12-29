@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.Util;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -44,41 +45,11 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
                 else if (chunkType == "ISGN")
                 {
-                    ReadInt32();
-                    int elementCount = ReadInt32();
-                    ReadInt32();
-                    long elementOffset = BaseStream.Position;
-                    for (int i = 0; i < elementCount; i++)
-                    {
-                        BaseStream.Position = elementOffset + i * 24;
-                        int nameOffset = ReadInt32();
-                        int index = ReadInt32();
-                        int operandType = ReadInt32();
-                        int componentType = ReadInt32();
-                        int registerNumber = ReadInt32();
-                        byte mask = ReadByte();
-                        byte readWriteMask = ReadByte();
-
-                        BaseStream.Position = chunkOffset + nameOffset + 8;
-                        string name = ReadStringNullTerminated();
-
-                        var register = new D3D10RegisterKey(OperandType.Input, registerNumber);
-                        var signature = new RegisterSignature(register, name, index, mask);
-                        shader.InputSignatures.Add(signature);
-                    }
+                    ReadSignatures(chunkOffset, OperandType.Input, shader.InputSignatures);
                 }
                 else if (chunkType == "OSGN")
                 {
-                    ReadInt32();
-                    int elementCount = ReadInt32();
-                    ReadInt32();
-                    long elementOffset = BaseStream.Position;
-                    for (int i = 0; i < elementCount; i++)
-                    {
-                        BaseStream.Position = elementOffset + i * 24;
-                        RegisterSignature signature = ReadSignature(chunkOffset);
-                        shader.OutputSignatures.Add(signature);
-                    }
+                    ReadSignatures(chunkOffset, OperandType.Output, shader.OutputSignatures);
                 }
                 else if (chunkType == "SHDR")
                 {
@@ -130,11 +101,26 @@ namespace HlslDecompiler.DirectXShaderModel
             return builder.ToString();
         }
 
-        private RegisterSignature ReadSignature(int chunkOffset)
+        private void ReadSignatures(int chunkOffset, OperandType operandType, IList<RegisterSignature> signatures)
+        {
+            ReadInt32();
+            int elementCount = ReadInt32();
+            ReadInt32();
+            long elementOffset = BaseStream.Position;
+
+            for (int i = 0; i < elementCount; i++)
+            {
+                BaseStream.Position = elementOffset + i * 24;
+                RegisterSignature signature = ReadSignature(chunkOffset, operandType);
+                signatures.Add(signature);
+            }
+        }
+
+        private RegisterSignature ReadSignature(int chunkOffset, OperandType operandType)
         {
             int nameOffset = ReadInt32();
             int index = ReadInt32();
-            int operandType = ReadInt32();
+            int valueType = ReadInt32();
             int componentType = ReadInt32();
             int registerNumber = ReadInt32();
             byte mask = ReadByte();
@@ -143,7 +129,7 @@ namespace HlslDecompiler.DirectXShaderModel
             BaseStream.Position = chunkOffset + nameOffset + 8;
             string name = ReadStringNullTerminated();
 
-            var register = new D3D10RegisterKey(OperandType.Output, registerNumber);
+            var register = new D3D10RegisterKey(operandType, registerNumber);
             return new RegisterSignature(register, name, index, mask);
         }
     }

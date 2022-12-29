@@ -59,21 +59,6 @@
             return writeMaskName;
         }
 
-        // Length of ".xy" = 2
-        // Length of ".yw" = 4 (xyzw)
-        public virtual int GetDestinationMaskedLength()
-        {
-            int writeMask = GetDestinationWriteMask();
-            for (int i = 3; i >= 0; i--)
-            {
-                if ((writeMask & (1 << i)) != 0)
-                {
-                    return i + 1;
-                }
-            }
-            return 0;
-        }
-
         // Length of ".yw" = 2
         public int GetDestinationMaskLength()
         {

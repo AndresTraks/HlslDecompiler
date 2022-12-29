@@ -9,11 +9,13 @@ namespace HlslDecompiler.DirectXShaderModel
 {
     public class ShaderModel
     {
-        public int MajorVersion { get; private set; }
-        public int MinorVersion { get; private set; }
-        public ShaderType Type { get; private set; }
+        public int MajorVersion { get; }
+        public int MinorVersion { get; }
+        public ShaderType Type { get; }
 
-        public IList<Instruction> Instructions { get; private set; }
+        public IList<Instruction> Instructions { get; }
+        public IList<RegisterSignature> InputSignatures { get; }
+        public IList<RegisterSignature> OutputSignatures { get; }
 
         public ShaderModel(int majorVersion, int minorVersion, ShaderType type)
         {
@@ -22,6 +24,8 @@ namespace HlslDecompiler.DirectXShaderModel
             Type = type;
 
             Instructions = new List<Instruction>();
+            InputSignatures = new List<RegisterSignature>();
+            OutputSignatures = new List<RegisterSignature>();
         }
 
         static string ReadStringNullTerminated(Stream stream)
@@ -30,7 +34,7 @@ namespace HlslDecompiler.DirectXShaderModel
             char b;
             while ((b = (char)stream.ReadByte()) != 0)
             {
-                builder.Append(b.ToString());
+                builder.Append(b);
             }
             return builder.ToString();
         }

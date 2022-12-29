@@ -42,59 +42,11 @@ namespace HlslDecompiler.DirectXShaderModel
     {
         private readonly int _maskedLength;
 
-        public RegisterDeclaration(Instruction declInstruction)
-        {
-            RegisterKey = declInstruction.GetParamRegisterKey(declInstruction.GetDestinationParamIndex());
-            Semantic = declInstruction.GetDeclSemantic();
-            _maskedLength = declInstruction.GetDestinationMaskedLength();
-        }
-
-        public RegisterDeclaration(D3D9RegisterKey registerKey)
-        {
-            RegisterType type = registerKey.Type;
-            switch (type)
-            {
-                case RegisterType.ColorOut:
-                case RegisterType.Const:
-                case RegisterType.Const2:
-                case RegisterType.Const3:
-                case RegisterType.Const4:
-                case RegisterType.ConstBool:
-                case RegisterType.ConstInt:
-                case RegisterType.Temp:
-                case RegisterType.Loop:
-                case RegisterType.Addr:
-                    break;
-                default:
-                    throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));
-            }
-
-            RegisterKey = registerKey;
-            switch (registerKey.Number)
-            {
-                case 0:
-                    Semantic = "COLOR";
-                    break;
-                default:
-                    Semantic = "COLOR" + registerKey.Number;
-                    break;
-            }
-            _maskedLength = 4;
-        }
-
-        public RegisterDeclaration(D3D10RegisterKey registerKey)
+        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength)
         {
             RegisterKey = registerKey;
-            switch (registerKey.Number)
-            {
-                case 0:
-                    Semantic = "SV_Target";
-                    break;
-                default:
-                    Semantic = "SV_Target" + registerKey.Number;
-                    break;
-            }
-            _maskedLength = 4;
+            Semantic = semantic;
+            _maskedLength = maskedLength;
         }
 
         public RegisterKey RegisterKey { get; }

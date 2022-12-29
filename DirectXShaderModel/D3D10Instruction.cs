@@ -1,6 +1,4 @@
-﻿using HlslDecompiler.Util;
-using System;
-using System.Globalization;
+﻿using System;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
@@ -180,11 +178,6 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
             }
             throw new NotImplementedException();
-        }
-
-        public override int GetDestinationMaskedLength()
-        {
-            return 4;
         }
 
         public override int GetSourceSwizzle(int srcIndex)

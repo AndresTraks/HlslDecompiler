@@ -568,17 +568,16 @@ namespace HlslDecompiler.Hlsl
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, D3D10OperandModifier modifier)
         {
-            switch (modifier)
+            HlslTreeNode node = input;
+            if (modifier.HasFlag(D3D10OperandModifier.Abs))
             {
-                case D3D10OperandModifier.Abs:
-                    return new AbsoluteOperation(input);
-                case D3D10OperandModifier.Neg:
-                    return new NegateOperation(input);
-                case D3D10OperandModifier.None:
-                    return input;
-                default:
-                    throw new NotImplementedException();
+                node = new AbsoluteOperation(node);
             }
+            if (modifier.HasFlag(D3D10OperandModifier.Neg))
+            {
+                node = new NegateOperation(node);
+            }
+            return node;
         }
 
         private static int GetNumInputs(Opcode opcode)

@@ -30,26 +30,85 @@ namespace HlslDecompiler.DirectXShaderModel
                 chunkOffsets[i] = ReadInt32();
             }
 
-            ShaderModel shader = null;
+            byte? majorVersion = null;
+            byte? minorVersion = null;
+            ShaderType? shaderType = null;
+            var inputSignatures = new List<RegisterSignature>();
+            var outputSignatures = new List<RegisterSignature>();
+            var instructions = new List<Instruction>();
+            var constantBufferDescriptions = new List<ConstantBufferDescription>();
+
             foreach (int chunkOffset in chunkOffsets)
             {
                 BaseStream.Position = chunkOffset;
                 string chunkType = FourCC.Decode(ReadInt32());
                 if (chunkType == "RDEF")
                 {
-                    ReadBytes(20);
-                    byte majorVersion = ReadByte();
-                    byte minorVersion = ReadByte();
-                    ShaderType shaderType = (ShaderType)ReadUInt16();
-                    shader = new ShaderModel(minorVersion, majorVersion, shaderType);
+                    ReadInt32();
+                    int constantBufferCount = ReadInt32();
+                    int constantBufferOffset = ReadInt32();
+                    int resourceBindingCount = ReadInt32();
+                    int resourceBindingOffset = ReadInt32();
+                    minorVersion = ReadByte();
+                    majorVersion = ReadByte();
+                    shaderType = (ShaderType)ReadUInt16();
+
+                    constantBufferOffset = chunkOffset + constantBufferOffset + 8;
+                    for (int i = 0; i < constantBufferCount; i++)
+                    {
+                        BaseStream.Position = constantBufferOffset + i * 24;
+                        int nameOffset = ReadInt32();
+                        int variableCount = ReadInt32();
+                        int variableDescriptionOffset = ReadInt32();
+                        int size = ReadInt32();
+                        int flags = ReadInt32();
+                        int bufferType = ReadInt32();
+
+                        for (int j = 0; j < variableCount; j++)
+                        {
+                            BaseStream.Position = chunkOffset + variableDescriptionOffset + j * 24 + 8;
+                            int variableNameOffset = ReadInt32();
+                            int variableOffset = ReadInt32();
+                            int variableSize = ReadInt32();
+                            int variableTypeOffset = ReadInt32();
+                            int defaultValueOffset = ReadInt32();
+
+                            BaseStream.Position = chunkOffset + variableNameOffset + 8;
+                            string name = ReadStringNullTerminated();
+
+                            // TODO
+                            int registerNumber = variableOffset / 16;
+                            int maskedSize = variableSize / 4;
+                            var description = new ConstantBufferDescription(registerNumber, maskedSize, name);
+                            constantBufferDescriptions.Add(description);
+                        }
+                    }
+
+                    resourceBindingOffset = chunkOffset + resourceBindingOffset + 8;
+                    for (int i = 0; i < resourceBindingCount; i++)
+                    {
+                        BaseStream.Position = resourceBindingOffset + i * 40;
+                        int bindingNameOffset = ReadInt32();
+                        int shaderInputType = ReadInt32();
+                        int resourceReturnType = ReadInt32();
+                        int resourceViewDimension = ReadInt32();
+                        int numSamples = ReadInt32();
+                        int bindPoint = ReadInt32();
+                        int bindCount = ReadInt32();
+                        int flags = ReadInt32();
+
+                        BaseStream.Position = chunkOffset + bindingNameOffset + 8;
+                        string name = ReadStringNullTerminated();
+                        name.ToString();
+                    }
                 }
                 else if (chunkType == "ISGN")
                 {
-                    ReadSignatures(chunkOffset, OperandType.Input, shader.InputSignatures);
+                    ReadSignatures(chunkOffset, OperandType.Input, inputSignatures);
                 }
                 else if (chunkType == "OSGN")
                 {
-                    ReadSignatures(chunkOffset, OperandType.Output, shader.OutputSignatures);
+                    ReadSignatures(chunkOffset, OperandType.Output, outputSignatures);
                 }
                 else if (chunkType == "SHDR")
                 {
@@ -60,12 +119,12 @@ namespace HlslDecompiler.DirectXShaderModel
                     {
                         D3D10Instruction instruction = ReadInstruction();
                         InstructionVerifier.Verify(instruction);
-                        shader.Instructions.Add(instruction);
+                        instructions.Add(instruction);
                     }
                 }
             }
 
-            return shader;
+            return new ShaderModel(majorVersion.Value, minorVersion.Value, shaderType.Value, inputSignatures, outputSignatures, constantBufferDescriptions, instructions);
         }
 
         private D3D10Instruction ReadInstruction()

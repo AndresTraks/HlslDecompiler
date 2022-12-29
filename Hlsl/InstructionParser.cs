@@ -125,9 +125,20 @@ namespace HlslDecompiler.Hlsl
 
         private void LoadConstantOutputs(ShaderModel shader)
         {
-            IList<ConstantDeclaration> constantTable = shader.ParseConstantTable();
+            foreach (ConstantBufferDescription constantBuffer in shader.ConstantBufferDescriptions)
+            {
+                // TODO
+                int registerNumber = constantBuffer.RegisterNumber;
+                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
+                for (int i = 0; i < constantBuffer.Size; i++)
+                {
+                    var destinationKey = new RegisterComponentKey(registerKey, i);
+                    var shaderInput = new RegisterInputNode(destinationKey);
+                    _activeOutputs.Add(destinationKey, shaderInput);
+                }
+            }
 
-            foreach (var constant in constantTable)
+            foreach (var constant in shader.ConstantDeclarations)
             {
                 if (constant.RegisterSet == RegisterSet.Sampler)
                 {

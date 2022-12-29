@@ -100,7 +100,7 @@ namespace HlslDecompiler
             hlslFile = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
             hlslWriter = new StreamWriter(hlslFile);
 
-            _registers = new RegisterState(_shader);
+            _registers = RegisterState.Load(_shader);
 
             WriteConstantDeclarations();
 

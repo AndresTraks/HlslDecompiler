@@ -17,8 +17,13 @@ namespace HlslDecompiler.DirectXShaderModel
         NoPreShader = 256,
         AvoidFlowControl = 512,
         PreferFlowControl = 1024,
-        EnableBackwardsCompatibility = 2048,
-        IEEEStrictness = 4096,
-        UseLegacyD3DX931Dll = 8192
+        EnableStrictness = 2048,
+        EnableBackwardsCompatibility = 4096,
+        IEEEStrictness = 8192,
+        OptimizationLevel0 = 16384,
+        OptimizationLevel1 = 0,
+        OptimizationLevel2 = 49152,
+        OptimizationLevel3 = 32768,
+        UseLegacyD3DX931Dll = 65536
     }
 }

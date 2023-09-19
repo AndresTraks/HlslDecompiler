@@ -10,7 +10,8 @@
                 for (int i = 0; i < Tokens.Length; i++)
                 {
                     count++;
-                    if (HasRelativeAddressing(i))
+                    // Skip relative addressing specifier
+                    if ((Tokens[i] & (1 << 13)) != 0)
                     {
                         i++;
                     }
@@ -31,7 +32,8 @@
                 int t = 0;
                 for (int i = 0; i < index; i++)
                 {
-                    if (HasRelativeAddressing(t))
+                    // Skip relative addressing specifier
+                    if ((Tokens[t] & (1 << 13)) != 0)
                     {
                         t++;
                     }
@@ -41,9 +43,9 @@
             }
         }
 
-        public override bool HasRelativeAddressing(int tokenIndex)
+        public override bool HasRelativeAddressing(int index)
         {
-            uint token = this[tokenIndex];
+            uint token = this[index];
             return (token & (1 << 13)) != 0;
         }
 

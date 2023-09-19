@@ -412,6 +412,9 @@ namespace HlslDecompiler.DirectXShaderModel
                     case RegisterType.Loop:
                         relativeAddressing = "[aL]";
                         break;
+                    case RegisterType.Addr:
+                        relativeAddressing = "";
+                        break;
                     default:
                         throw new NotSupportedException(relativeType.ToString());
                 }

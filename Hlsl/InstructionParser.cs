@@ -96,26 +96,33 @@ namespace HlslDecompiler.Hlsl
 
         public Dictionary<RegisterKey, HlslTreeNode> GroupOutputs(ShaderModel shader)
         {
-            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByRegister;
+            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent;
             if (shader.MajorVersion <= 3)
             {
-                var registerType = shader.Type == ShaderType.Pixel
-                    ? RegisterType.ColorOut
-                    : RegisterType.Output;
-                outputsByRegister = _activeOutputs.Where(o => ((D3D9RegisterKey) o.Key.RegisterKey).Type == registerType);
+                if (shader.Type == ShaderType.Pixel)
+                {
+                    outputsByComponent = _activeOutputs.Where(o => {
+                        var registerType = ((D3D9RegisterKey)o.Key.RegisterKey).Type;
+                        return registerType == RegisterType.ColorOut || registerType == RegisterType.DepthOut;
+                    });
+                }
+                else
+                {
+                    outputsByComponent = _activeOutputs.Where(o => ((D3D9RegisterKey)o.Key.RegisterKey).Type == RegisterType.Output);
+                }
             }
             else
             {
                 var operandType = OperandType.Output;
-                outputsByRegister = _activeOutputs.Where(o => ((D3D10RegisterKey)o.Key.RegisterKey).OperandType == operandType);
+                outputsByComponent = _activeOutputs.Where(o => ((D3D10RegisterKey)o.Key.RegisterKey).OperandType == operandType);
             }
-            var groupsByRegister = outputsByRegister
+            var outputsByRegister = outputsByComponent
                 .OrderBy(o => o.Key.ComponentIndex)
                 .GroupBy(o => o.Key.RegisterKey)
                 .ToDictionary(
                     o => o.Key,
                     o => (HlslTreeNode)new GroupNode(o.Select(o => o.Value).ToArray()));
-            return groupsByRegister;
+            return outputsByRegister;
         }
 
         private void ParseControlInstruction(Instruction instruction)

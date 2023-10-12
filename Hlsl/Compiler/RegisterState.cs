@@ -174,6 +174,7 @@ namespace HlslDecompiler.Hlsl
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     case RegisterType.Output:
                     case RegisterType.ColorOut:
+                    case RegisterType.DepthOut:
                         return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Const:
                         var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
@@ -341,8 +342,8 @@ namespace HlslDecompiler.Hlsl
                 {
                     int destIndex = instruction.GetDestinationParamIndex();
                     RegisterType registerType = instruction.GetParamRegisterType(destIndex);
-                    // Find assignments to color outputs, since pixel shader outputs are not pre-declared
-                    if (registerType == RegisterType.ColorOut)
+                    // Find assignments to outputs, since pixel shader outputs are not pre-declared
+                    if (registerType == RegisterType.ColorOut || registerType == RegisterType.DepthOut)
                     {
                         if (shader.Type == ShaderType.Pixel)
                         {
@@ -485,6 +486,7 @@ namespace HlslDecompiler.Hlsl
             switch (type)
             {
                 case RegisterType.ColorOut:
+                case RegisterType.DepthOut:
                 case RegisterType.Const:
                 case RegisterType.Const2:
                 case RegisterType.Const3:
@@ -499,11 +501,24 @@ namespace HlslDecompiler.Hlsl
                     throw new ArgumentException($"Register type {type} requires declaration instruction,", nameof(registerKey));
             }
 
-            string semantic = registerKey.Number == 0
-                ? "COLOR"
-                : "COLOR" + registerKey.Number;
+            string semantic;
+            int maskedLength;
+            if (type == RegisterType.DepthOut)
+            {
+                semantic = "DEPTH";
+                maskedLength = 1;
+            }
+            else
+            {
+                semantic = "COLOR";
+                if (registerKey.Number != 0)
+                {
+                    semantic += registerKey.Number;
+                }
+                maskedLength = 4;
+            }
 
-            return new RegisterDeclaration(registerKey, semantic, 4);
+            return new RegisterDeclaration(registerKey, semantic, maskedLength);
         }
 
         private static RegisterDeclaration CreateRegisterDeclarationFromD3D10RegistryKey(D3D10RegisterKey registerKey)

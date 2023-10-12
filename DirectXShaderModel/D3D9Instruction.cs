@@ -382,8 +382,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     registerTypeName = "oC";
                     break;
                 case RegisterType.DepthOut:
-                    registerTypeName = "oDepth";
-                    break;
+                    return "oDepth";
                 case RegisterType.MiscType:
                     if (registerNumber == 0)
                     {

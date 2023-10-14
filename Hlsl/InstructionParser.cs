@@ -244,9 +244,17 @@ namespace HlslDecompiler.Hlsl
             int index = instruction.GetDestinationParamIndex();
             RegisterKey registerKey = instruction.GetParamRegisterKey(index);
 
-            if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type  == RegisterType.Sampler)
+            if (registerKey is D3D9RegisterKey d3D9RegisterKey)
             {
-                yield break;
+                if (d3D9RegisterKey.Type == RegisterType.Sampler)
+                {
+                    yield break;
+                }
+                if (d3D9RegisterKey.Type == RegisterType.MiscType && d3D9RegisterKey.Number == 1) // VFACE
+                {
+                    yield return new RegisterComponentKey(registerKey, 0);
+                    yield break;
+                }
             }
             
             int mask = instruction.GetDestinationWriteMask();
@@ -669,9 +677,16 @@ namespace HlslDecompiler.Hlsl
         private static RegisterComponentKey GetParamRegisterComponentKey(Instruction instruction, int paramIndex, int component)
         {
             RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
-            byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
-            int componentIndex = swizzle[component];
-
+            int componentIndex;
+            if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.MiscType && d3D9RegisterKey.Number == 1)
+            {
+                componentIndex = 0; // Force VFACE x component
+            }
+            else
+            {
+                byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
+                componentIndex = swizzle[component];
+            }
             return new RegisterComponentKey(registerKey, componentIndex);
         }
     }

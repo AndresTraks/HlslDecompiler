@@ -184,15 +184,15 @@ namespace HlslDecompiler.DirectXShaderModel
                             throw new NotImplementedException();
                     }
                 case RegisterType.MiscType:
-                    if (GetParamRegisterNumber(1) == 0)
+                    switch (GetParamRegisterNumber(1))
                     {
-                        return "vFace";
+                        case 0:
+                            return "VPOS";
+                        case 1:
+                            return "VFACE";
+                        default:
+                            throw new NotImplementedException();
                     }
-                    if (GetParamRegisterNumber(1) == 1)
-                    {
-                        return "vPos";
-                    }
-                    throw new NotImplementedException();
                 default:
                     throw new NotImplementedException();
             }
@@ -241,9 +241,17 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override string GetSourceSwizzleName(int srcIndex)
         {
+            if (GetParamRegisterType(srcIndex) == RegisterType.MiscType && GetParamRegisterNumber(srcIndex) == 1) // VFACE
+            {
+                return "";
+            }
+
             int destinationMask;
             switch (Opcode)
             {
+                case Opcode.DP2Add:
+                    destinationMask = 3;
+                    break;
                 case Opcode.Dp3:
                     destinationMask = 7;
                     break;
@@ -386,11 +394,11 @@ namespace HlslDecompiler.DirectXShaderModel
                 case RegisterType.MiscType:
                     if (registerNumber == 0)
                     {
-                        return "vFace";
+                        return "vPos";
                     }
                     else if (registerNumber == 1)
                     {
-                        return "vPos";
+                        return "vFace";
                     }
                     else
                     {

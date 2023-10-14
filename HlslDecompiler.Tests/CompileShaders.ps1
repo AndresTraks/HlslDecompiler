@@ -29,6 +29,14 @@ function RunProgram($program, $arguments) {
     }
 }
 
+function CleanAssemblyListing($assemblyFileName) {
+    (Get-Content "$assemblyFileName") |
+        Where { $_ -ne "" -and $_ -NotMatch "^//*" } |
+        Foreach { $_ -Replace  "    ", "" } |
+        Foreach { $_ -Replace  "ret ", "ret" } |
+        Set-Content "$assemblyFileName"
+}
+
 function CompileShader($basename, $profile, $fxc) {
     Write-Host "Compiling $profile\$basename..."
     if ($generateAssemblyListing) {
@@ -38,6 +46,10 @@ function CompileShader($basename, $profile, $fxc) {
     }
     $arguments = "/T $profile ShaderSources\$profile\$basename.fx /Fo CompiledShaders/$profile/$basename.fxc$assemblyListingArg"
     RunProgram $fxc $arguments
+
+    if ($generateAssemblyListing) {
+        CleanAssemblyListing "ShaderAssembly\$profile\$basename.asm"
+    }
 }
 
 function CompileByProfile($profile, $fxc) {

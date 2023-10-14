@@ -214,6 +214,9 @@ namespace HlslDecompiler.DirectXShaderModel
             int destinationMask;
             switch (Opcode)
             {
+                case D3D10Opcode.Dp2:
+                    destinationMask = 3;
+                    break;
                 case D3D10Opcode.Dp3:
                     destinationMask = 7;
                     break;

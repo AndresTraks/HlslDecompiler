@@ -171,6 +171,7 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.Texture:
                         return decl.Name;
                     case RegisterType.Input:
+                    case RegisterType.MiscType:
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     case RegisterType.Output:
                     case RegisterType.ColorOut:
@@ -200,16 +201,6 @@ namespace HlslDecompiler.Hlsl
                         else
                         {
                             throw new NotImplementedException();
-                        }
-                    case RegisterType.MiscType:
-                        switch (registerKey.Number)
-                        {
-                            case 0:
-                                return "vFace";
-                            case 1:
-                                return "vPos";
-                            default:
-                                throw new NotImplementedException();
                         }
                     case RegisterType.Loop:
                         return "aL";
@@ -534,6 +525,14 @@ namespace HlslDecompiler.Hlsl
         {
             RegisterKey registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex());
             int maskedLength = GetMaskedLength(instruction.GetDestinationWriteMask());
+            if (instruction is D3D9Instruction d3d9Instruction && d3d9Instruction.Opcode == Opcode.Dcl)
+            {
+                D3D9RegisterKey paramRegisterKey = (D3D9RegisterKey) d3d9Instruction.GetParamRegisterKey(1);
+                if (paramRegisterKey.Type == RegisterType.MiscType && paramRegisterKey.Number == 1)
+                {
+                    maskedLength = 1;
+                }
+            }
             return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), maskedLength);
         }
 

@@ -355,8 +355,9 @@ namespace HlslDecompiler.Hlsl
                         }
                     }
                 case Opcode.Tex:
+                    return CreateTextureLoadOutputNode(instruction, componentIndex, false);
                 case Opcode.TexLDL:
-                    return CreateTextureLoadOutputNode(instruction, componentIndex);
+                    return CreateTextureLoadOutputNode(instruction, componentIndex, true);
                 case Opcode.DP2Add:
                     return CreateDotProduct2AddNode(instruction);
                 case Opcode.Dp3:
@@ -422,7 +423,7 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.SampleL:
                 case D3D10Opcode.SampleD:
                 case D3D10Opcode.SampleB:
-                    return CreateTextureLoadOutputNode(instruction, componentIndex);
+                    return CreateTextureLoadOutputNode(instruction, componentIndex, false);
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
@@ -432,7 +433,7 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
-        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
+        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent, bool isLod)
         {
             const int TextureCoordsIndex = 1;
             const int SamplerIndex = 2;
@@ -443,7 +444,7 @@ namespace HlslDecompiler.Hlsl
                 throw new InvalidOperationException();
             }
             var samplerRegisterInput = (RegisterInputNode)samplerInput;
-            int numSamplerOutputComponents = samplerRegisterInput.SamplerTextureDimension;
+            int numSamplerOutputComponents = isLod ? 4 : samplerRegisterInput.SamplerTextureDimension;
 
             IList<HlslTreeNode> texCoords = new List<HlslTreeNode>();
             for (int component = 0; component < numSamplerOutputComponents; component++)
@@ -453,7 +454,7 @@ namespace HlslDecompiler.Hlsl
                 texCoords.Add(textureCoord);
             }
 
-            return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent);
+            return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent, isLod);
         }
 
         private HlslTreeNode CreateDotProduct2AddNode(Instruction instruction)

@@ -156,6 +156,12 @@ namespace HlslDecompiler.Hlsl
                 {
                     return CanGroupComponents(subtract1.Subtrahend, subtract2.Subtrahend);
                 }
+                else if (operation1 is PowerOperation power1 &&
+                         operation2 is PowerOperation power2)
+                {
+                    return CanGroupComponents(power1.Value, power2.Value)
+                        && CanGroupComponents(power1.Power, power2.Power);
+                }
                 else if (operation1 is CompareOperation compare1 &&
                          operation2 is CompareOperation compare2)
                 {

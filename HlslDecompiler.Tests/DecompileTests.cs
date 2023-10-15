@@ -24,6 +24,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_3_0", "tex2d")]
         [TestCase("ps_3_0", "tex2d_swizzle")]
         [TestCase("ps_3_0", "tex2d_two_samplers")]
+        [TestCase("ps_3_0", "tex2dlod")]
         [TestCase("ps_3_0", "clip")]
         [TestCase("vs_3_0", "constant")]
         [TestCase("vs_3_0", "constant_struct")]

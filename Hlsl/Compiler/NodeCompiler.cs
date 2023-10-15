@@ -273,7 +273,9 @@ namespace HlslDecompiler.Hlsl
 
                 string sampler = Compile(new[] { textureLoad.SamplerInput });
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs);
-                return $"tex2D({sampler}, {texcoords}){swizzle}";
+                int dimension = textureLoad.SamplerInput.SamplerTextureDimension;
+                string lod = textureLoad.IsLod ? "lod" : "";
+                return $"tex{dimension}D{lod}({sampler}, {texcoords}){swizzle}";
             }
 
             if (first is NormalizeOutputNode)

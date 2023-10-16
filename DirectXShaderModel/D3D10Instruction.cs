@@ -28,6 +28,8 @@ namespace HlslDecompiler.DirectXShaderModel
                     case D3D10Opcode.DclOutputSgv:
                     case D3D10Opcode.DclOutputSiv:
                     case D3D10Opcode.DclOutput:
+                    case D3D10Opcode.DerivRtx:
+                    case D3D10Opcode.DerivRty:
                     case D3D10Opcode.Dp2:
                     case D3D10Opcode.Dp3:
                     case D3D10Opcode.Dp4:

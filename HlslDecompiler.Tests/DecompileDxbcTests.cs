@@ -11,6 +11,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_4_0", "constant")]
         [TestCase("ps_4_0", "constant_struct")]
         [TestCase("ps_4_0", "dot_product2_add")]
+        [TestCase("ps_4_0", "derivative")]
         [TestCase("ps_4_0", "texcoord")]
         [TestCase("ps_4_0", "texcoord_modifier")]
         [TestCase("ps_4_0", "texcoord_swizzle")]

@@ -294,6 +294,8 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Abs:
                 case Opcode.Add:
                 case Opcode.Cmp:
+                case Opcode.DSX:
+                case Opcode.DSY:
                 case Opcode.Frc:
                 case Opcode.Lrp:
                 case Opcode.Mad:
@@ -316,6 +318,10 @@ namespace HlslDecompiler.Hlsl
                                 return new AbsoluteOperation(inputs[0]);
                             case Opcode.Cmp:
                                 return new CompareOperation(inputs[0], inputs[1], inputs[2]);
+                            case Opcode.DSX:
+                                return new PartialDerivativeXOperation(inputs[0]);
+                            case Opcode.DSY:
+                                return new PartialDerivativeYOperation(inputs[0]);
                             case Opcode.Frc:
                                 return new FractionalOperation(inputs[0]);
                             case Opcode.Lrp:
@@ -389,6 +395,8 @@ namespace HlslDecompiler.Hlsl
                     }
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.Add:
+                case D3D10Opcode.DerivRtx:
+                case D3D10Opcode.DerivRty:
                 case D3D10Opcode.Frc:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Max:
@@ -403,6 +411,10 @@ namespace HlslDecompiler.Hlsl
                         {
                             case D3D10Opcode.Add:
                                 return new AddOperation(inputs[0], inputs[1]);
+                            case D3D10Opcode.DerivRtx:
+                                return new PartialDerivativeXOperation(inputs[0]);
+                            case D3D10Opcode.DerivRty:
+                                return new PartialDerivativeYOperation(inputs[0]);
                             case D3D10Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                             case D3D10Opcode.Mov:
@@ -621,6 +633,8 @@ namespace HlslDecompiler.Hlsl
             switch (opcode)
             {
                 case Opcode.Abs:
+                case Opcode.DSX:
+                case Opcode.DSY:
                 case Opcode.Frc:
                 case Opcode.Mov:
                 case Opcode.Nrm:
@@ -654,6 +668,8 @@ namespace HlslDecompiler.Hlsl
         {
             switch (opcode)
             {
+                case D3D10Opcode.DerivRtx:
+                case D3D10Opcode.DerivRty:
                 case D3D10Opcode.Frc:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.Rsq:

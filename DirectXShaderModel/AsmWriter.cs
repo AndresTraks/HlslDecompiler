@@ -163,6 +163,12 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("dp4{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case Opcode.DSX:
+                    WriteLine("dsx {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case Opcode.DSY:
+                    WriteLine("dsy {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
                 case Opcode.Else:
                     WriteLine("else");
                     break;
@@ -323,6 +329,12 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case D3D10Opcode.DclTemps:
                     WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
+                    break;
+                case D3D10Opcode.DerivRtx:
+                    WriteLine("deriv_rtx {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.DerivRty:
+                    WriteLine("deriv_rty {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case D3D10Opcode.Discard:
                     WriteLine("discard_nz {0}", GetSourceName(instruction, 0));

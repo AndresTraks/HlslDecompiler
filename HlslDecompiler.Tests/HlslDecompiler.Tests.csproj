@@ -32,6 +32,9 @@
     <None Update="CompiledShaders\ps_3_0\constant_struct.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="CompiledShaders\ps_3_0\derivative.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="CompiledShaders\ps_3_0\dot_product2_add.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -90,6 +93,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="CompiledShaders\ps_4_0\constant_struct.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\derivative.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="CompiledShaders\ps_4_0\dot_product2_add.fxc">
@@ -230,6 +236,9 @@
     <None Update="ShaderAssembly\ps_3_0\constant_struct.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderAssembly\ps_3_0\derivative.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderAssembly\ps_3_0\dot_product2_add.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -288,6 +297,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderAssembly\ps_4_0\constant_struct.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\derivative.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderAssembly\ps_4_0\dot_product2_add.asm">
@@ -419,6 +431,9 @@
     <None Update="ShaderSources\ps_3_0\clip.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderSources\ps_3_0\derivative.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderSources\ps_3_0\conditional.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -486,6 +501,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0\constant_struct.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\derivative.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0\dot_product2_add.fx">

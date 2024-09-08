@@ -210,10 +210,12 @@ namespace HlslDecompiler.Hlsl
             }
             else if (registerKey is D3D10RegisterKey d3D10RegisterKey)
             {
-                var decl = _registerDeclarations[registerKey];
                 switch (d3D10RegisterKey.OperandType)
                 {
+                    case OperandType.Immediate32:
+                        return d3D10RegisterKey.Number.ToString();
                     case OperandType.Input:
+                        var decl = _registerDeclarations[registerKey];
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     default:
                         throw new NotImplementedException();

@@ -2,13 +2,15 @@ $generateAssemblyListing = $False;
 
 $fxc_paths = @(
     "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x64\fxc.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\fxc.exe"
     "${env:ProgramFiles(x86)}\Windows Kits\8.1\bin\x64\fxc.exe",
     "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x86\fxc.exe",
+    "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x86\fxc.exe"
     "${env:ProgramFiles(x86)}\Windows Kits\8.1\bin\x86\fxc.exe"
 );
 
 function FindFxc {
-    $fxc_paths | Where { Test-Path -Path $_ -PathType Leaf } | Select -First 1
+    $fxc_paths | Where { Test-Path -Path $_ -PathType Leaf } | Resolve-Path | Select -First 1
 }
 
 function RunProgram($program, $arguments) {

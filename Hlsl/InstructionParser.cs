@@ -8,14 +8,18 @@ namespace HlslDecompiler.Hlsl
     class BytecodeParser
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
-        private Dictionary<RegisterKey, HlslTreeNode> _noOutputInstructions;
         private Dictionary<RegisterKey, HlslTreeNode> _samplers;
+        private List<StatementSequence> _statementSequences;
+        private StatementSequence _currentStatementSequence;
 
         public HlslAst Parse(ShaderModel shader)
         {
             _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-            _noOutputInstructions = new Dictionary<RegisterKey, HlslTreeNode>();
             _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
+            _statementSequences = new List<StatementSequence>();
+
+            _currentStatementSequence = new StatementSequence();
+            _statementSequences.Add(_currentStatementSequence);
 
             LoadConstantOutputs(shader);
 
@@ -38,8 +42,9 @@ namespace HlslDecompiler.Hlsl
                 instructionPointer++;
             }
 
-            Dictionary<RegisterKey, HlslTreeNode> roots = GroupOutputs(shader);
-            return new HlslAst(roots, _noOutputInstructions);
+            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(_activeOutputs);
+
+            return new HlslAst(_statementSequences);
         }
 
         private void ParseInstruction(D3D9Instruction instruction)
@@ -81,48 +86,26 @@ namespace HlslDecompiler.Hlsl
             {
                 switch (instruction.Opcode)
                 {
+                    case D3D10Opcode.Discard:
+                        RegisterKey registerKey = instruction.GetParamRegisterKey(0);
+                        _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+                        RegisterComponentKey registerComponentKey = new RegisterComponentKey(registerKey, 0);
+                        ClipOperation clip = new ClipOperation(new RegisterInputNode(registerComponentKey));
+                        _currentStatementSequence.Outputs.Add(registerComponentKey, clip);
+
+                        _currentStatementSequence = new StatementSequence();
+                        _statementSequences.Add(_currentStatementSequence);
+                        break;
                     case D3D10Opcode.DclConstantBuffer:
                     case D3D10Opcode.DclResource:
                     case D3D10Opcode.DclSampler:
                     case D3D10Opcode.DclTemps:
-                    case D3D10Opcode.Discard:
                     case D3D10Opcode.Ret:
                         break;
                     default:
                         throw new NotImplementedException(instruction.Opcode.ToString());
                 }
             }
-        }
-
-        public Dictionary<RegisterKey, HlslTreeNode> GroupOutputs(ShaderModel shader)
-        {
-            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent;
-            if (shader.MajorVersion <= 3)
-            {
-                if (shader.Type == ShaderType.Pixel)
-                {
-                    outputsByComponent = _activeOutputs.Where(o => {
-                        var registerType = ((D3D9RegisterKey)o.Key.RegisterKey).Type;
-                        return registerType == RegisterType.ColorOut || registerType == RegisterType.DepthOut;
-                    });
-                }
-                else
-                {
-                    outputsByComponent = _activeOutputs.Where(o => ((D3D9RegisterKey)o.Key.RegisterKey).Type == RegisterType.Output);
-                }
-            }
-            else
-            {
-                var operandType = OperandType.Output;
-                outputsByComponent = _activeOutputs.Where(o => ((D3D10RegisterKey)o.Key.RegisterKey).OperandType == operandType);
-            }
-            var outputsByRegister = outputsByComponent
-                .OrderBy(o => o.Key.ComponentIndex)
-                .GroupBy(o => o.Key.RegisterKey)
-                .ToDictionary(
-                    o => o.Key,
-                    o => (HlslTreeNode)new GroupNode(o.Select(o => o.Value).ToArray()));
-            return outputsByRegister;
         }
 
         private void ParseControlInstruction(Instruction instruction)
@@ -209,13 +192,16 @@ namespace HlslDecompiler.Hlsl
                 newOutputs[destinationKey] = instructionTree;
             }
 
-            foreach (var output in newOutputs)
+            if (instruction.Opcode == Opcode.TexKill)
             {
-                if (instruction.Opcode == Opcode.TexKill)
-                {
-                    _noOutputInstructions[output.Key.RegisterKey] = output.Value;
-                }
-                else
+                _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(newOutputs);
+
+                _currentStatementSequence = new StatementSequence();
+                _statementSequences.Add(_currentStatementSequence);
+            }
+            else
+            {
+                foreach (var output in newOutputs)
                 {
                     _activeOutputs[output.Key] = output.Value;
                 }

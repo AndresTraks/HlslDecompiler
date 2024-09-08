@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HlslDecompiler
@@ -22,7 +23,6 @@ namespace HlslDecompiler
 
             var parser = new BytecodeParser();
             HlslAst ast = parser.Parse(_shader);
-            ast.ReduceTree(new NodeGrouper(_registers));
 
             WriteAst(ast);
         }
@@ -31,28 +31,34 @@ namespace HlslDecompiler
         {
             var compiler = new NodeCompiler(_registers);
 
-            foreach (var rootGroup in ast.NoOutputInstructions)
+            List<Dictionary<RegisterKey, HlslTreeNode>> sequenceRoots = ast.ReduceTree(new NodeGrouper(_registers));
+            foreach (var roots in sequenceRoots)
             {
-                string statement = compiler.Compile(rootGroup.Value);
-                WriteLine($"{statement};");
-            }
-
-            if (ast.Roots.Count == 1)
-            {
-                string statement = compiler.Compile(ast.Roots.Single().Value);
-                WriteLine($"return {statement};");
-            }
-            else
-            {
-                foreach (var rootGroup in ast.Roots)
+                if (roots.Count == 1)
                 {
-                    RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
-                    string statement = compiler.Compile(rootGroup.Value);
-                    WriteLine($"o.{outputRegister.Name} = {statement};");
+                    if (roots.First().Value.Inputs.First() is ClipOperation)
+                    {
+                        string statement = compiler.Compile(roots.First().Value);
+                        WriteLine($"{statement};");
+                    }
+                    else
+                    {
+                        string statement = compiler.Compile(roots.Single().Value);
+                        WriteLine($"return {statement};");
+                    }
                 }
+                else
+                {
+                    foreach (var rootGroup in roots)
+                    {
+                        RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
+                        string statement = compiler.Compile(rootGroup.Value);
+                        WriteLine($"o.{outputRegister.Name} = {statement};");
+                    }
 
-                WriteLine();
-                WriteLine($"return o;");
+                    WriteLine();
+                    WriteLine($"return o;");
+                }
             }
         }
     }

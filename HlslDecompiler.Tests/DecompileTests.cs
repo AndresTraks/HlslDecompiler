@@ -46,8 +46,10 @@ namespace HlslDecompiler.Tests
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";
             string asmExpectedFilename = $"ShaderAssembly{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.asm";
             string hlslExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fx";
+            string hlslInstructionExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}_instruction.fx";
             string asmOutputFilename = $"{baseFilename}.asm";
             string hlslOutputFilename = $"{baseFilename}.fx";
+            string hlslInstructionOutputFilename = $"{baseFilename}_instruction.fx";
 
             ShaderModel shader;
 
@@ -60,11 +62,15 @@ namespace HlslDecompiler.Tests
             var asmWriter = new AsmWriter(shader);
             asmWriter.Write(asmOutputFilename);
 
+            var hlslInstructionWriter = new HlslSimpleWriter(shader);
+            hlslInstructionWriter.Write(hlslInstructionOutputFilename);
+
             var hlslWriter = new HlslAstWriter(shader);
             hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal");
             FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal");
+            FileAssert.AreEqual(hlslInstructionExpectedFilename, hlslInstructionOutputFilename, "HLSL not equal");
         }
     }
 }

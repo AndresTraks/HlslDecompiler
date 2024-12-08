@@ -58,24 +58,15 @@ namespace HlslDecompiler.Tests
             }
 
             var asmWriter = new AsmWriter(shader);
-            MakeFolder(asmOutputFilename);
+            FileUtil.MakeFolder(asmOutputFilename);
             asmWriter.Write(asmOutputFilename);
 
             var hlslWriter = new HlslAstWriter(shader);
-            MakeFolder(hlslOutputFilename);
+            FileUtil.MakeFolder(hlslOutputFilename);
             hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal at " + asmOutputFilename);
             FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
-        }
-
-        private static void MakeFolder(string hlslOutputFilename)
-        {
-            string directory = Path.GetDirectoryName(hlslOutputFilename);
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
         }
     }
 }

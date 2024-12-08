@@ -14,6 +14,7 @@ namespace HlslDecompiler
         StreamWriter hlslWriter;
         protected string indent = "";
 
+        protected HlslAst _ast;
         protected RegisterState _registers;
 
         public HlslWriter(ShaderModel shader)
@@ -100,7 +101,8 @@ namespace HlslDecompiler
             hlslFile = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
             hlslWriter = new StreamWriter(hlslFile);
 
-            _registers = RegisterState.Load(_shader);
+            _ast = InstructionParser.Parse(_shader);
+            _registers = _ast.RegisterState;
 
             WriteConstantDeclarations();
 

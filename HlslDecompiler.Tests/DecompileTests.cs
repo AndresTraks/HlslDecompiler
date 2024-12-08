@@ -1,4 +1,5 @@
-﻿using HlslDecompiler.DirectXShaderModel;
+﻿using HlslDecompiler.Hlsl;
+using HlslDecompiler.DirectXShaderModel;
 using NUnit.Framework;
 using System.IO;
 
@@ -27,6 +28,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_3_0", "tex2d_two_samplers")]
         [TestCase("ps_3_0", "tex2dlod")]
         [TestCase("ps_3_0", "clip")]
+        [TestCase("ps_3_0", "loop")]
         [TestCase("vs_3_0", "constant")]
         [TestCase("vs_3_0", "constant_struct")]
         [TestCase("vs_3_0", "dot_product")]
@@ -46,7 +48,7 @@ namespace HlslDecompiler.Tests
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";
             string asmExpectedFilename = $"ShaderAssembly{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.asm";
             string hlslExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fx";
-            string hlslInstructionExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}_instruction.fx";
+            string hlslInstructionExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}_instruction{Path.DirectorySeparatorChar}{baseFilename}.fx";
             string asmOutputFilename = $"{baseFilename}.asm";
             string hlslOutputFilename = $"{baseFilename}.fx";
             string hlslInstructionOutputFilename = $"{baseFilename}_instruction.fx";

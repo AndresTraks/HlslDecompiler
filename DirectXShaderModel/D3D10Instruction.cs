@@ -394,6 +394,10 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 return (int)span[2];
             }
+            if (GetOperandType(index) == OperandType.ConstantBuffer)
+            {
+                return (int)span[2];
+            }
             return (int) span[1];
         }
 

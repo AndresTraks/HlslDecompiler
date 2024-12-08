@@ -1,21 +1,30 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HlslDecompiler.Hlsl
 {
-    class BytecodeParser
+    class InstructionParser
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
-        private Dictionary<RegisterKey, HlslTreeNode> _samplers;
+        private RegisterState _registerState;
         private List<StatementSequence> _statementSequences;
         private StatementSequence _currentStatementSequence;
 
-        public HlslAst Parse(ShaderModel shader)
+        public static HlslAst Parse(ShaderModel shader)
+        {
+            var parser = new InstructionParser();
+            return parser.ParseToAst(shader);
+        }
+
+        private HlslAst ParseToAst(ShaderModel shader)
         {
             _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-            _samplers = new Dictionary<RegisterKey, HlslTreeNode>();
+            _registerState = new RegisterState(shader);
             _statementSequences = new List<StatementSequence>();
 
             _currentStatementSequence = new StatementSequence();
@@ -44,7 +53,7 @@ namespace HlslDecompiler.Hlsl
 
             _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(_activeOutputs);
 
-            return new HlslAst(_statementSequences);
+            return new HlslAst(_statementSequences, _registerState);
         }
 
         private void ParseInstruction(D3D9Instruction instruction)
@@ -57,21 +66,25 @@ namespace HlslDecompiler.Hlsl
             {
                 switch (instruction.Opcode)
                 {
+                    case Opcode.Comment:
+                        ParseConstantTableComment(instruction);
+                        break;
                     case Opcode.If:
                     case Opcode.IfC:
                     case Opcode.Else:
                     case Opcode.Loop:
                     case Opcode.Rep:
-                    case Opcode.End:
                     case Opcode.Endif:
                     case Opcode.EndLoop:
                     case Opcode.EndRep:
+                    case Opcode.Break:
+                    case Opcode.BreakC:
                         ParseControlInstruction(instruction);
                         break;
-                    case Opcode.Comment:
+                    case Opcode.End:
                         break;
                     default:
-                        throw new NotImplementedException();
+                        throw new NotImplementedException($"{instruction.Opcode}");
                 }
             }
         }
@@ -87,19 +100,39 @@ namespace HlslDecompiler.Hlsl
                 switch (instruction.Opcode)
                 {
                     case D3D10Opcode.Discard:
-                        RegisterKey registerKey = instruction.GetParamRegisterKey(0);
-                        _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-                        RegisterComponentKey registerComponentKey = new RegisterComponentKey(registerKey, 0);
-                        ClipOperation clip = new ClipOperation(new RegisterInputNode(registerComponentKey));
-                        _currentStatementSequence.Outputs.Add(registerComponentKey, clip);
+                        {
+                            RegisterKey registerKey = instruction.GetParamRegisterKey(0);
+                            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+                            RegisterComponentKey registerComponentKey = new RegisterComponentKey(registerKey, 0);
+                            ClipOperation clip = new ClipOperation(new RegisterInputNode(registerComponentKey));
+                            _currentStatementSequence.Outputs.Add(registerComponentKey, clip);
 
-                        _currentStatementSequence = new StatementSequence();
-                        _statementSequences.Add(_currentStatementSequence);
-                        break;
+                            _currentStatementSequence = new StatementSequence();
+                            _statementSequences.Add(_currentStatementSequence);
+                            break;
+                        }
+                    case D3D10Opcode.DclTemps:
+                        {
+                            int count = (int)instruction.GetParamInt(0);
+                            for (int registerNumber = 0; registerNumber < count; registerNumber++)
+                            {
+                                var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
+                                _registerState.DeclareRegister(registerKey);
+                            }
+                            break;
+                        }
                     case D3D10Opcode.DclConstantBuffer:
+                        {
+                            int count = (int)instruction.GetParamInt(0);
+                            for (int registerNumber = 0; registerNumber < count; registerNumber++)
+                            {
+                                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
+                                _registerState.DeclareRegister(registerKey);
+                            }
+                            break;
+                        }
                     case D3D10Opcode.DclResource:
                     case D3D10Opcode.DclSampler:
-                    case D3D10Opcode.DclTemps:
                     case D3D10Opcode.Ret:
                         break;
                     default:
@@ -108,9 +141,124 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
-        private void ParseControlInstruction(Instruction instruction)
+        private void ParseConstantTableComment(D3D9Instruction instruction)
         {
-            // TODO
+            int ctabToken = FourCC.Make("CTAB");
+            if (instruction.Params[0] != ctabToken)
+            {
+                return;
+            }
+
+            byte[] constantTable = new byte[instruction.Params.Count * 4];
+            for (int i = 1; i < instruction.Params.Count; i++)
+            {
+                constantTable[i * 4 - 4] = (byte)(instruction.Params[i] & 0xFF);
+                constantTable[i * 4 - 3] = (byte)((instruction.Params[i] >> 8) & 0xFF);
+                constantTable[i * 4 - 2] = (byte)((instruction.Params[i] >> 16) & 0xFF);
+                constantTable[i * 4 - 1] = (byte)((instruction.Params[i] >> 24) & 0xFF);
+            }
+
+            var ctabStream = new MemoryStream(constantTable);
+            using (var ctabReader = new BinaryReader(ctabStream))
+            {
+                int ctabSize = ctabReader.ReadInt32();
+                System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
+                long creatorPosition = ctabReader.ReadInt32();
+
+                int minorVersion = ctabReader.ReadByte();
+                int majorVersion = ctabReader.ReadByte();
+                var shaderType = (ShaderType)ctabReader.ReadUInt16();
+
+                int numConstants = ctabReader.ReadInt32();
+                long constantInfoPosition = ctabReader.ReadInt32();
+                ShaderFlags shaderFlags = (ShaderFlags)ctabReader.ReadInt32();
+
+                long shaderModelPosition = ctabReader.ReadInt32();
+
+                ctabStream.Position = creatorPosition;
+                string compilerInfo = ReadStringNullTerminated(ctabStream);
+
+                ctabStream.Position = shaderModelPosition;
+                string shaderModel = ReadStringNullTerminated(ctabStream);
+
+                for (int i = 0; i < numConstants; i++)
+                {
+                    ctabStream.Position = constantInfoPosition + i * 20;
+                    ConstantDeclaration constant = ReadConstantDeclaration(ctabReader);
+                    LoadConstantDeclaration(constant);
+                }
+            }
+        }
+
+        private static ConstantDeclaration ReadConstantDeclaration(BinaryReader ctabReader)
+        {
+            var ctabStream = ctabReader.BaseStream;
+
+            // D3DXSHADER_CONSTANTINFO
+            int nameOffset = ctabReader.ReadInt32();
+            RegisterSet registerSet = (RegisterSet)ctabReader.ReadInt16();
+            short registerIndex = ctabReader.ReadInt16();
+            short registerCount = ctabReader.ReadInt16();
+            ctabStream.Position += sizeof(short); // Reserved
+            int typeInfoOffset = ctabReader.ReadInt32();
+            int defaultValueOffset = ctabReader.ReadInt32();
+            System.Diagnostics.Debug.Assert(defaultValueOffset == 0);
+
+            ctabStream.Position = nameOffset;
+            string name = ReadStringNullTerminated(ctabStream);
+
+            // D3DXSHADER_TYPEINFO
+            ctabStream.Position = typeInfoOffset;
+            ParameterClass cl = (ParameterClass)ctabReader.ReadInt16();
+            ParameterType type = (ParameterType)ctabReader.ReadInt16();
+            short rows = ctabReader.ReadInt16();
+            short columns = ctabReader.ReadInt16();
+            short numElements = ctabReader.ReadInt16();
+            short numStructMembers = ctabReader.ReadInt16();
+            int structMemberInfoOffset = ctabReader.ReadInt32();
+            //System.Diagnostics.Debug.Assert(numElements == 1);
+            System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
+
+            return new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
+        }
+
+        private void LoadConstantDeclaration(ConstantDeclaration constant)
+        {
+            _registerState.DeclareConstant(constant);
+
+            if (constant.RegisterSet != RegisterSet.Sampler)
+            {
+                var registerType = constant.RegisterSet switch
+                {
+                    RegisterSet.Bool => RegisterType.ConstBool,
+                    RegisterSet.Float4 => RegisterType.Const,
+                    RegisterSet.Int4 => RegisterType.Input,
+                    RegisterSet.Sampler => RegisterType.Sampler,
+                    _ => throw new InvalidOperationException(),
+                };
+                for (int r = 0; r < constant.RegisterCount; r++)
+                {
+                    var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var destinationKey = new RegisterComponentKey(registerKey, i);
+                        var shaderInput = new RegisterInputNode(destinationKey);
+                        _activeOutputs.Add(destinationKey, shaderInput);
+                    }
+                }
+            }
+        }
+
+        private void ParseControlInstruction(D3D9Instruction instruction)
+        {
+            if (instruction.Opcode == Opcode.Loop)
+            {
+                D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
+                _registerState.DeclareRegister(registerKey);
+            }
+
+            EndStatementSequence(_activeOutputs);
+            // TODO: save temporary assignments
         }
 
         private void LoadConstantOutputs(ShaderModel shader)
@@ -127,62 +275,12 @@ namespace HlslDecompiler.Hlsl
                     _activeOutputs.Add(destinationKey, shaderInput);
                 }
             }
-
-            foreach (var constant in shader.ConstantDeclarations)
-            {
-                if (constant.RegisterSet == RegisterSet.Sampler)
-                {
-                    var registerKey = new D3D9RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
-                    var destinationKey = new RegisterComponentKey(registerKey, 0);
-                    int samplerTextureDimension;
-                    switch (constant.ParameterType)
-                    {
-                        case ParameterType.Sampler1D:
-                            samplerTextureDimension = 1;
-                            break;
-                        case ParameterType.Sampler2D:
-                            samplerTextureDimension = 2;
-                            break;
-                        case ParameterType.Sampler3D:
-                        case ParameterType.SamplerCube:
-                            samplerTextureDimension = 3;
-                            break;
-                        default:
-                            throw new InvalidOperationException();
-                    }
-                    var shaderInput = new RegisterInputNode(destinationKey, samplerTextureDimension);
-                    _samplers.Add(registerKey, shaderInput);
-                }
-                else
-                {
-                    for (int r = 0; r < constant.RegisterCount; r++)
-                    {
-                        RegisterType registerType;
-                        switch (constant.ParameterType)
-                        {
-                            case ParameterType.Bool:
-                                registerType = RegisterType.ConstBool;
-                                break;
-                            case ParameterType.Float:
-                                registerType = RegisterType.Const;
-                                break;
-                            default:
-                                throw new NotImplementedException();
-                        }
-                        var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
-                        for (int i = 0; i < 4; i++)
-                        {
-                            var destinationKey = new RegisterComponentKey(registerKey, i);
-                            var shaderInput = new RegisterInputNode(destinationKey);
-                            _activeOutputs.Add(destinationKey, shaderInput);
-                        }
-                    }
-                }
-            }
         }
 
         private void ParseAssignmentInstruction(D3D9Instruction instruction)
         {
+            _registerState.DeclareDestinationRegister(instruction);
+
             var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
 
             RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
@@ -194,10 +292,7 @@ namespace HlslDecompiler.Hlsl
 
             if (instruction.Opcode == Opcode.TexKill)
             {
-                _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(newOutputs);
-
-                _currentStatementSequence = new StatementSequence();
-                _statementSequences.Add(_currentStatementSequence);
+                EndStatementSequence(newOutputs);
             }
             else
             {
@@ -208,8 +303,18 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        private void EndStatementSequence(Dictionary<RegisterComponentKey, HlslTreeNode> newOutputs)
+        {
+            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(newOutputs);
+
+            _currentStatementSequence = new StatementSequence();
+            _statementSequences.Add(_currentStatementSequence);
+        }
+
         private void ParseAssignmentInstruction(D3D10Instruction instruction)
         {
+            _registerState.DeclareDestinationRegister(instruction);
+
             var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
 
             RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
@@ -437,7 +542,7 @@ namespace HlslDecompiler.Hlsl
             const int SamplerIndex = 2;
 
             RegisterKey samplerRegister = instruction.GetParamRegisterKey(SamplerIndex);
-            if (!_samplers.TryGetValue(samplerRegister, out HlslTreeNode samplerInput))
+            if (!_registerState.Samplers.TryGetValue(samplerRegister, out HlslTreeNode samplerInput))
             {
                 throw new InvalidOperationException();
             }
@@ -691,6 +796,17 @@ namespace HlslDecompiler.Hlsl
                 componentIndex = swizzle[component];
             }
             return new RegisterComponentKey(registerKey, componentIndex);
+        }
+
+        private static string ReadStringNullTerminated(Stream stream)
+        {
+            var builder = new StringBuilder();
+            char b;
+            while ((b = (char)stream.ReadByte()) != 0)
+            {
+                builder.Append(b);
+            }
+            return builder.ToString();
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using HlslDecompiler.DirectXShaderModel;
+﻿using HlslDecompiler.Hlsl;
+using HlslDecompiler.DirectXShaderModel;
 using NUnit.Framework;
 using System.IO;
 
@@ -64,8 +65,8 @@ namespace HlslDecompiler.Tests
             MakeFolder(hlslOutputFilename);
             hlslWriter.Write(hlslOutputFilename);
 
-            FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal");
-            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal");
+            FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal at " + asmOutputFilename);
+            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
         }
 
         private static void MakeFolder(string hlslOutputFilename)

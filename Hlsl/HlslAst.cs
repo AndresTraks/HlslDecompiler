@@ -9,10 +9,12 @@ namespace HlslDecompiler.Hlsl
     public class HlslAst
     {
         public List<StatementSequence> Statements { get; private set; }
+        public RegisterState RegisterState { get; private set; }
 
-        public HlslAst(List<StatementSequence> statements)
+        public HlslAst(List<StatementSequence> statements, RegisterState registerState)
         {
             Statements = statements;
+            RegisterState = registerState;
         }
 
         public List<Dictionary<RegisterKey, HlslTreeNode>> ReduceTree(NodeGrouper nodeGrouper)

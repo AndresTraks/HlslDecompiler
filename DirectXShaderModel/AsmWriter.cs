@@ -122,6 +122,10 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("add{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case Opcode.BreakC:
+                    WriteLine("break_ge {0}x, {1}x", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
+                    break;
                 case Opcode.Cmp:
                     WriteLine("cmp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
@@ -315,6 +319,9 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case D3D10Opcode.DclConstantBuffer:
+                    WriteLine("dcl_constantbuffer {0}, {1}", GetDestinationName(instruction), "immediateIndexed"); // TODO: AccessPattern
+                    break;
                 case D3D10Opcode.DclInputPS:
                     WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
                     break;
@@ -367,6 +374,10 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case D3D10Opcode.Rsq:
                     WriteLine("rsq {0}, {1}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.Sqrt:
+                    WriteLine("sqrt {0}, {1}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
                     break;
                 default:

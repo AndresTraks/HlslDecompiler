@@ -1,9 +1,8 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using HlslDecompiler.Hlsl;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace HlslDecompiler
+namespace HlslDecompiler.Hlsl
 {
     public class HlslAstWriter : HlslWriter
     {
@@ -21,10 +20,7 @@ namespace HlslDecompiler
                 WriteLine();
             }
 
-            var parser = new BytecodeParser();
-            HlslAst ast = parser.Parse(_shader);
-
-            WriteAst(ast);
+            WriteAst(_ast);
         }
 
         private void WriteAst(HlslAst ast)

@@ -187,9 +187,23 @@ namespace HlslDecompiler.DirectXShaderModel
 
             BaseStream.Position = chunkOffset + nameOffset + 8;
             string name = ReadStringNullTerminated();
+            name = NormalizeSystemValueRegisterName(name);
 
             var register = new D3D10RegisterKey(operandType, registerNumber);
             return new RegisterSignature(register, name, index, mask);
+        }
+
+        private static string NormalizeSystemValueRegisterName(string name)
+        {
+            if (name == null)
+            {
+                return null;
+            }
+            if (name.Equals("SV_Position", StringComparison.OrdinalIgnoreCase))
+            {
+                return "SV_Position";
+            }
+            return name;
         }
     }
 }

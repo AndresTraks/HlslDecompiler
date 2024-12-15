@@ -2,9 +2,9 @@ float count;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-    float4 o = 0;
+    float4 r0 = 0;
     for (int i = 3; i < count; i++) {
-        o += texcoord;
+        r0 += texcoord;
     }
-    return o;
+    return r0;
 }

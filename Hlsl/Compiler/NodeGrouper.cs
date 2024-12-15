@@ -169,11 +169,6 @@ namespace HlslDecompiler.Hlsl
                         CanGroupComponents(compare1.LessValue, compare2.LessValue) &&
                         CanGroupComponents(compare1.GreaterEqualValue, compare2.GreaterEqualValue);
                 }
-                else if (operation1 is ClipOperation clip1 &&
-                         operation2 is ClipOperation clip2)
-                {
-                    return CanGroupComponents(clip1.Value, clip2.Value);
-                }
                 else if (operation1 is LengthOperation length1 &&
                          operation2 is LengthOperation length2)
                 {

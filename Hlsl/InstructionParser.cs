@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.FlowControl;
 using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
@@ -12,7 +13,7 @@ namespace HlslDecompiler.Hlsl
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
         private RegisterState _registerState;
-        private List<StatementSequence> _statementSequences;
+        private List<IStatement> _sequences;
         private StatementSequence _currentStatementSequence;
 
         public static HlslAst Parse(ShaderModel shader)
@@ -25,10 +26,10 @@ namespace HlslDecompiler.Hlsl
         {
             _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
             _registerState = new RegisterState(shader);
-            _statementSequences = new List<StatementSequence>();
+            _sequences = new List<IStatement>();
 
             _currentStatementSequence = new StatementSequence();
-            _statementSequences.Add(_currentStatementSequence);
+            _sequences.Add(_currentStatementSequence);
 
             LoadConstantOutputs(shader);
 
@@ -53,14 +54,22 @@ namespace HlslDecompiler.Hlsl
 
             _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(_activeOutputs);
 
-            return new HlslAst(_statementSequences, _registerState);
+            return new HlslAst(_sequences, _registerState);
         }
 
         private void ParseInstruction(D3D9Instruction instruction)
         {
             if (instruction.HasDestination)
             {
-                ParseAssignmentInstruction(instruction);
+                if (instruction.Opcode == Opcode.TexKill)
+                {
+                    InsertClip(instruction);
+                    EndStatementSequence(_activeOutputs);
+                }
+                else
+                {
+                    ParseAssignmentInstruction(instruction);
+                }
             }
             else
             {
@@ -101,14 +110,8 @@ namespace HlslDecompiler.Hlsl
                 {
                     case D3D10Opcode.Discard:
                         {
-                            RegisterKey registerKey = instruction.GetParamRegisterKey(0);
-                            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
-                            RegisterComponentKey registerComponentKey = new RegisterComponentKey(registerKey, 0);
-                            ClipOperation clip = new ClipOperation(new RegisterInputNode(registerComponentKey));
-                            _currentStatementSequence.Outputs.Add(registerComponentKey, clip);
-
-                            _currentStatementSequence = new StatementSequence();
-                            _statementSequences.Add(_currentStatementSequence);
+                            EndStatementSequence(_activeOutputs);
+                            InsertClip(instruction);
                             break;
                         }
                     case D3D10Opcode.DclTemps:
@@ -290,16 +293,9 @@ namespace HlslDecompiler.Hlsl
                 newOutputs[destinationKey] = instructionTree;
             }
 
-            if (instruction.Opcode == Opcode.TexKill)
+            foreach (var output in newOutputs)
             {
-                EndStatementSequence(newOutputs);
-            }
-            else
-            {
-                foreach (var output in newOutputs)
-                {
-                    _activeOutputs[output.Key] = output.Value;
-                }
+                _activeOutputs[output.Key] = output.Value;
             }
         }
 
@@ -308,7 +304,15 @@ namespace HlslDecompiler.Hlsl
             _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(newOutputs);
 
             _currentStatementSequence = new StatementSequence();
-            _statementSequences.Add(_currentStatementSequence);
+            _sequences.Add(_currentStatementSequence);
+        }
+
+        private void InsertClip(Instruction instruction)
+        {
+            RegisterKey registerKey = instruction.GetParamRegisterKey(0);
+            var registerComponentKey = new RegisterComponentKey(registerKey, 0);
+            var clip = new ClipStatement(new RegisterInputNode(registerComponentKey));
+            _sequences.Add(clip);
         }
 
         private void ParseAssignmentInstruction(D3D10Instruction instruction)
@@ -445,8 +449,6 @@ namespace HlslDecompiler.Hlsl
                                 return new SignGreaterOrEqualOperation(inputs[0], inputs[1]);
                             case Opcode.Slt:
                                 return new SignLessOperation(inputs[0], inputs[1]);
-                            case Opcode.TexKill:
-                                return new ClipOperation(inputs[0]);
                             default:
                                 throw new NotImplementedException();
                         }

@@ -2,6 +2,7 @@
 using HlslDecompiler.DirectXShaderModel;
 using NUnit.Framework;
 using System.IO;
+using NUnit.Framework.Legacy;
 
 namespace HlslDecompiler.Tests
 {
@@ -74,8 +75,8 @@ namespace HlslDecompiler.Tests
             hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal at " + asmOutputFilename);
-            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
             FileAssert.AreEqual(hlslInstructionExpectedFilename, hlslInstructionOutputFilename, "HLSL not equal at " + hlslInstructionOutputFilename);
+            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
         }
     }
 }

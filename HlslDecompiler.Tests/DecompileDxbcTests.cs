@@ -2,6 +2,7 @@
 using HlslDecompiler.DirectXShaderModel;
 using NUnit.Framework;
 using System.IO;
+using NUnit.Framework.Legacy;
 
 namespace HlslDecompiler.Tests
 {

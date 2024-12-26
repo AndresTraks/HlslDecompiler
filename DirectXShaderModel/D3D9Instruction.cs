@@ -2,15 +2,46 @@
 
 namespace HlslDecompiler.DirectXShaderModel
 {
+    // Instruction
+    // 80000000 set to 0
+    // 40000000 co-issue
+    // 20000000 reserved, set to 0
+    // 10000000 predicated
+    // 0F000000 instruction length
+    // 07FF0000 instruction length for comment
+    // 00FF0000 opcode specific control (00070000 comparison)
+    // 0000FFFF shader instruction opcode
+
+    // Destination parameter
+    // 80000000 set to 1
+    // 70001800 register type
+    // 0F000000 reserved, set to 0
+    // 00F00000 result modifier
+    // 000F0000 write mask
+    // 0000C000 reserved, set to 0
+    // 00002000 relative addressing
+    // 000007FF register number
+
+    // Source parameter
+    // 80000000 set to 1
+    // 70001800 register type
+    // 0F000000 source modifier
+    // 00FF0000 swizzle
+    // 0000C000 reserved, set to 0
+    // 00002000 relative addressing
+    // 000007FF register number
+
+    // DCL sampler instruction
+    // 80000000 set to 1
+    // 78000000 texture type
+    // 07FFFFFF reserved, set to 0
+
     public class D3D9Instruction : Instruction
     {
-        public Opcode Opcode { get; }
-        public D3D9ParamCollection Params { get; }
-
-        public D3D9Instruction(Opcode opcode, uint[] paramTokens) 
+        public D3D9Instruction(uint instructionToken, uint[] paramTokens) 
         {
-            Opcode = opcode;
-            switch (opcode)
+            InstructionToken = instructionToken;
+            switch (Opcode)
             {
                 case Opcode.Comment:
                 case Opcode.Def:
@@ -23,6 +54,13 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
             }
         }
+
+        public uint InstructionToken { get; }
+        public D3D9ParamCollection Params { get; }
+
+        public Opcode Opcode => (Opcode)(InstructionToken & 0xffff);
+        public IfComparison Comparison => (IfComparison)((InstructionToken >> 16) & 7);
+        public bool Predicated => (InstructionToken & 0x10000000) != 0;
 
         public override bool HasDestination
         {
@@ -445,5 +483,17 @@ namespace HlslDecompiler.DirectXShaderModel
         {
             return Opcode.ToString();
         }
+    }
+
+    public enum IfComparison
+    {
+        None,
+        GT,
+        EQ,
+        GE,
+        LT,
+        NE,
+        LE,
+        Reserved
     }
 }

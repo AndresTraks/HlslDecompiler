@@ -49,17 +49,8 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 paramTokens[i] = ReadUInt32();
             }
-            var instruction = new D3D9Instruction(opcode, paramTokens);
-
-            if (opcode != Opcode.Comment)
-            {
-                instruction.Modifier = (int)((instructionToken >> 16) & 0xff);
-                instruction.Predicated = (instructionToken & 0x10000000) != 0;
-                System.Diagnostics.Debug.Assert((instructionToken & 0xE0000000) == 0);
-            }
-
+            var instruction = new D3D9Instruction(instructionToken, paramTokens);
             InstructionVerifier.Verify(instruction);
-
             return instruction;
         }
     }

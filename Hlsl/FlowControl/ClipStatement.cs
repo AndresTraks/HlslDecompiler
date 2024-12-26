@@ -4,9 +4,12 @@
     {
         public HlslTreeNode Value { get; }
 
-        public ClipStatement(HlslTreeNode value)
+        public ClipStatement(HlslTreeNode value, Closure closure)
         {
             Value = value;
+            Closure = closure;
         }
+
+        public Closure Closure { get; }
     }
 }

@@ -3,6 +3,7 @@ using HlslDecompiler.Operations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -12,6 +13,7 @@ namespace HlslDecompiler.Hlsl
         private readonly NodeGrouper _nodeGrouper;
         private readonly ConstantCompiler _constantCompiler;
         private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
+        private int _tempAssignmentindexCounter = 0;
 
         public const int PromoteToAnyVectorSize = -1;
 
@@ -284,6 +286,41 @@ namespace HlslDecompiler.Hlsl
                 string input = Compile(first.Inputs);
                 string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
                 return $"normalize({input}){swizzle}";
+            }
+
+            if (first is TempAssignmentNode tempAssignment)
+            {
+                string type;
+                if (tempAssignment.IsReassignment)
+                {
+                    type = string.Empty;
+                }
+                else
+                {
+                    type = "float";
+                    if (components.Count > 1)
+                    {
+                        type += components.Count;
+                    }
+                    type += " ";
+
+                    int index = _tempAssignmentindexCounter;
+                    _tempAssignmentindexCounter++;
+                    foreach (var component in components)
+                    {
+                        var assignment = component as TempAssignmentNode;
+                        assignment.TempVariable.DeclarationIndex = index;
+                    }
+                }
+                string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
+                string compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
+                return $"{type}{variableCompiled} = {compiled};";
+            }
+
+            if (first is TempVariableNode tempVariable)
+            {
+                string swizzle = GetAstSourceSwizzleName(componentsWithIndices, components.Count);
+                return $"t{tempVariable.DeclarationIndex}{swizzle}";
             }
 
             throw new NotImplementedException();

@@ -1,9 +1,12 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    public abstract class RegisterKey
+    public interface RegisterKey
     {
-        public int Number { get; protected set; }
+        public int Number { get; }
 
-        abstract public bool TypeEquals(RegisterKey registerKey);
+        public bool TypeEquals(RegisterKey registerKey);
+
+        public bool IsTempRegister { get; }
+        public bool IsOutput { get; }
     }
 }

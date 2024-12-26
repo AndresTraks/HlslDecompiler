@@ -1,20 +1,7 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    enum IfComparison
-    {
-        None,
-        GT,
-        EQ,
-        GE,
-        LT,
-        NE,
-        LE
-    }
-
     public abstract class Instruction
     {
-        public int Modifier { get; set; }
-        public bool Predicated { get; set; }
 
         public abstract bool HasDestination { get; }
 

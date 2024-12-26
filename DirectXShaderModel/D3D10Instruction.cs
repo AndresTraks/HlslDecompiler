@@ -75,7 +75,8 @@ namespace HlslDecompiler.DirectXShaderModel
             int destinationParamIndex = GetDestinationParamIndex();
 
             D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(destinationParamIndex);
-            if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+            if (componentSelection == D3D10OperandNumComponents.Operand1Component ||
+                componentSelection == D3D10OperandNumComponents.Operand4Component)
             {
                 D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
                 if (selectionMode == D3D10ComponentSelectionMode.Mask)

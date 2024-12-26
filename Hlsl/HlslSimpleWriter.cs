@@ -101,6 +101,9 @@ namespace HlslDecompiler
                     WriteLine("{0} = {1} + {2};", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case Opcode.BreakC:
+                    WriteLine("break;");
+                    break;
                 case Opcode.Cmp:
                     // TODO: should be per-component
                     WriteLine("{0} = ({1} >= 0) ? {2} : {3};", GetDestinationName(instruction),
@@ -144,7 +147,7 @@ namespace HlslDecompiler
                     indent += "\t";
                     break;
                 case Opcode.IfC:
-                    if ((IfComparison)instruction.Modifier == IfComparison.GE &&
+                    if (instruction.Comparison == IfComparison.GE &&
                         instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
                         instruction.GetSourceModifier(1) == SourceModifier.Abs &&
                         instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0) ==
@@ -152,7 +155,7 @@ namespace HlslDecompiler
                     {
                         WriteLine("if ({0} == 0) {{", instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0));
                     }
-                    else if ((IfComparison)instruction.Modifier == IfComparison.LT &&
+                    else if (instruction.Comparison == IfComparison.LT &&
                         instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
                         instruction.GetSourceModifier(1) == SourceModifier.Abs &&
                         instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0) ==
@@ -163,7 +166,7 @@ namespace HlslDecompiler
                     else
                     {
                         string ifComparison;
-                        switch ((IfComparison)instruction.Modifier)
+                        switch (instruction.Comparison)
                         {
                             case IfComparison.GT:
                                 ifComparison = ">";

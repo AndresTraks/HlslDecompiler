@@ -1,6 +1,6 @@
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-	float4 r0 = -1;
-	clip(r0.x);
+	float4 t0 = -1;
+	clip(t0);
 	return texcoord;
 }

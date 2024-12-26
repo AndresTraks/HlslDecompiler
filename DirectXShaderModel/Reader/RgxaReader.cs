@@ -63,6 +63,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     case 4:
                     case 8:
                     case 12:
+                    case 16:
                     case 48:
                     case 64:
                         break;

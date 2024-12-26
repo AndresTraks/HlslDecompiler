@@ -38,8 +38,8 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public void ToFile(string filename)
         {
-            FileStream file = new FileStream(filename, FileMode.Create, FileAccess.Write);
-            using (BinaryWriter writer = new BinaryWriter(file))
+            var file = new FileStream(filename, FileMode.Create, FileAccess.Write);
+            using (var writer = new BinaryWriter(file))
             {
                 writer.Write((byte)MinorVersion);
                 writer.Write((byte)MajorVersion);
@@ -47,12 +47,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
                 foreach (D3D9Instruction i in Instructions)
                 {
-                    uint instruction =
-                        (uint)i.Opcode |
-                        (uint)(i.Modifier << 16) |
-                        ((uint)(i.Params.Count << (i.Opcode == Opcode.Comment ? 16 : 24))) |
-                        (i.Predicated ? (uint)(0x10000000) : 0);
-                    writer.Write(instruction);
+                    writer.Write(i.InstructionToken);
                     for (int p = 0; p < i.Params.Count; p++)
                     {
                         writer.Write(i.Params[p]);

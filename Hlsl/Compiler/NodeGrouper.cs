@@ -176,6 +176,11 @@ namespace HlslDecompiler.Hlsl
                 }
             }
 
+            if (node1 is TempAssignmentNode assignment1 && node2 is TempAssignmentNode assignment2)
+            {
+                return CanGroupComponents(assignment1.Value, assignment2.Value);
+            }
+
             if ((node1 is IHasComponentIndex && node2 is IHasComponentIndex) ||
                 (node1 is GroupNode && node2 is GroupNode))
             {

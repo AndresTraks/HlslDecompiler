@@ -9,11 +9,17 @@
         }
 
         public RegisterType Type { get; }
+        public int Number { get; }
 
+        public bool IsTempRegister => Type == RegisterType.Temp;
+        public bool IsOutput =>
+            Type == RegisterType.Output ||
+            Type == RegisterType.ColorOut ||
+            Type == RegisterType.DepthOut;
 
-        public override bool TypeEquals(RegisterKey registerKey)
+        public bool TypeEquals(RegisterKey registerKey)
         {
-            if (!(registerKey is D3D9RegisterKey other))
+            if (registerKey is not D3D9RegisterKey other)
             {
                 return false;
             }
@@ -22,7 +28,7 @@
 
         public override bool Equals(object obj)
         {
-            if (!(obj is D3D9RegisterKey other))
+            if (obj is not D3D9RegisterKey other)
             {
                 return false;
             }

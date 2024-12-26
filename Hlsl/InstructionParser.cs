@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Channels;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -13,8 +14,7 @@ namespace HlslDecompiler.Hlsl
     {
         private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
         private RegisterState _registerState;
-        private List<IStatement> _sequences;
-        private StatementSequence _currentStatementSequence;
+        private Stack<IStatement> _currentStatements;
 
         public static HlslAst Parse(ShaderModel shader)
         {
@@ -26,10 +26,7 @@ namespace HlslDecompiler.Hlsl
         {
             _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
             _registerState = new RegisterState(shader);
-            _sequences = new List<IStatement>();
-
-            _currentStatementSequence = new StatementSequence();
-            _sequences.Add(_currentStatementSequence);
+            _currentStatements = new Stack<IStatement>();
 
             LoadConstantOutputs(shader);
 
@@ -52,9 +49,7 @@ namespace HlslDecompiler.Hlsl
                 instructionPointer++;
             }
 
-            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(_activeOutputs);
-
-            return new HlslAst(_sequences, _registerState);
+            return new HlslAst(_currentStatements.Pop(), _registerState);
         }
 
         private void ParseInstruction(D3D9Instruction instruction)
@@ -64,7 +59,6 @@ namespace HlslDecompiler.Hlsl
                 if (instruction.Opcode == Opcode.TexKill)
                 {
                     InsertClip(instruction);
-                    EndStatementSequence(_activeOutputs);
                 }
                 else
                 {
@@ -88,9 +82,8 @@ namespace HlslDecompiler.Hlsl
                     case Opcode.EndRep:
                     case Opcode.Break:
                     case Opcode.BreakC:
-                        ParseControlInstruction(instruction);
-                        break;
                     case Opcode.End:
+                        ParseControlInstruction(instruction);
                         break;
                     default:
                         throw new NotImplementedException($"{instruction.Opcode}");
@@ -110,7 +103,6 @@ namespace HlslDecompiler.Hlsl
                 {
                     case D3D10Opcode.Discard:
                         {
-                            EndStatementSequence(_activeOutputs);
                             InsertClip(instruction);
                             break;
                         }
@@ -136,7 +128,9 @@ namespace HlslDecompiler.Hlsl
                         }
                     case D3D10Opcode.DclResource:
                     case D3D10Opcode.DclSampler:
+                        break;
                     case D3D10Opcode.Ret:
+                        InsertReturnStatement();
                         break;
                     default:
                         throw new NotImplementedException(instruction.Opcode.ToString());
@@ -246,7 +240,7 @@ namespace HlslDecompiler.Hlsl
                     {
                         var destinationKey = new RegisterComponentKey(registerKey, i);
                         var shaderInput = new RegisterInputNode(destinationKey);
-                        _activeOutputs.Add(destinationKey, shaderInput);
+                        SetActiveOutput(destinationKey, shaderInput); // TODO: add to global scope instead
                     }
                 }
             }
@@ -259,9 +253,30 @@ namespace HlslDecompiler.Hlsl
                 D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
                 _registerState.DeclareRegister(registerKey);
             }
-
-            EndStatementSequence(_activeOutputs);
-            // TODO: save temporary assignments
+            else if (instruction.Opcode == Opcode.Rep)
+            {
+                InsertLoop(instruction);
+            }
+            else if (instruction.Opcode == Opcode.EndRep)
+            {
+                EndLoop();
+            }
+            else if (instruction.Opcode == Opcode.BreakC)
+            {
+                InsertBreak(instruction);
+            }
+            else if (instruction.Opcode == Opcode.End)
+            {
+                InsertReturnStatement();
+            }
+            else if (instruction.Opcode == Opcode.IfC)
+            {
+                InsertIfStatement(instruction);
+            }
+            else if (instruction.Opcode == Opcode.Endif)
+            {
+                EndIf(instruction);
+            }
         }
 
         private void LoadConstantOutputs(ShaderModel shader)
@@ -275,7 +290,7 @@ namespace HlslDecompiler.Hlsl
                 {
                     var destinationKey = new RegisterComponentKey(registerKey, i);
                     var shaderInput = new RegisterInputNode(destinationKey);
-                    _activeOutputs.Add(destinationKey, shaderInput);
+                    SetActiveOutput(destinationKey, shaderInput);
                 }
             }
         }
@@ -295,24 +310,167 @@ namespace HlslDecompiler.Hlsl
 
             foreach (var output in newOutputs)
             {
-                _activeOutputs[output.Key] = output.Value;
+                SetActiveOutput(output.Key, output.Value);
             }
-        }
-
-        private void EndStatementSequence(Dictionary<RegisterComponentKey, HlslTreeNode> newOutputs)
-        {
-            _currentStatementSequence.Outputs = new Dictionary<RegisterComponentKey, HlslTreeNode>(newOutputs);
-
-            _currentStatementSequence = new StatementSequence();
-            _sequences.Add(_currentStatementSequence);
         }
 
         private void InsertClip(Instruction instruction)
         {
-            RegisterKey registerKey = instruction.GetParamRegisterKey(0);
-            var registerComponentKey = new RegisterComponentKey(registerKey, 0);
-            var clip = new ClipStatement(new RegisterInputNode(registerComponentKey));
-            _sequences.Add(clip);
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            HlslTreeNode value;
+            if (instruction is D3D10Instruction)
+            {
+                value = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
+                    .Select(k => _activeOutputs[k])
+                    .ToArray());
+            }
+            else
+            {
+                value = new GroupNode(GetDestinationKeys(instruction)
+                    .Select(k => _activeOutputs[k])
+                    .ToArray());
+            }
+            var clip = new ClipStatement(value, closure);
+
+            StatementSequence sequence = GetOrCreateStatementSequence(closure);
+            sequence.Statements.Add(clip);
+        }
+
+        private void InsertLoop(Instruction instruction)
+        {
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            uint repeatCount = _registerState.FindConstantIntRegister(instruction.GetParamRegisterNumber(0))[0];
+            var loop = new LoopStatement(repeatCount, closure);
+
+            StatementSequence sequence = GetOrCreateStatementSequence(closure);
+            sequence.Statements.Add(loop);
+            _currentStatements.Push(loop);
+            _currentStatements.Push(loop.Body);
+        }
+
+        private void InsertBreak(D3D9Instruction instruction)
+        {
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            var left = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
+                .Select(k => GetInput(instruction, 0, k.ComponentIndex))
+                .ToArray());
+            var right = new GroupNode(GetParameterRegisterKeys(instruction, 1, 15)
+                .Select(k => GetInput(instruction, 1, k.ComponentIndex))
+                .ToArray());
+            var breakStatement = new BreakStatement(left, right, instruction.Comparison, closure);
+
+            StatementSequence sequence = GetOrCreateStatementSequence(closure);
+            sequence.Statements.Add(breakStatement);
+        }
+
+        private void EndLoop()
+        {
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            LoopStatement loop;
+            while ((loop = _currentStatements.Pop() as LoopStatement) == null)
+            {
+            }
+            loop.EndClosure = closure;
+        }
+
+        private void InsertIfStatement(D3D9Instruction instruction)
+        {
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            var left = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
+                .Select(k => GetInput(instruction, 0, k.ComponentIndex))
+                .ToArray());
+            var right = new GroupNode(GetParameterRegisterKeys(instruction, 1, 15)
+                .Select(k => GetInput(instruction, 1, k.ComponentIndex))
+                .ToArray());
+            var ifStatement = new IfStatement(left, right, instruction.Comparison, closure);
+
+            StatementSequence sequence = GetOrCreateStatementSequence(closure);
+            sequence.Statements.Add(ifStatement);
+            _currentStatements.Push(ifStatement);
+            _currentStatements.Push(ifStatement.TrueBody);
+        }
+
+        private void EndIf(D3D9Instruction instruction)
+        {
+            Closure closure = GetCurrentClosure();
+            SetTempVariablesActive(closure);
+
+            IfStatement ifStatement;
+            while ((ifStatement = _currentStatements.Pop() as IfStatement) == null)
+            {
+            }
+            ifStatement.EndClosure = closure;
+        }
+
+        private void InsertReturnStatement()
+        {
+            Closure closure = GetCurrentClosure();
+            var returnStatement = new ReturnStatement(closure);
+
+            StatementSequence sequence = GetOrCreateStatementSequence(closure);
+            sequence.Statements.Add(returnStatement);
+        }
+
+        private Closure GetCurrentClosure()
+        {
+            return new Closure(_activeOutputs.ToDictionary(o => o.Key, o =>
+            {
+                if (o.Key.RegisterKey.IsTempRegister && o.Value is not TempAssignmentNode)
+                {
+                    if (o.Value is TempVariableNode existingVariable && existingVariable.RegisterComponentKey.Equals(o.Key))
+                    {
+                        return o.Value;
+                    }
+                    var tempVariable = new TempVariableNode(o.Key);
+                    return new TempAssignmentNode(tempVariable, o.Value);
+                }
+                return o.Value;
+            }));
+        }
+
+        private StatementSequence GetOrCreateStatementSequence(Closure closure)
+        {
+            if (_currentStatements.TryPeek(out IStatement statement) && statement is StatementSequence)
+            {
+                return (StatementSequence)statement;
+            }
+
+            var sequence = new StatementSequence(closure);
+            _currentStatements.Push(sequence);
+            return sequence;
+        }
+
+        private void SetTempVariablesActive(Closure closure)
+        {
+            foreach (var output in closure.Outputs.Where(o => o.Key.RegisterKey.IsTempRegister))
+            {
+                if (output.Value is TempAssignmentNode tempAssignment)
+                {
+                    SetActiveOutput(output.Key, tempAssignment.TempVariable);
+                }
+            }
+        }
+
+        private void SetActiveOutput(RegisterComponentKey outputRegisterComponent, HlslTreeNode value)
+        {
+            if (_activeOutputs.TryGetValue(outputRegisterComponent, out HlslTreeNode existing) && existing is TempVariableNode tempVariable)
+            {
+                value = new TempAssignmentNode(tempVariable, value)
+                {
+                    IsReassignment = true
+                };
+            }
+            _activeOutputs[outputRegisterComponent] = value;
         }
 
         private void ParseAssignmentInstruction(D3D10Instruction instruction)
@@ -330,13 +488,19 @@ namespace HlslDecompiler.Hlsl
 
             foreach (var output in newOutputs)
             {
-                _activeOutputs[output.Key] = output.Value;
+                SetActiveOutput(output.Key, output.Value);
             }
         }
 
         private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
         {
             int index = instruction.GetDestinationParamIndex();
+            int mask = instruction.GetDestinationWriteMask();
+            return GetParameterRegisterKeys(instruction, index, mask);
+        }
+
+        private static IEnumerable<RegisterComponentKey> GetParameterRegisterKeys(Instruction instruction, int index, int mask)
+        {
             RegisterKey registerKey = instruction.GetParamRegisterKey(index);
 
             if (registerKey is D3D9RegisterKey d3D9RegisterKey)
@@ -351,8 +515,7 @@ namespace HlslDecompiler.Hlsl
                     yield break;
                 }
             }
-            
-            int mask = instruction.GetDestinationWriteMask();
+
             for (int component = 0; component < 4; component++)
             {
                 if ((mask & (1 << component)) == 0) continue;
@@ -640,13 +803,16 @@ namespace HlslDecompiler.Hlsl
                 {
                     inputParameterIndex++;
                 }
-                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
-                HlslTreeNode input = _activeOutputs[inputKey];
-                SourceModifier modifier = instruction.GetSourceModifier(inputParameterIndex);
-                input = ApplyModifier(input, modifier);
-                inputs[i] = input;
+                inputs[i] = GetInput(instruction, inputParameterIndex, componentIndex);
             }
             return inputs;
+        }
+
+        private HlslTreeNode GetInput(D3D9Instruction instruction, int parameterIndex, int componentIndex)
+        {
+            RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
+            SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
+            return ApplyModifier(_activeOutputs[inputKey], modifier);
         }
 
         private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
@@ -746,6 +912,8 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Sge:
                 case Opcode.Slt:
                 case Opcode.Tex:
+                case Opcode.BreakC:
+                case Opcode.IfC:
                     return 2;
                 case Opcode.Cmp:
                 case Opcode.DP2Add:
@@ -753,7 +921,7 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Mad:
                     return 3;
                 default:
-                    throw new NotImplementedException();
+                    throw new NotImplementedException(opcode.ToString());
             }
         }
 

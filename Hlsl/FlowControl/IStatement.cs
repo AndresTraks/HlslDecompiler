@@ -2,5 +2,6 @@
 {
     public interface IStatement
     {
+        public Closure Closure { get; }
     }
 }

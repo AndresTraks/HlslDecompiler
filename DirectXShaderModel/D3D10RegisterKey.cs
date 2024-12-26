@@ -9,11 +9,14 @@
         }
 
         public OperandType OperandType { get; }
+        public int Number { get; }
 
+        public bool IsTempRegister => OperandType == OperandType.Temp;
+        public bool IsOutput => OperandType == OperandType.Output;
 
-        public override bool TypeEquals(RegisterKey registerKey)
+        public bool TypeEquals(RegisterKey registerKey)
         {
-            if (!(registerKey is D3D10RegisterKey other))
+            if (registerKey is not D3D10RegisterKey other)
             {
                 return false;
             }
@@ -22,7 +25,7 @@
 
         public override bool Equals(object obj)
         {
-            if (!(obj is D3D10RegisterKey other))
+            if (obj is not D3D10RegisterKey other)
             {
                 return false;
             }

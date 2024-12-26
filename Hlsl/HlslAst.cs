@@ -1,16 +1,15 @@
 ﻿using HlslDecompiler.Hlsl.FlowControl;
-using System.Collections.Generic;
 
 namespace HlslDecompiler.Hlsl
 {
     public class HlslAst
     {
-        public List<IStatement> Statements { get; private set; }
+        public IStatement Statement { get; private set; }
         public RegisterState RegisterState { get; private set; }
 
-        public HlslAst(List<IStatement> statements, RegisterState registerState)
+        public HlslAst(IStatement statement, RegisterState registerState)
         {
-            Statements = statements;
+            Statement = statement;
             RegisterState = registerState;
         }
     }

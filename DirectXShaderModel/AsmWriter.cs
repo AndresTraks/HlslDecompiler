@@ -25,15 +25,10 @@ namespace HlslDecompiler.DirectXShaderModel
             asmWriter.WriteLine(format, args);
         }
 
-        string GetDestinationName(Instruction instruction)
+        static string GetDestinationName(Instruction instruction)
         {
             int destIndex = instruction.GetDestinationParamIndex();
             string registerName = instruction.GetParamRegisterName(destIndex);
-            if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Opcode == Opcode.Loop)
-            {
-                return registerName;
-            }
-
             const int registerLength = 4;
             string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, false);
 
@@ -43,7 +38,7 @@ namespace HlslDecompiler.DirectXShaderModel
         private static string GetSourceName(D3D9Instruction instruction, int srcIndex)
         {
             string sourceName = instruction.GetParamRegisterName(srcIndex);
-            if (instruction.Opcode != Opcode.Loop)
+            if (instruction.Opcode != Opcode.Loop && instruction.Opcode != Opcode.Rep)
             {
                 sourceName += instruction.GetSourceSwizzleName(srcIndex);
                 sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
@@ -123,7 +118,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.BreakC:
-                    WriteLine("break_ge {0}x, {1}x", GetDestinationName(instruction),
+                    WriteLine("break_{0} {1}, {2}", instruction.Comparison.ToString().ToLower(), GetSourceName(instruction, 0),
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Cmp:
@@ -197,7 +192,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case Opcode.IfC:
                     WriteLine("if_{0} {1}, {2}",
-                        ((IfComparison)instruction.Modifier).ToString().ToLower(),
+                        instruction.Comparison.ToString().ToLower(),
                         GetSourceName(instruction, 0), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Log:
@@ -205,7 +200,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Loop:
-                    WriteLine("loop {0}, {1}", GetDestinationName(instruction),
+                    WriteLine("loop {0}, {1}", GetSourceName(instruction, 0),
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Lrp:
@@ -248,7 +243,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.Rep:
-                    WriteLine("rep {0}", GetDestinationName(instruction));
+                    WriteLine("rep {0}", GetSourceName(instruction, 0));
                     break;
                 case Opcode.Rcp:
                     WriteLine("rcp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),

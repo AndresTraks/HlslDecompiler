@@ -5,9 +5,6 @@
         [System.Diagnostics.Conditional("DEBUG")]
         public static void Verify(D3D9Instruction instruction)
         {
-            //Assert(currentInstruction.Modifier == 0);
-            Assert(!instruction.Predicated);
-
             switch (instruction.Opcode)
             {
                 case Opcode.Dcl:
@@ -47,14 +44,9 @@
                     }
                     break;
                 case Opcode.IfC:
-                    IfComparison comp = (IfComparison)instruction.Modifier;
                     Assert(
-                        comp == IfComparison.GT ||
-                        comp == IfComparison.EQ ||
-                        comp == IfComparison.GE ||
-                        comp == IfComparison.LT ||
-                        comp == IfComparison.NE ||
-                        comp == IfComparison.LE);
+                        instruction.Comparison != IfComparison.None &&
+                        instruction.Comparison != IfComparison.Reserved);
                     break;
                 default:
                     //throw new NotImplementedException();

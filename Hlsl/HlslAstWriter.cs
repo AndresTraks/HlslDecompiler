@@ -95,12 +95,20 @@ namespace HlslDecompiler.Hlsl
         {
             WriteTempVariableAssignments(breakStatement.Closure);
 
-            string comparison = _compiler.Compile(breakStatement.Comparison);
-            WriteLine($"if ({comparison}) {{");
-            indent += "\t";
-            WriteLine("break;");
-            indent = indent.Substring(0, indent.Length - 1);
-            WriteLine("}");
+            bool? constantComparison = ConstantMatcher.TryEvaluateComparison(breakStatement.Comparison);
+            if (constantComparison.HasValue && constantComparison.Value)
+            {
+                WriteLine("break;");
+            }
+            else
+            {
+                string comparison = _compiler.Compile(breakStatement.Comparison);
+                WriteLine($"if ({comparison}) {{");
+                indent += "\t";
+                WriteLine("break;");
+                indent = indent.Substring(0, indent.Length - 1);
+                WriteLine("}");
+            }
         }
 
         private void WriteIfStatement(IfStatement ifStatement)

@@ -2,18 +2,11 @@
 {
     public class MultiplyReciprocalDivisionTemplate : NodeTemplate<MultiplyOperation>
     {
-        private TemplateMatcher _templateMatcher;
-
-        public MultiplyReciprocalDivisionTemplate(TemplateMatcher templateMatcher)
-        {
-            _templateMatcher = templateMatcher;
-        }
-
         public override bool Match(HlslTreeNode node)
         {
             return node is MultiplyOperation multiply
                 && multiply.Factor1 is DivisionOperation division
-                && _templateMatcher.IsOne(division.Dividend);
+                && ConstantMatcher.IsOne(division.Dividend);
         }
 
         public override HlslTreeNode Reduce(MultiplyOperation node)

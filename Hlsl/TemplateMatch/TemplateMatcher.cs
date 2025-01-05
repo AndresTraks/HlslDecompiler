@@ -12,25 +12,25 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
         {
             _templates = new List<INodeTemplate>
             {
-                new AddConstantsTemplate(this),
+                new AddConstantsTemplate(),
                 new AddNegateTemplate(),
-                new AddNegativeTemplate(this),
+                new AddNegativeTemplate(),
                 new AddSelfTemplate(),
-                new AddZeroTemplate(this),
+                new AddZeroTemplate(),
                 new MoveTemplate(),
                 new MultiplyAddTemplate(),
-                new MultiplyConstantsTemplate(this),
-                new MultiplyConstantTemplate(this),
-                new MultiplyNegativeOneTemplate(this),
-                new MultiplyOneTemplate(this),
-                new MultiplyReciprocalDivisionTemplate(this),
-                new MultiplyZeroTemplate(this),
-                new NegateConstantTemplate(this),
+                new MultiplyConstantsTemplate(),
+                new MultiplyConstantTemplate(),
+                new MultiplyNegativeOneTemplate(),
+                new MultiplyOneTemplate(),
+                new MultiplyReciprocalDivisionTemplate(),
+                new MultiplyZeroTemplate(),
+                new NegateConstantTemplate(),
                 new NegateNegateTemplate(),
-                new ReciprocalReciprocalSquareRootTemplate(this),
+                new ReciprocalReciprocalSquareRootTemplate(),
                 new ReciprocalSquareRootTemplate(),
                 new SubtractNegateTemplate(),
-                new SubtractZeroTemplate(this)
+                new SubtractZeroTemplate()
             };
             _groupTemplates = new List<IGroupTemplate>
             {
@@ -63,7 +63,7 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
 
         private HlslTreeNode ReduceDepthFirst(HlslTreeNode node)
         {
-            if (IsConstant(node) || IsRegister(node))
+            if (ConstantMatcher.IsConstant(node) || IsRegister(node))
             {
                 return node;
             }
@@ -94,7 +94,7 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
             return node;
         }
 
-        private void Replace(HlslTreeNode node, HlslTreeNode with)
+        private static void Replace(HlslTreeNode node, HlslTreeNode with)
         {
             if (node == with)
             {
@@ -117,32 +117,7 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
             }
         }
 
-        public bool IsConstant(HlslTreeNode node)
-        {
-            return node is ConstantNode;
-        }
-
-        public bool IsZero(HlslTreeNode node)
-        {
-            return node is ConstantNode constant && constant.Value == 0;
-        }
-
-        public bool IsOne(HlslTreeNode node)
-        {
-            return node is ConstantNode constant && constant.Value == 1;
-        }
-
-        public bool IsNegativeOne(HlslTreeNode node)
-        {
-            return node is ConstantNode constant && constant.Value == -1;
-        }
-
-        public bool IsNegative(HlslTreeNode node)
-        {
-            return node is ConstantNode constant && constant.Value < 0;
-        }
-
-        private bool IsRegister(HlslTreeNode node)
+        private static bool IsRegister(HlslTreeNode node)
         {
             return node is RegisterInputNode;
         }

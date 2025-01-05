@@ -54,22 +54,7 @@ namespace HlslDecompiler.DirectXShaderModel
             for (int i = 0; i < numInputs; i++)
             {
                 InputType inputType = (InputType)ReadByte();
-                byte a = ReadByte();
-
-                switch (a)
-                {
-                    case 0:
-                    case 2:
-                    case 4:
-                    case 8:
-                    case 12:
-                    case 16:
-                    case 48:
-                    case 64:
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
+                byte size = ReadByte();
 
                 string inputName = ReadRgxaString();
                 string alternateName = ReadRgxaString();

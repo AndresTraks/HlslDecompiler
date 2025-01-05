@@ -11,7 +11,7 @@ break_ge r2.x, c0.x
 mov r3, r1
 mov r2.y, c2.w
 rep i0
-break_ge r2.xzx, c1.xxx
+break_ge r2.y, c1.x
 add r3, r3, v0
 add r2.y, r2.y, c3.x
 endrep

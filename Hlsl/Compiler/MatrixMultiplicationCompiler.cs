@@ -16,7 +16,7 @@
             {
                 matrixName = $"(float{context.MatrixDeclaration.Columns}x{context.Vector.Length}){matrixName}";
             }
-            string vector = nodeCompiler.Compile(context.Vector.Inputs);
+            string vector = nodeCompiler.Compile(context.Vector);
             return context.IsMatrixByVector
                 ? $"mul({matrixName}, {vector})"
                 : $"mul({vector}, {matrixName})";

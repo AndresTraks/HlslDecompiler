@@ -51,8 +51,7 @@ namespace HlslDecompiler.Hlsl
             }
             else if (statement is BreakStatement breakStatement)
             {
-                WriteTempVariableAssignments(breakStatement.Closure);
-                WriteLine("break;");
+                WriteBreakStatement(breakStatement);
             }
             else if (statement is IfStatement ifStatement)
             {
@@ -83,10 +82,23 @@ namespace HlslDecompiler.Hlsl
         {
             WriteTempVariableAssignments(loop.Closure);
 
-            WriteLine($"for (int i = 0; i < {loop.RepeatCount}; i++) {{");
+            string variableName = "i";
+            WriteLine($"for (int {variableName} = 0; {variableName} < {loop.RepeatCount}; {variableName}++) {{");
             indent += "\t";
             WriteStatement(loop.Body);
             WriteTempVariableAssignments(loop.EndClosure);
+            indent = indent.Substring(0, indent.Length - 1);
+            WriteLine("}");
+        }
+
+        private void WriteBreakStatement(BreakStatement breakStatement)
+        {
+            WriteTempVariableAssignments(breakStatement.Closure);
+
+            string comparison = _compiler.Compile(breakStatement.Comparison);
+            WriteLine($"if ({comparison}) {{");
+            indent += "\t";
+            WriteLine("break;");
             indent = indent.Substring(0, indent.Length - 1);
             WriteLine("}");
         }
@@ -95,20 +107,8 @@ namespace HlslDecompiler.Hlsl
         {
             WriteTempVariableAssignments(ifStatement.Closure);
 
-            var left = _compiler.Compile(ifStatement.Left);
-            var right = _compiler.Compile(ifStatement.Right);
-            string comparison;
-            switch (ifStatement.Comparison)
-            {
-                case IfComparison.GT: comparison = ">"; break;
-                case IfComparison.EQ: comparison = "=="; break;
-                case IfComparison.GE: comparison = ">="; break;
-                case IfComparison.LT: comparison = "<"; break;
-                case IfComparison.NE: comparison = "!="; break;
-                case IfComparison.LE: comparison = "<="; break;
-                default: throw new NotImplementedException(ifStatement.Comparison.ToString());
-            }
-            WriteLine($"if ({left} {comparison} {right}) {{");
+            string comparison = _compiler.Compile(ifStatement.Comparison);
+            WriteLine($"if ({comparison}) {{");
             indent += "\t";
             WriteStatement(ifStatement.TrueBody);
             WriteTempVariableAssignments(ifStatement.EndClosure);
@@ -142,14 +142,16 @@ namespace HlslDecompiler.Hlsl
 
         private void WriteTempVariableAssignments(Closure closure)
         {
-            Dictionary<RegisterKey, HlslTreeNode> roots = GroupAssignments(closure)
-                                .ToDictionary(r => r.Key, r => Reduce(r.Value));
-
-            foreach (var rootGroup in roots)
+            Dictionary<RegisterKey, TempAssignmentNode[]> assignments = GroupAssignments(closure);
+            foreach (var assignment in assignments)
             {
-                string registerName = _registers.GetRegisterName(rootGroup.Key);
-                string compiled = _compiler.Compile(rootGroup.Value);
-                WriteLine(compiled);
+                foreach (var declaration in assignment.Value.GroupBy(v => v.TempVariable.DeclarationIndex))
+                {
+                    var group = new GroupNode(declaration.ToArray());
+                    var reduced = Reduce(group);
+                    string compiled = _compiler.Compile(reduced);
+                    WriteLine(compiled);
+                }
             }
         }
 
@@ -158,9 +160,16 @@ namespace HlslDecompiler.Hlsl
             return _templateMatcher.Reduce(node);
         }
 
-        public static Dictionary<RegisterKey, HlslTreeNode> GroupAssignments(Closure closure)
+        private static Dictionary<RegisterKey, TempAssignmentNode[]> GroupAssignments(Closure closure)
         {
-            return GroupComponents(closure.Outputs.Where(o => o.Value is TempAssignmentNode));
+            return closure.Outputs
+                .Where(o => o.Value is TempAssignmentNode)
+                .Select(o => o.Value as TempAssignmentNode)
+                .OrderBy(o => o.TempVariable.RegisterComponentKey.ComponentIndex)
+                .GroupBy(o => o.TempVariable.RegisterComponentKey.RegisterKey)
+                .ToDictionary(
+                    o => o.Key,
+                    o => o.ToArray());
         }
 
         private static Dictionary<RegisterKey, HlslTreeNode> GroupComponents(IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)

@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.Util;
-using System.Globalization;
 using System.Linq;
 
 namespace HlslDecompiler.Hlsl

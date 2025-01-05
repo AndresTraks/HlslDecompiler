@@ -18,11 +18,48 @@ namespace HlslDecompiler.Hlsl
         // float2(dot(m_row1, v), dot(m_row2, v))
         // float3(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v))
         // float4(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v), dot(m_row4, v))
+        // float4(dot(m_row1.xyz, v.xyz), dot(m_row2.xyz, v.xyz), dot(m_row3.xyz, v.xyz), dot(m_row4.xyz, v.xyz)) + m_column4
         public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> components)
         {
             const bool allowMatrix = true;
 
-            if (!(components[0] is DotProductOperation firstDot))
+            if (components.All(c => c is AddOperation))
+            {
+                HlslTreeNode[] submatrixNodes = components.Select(g => g.Inputs[0]).ToArray();
+                MatrixMultiplicationContext submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
+                if (submatrixGroup != null)
+                {
+                    RegisterInputNode[] wColumnNodes = components
+                        .Select(g => g.Inputs[1])
+                        .OfType<RegisterInputNode>()
+                        .ToArray();
+                    int wRowIndex = submatrixGroup.MatrixDeclaration.RegisterIndex + submatrixGroup.Vector.Length;
+                    if (wColumnNodes.All(wColumnNode =>
+                    {
+                        ConstantDeclaration matrixDeclaration = _registers.FindConstant(wColumnNode);
+                        if (!submatrixGroup.MatrixDeclaration.Equals(matrixDeclaration))
+                        {
+                            return false;
+                        }
+                        if (wColumnNode.RegisterComponentKey.RegisterKey is not D3D9RegisterKey d3d9RegisterKey)
+                        {
+                            return false;
+                        }
+                        return d3d9RegisterKey.Number == wRowIndex || wColumnNode.RegisterComponentKey.ComponentIndex == wRowIndex;
+                    }))
+                    {
+                        var extendedVector = submatrixGroup.Vector.ToList();
+                        extendedVector.Add(new ConstantNode(1));
+                        return new MatrixMultiplicationContext(
+                            extendedVector.ToArray(),
+                            submatrixGroup.MatrixDeclaration,
+                            submatrixGroup.IsMatrixByVector,
+                            submatrixGroup.MatrixRowCount);
+                    }
+                }
+            }
+
+            if (components[0] is not DotProductOperation firstDot)
             {
                 return null;
             }
@@ -33,40 +70,42 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            GroupNode firstMatrixRow = TryGetMatrixRow(firstDot, firstDot, 0);
+            IList<HlslTreeNode> firstMatrixRow = TryGetMatrixRow(firstDot, firstDot, 0);
             if (firstMatrixRow == null)
             {
                 return null;
             }
 
-            GroupNode vector = firstDot.X == firstMatrixRow
-                    ? firstDot.Y
-                    : firstDot.X;
+            IList<HlslTreeNode> vector = firstDot.X.Inputs == firstMatrixRow
+                    ? firstDot.Y.Inputs
+                    : firstDot.X.Inputs;
 
-            var matrixRows = new List<GroupNode>();
-            matrixRows.Add(firstMatrixRow);
+            var matrixRows = new List<HlslTreeNode[]>
+            {
+                firstMatrixRow.ToArray()
+            };
             for (int i = 1; i < components.Count; i++)
             {
-                if (!(components[i] is DotProductOperation nextDot))
+                if (components[i] is not DotProductOperation nextDot)
                 {
                     break;
                 }
 
-                GroupNode matrixRow = TryGetMatrixRow(nextDot, firstDot, i);
+                IList<HlslTreeNode> matrixRow = TryGetMatrixRow(nextDot, firstDot, i);
                 if (matrixRow == null)
                 {
                     break;
                 }
 
-                GroupNode nextVector = nextDot.X == matrixRow
-                    ? nextDot.Y
-                    : nextDot.X;
+                IList<HlslTreeNode> nextVector = nextDot.X.Inputs == matrixRow
+                    ? nextDot.Y.Inputs
+                    : nextDot.X.Inputs;
                 if (!NodeGrouper.AreNodesEquivalent(vector, nextVector))
                 {
                     break;
                 }
 
-                matrixRows.Add(matrixRow);
+                matrixRows.Add(matrixRow.ToArray());
             }
 
             if (matrixRows.Count < 2)
@@ -80,16 +119,16 @@ namespace HlslDecompiler.Hlsl
                 return null;
             }
 
-            bool matrixByVector = firstMatrixRow.Inputs
+            bool matrixByVector = firstMatrixRow
                 .Cast<RegisterInputNode>()
                 .All(row => row.ComponentIndex == 0);
 
             vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
-            return new MatrixMultiplicationContext(vector, matrix, matrixByVector, matrixRows.Count);
+            return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count);
         }
 
-        private GroupNode SwizzleVector(GroupNode vector, GroupNode firstMatrixRow, bool matrixByVector)
+        private static IList<HlslTreeNode> SwizzleVector(IList<HlslTreeNode> vector, IList<HlslTreeNode> firstMatrixRow, bool matrixByVector)
         {
             if (matrixByVector)
             {
@@ -98,7 +137,7 @@ namespace HlslDecompiler.Hlsl
             }
 
             bool needsSwizzle = false;
-            for (int i = 0; i < firstMatrixRow.Length; i++)
+            for (int i = 0; i < firstMatrixRow.Count; i++)
             {
                 var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
                 if (i != component)
@@ -113,8 +152,8 @@ namespace HlslDecompiler.Hlsl
                 return vector;
             }
 
-            GroupNode vectorSwizzled = new GroupNode(vector.Inputs.ToArray());
-            for (int i = 0; i < firstMatrixRow.Length; i++)
+            var vectorSwizzled = vector.ToArray();
+            for (int i = 0; i < firstMatrixRow.Count; i++)
             {
                 var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
                 if (i != component)
@@ -125,7 +164,7 @@ namespace HlslDecompiler.Hlsl
             return vectorSwizzled;
         }
 
-        private ConstantDeclaration TryGetMatrixDeclaration(IList<GroupNode> dotProductNodes)
+        private ConstantDeclaration TryGetMatrixDeclaration(IList<HlslTreeNode[]> dotProductNodes)
         {
             int dimension = dotProductNodes.Count;
             var first = dotProductNodes[0];
@@ -143,7 +182,7 @@ namespace HlslDecompiler.Hlsl
             return null;
         }
 
-        private GroupNode TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
+        private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
         {
             if (dot.X.Inputs[0] is RegisterInputNode constantRegister)
             {
@@ -152,20 +191,20 @@ namespace HlslDecompiler.Hlsl
                 {
                     if (row == 0)
                     {
-                        return dot.X;
+                        return dot.X.Inputs;
                     }
                     var firstConstantRegister =  firstDot.X.Inputs[0] as RegisterInputNode;
                     if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex)
                     {
-                        return dot.X;
+                        return dot.X.Inputs;
                     }
                     if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister.RegisterComponentKey.ComponentIndex)
                     {
-                        return dot.X;
+                        return dot.X.Inputs;
                     }
                 }
             }
@@ -177,20 +216,20 @@ namespace HlslDecompiler.Hlsl
                 {
                     if (row == 0)
                     {
-                        return dot.Y;
+                        return dot.Y.Inputs;
                     }
                     var firstConstantRegister = firstDot.Y.Inputs[0] as RegisterInputNode;
                     if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister1.RegisterComponentKey.ComponentIndex)
                     {
-                        return dot.Y;
+                        return dot.Y.Inputs;
                     }
                     if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
                         firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
                         firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister1.RegisterComponentKey.ComponentIndex)
                     {
-                        return dot.Y;
+                        return dot.Y.Inputs;
                     }
                 }
             }
@@ -202,7 +241,7 @@ namespace HlslDecompiler.Hlsl
     public class MatrixMultiplicationContext
     {
         public MatrixMultiplicationContext(
-            GroupNode vector,
+            HlslTreeNode[] vector,
             ConstantDeclaration matrix,
             bool matrixByVector,
             int matrixRowCount)
@@ -213,7 +252,7 @@ namespace HlslDecompiler.Hlsl
             MatrixRowCount = matrixRowCount;
         }
 
-        public GroupNode Vector { get; }
+        public HlslTreeNode[] Vector { get; }
 
         public ConstantDeclaration MatrixDeclaration { get; }
         public bool IsMatrixByVector { get; }

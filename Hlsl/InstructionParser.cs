@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Channels;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -357,13 +356,11 @@ namespace HlslDecompiler.Hlsl
             Closure closure = GetCurrentClosure();
             SetTempVariablesActive(closure);
 
-            var left = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
-                .Select(k => GetInput(instruction, 0, k.ComponentIndex))
+            HlslTreeNode comparison = new GroupNode(Enumerable.Range(0, 4)
+                .Select(i => GetInputs(instruction, i))
+                .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
                 .ToArray());
-            var right = new GroupNode(GetParameterRegisterKeys(instruction, 1, 15)
-                .Select(k => GetInput(instruction, 1, k.ComponentIndex))
-                .ToArray());
-            var breakStatement = new BreakStatement(left, right, instruction.Comparison, closure);
+            var breakStatement = new BreakStatement(comparison, closure);
 
             StatementSequence sequence = GetOrCreateStatementSequence(closure);
             sequence.Statements.Add(breakStatement);
@@ -386,13 +383,11 @@ namespace HlslDecompiler.Hlsl
             Closure closure = GetCurrentClosure();
             SetTempVariablesActive(closure);
 
-            var left = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
-                .Select(k => GetInput(instruction, 0, k.ComponentIndex))
+            HlslTreeNode comparison = new GroupNode(Enumerable.Range(0, 4)
+                .Select(i => GetInputs(instruction, i))
+                .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
                 .ToArray());
-            var right = new GroupNode(GetParameterRegisterKeys(instruction, 1, 15)
-                .Select(k => GetInput(instruction, 1, k.ComponentIndex))
-                .ToArray());
-            var ifStatement = new IfStatement(left, right, instruction.Comparison, closure);
+            var ifStatement = new IfStatement(comparison, closure);
 
             StatementSequence sequence = GetOrCreateStatementSequence(closure);
             sequence.Statements.Add(ifStatement);
@@ -554,12 +549,15 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Cmp:
                 case Opcode.DSX:
                 case Opcode.DSY:
+                case Opcode.Exp:
                 case Opcode.Frc:
+                case Opcode.Log:
                 case Opcode.Lrp:
                 case Opcode.Mad:
                 case Opcode.Max:
                 case Opcode.Min:
                 case Opcode.Mov:
+                case Opcode.MovA:
                 case Opcode.Mul:
                 case Opcode.Pow:
                 case Opcode.Rcp:
@@ -580,8 +578,12 @@ namespace HlslDecompiler.Hlsl
                                 return new PartialDerivativeXOperation(inputs[0]);
                             case Opcode.DSY:
                                 return new PartialDerivativeYOperation(inputs[0]);
+                            case Opcode.Exp:
+                                return new ExponentialOperation(inputs[0]);
                             case Opcode.Frc:
                                 return new FractionalOperation(inputs[0]);
+                            case Opcode.Log:
+                                return new LogOperation(inputs[0]);
                             case Opcode.Lrp:
                                 return new LinearInterpolateOperation(inputs[0], inputs[1], inputs[2]);
                             case Opcode.Max:
@@ -590,6 +592,8 @@ namespace HlslDecompiler.Hlsl
                                 return new MinimumOperation(inputs[0], inputs[1]);
                             case Opcode.Mov:
                                 return new MoveOperation(inputs[0]);
+                            case Opcode.MovA:
+                                return new MoveOperation(inputs[0]); // TODO: cast?
                             case Opcode.Add:
                                 return new AddOperation(inputs[0], inputs[1]);
                             case Opcode.Mul:
@@ -653,7 +657,9 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.Add:
                 case D3D10Opcode.DerivRtx:
                 case D3D10Opcode.DerivRty:
+                case D3D10Opcode.Exp:
                 case D3D10Opcode.Frc:
+                case D3D10Opcode.Log:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Max:
                 case D3D10Opcode.Min:
@@ -671,8 +677,18 @@ namespace HlslDecompiler.Hlsl
                                 return new PartialDerivativeXOperation(inputs[0]);
                             case D3D10Opcode.DerivRty:
                                 return new PartialDerivativeYOperation(inputs[0]);
+                            case D3D10Opcode.Exp:
+                                return new ExponentialOperation(inputs[0]);
+                            case D3D10Opcode.Frc:
+                                return new FractionalOperation(inputs[0]);
+                            case D3D10Opcode.Log:
+                                return new LogOperation(inputs[0]);
                             case D3D10Opcode.Mad:
                                 return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                            case D3D10Opcode.Max:
+                                return new MaximumOperation(inputs[0], inputs[1]);
+                            case D3D10Opcode.Min:
+                                return new MinimumOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Mov:
                                 return new MoveOperation(inputs[0]);
                             case D3D10Opcode.Mul:
@@ -681,6 +697,7 @@ namespace HlslDecompiler.Hlsl
                                 return new ReciprocalSquareRootOperation(inputs[0]);
                             case D3D10Opcode.Sqrt:
                                 return new SquareRootOperation(inputs[0]);
+                            case D3D10Opcode.SinCos:
                             default:
                                 throw new NotImplementedException();
                         }
@@ -796,23 +813,15 @@ namespace HlslDecompiler.Hlsl
         {
             int numInputs = GetNumInputs(instruction.Opcode);
             var inputs = new HlslTreeNode[numInputs];
+            int parameterIndex = instruction.Opcode.HasDestination() ? 1 : 0;
             for (int i = 0; i < numInputs; i++)
             {
-                int inputParameterIndex = i;
-                if (instruction.Opcode != Opcode.TexKill)
-                {
-                    inputParameterIndex++;
-                }
-                inputs[i] = GetInput(instruction, inputParameterIndex, componentIndex);
+                RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
+                SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
+                inputs[i] = ApplyModifier(_activeOutputs[inputKey], modifier);
+                parameterIndex++;
             }
             return inputs;
-        }
-
-        private HlslTreeNode GetInput(D3D9Instruction instruction, int parameterIndex, int componentIndex)
-        {
-            RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
-            SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
-            return ApplyModifier(_activeOutputs[inputKey], modifier);
         }
 
         private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
@@ -892,10 +901,18 @@ namespace HlslDecompiler.Hlsl
             switch (opcode)
             {
                 case Opcode.Abs:
+                case Opcode.CallNZ:
                 case Opcode.DSX:
                 case Opcode.DSY:
+                case Opcode.Exp:
+                case Opcode.ExpP:
                 case Opcode.Frc:
+                case Opcode.Lit:
+                case Opcode.Log:
+                case Opcode.LogP:
+                case Opcode.Loop:
                 case Opcode.Mov:
+                case Opcode.MovA:
                 case Opcode.Nrm:
                 case Opcode.Rcp:
                 case Opcode.Rsq:
@@ -903,22 +920,36 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.TexKill:
                     return 1;
                 case Opcode.Add:
+                case Opcode.Bem:
+                case Opcode.Crs:
                 case Opcode.Dp3:
                 case Opcode.Dp4:
+                case Opcode.Dst:
+                case Opcode.M3x2:
+                case Opcode.M3x3:
+                case Opcode.M3x4:
+                case Opcode.M4x3:
+                case Opcode.M4x4:
                 case Opcode.Max:
                 case Opcode.Min:
                 case Opcode.Mul:
                 case Opcode.Pow:
+                case Opcode.SetP:
                 case Opcode.Sge:
                 case Opcode.Slt:
+                case Opcode.Sub:
                 case Opcode.Tex:
+                case Opcode.TexLDD:
+                case Opcode.TexLDL:
                 case Opcode.BreakC:
                 case Opcode.IfC:
                     return 2;
                 case Opcode.Cmp:
+                case Opcode.Cnd:
                 case Opcode.DP2Add:
                 case Opcode.Lrp:
                 case Opcode.Mad:
+                case Opcode.Sgn:
                     return 3;
                 default:
                     throw new NotImplementedException(opcode.ToString());
@@ -931,7 +962,9 @@ namespace HlslDecompiler.Hlsl
             {
                 case D3D10Opcode.DerivRtx:
                 case D3D10Opcode.DerivRty:
+                case D3D10Opcode.Exp:
                 case D3D10Opcode.Frc:
+                case D3D10Opcode.Log:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.Rsq:
                 case D3D10Opcode.Sqrt:

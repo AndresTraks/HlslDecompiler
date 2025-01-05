@@ -3,7 +3,6 @@ using HlslDecompiler.Operations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -79,6 +78,11 @@ namespace HlslDecompiler.Hlsl
             if (first is IHasComponentIndex)
             {
                 return CompileNodesWithComponents(components, first, promoteToVectorSize);
+            }
+
+            if (first is ComparisonNode comparison)
+            {
+                return CompileComparison(components, comparison);
             }
 
             if (first is GroupNode group)
@@ -197,7 +201,7 @@ namespace HlslDecompiler.Hlsl
                             ? "{0} / {1}"
                             : "{0} / ({1})";
 
-                        return string.Format("{0} / {1}",
+                        return string.Format(format,
                             Compile(dividend),
                             Compile(divisor));
                     }
@@ -291,9 +295,11 @@ namespace HlslDecompiler.Hlsl
             if (first is TempAssignmentNode tempAssignment)
             {
                 string type;
+                string variableCompiled;
                 if (tempAssignment.IsReassignment)
                 {
                     type = string.Empty;
+                    variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
                 }
                 else
                 {
@@ -311,8 +317,8 @@ namespace HlslDecompiler.Hlsl
                         var assignment = component as TempAssignmentNode;
                         assignment.TempVariable.DeclarationIndex = index;
                     }
+                    variableCompiled = $"t{tempAssignment.TempVariable.DeclarationIndex}";
                 }
-                string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
                 string compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
                 return $"{type}{variableCompiled} = {compiled};";
             }
@@ -326,10 +332,33 @@ namespace HlslDecompiler.Hlsl
             throw new NotImplementedException();
         }
 
+        private string CompileComparison(List<HlslTreeNode> components, ComparisonNode first)
+        {
+            var left = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
+            var right = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
+            string comparison;
+            switch (first.Comparison)
+            {
+                case IfComparison.GT: comparison = ">"; break;
+                case IfComparison.EQ: comparison = "=="; break;
+                case IfComparison.GE: comparison = ">="; break;
+                case IfComparison.LT: comparison = "<"; break;
+                case IfComparison.NE: comparison = "!="; break;
+                case IfComparison.LE: comparison = "<="; break;
+                default: throw new NotImplementedException(first.Comparison.ToString());
+            }
+            return $"{left} {comparison} {right}";
+        }
+
         private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,
             int registerSize, 
             int promoteToVectorSize = PromoteToAnyVectorSize)
         {
+            if (registerSize == 1)
+            {
+                return "";
+            }
+
             string swizzleName = "";
             foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
             {

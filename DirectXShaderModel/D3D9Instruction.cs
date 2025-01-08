@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
@@ -173,6 +174,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 return "";
             }
 
+            int registerSize = 4;
             int destinationMask;
             switch (Opcode)
             {
@@ -184,6 +186,15 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case Opcode.Dp4:
                     destinationMask = 15;
+                    break;
+                case Opcode.TexLDD:
+                    if (srcIndex == 3 || srcIndex == 4)
+                    {
+                        destinationMask = 3;
+                        registerSize = 2;
+                        break;
+                    }
+                    destinationMask = GetDestinationWriteMask();
                     break;
                 default:
                     destinationMask = HasDestination ? GetDestinationWriteMask() : 15;
@@ -214,10 +225,13 @@ namespace HlslDecompiler.DirectXShaderModel
                     }
                 }
             }
+
+            if (swizzleName.Equals("xyzw".Substring(0, registerSize)))
+            {
+                return "";
+            }
             switch (swizzleName)
             {
-                case "xyzw":
-                    return "";
                 case "xxxx":
                     return ".x";
                 case "yyyy":

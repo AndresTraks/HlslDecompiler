@@ -299,6 +299,10 @@ namespace HlslDecompiler
                     WriteLine("{0} = tex2Dlod({2}, {1});", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case Opcode.TexLDD:
+                    WriteLine("{0} = tex2Dgrad({2}, {1}, {3}, {4});", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3), GetSourceName(instruction, 4));
+                    break;
                 case Opcode.TexKill:
                     WriteLine("clip({0});", GetDestinationName(instruction));
                     break;

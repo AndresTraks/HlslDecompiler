@@ -31,6 +31,17 @@ namespace HlslDecompiler.DirectXShaderModel
             return (index >= RegisterIndex) && (index < RegisterIndex + RegisterCount);
         }
 
+        public int GetSamplerDimension()
+        {
+            return ParameterType switch
+            {
+                ParameterType.Sampler1D => 1,
+                ParameterType.Sampler2D => 2,
+                ParameterType.Sampler3D or ParameterType.SamplerCube => 3,
+                _ => throw new InvalidOperationException(),
+            };
+        }
+
         public override string ToString()
         {
             return Name;

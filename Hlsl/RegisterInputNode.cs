@@ -4,14 +4,12 @@ namespace HlslDecompiler.Hlsl
 {
     public class RegisterInputNode : HlslTreeNode, IHasComponentIndex
     {
-        public RegisterInputNode(RegisterComponentKey registerComponentKey, int samplerTextureDimension = 0)
+        public RegisterInputNode(RegisterComponentKey registerComponentKey)
         {
             RegisterComponentKey = registerComponentKey;
-            SamplerTextureDimension = samplerTextureDimension;
         }
 
         public RegisterComponentKey RegisterComponentKey { get; }
-        public int SamplerTextureDimension { get; }
 
         public int ComponentIndex => RegisterComponentKey.ComponentIndex;
 

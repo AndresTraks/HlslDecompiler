@@ -264,14 +264,7 @@ namespace HlslDecompiler.Hlsl
             {
                 var registerKey = new D3D9RegisterKey(RegisterType.Sampler, constant.RegisterIndex);
                 var destinationKey = new RegisterComponentKey(registerKey, 0);
-                var samplerTextureDimension = constant.ParameterType switch
-                {
-                    ParameterType.Sampler1D => 1,
-                    ParameterType.Sampler2D => 2,
-                    ParameterType.Sampler3D or ParameterType.SamplerCube => 3,
-                    _ => throw new InvalidOperationException(),
-                };
-                var shaderInput = new RegisterInputNode(destinationKey, samplerTextureDimension);
+                var shaderInput = new RegisterInputNode(destinationKey);
                 Samplers.Add(registerKey, shaderInput);
             }
             else

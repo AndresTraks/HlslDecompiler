@@ -249,7 +249,7 @@ namespace HlslDecompiler.Hlsl
                         return $"length({value1})";
                     }
                 default:
-                    throw new NotImplementedException();
+                    throw new NotImplementedException(operation.GetType().Name);
             }
         }
 
@@ -278,11 +278,17 @@ namespace HlslDecompiler.Hlsl
             {
                 string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
 
-                string sampler = Compile(new[] { textureLoad.SamplerInput });
+                string sampler = Compile(new[] { textureLoad.Sampler });
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs);
-                int dimension = textureLoad.SamplerInput.SamplerTextureDimension;
+                var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
+                    textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
+                int dimension = samplerConstant.GetSamplerDimension();
                 string lod = textureLoad.IsLod ? "lod" : "";
-                return $"tex{dimension}D{lod}({sampler}, {texcoords}){swizzle}";
+                string grad = textureLoad.IsGrad ? "grad" : "";
+                string gradParams = textureLoad.IsGrad
+                    ? (", " + Compile(textureLoad.DerivativeX) + ", " + Compile(textureLoad.DerivativeY))
+                    : "";
+                return $"tex{dimension}D{lod}{grad}({sampler}, {texcoords}{gradParams}){swizzle}";
             }
 
             if (first is NormalizeOutputNode)

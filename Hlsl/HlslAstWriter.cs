@@ -1,7 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
 using HlslDecompiler.Hlsl.TemplateMatch;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 

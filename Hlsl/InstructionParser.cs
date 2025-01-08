@@ -222,25 +222,22 @@ namespace HlslDecompiler.Hlsl
         {
             _registerState.DeclareConstant(constant);
 
-            if (constant.RegisterSet != RegisterSet.Sampler)
+            var registerType = constant.RegisterSet switch
             {
-                var registerType = constant.RegisterSet switch
+                RegisterSet.Bool => RegisterType.ConstBool,
+                RegisterSet.Float4 => RegisterType.Const,
+                RegisterSet.Int4 => RegisterType.Input,
+                RegisterSet.Sampler => RegisterType.Sampler,
+                _ => throw new InvalidOperationException(),
+            };
+            for (int r = 0; r < constant.RegisterCount; r++)
+            {
+                var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
+                for (int i = 0; i < 4; i++)
                 {
-                    RegisterSet.Bool => RegisterType.ConstBool,
-                    RegisterSet.Float4 => RegisterType.Const,
-                    RegisterSet.Int4 => RegisterType.Input,
-                    RegisterSet.Sampler => RegisterType.Sampler,
-                    _ => throw new InvalidOperationException(),
-                };
-                for (int r = 0; r < constant.RegisterCount; r++)
-                {
-                    var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
-                    for (int i = 0; i < 4; i++)
-                    {
-                        var destinationKey = new RegisterComponentKey(registerKey, i);
-                        var shaderInput = new RegisterInputNode(destinationKey);
-                        SetActiveOutput(destinationKey, shaderInput); // TODO: add to global scope instead
-                    }
+                    var destinationKey = new RegisterComponentKey(registerKey, i);
+                    var shaderInput = new RegisterInputNode(destinationKey);
+                    SetActiveOutput(destinationKey, shaderInput); // TODO: add to global scope instead
                 }
             }
         }
@@ -621,9 +618,9 @@ namespace HlslDecompiler.Hlsl
                         }
                     }
                 case Opcode.Tex:
-                    return CreateTextureLoadOutputNode(instruction, componentIndex, false);
                 case Opcode.TexLDL:
-                    return CreateTextureLoadOutputNode(instruction, componentIndex, true);
+                case Opcode.TexLDD:
+                    return CreateTextureLoadOutputNode(instruction, componentIndex);
                 case Opcode.DP2Add:
                     return CreateDotProduct2AddNode(instruction);
                 case Opcode.Dp3:
@@ -708,7 +705,7 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.SampleL:
                 case D3D10Opcode.SampleD:
                 case D3D10Opcode.SampleB:
-                    return CreateTextureLoadOutputNode(instruction, componentIndex, false);
+                    return CreateTextureLoadOutputNode(instruction, componentIndex);
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
@@ -718,28 +715,38 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
-        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent, bool isLod)
+        private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
         {
-            const int TextureCoordsIndex = 1;
-            const int SamplerIndex = 2;
+            const int TextureCoordsParamIndex = 1;
+            const int SamplerParamIndex = 2;
 
-            RegisterKey samplerRegister = instruction.GetParamRegisterKey(SamplerIndex);
-            if (!_registerState.Samplers.TryGetValue(samplerRegister, out HlslTreeNode samplerInput))
+            bool isLod = false;
+            bool isGrad = false;
+            if (instruction is D3D9Instruction d3D9Instruction)
             {
-                throw new InvalidOperationException();
-            }
-            var samplerRegisterInput = (RegisterInputNode)samplerInput;
-            int numSamplerOutputComponents = isLod ? 4 : samplerRegisterInput.SamplerTextureDimension;
-
-            IList<HlslTreeNode> texCoords = new List<HlslTreeNode>();
-            for (int component = 0; component < numSamplerOutputComponents; component++)
-            {
-                RegisterComponentKey textureCoordsKey = GetParamRegisterComponentKey(instruction, TextureCoordsIndex, component);
-                HlslTreeNode textureCoord = _activeOutputs[textureCoordsKey];
-                texCoords.Add(textureCoord);
+                if (d3D9Instruction.Opcode == Opcode.TexLDL)
+                {
+                    isLod = true;
+                }
+                else if (d3D9Instruction.Opcode == Opcode.TexLDD)
+                {
+                    isGrad = true;
+                }
             }
 
-            return new TextureLoadOutputNode(samplerRegisterInput, texCoords, outputComponent, isLod);
+            var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
+            var samplerConstant = _registerState.FindConstant(RegisterSet.Sampler, sampler.RegisterComponentKey.RegisterKey.Number);
+            int numSamplerOutputComponents = isLod ? 4 : samplerConstant.GetSamplerDimension();
+
+            HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, numSamplerOutputComponents);
+
+            if (isGrad)
+            {
+                HlslTreeNode[] ddx = GetInputComponents(instruction, 3, 2);
+                HlslTreeNode[] ddy = GetInputComponents(instruction, 4, 2);
+                return new TextureLoadOutputNode(sampler, texCoords, outputComponent, ddx, ddy);
+            }
+            return new TextureLoadOutputNode(sampler, texCoords, outputComponent, isLod);
         }
 
         private HlslTreeNode CreateDotProduct2AddNode(Instruction instruction)

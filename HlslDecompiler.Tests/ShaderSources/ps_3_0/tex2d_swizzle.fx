@@ -1,4 +1,4 @@
-sampler sampler0;
+sampler2D sampler0;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

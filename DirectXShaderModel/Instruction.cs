@@ -74,7 +74,7 @@
             return swizzleArray;
         }
 
-        public abstract string GetSourceSwizzleName(int srcIndex);
+        public abstract string GetSourceSwizzleName(int srcIndex, int? destinationLength);
 
         public abstract string GetDeclSemantic();
     }

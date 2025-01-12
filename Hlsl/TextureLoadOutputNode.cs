@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HlslDecompiler.Hlsl
@@ -7,39 +8,70 @@ namespace HlslDecompiler.Hlsl
     {
         private int _numTextureCoordinates;
 
-        public TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex, bool isLod)
+        private TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
         {
             AddInput(sampler);
             foreach (HlslTreeNode textureCoord in textureCoords)
             {
                 AddInput(textureCoord);
             }
-
             _numTextureCoordinates = textureCoords.Length;
             ComponentIndex = componentIndex;
-            IsLod = isLod;
         }
 
-        public TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int outputComponent, HlslTreeNode[] derivativeX, HlslTreeNode[] derivativeY)
-            : this(sampler, textureCoords, outputComponent, false)
+        public static TextureLoadOutputNode Create(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
         {
+            return new TextureLoadOutputNode(sampler, textureCoords, componentIndex);
+        }
+
+        public static TextureLoadOutputNode CreateLod(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
+        {
+            return new TextureLoadOutputNode(sampler, textureCoords, componentIndex)
+            {
+                Controls = TextureLoadControls.Lod
+            };
+        }
+
+        public static TextureLoadOutputNode CreateProj(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
+        {
+            return new TextureLoadOutputNode(sampler, textureCoords, componentIndex)
+            {
+                Controls = TextureLoadControls.Project
+            };
+        }
+
+        public static TextureLoadOutputNode CreateGrad(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex,
+            HlslTreeNode[] derivativeX, HlslTreeNode[] derivativeY)
+        {
+            var node = new TextureLoadOutputNode(sampler, textureCoords, componentIndex)
+            {
+                Controls = TextureLoadControls.Grad
+            };
             foreach (HlslTreeNode component in derivativeX)
             {
-                AddInput(component);
+                node.AddInput(component);
             }
             foreach (HlslTreeNode component in derivativeY)
             {
-                AddInput(component);
+                node.AddInput(component);
             }
-            IsGrad = true;
+            return node;
         }
 
         public RegisterInputNode Sampler => (RegisterInputNode)Inputs[0];
         public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Inputs.Skip(1).Take(_numTextureCoordinates);
-        public IEnumerable<HlslTreeNode> DerivativeX => Inputs.Skip(1 + _numTextureCoordinates).Take(2);
-        public IEnumerable<HlslTreeNode> DerivativeY => Inputs.Skip(3 + _numTextureCoordinates).Take(2);
+        public IEnumerable<HlslTreeNode> DerivativeX => Inputs.Skip(1 + _numTextureCoordinates).Take(_numTextureCoordinates);
+        public IEnumerable<HlslTreeNode> DerivativeY => Inputs.Skip(1 + 2 * _numTextureCoordinates).Take(_numTextureCoordinates);
         public int ComponentIndex { get; }
-        public bool IsLod { get; }
-        public bool IsGrad { get; }
+        public TextureLoadControls Controls { get; private set; }
+    }
+
+    [Flags]
+    public enum TextureLoadControls
+    {
+        None = 0,
+        Lod = 1,
+        Grad = 2,
+        Project = 4
     }
 }

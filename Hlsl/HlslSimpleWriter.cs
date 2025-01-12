@@ -2,6 +2,7 @@
 using HlslDecompiler.Hlsl;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HlslDecompiler
@@ -9,6 +10,7 @@ namespace HlslDecompiler
     public class HlslSimpleWriter : HlslWriter
     {
         private int _loopVariableIndex = -1;
+        private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
 
         public HlslSimpleWriter(ShaderModel shader)
             : base(shader)
@@ -147,21 +149,21 @@ namespace HlslDecompiler
                     indent += "\t";
                     break;
                 case Opcode.IfC:
+                    string left = GetSourceNameWithoutModifier(instruction, 0);
+                    string right = GetSourceNameWithoutModifier(instruction, 1);
                     if (instruction.Comparison == IfComparison.GE &&
                         instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
                         instruction.GetSourceModifier(1) == SourceModifier.Abs &&
-                        instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0) ==
-                        instruction.GetParamRegisterName(1) + instruction.GetSourceSwizzleName(1))
+                        left == right)
                     {
-                        WriteLine("if ({0} == 0) {{", instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0));
+                        WriteLine("if ({0} == 0) {{", left);
                     }
                     else if (instruction.Comparison == IfComparison.LT &&
                         instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
                         instruction.GetSourceModifier(1) == SourceModifier.Abs &&
-                        instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0) ==
-                        instruction.GetParamRegisterName(1) + instruction.GetSourceSwizzleName(1))
+                        left == right)
                     {
-                        WriteLine("if ({0} != 0) {{", instruction.GetParamRegisterName(0) + instruction.GetSourceSwizzleName(0));
+                        WriteLine("if ({0} != 0) {{", left);
                     }
                     else
                     {
@@ -259,13 +261,13 @@ namespace HlslDecompiler
                     WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Sge:
+                    string sourceName1 = GetSourceNameWithoutModifier(instruction, 1);
+                    string sourceName2 = GetSourceNameWithoutModifier(instruction, 2);
                     if (instruction.GetSourceModifier(1) == SourceModifier.AbsAndNegate &&
                         instruction.GetSourceModifier(2) == SourceModifier.Abs &&
-                        instruction.GetParamRegisterName(1) + instruction.GetSourceSwizzleName(1) ==
-                        instruction.GetParamRegisterName(2) + instruction.GetSourceSwizzleName(2))
+                        sourceName1 == sourceName2)
                     {
-                        WriteLine("{0} = ({1} == 0) ? 1 : 0;", GetDestinationName(instruction),
-                            instruction.GetParamRegisterName(1) + instruction.GetSourceSwizzleName(1));
+                        WriteLine("{0} = ({1} == 0) ? 1 : 0;", GetDestinationName(instruction), sourceName1);
                     }
                     else
                     {
@@ -287,8 +289,17 @@ namespace HlslDecompiler
                 case Opcode.Tex:
                     if ((_shader.MajorVersion == 1 && _shader.MinorVersion >= 4) || (_shader.MajorVersion > 1))
                     {
-                        WriteLine("{0} = tex2D({2}, {1});", GetDestinationName(instruction),
-                            GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                        int samplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
+                        if (instruction.TexldControls.HasFlag(TexldControls.Project))
+                        {
+                            WriteLine("{1} = tex{0}Dproj({3}, {2});", samplerDimension, GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        }
+                        else
+                        {
+                            WriteLine("{1} = tex{0}D({3}, {2});", samplerDimension, GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, samplerDimension), GetSourceName(instruction, 2));
+                        }
                     }
                     else
                     {
@@ -296,12 +307,19 @@ namespace HlslDecompiler
                     }
                     break;
                 case Opcode.TexLDL:
-                    WriteLine("{0} = tex2Dlod({2}, {1});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    int texLdlsamplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
+                    WriteLine("{1} = tex{0}Dlod({3}, {2});", texLdlsamplerDimension, GetDestinationName(instruction),
+                        GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                     break;
                 case Opcode.TexLDD:
-                    WriteLine("{0} = tex2Dgrad({2}, {1}, {3}, {4});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3), GetSourceName(instruction, 4));
+                    int texLddSamplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
+                    WriteLine("{1} = tex{0}Dgrad({3}, {2}, {4}, {5});",
+                        texLddSamplerDimension,
+                        GetDestinationName(instruction),
+                        GetSourceName(instruction, 1, texLddSamplerDimension),
+                        GetSourceName(instruction, 2),
+                        GetSourceName(instruction, 3, texLddSamplerDimension),
+                        GetSourceName(instruction, 4, texLddSamplerDimension));
                     break;
                 case Opcode.TexKill:
                     WriteLine("clip({0});", GetDestinationName(instruction));
@@ -316,6 +334,236 @@ namespace HlslDecompiler
                 default:
                     break;
             }
+        }
+
+        private string GetDestinationName(Instruction instruction)
+        {
+            int destIndex = instruction.GetDestinationParamIndex();
+            RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
+
+            string registerName = _registers.GetRegisterName(registerKey);
+            registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
+            int registerLength = _registers.GetRegisterFullLength(registerKey);
+            string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, true);
+
+            return string.Format("{0}{1}", registerName, writeMaskName);
+        }
+
+        private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+        {
+            string source = GetSourceNameWithoutModifier(instruction, srcIndex, destinationLength);
+            return ApplyModifier(instruction.GetSourceModifier(srcIndex), source);
+        }
+
+        private string GetSourceNameWithoutModifier(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+        {
+            string sourceRegisterName;
+
+            var registerType = instruction.GetParamRegisterType(srcIndex);
+            switch (registerType)
+            {
+                case RegisterType.Const:
+                case RegisterType.Const2:
+                case RegisterType.Const3:
+                case RegisterType.Const4:
+                case RegisterType.ConstBool:
+                case RegisterType.ConstInt:
+                    string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength);
+                    if (constantValue != null)
+                    {
+                        return constantValue;
+                    }
+
+                    ParameterType parameterType;
+                    switch (registerType)
+                    {
+                        case RegisterType.Const:
+                        case RegisterType.Const2:
+                        case RegisterType.Const3:
+                        case RegisterType.Const4:
+                            parameterType = ParameterType.Float;
+                            break;
+                        case RegisterType.ConstBool:
+                            parameterType = ParameterType.Bool;
+                            break;
+                        case RegisterType.ConstInt:
+                            parameterType = ParameterType.Int;
+                            break;
+                        default:
+                            throw new NotImplementedException();
+                    }
+                    int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
+                    ConstantDeclaration decl = _registers.FindConstant(parameterType, registerNumber);
+                    if (decl == null)
+                    {
+                        // Constant register not found in def statements nor the constant table
+                        throw new NotImplementedException();
+                    }
+
+                    if ((decl.ParameterClass == ParameterClass.MatrixRows && _registers.ColumnMajorOrder) ||
+                        (decl.ParameterClass == ParameterClass.MatrixColumns && !_registers.ColumnMajorOrder))
+                    {
+                        int row = registerNumber - decl.RegisterIndex;
+                        sourceRegisterName = $"{decl.Name}[{row}]";
+                    }
+                    else if ((decl.ParameterClass == ParameterClass.MatrixColumns && _registers.ColumnMajorOrder) ||
+                        (decl.ParameterClass == ParameterClass.MatrixRows && !_registers.ColumnMajorOrder))
+                    {
+                        int column = registerNumber - decl.RegisterIndex;
+                        sourceRegisterName = $"transpose({decl.Name})[{column}]";
+                    }
+                    else
+                    {
+                        sourceRegisterName = decl.Name;
+                    }
+                    break;
+                default:
+                    RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
+                    sourceRegisterName = _registers.GetRegisterName(registerKey);
+                    break;
+            }
+
+            sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
+
+            sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
+            return sourceRegisterName + instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+        }
+
+        private static string GetRelativeAddressingName(Instruction instruction, int srcIndex)
+        {
+            if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Params.HasRelativeAddressing(srcIndex))
+            {
+                return "[i]";
+            }
+            return string.Empty;
+        }
+
+        private string GetSourceConstantValue(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+        {
+            var registerType = instruction.GetParamRegisterType(srcIndex);
+            int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
+
+            if (destinationLength == null)
+            {
+                if (instruction.HasDestination)
+                {
+                    destinationLength = instruction.GetDestinationMaskLength();
+                }
+                else
+                {
+                    if (instruction is D3D9Instruction d3D9Instruction
+                        && (d3D9Instruction.Opcode == Opcode.If || d3D9Instruction.Opcode == Opcode.IfC))
+                    {
+                        // TODO
+                    }
+                    destinationLength = 4;
+                }
+            }
+
+            switch (registerType)
+            {
+                case RegisterType.ConstBool:
+                    throw new NotImplementedException();
+                    return null;
+                case RegisterType.ConstInt:
+                    {
+                        var constantInt = _registers.ConstantIntDefinitions.FirstOrDefault(x => x.RegisterIndex == registerNumber);
+                        if (constantInt == null)
+                        {
+                            return null;
+                        }
+
+                        uint[] constant = swizzle
+                            .Take(destinationLength.Value)
+                            .Select(s => constantInt[s]).ToArray();
+
+                        switch (instruction.GetSourceModifier(srcIndex))
+                        {
+                            case SourceModifier.None:
+                                break;
+                            case SourceModifier.Negate:
+                                throw new NotImplementedException();
+                                /*
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    constant[i] = -constant[i];
+                                }
+                                break;
+                                */
+                            default:
+                                throw new NotImplementedException();
+                        }
+
+                        if (constant.Skip(1).All(c => constant[0] == c))
+                        {
+                            return constant[0].ToString(_culture);
+                        }
+                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
+                        return $"int{size}({string.Join(", ", constant)})";
+                    }
+
+                case RegisterType.Const:
+                case RegisterType.Const2:
+                case RegisterType.Const3:
+                case RegisterType.Const4:
+                    {
+                        var constantRegister = _registers.ConstantDefinitions.FirstOrDefault(x => x.RegisterIndex == registerNumber);
+                        if (constantRegister == null)
+                        {
+                            return null;
+                        }
+
+                        float[] constant = swizzle
+                            .Take(destinationLength.Value)
+                            .Select(s => constantRegister[s]).ToArray();
+
+                        switch (instruction.GetSourceModifier(srcIndex))
+                        {
+                            case SourceModifier.None:
+                                break;
+                            case SourceModifier.Negate:
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    constant[i] = -constant[i];
+                                }
+                                break;
+                            default:
+                                throw new NotImplementedException();
+                        }
+
+                        if (constant.Skip(1).All(c => constant[0] == c))
+                        {
+                            return constant[0].ToString(_culture);
+                        }
+                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
+                        return $"float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))})";
+                    }
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        private static string ApplyModifier(SourceModifier modifier, string value)
+        {
+            return modifier switch
+            {
+                SourceModifier.None => value,
+                SourceModifier.Negate => $"-{value}",
+                SourceModifier.Bias => $"{value}_bias",
+                SourceModifier.BiasAndNegate => $"-{value}_bias",
+                SourceModifier.Sign => $"{value}_bx2",
+                SourceModifier.SignAndNegate => $"-{value}_bx2",
+                SourceModifier.Complement => throw new NotImplementedException(),
+                SourceModifier.X2 => $"(2 * {value})",
+                SourceModifier.X2AndNegate => $"(-2 * {value})",
+                SourceModifier.DivideByZ => $"{value}_dz",
+                SourceModifier.DivideByW => $"{value}_dw",
+                SourceModifier.Abs => $"abs({value})",
+                SourceModifier.AbsAndNegate => $"-abs({value})",
+                SourceModifier.Not => throw new NotImplementedException(),
+                _ => throw new NotImplementedException(),
+            };
         }
     }
 }

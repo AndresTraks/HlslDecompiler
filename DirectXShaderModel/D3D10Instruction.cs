@@ -212,7 +212,7 @@ namespace HlslDecompiler.DirectXShaderModel
             throw new NotImplementedException();
         }
 
-        public override string GetSourceSwizzleName(int srcIndex)
+        public override string GetSourceSwizzleName(int srcIndex, int? destinationLength = null)
         {
             int destinationMask;
             switch (Opcode)

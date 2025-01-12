@@ -1,5 +1,5 @@
-sampler sampler0;
-sampler sampler1;
+sampler2D sampler0;
+sampler2D sampler1;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

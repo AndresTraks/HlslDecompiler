@@ -283,12 +283,13 @@ namespace HlslDecompiler.Hlsl
                 var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
                     textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
                 int dimension = samplerConstant.GetSamplerDimension();
-                string lod = textureLoad.IsLod ? "lod" : "";
-                string grad = textureLoad.IsGrad ? "grad" : "";
-                string gradParams = textureLoad.IsGrad
+                string lod = textureLoad.Controls.HasFlag(TextureLoadControls.Lod) ? "lod" : "";
+                string grad = textureLoad.Controls.HasFlag(TextureLoadControls.Grad) ? "grad" : "";
+                string gradParams = textureLoad.Controls.HasFlag(TextureLoadControls.Grad)
                     ? (", " + Compile(textureLoad.DerivativeX) + ", " + Compile(textureLoad.DerivativeY))
                     : "";
-                return $"tex{dimension}D{lod}{grad}({sampler}, {texcoords}{gradParams}){swizzle}";
+                string proj = textureLoad.Controls.HasFlag(TextureLoadControls.Project) ? "proj" : "";
+                return $"tex{dimension}D{lod}{grad}{proj}({sampler}, {texcoords}{gradParams}){swizzle}";
             }
 
             if (first is NormalizeOutputNode)

@@ -1,14 +1,15 @@
 ﻿using HlslDecompiler.Util;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
     public class AsmWriter
     {
-        ShaderModel shader;
-
-        StreamWriter asmWriter;
+        private ShaderModel shader;
+        private StreamWriter asmWriter;
+        private IDictionary<RegisterKey, int> _samplerDimensions = new Dictionary<RegisterKey, int>();
 
         public AsmWriter(ShaderModel shader)
         {
@@ -35,14 +36,11 @@ namespace HlslDecompiler.DirectXShaderModel
             return $"{registerName}{writeMaskName}";
         }
 
-        private static string GetSourceName(D3D9Instruction instruction, int srcIndex)
+        private static string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
         {
             string sourceName = instruction.GetParamRegisterName(srcIndex);
-            if (instruction.Opcode != Opcode.Loop && instruction.Opcode != Opcode.Rep)
-            {
-                sourceName += instruction.GetSourceSwizzleName(srcIndex);
-                sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
-            }
+            sourceName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+            sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
             return sourceName;
         }
 
@@ -132,6 +130,22 @@ namespace HlslDecompiler.DirectXShaderModel
                         dclInstruction += "_" + instruction.GetDeclSemantic().ToLower();
                     }
                     WriteLine("{0} {1}", dclInstruction, GetDestinationName(instruction));
+                    if (instruction.GetParamRegisterType(1) == RegisterType.Sampler)
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(1);
+                        switch (instruction.GetDeclSamplerTextureType())
+                        {
+                            case SamplerTextureType.TwoD:
+                                _samplerDimensions[registerKey] = 2;
+                                break;
+                            case SamplerTextureType.Cube:
+                            case SamplerTextureType.Volume:
+                                _samplerDimensions[registerKey] = 3;
+                                break;
+                            default:
+                                throw new NotImplementedException();
+                        }
+                    }
                     break;
                 case Opcode.Def:
                     {
@@ -280,8 +294,17 @@ namespace HlslDecompiler.DirectXShaderModel
                 case Opcode.Tex:
                     if ((shader.MajorVersion == 1 && shader.MinorVersion >= 4) || (shader.MajorVersion > 1))
                     {
-                        WriteLine("texld {0}, {1}, {2}", GetDestinationName(instruction),
-                            GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                        if (instruction.TexldControls.HasFlag(TexldControls.Project))
+                        {
+                            WriteLine("texldp {0}, {1}, {2}", GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        }
+                        else
+                        {
+                            int texldSamplerDimension = _samplerDimensions[instruction.GetParamRegisterKey(2)];
+                            WriteLine("texld {0}, {1}, {2}", GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, texldSamplerDimension), GetSourceName(instruction, 2));
+                        }
                     }
                     else
                     {
@@ -290,11 +313,16 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case Opcode.TexLDL:
                     WriteLine("texldl {0}, {1}, {2}", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                        GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                     break;
                 case Opcode.TexLDD:
-                    WriteLine("texldd {0}, {1}, {2}, {3}, {4}", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3), GetSourceName(instruction, 4));
+                    int samplerDimension = _samplerDimensions[instruction.GetParamRegisterKey(2)];
+                    WriteLine("texldd {0}, {1}, {2}, {3}, {4}",
+                        GetDestinationName(instruction),
+                        GetSourceName(instruction, 1, samplerDimension),
+                        GetSourceName(instruction, 2),
+                        GetSourceName(instruction, 3, samplerDimension),
+                        GetSourceName(instruction, 4, samplerDimension));
                     break;
                 case Opcode.TexKill:
                     WriteLine("texkill {0}", GetDestinationName(instruction));

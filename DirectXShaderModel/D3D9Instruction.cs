@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
@@ -10,7 +9,9 @@ namespace HlslDecompiler.DirectXShaderModel
     // 10000000 predicated
     // 0F000000 instruction length
     // 07FF0000 instruction length for comment
-    // 00FF0000 opcode specific control (00070000 comparison)
+    // 00FF0000 opcode specific control
+    // 00070000 comparison
+    // 00030000 texld controls
     // 0000FFFF shader instruction opcode
 
     // Destination parameter
@@ -61,6 +62,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public Opcode Opcode => (Opcode)(InstructionToken & 0xffff);
         public IfComparison Comparison => (IfComparison)((InstructionToken >> 16) & 7);
+        public TexldControls TexldControls => (TexldControls)((InstructionToken >> 16) & 3);
         public bool Predicated => (InstructionToken & 0x10000000) != 0;
 
         public override bool HasDestination => Opcode.HasDestination();
@@ -139,7 +141,7 @@ namespace HlslDecompiler.DirectXShaderModel
         }
 
         // For sampler declarations
-        private SamplerTextureType GetDeclSamplerTextureType()
+        public SamplerTextureType GetDeclSamplerTextureType()
         {
             return (SamplerTextureType)((Params[0] >> 27) & 0xF);
         }
@@ -167,37 +169,50 @@ namespace HlslDecompiler.DirectXShaderModel
             return (int)((Params[srcIndex] >> 16) & 0xFF);
         }
 
-        public override string GetSourceSwizzleName(int srcIndex)
+        public override string GetSourceSwizzleName(int srcIndex, int? destinationLength = null)
         {
             if (GetParamRegisterType(srcIndex) == RegisterType.MiscType && GetParamRegisterNumber(srcIndex) == 1) // VFACE
             {
                 return "";
             }
 
-            int registerSize = 4;
-            int destinationMask;
-            switch (Opcode)
+            if (Opcode == Opcode.Loop || Opcode == Opcode.Rep)
             {
-                case Opcode.DP2Add:
+                return "";
+            }
+
+            int destinationMask;
+            switch (destinationLength)
+            {
+                case 1:
+                    destinationMask = 1;
+                    break;
+                case 2:
                     destinationMask = 3;
                     break;
-                case Opcode.Dp3:
+                case 3:
                     destinationMask = 7;
                     break;
-                case Opcode.Dp4:
+                case 4:
                     destinationMask = 15;
                     break;
-                case Opcode.TexLDD:
-                    if (srcIndex == 3 || srcIndex == 4)
+                default:
+                    if (Opcode == Opcode.DP2Add)
                     {
                         destinationMask = 3;
-                        registerSize = 2;
-                        break;
                     }
-                    destinationMask = GetDestinationWriteMask();
-                    break;
-                default:
-                    destinationMask = HasDestination ? GetDestinationWriteMask() : 15;
+                    else if (Opcode == Opcode.Dp3)
+                    {
+                        destinationMask = 7;
+                    }
+                    else if (Opcode == Opcode.Dp4 || Opcode == Opcode.IfC)
+                    {
+                        destinationMask = 15;
+                    }
+                    else
+                    {
+                        destinationMask = GetDestinationWriteMask();
+                    }
                     break;
             }
 
@@ -208,30 +223,14 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 if ((destinationMask & (1 << i)) != 0)
                 {
-                    switch (swizzle[i])
-                    {
-                        case 0:
-                            swizzleName += "x";
-                            break;
-                        case 1:
-                            swizzleName += "y";
-                            break;
-                        case 2:
-                            swizzleName += "z";
-                            break;
-                        case 3:
-                            swizzleName += "w";
-                            break;
-                    }
+                    swizzleName += "xyzw"[swizzle[i]];
                 }
             }
 
-            if (swizzleName.Equals("xyzw".Substring(0, registerSize)))
-            {
-                return "";
-            }
             switch (swizzleName)
             {
+                case "xyzw":
+                    return "";
                 case "xxxx":
                     return ".x";
                 case "yyyy":
@@ -397,5 +396,13 @@ namespace HlslDecompiler.DirectXShaderModel
         NE,
         LE,
         Reserved
+    }
+
+    [Flags]
+    public enum TexldControls
+    {
+        None = 0,
+        Project = 1,
+        Bias = 2
     }
 }

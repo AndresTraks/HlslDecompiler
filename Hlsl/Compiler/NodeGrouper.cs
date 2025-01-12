@@ -139,6 +139,14 @@ namespace HlslDecompiler.Hlsl
                     && comparison1.Comparison == comparison2.Comparison;
             }
 
+            if (node1 is TextureLoadOutputNode textureload1 && node2 is TextureLoadOutputNode textureload2)
+            {
+                if (textureload1.Controls != textureload2.Controls)
+                {
+                    return false;
+                }
+            }
+
             if (node1 is IHasComponentIndex ||
                 node1 is GroupNode ||
                 node1 is Operation)

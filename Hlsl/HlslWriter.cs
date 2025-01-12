@@ -41,20 +41,6 @@ namespace HlslDecompiler
             hlslWriter.WriteLine(format, args);
         }
 
-        protected string GetDestinationName(Instruction instruction)
-        {
-            return _registers.GetDestinationName(instruction);
-        }
-
-        protected string GetSourceName(Instruction instruction, int srcIndex)
-        {
-            if (instruction is D3D10Instruction)
-            {
-                throw new NotImplementedException();
-            }
-            return _registers.GetSourceName(instruction as D3D9Instruction, srcIndex);
-        }
-
         private static string GetConstantTypeName(ConstantDeclaration declaration)
         {
             switch (declaration.ParameterClass)
@@ -84,8 +70,9 @@ namespace HlslDecompiler
                     switch (declaration.ParameterType)
                     {
                         case ParameterType.Sampler2D:
+                            return "sampler2D";
                         case ParameterType.Sampler3D:
-                            return "sampler";
+                            return "sampler3D";
 
                         case ParameterType.SamplerCube:
                             return "samplerCUBE";

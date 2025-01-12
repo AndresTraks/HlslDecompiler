@@ -299,6 +299,11 @@ namespace HlslDecompiler.DirectXShaderModel
                             WriteLine("texldp {0}, {1}, {2}", GetDestinationName(instruction),
                                 GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                         }
+                        else if (instruction.TexldControls.HasFlag(TexldControls.Bias))
+                        {
+                            WriteLine("texldb {0}, {1}, {2}", GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        }
                         else
                         {
                             int texldSamplerDimension = _samplerDimensions[instruction.GetParamRegisterKey(2)];

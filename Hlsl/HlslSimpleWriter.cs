@@ -289,15 +289,22 @@ namespace HlslDecompiler
                 case Opcode.Tex:
                     if ((_shader.MajorVersion == 1 && _shader.MinorVersion >= 4) || (_shader.MajorVersion > 1))
                     {
-                        int samplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
+                        ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
+                        int samplerDimension = sampler.GetSamplerDimension();
+                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
                         if (instruction.TexldControls.HasFlag(TexldControls.Project))
                         {
-                            WriteLine("{1} = tex{0}Dproj({3}, {2});", samplerDimension, GetDestinationName(instruction),
+                            WriteLine("{1} = tex{0}proj({3}, {2});", samplerType, GetDestinationName(instruction),
+                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        }
+                        else if (instruction.TexldControls.HasFlag(TexldControls.Bias))
+                        {
+                            WriteLine("{1} = tex{0}bias({3}, {2});", samplerType, GetDestinationName(instruction),
                                 GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                         }
                         else
                         {
-                            WriteLine("{1} = tex{0}D({3}, {2});", samplerDimension, GetDestinationName(instruction),
+                            WriteLine("{1} = tex{0}({3}, {2});", samplerType, GetDestinationName(instruction),
                                 GetSourceName(instruction, 1, samplerDimension), GetSourceName(instruction, 2));
                         }
                     }
@@ -307,20 +314,28 @@ namespace HlslDecompiler
                     }
                     break;
                 case Opcode.TexLDL:
-                    int texLdlsamplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
-                    WriteLine("{1} = tex{0}Dlod({3}, {2});", texLdlsamplerDimension, GetDestinationName(instruction),
-                        GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
-                    break;
+                    {
+                        ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
+                        int samplerDimension = sampler.GetSamplerDimension();
+                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
+                        WriteLine("{1} = tex{0}lod({3}, {2});", samplerType, GetDestinationName(instruction),
+                            GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        break;
+                    }
                 case Opcode.TexLDD:
-                    int texLddSamplerDimension = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2)).GetSamplerDimension();
-                    WriteLine("{1} = tex{0}Dgrad({3}, {2}, {4}, {5});",
-                        texLddSamplerDimension,
-                        GetDestinationName(instruction),
-                        GetSourceName(instruction, 1, texLddSamplerDimension),
-                        GetSourceName(instruction, 2),
-                        GetSourceName(instruction, 3, texLddSamplerDimension),
-                        GetSourceName(instruction, 4, texLddSamplerDimension));
-                    break;
+                    {
+                        ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
+                        int samplerDimension = sampler.GetSamplerDimension();
+                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
+                        WriteLine("{1} = tex{0}grad({3}, {2}, {4}, {5});",
+                            samplerType,
+                            GetDestinationName(instruction),
+                            GetSourceName(instruction, 1, samplerDimension),
+                            GetSourceName(instruction, 2),
+                            GetSourceName(instruction, 3, samplerDimension),
+                            GetSourceName(instruction, 4, samplerDimension));
+                        break;
+                    }
                 case Opcode.TexKill:
                     WriteLine("clip({0});", GetDestinationName(instruction));
                     break;

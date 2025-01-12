@@ -69,11 +69,12 @@ namespace HlslDecompiler
                 case ParameterClass.Object:
                     switch (declaration.ParameterType)
                     {
+                        case ParameterType.Sampler1D:
+                            return "sampler1D";
                         case ParameterType.Sampler2D:
                             return "sampler2D";
                         case ParameterType.Sampler3D:
                             return "sampler3D";
-
                         case ParameterType.SamplerCube:
                             return "samplerCUBE";
                         default:

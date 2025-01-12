@@ -282,14 +282,17 @@ namespace HlslDecompiler.Hlsl
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs);
                 var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
                     textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
-                int dimension = samplerConstant.GetSamplerDimension();
+                string samplerType = samplerConstant.ParameterType == ParameterType.SamplerCube
+                    ? "CUBE"
+                    : (samplerConstant.GetSamplerDimension() + "D");
+                string bias = textureLoad.Controls.HasFlag(TextureLoadControls.Bias) ? "bias" : "";
                 string lod = textureLoad.Controls.HasFlag(TextureLoadControls.Lod) ? "lod" : "";
                 string grad = textureLoad.Controls.HasFlag(TextureLoadControls.Grad) ? "grad" : "";
                 string gradParams = textureLoad.Controls.HasFlag(TextureLoadControls.Grad)
                     ? (", " + Compile(textureLoad.DerivativeX) + ", " + Compile(textureLoad.DerivativeY))
                     : "";
                 string proj = textureLoad.Controls.HasFlag(TextureLoadControls.Project) ? "proj" : "";
-                return $"tex{dimension}D{lod}{grad}{proj}({sampler}, {texcoords}{gradParams}){swizzle}";
+                return $"tex{samplerType}{bias}{lod}{grad}{proj}({sampler}, {texcoords}{gradParams}){swizzle}";
             }
 
             if (first is NormalizeOutputNode)

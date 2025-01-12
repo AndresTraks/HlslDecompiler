@@ -24,6 +24,14 @@ namespace HlslDecompiler.Hlsl
             return new TextureLoadOutputNode(sampler, textureCoords, componentIndex);
         }
 
+        public static TextureLoadOutputNode CreateBias(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
+        {
+            return new TextureLoadOutputNode(sampler, textureCoords, componentIndex)
+            {
+                Controls = TextureLoadControls.Bias
+            };
+        }
+
         public static TextureLoadOutputNode CreateLod(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex)
         {
             return new TextureLoadOutputNode(sampler, textureCoords, componentIndex)
@@ -70,8 +78,9 @@ namespace HlslDecompiler.Hlsl
     public enum TextureLoadControls
     {
         None = 0,
-        Lod = 1,
-        Grad = 2,
-        Project = 4
+        Bias = 1,
+        Lod = 2,
+        Grad = 4,
+        Project = 8
     }
 }

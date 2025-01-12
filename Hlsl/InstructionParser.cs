@@ -720,6 +720,7 @@ namespace HlslDecompiler.Hlsl
             const int TextureCoordsParamIndex = 1;
             const int SamplerParamIndex = 2;
 
+            bool isBias = false;
             bool isLod = false;
             bool isGrad = false;
             bool isProj = false;
@@ -728,6 +729,7 @@ namespace HlslDecompiler.Hlsl
                 if (d3D9Instruction.Opcode == Opcode.Tex)
                 {
                     isProj = d3D9Instruction.TexldControls.HasFlag(TexldControls.Project);
+                    isBias = d3D9Instruction.TexldControls.HasFlag(TexldControls.Bias);
                 }
                 else if (d3D9Instruction.Opcode == Opcode.TexLDL)
                 {
@@ -741,10 +743,14 @@ namespace HlslDecompiler.Hlsl
 
             var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
             var samplerConstant = _registerState.FindConstant(RegisterSet.Sampler, sampler.RegisterComponentKey.RegisterKey.Number);
-            int numSamplerOutputComponents = (isLod ||  isProj) ? 4 : samplerConstant.GetSamplerDimension();
+            int numSamplerOutputComponents = (isBias || isLod ||  isProj) ? 4 : samplerConstant.GetSamplerDimension();
 
             HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, numSamplerOutputComponents);
 
+            if (isBias)
+            {
+                return TextureLoadOutputNode.CreateBias(sampler, texCoords, outputComponent);
+            }
             if (isGrad)
             {
                 HlslTreeNode[] ddx = GetInputComponents(instruction, 3, numSamplerOutputComponents);

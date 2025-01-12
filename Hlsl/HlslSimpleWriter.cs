@@ -235,7 +235,7 @@ namespace HlslDecompiler
                 case Opcode.Rep:
                     ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(0));
                     _loopVariableIndex++;
-                    WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex);
+                    WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex++);
                     indent += "\t";
                     break;
                 case Opcode.Rsq:

@@ -149,50 +149,31 @@ namespace HlslDecompiler
                     indent += "\t";
                     break;
                 case Opcode.IfC:
-                    string left = GetSourceNameWithoutModifier(instruction, 0);
-                    string right = GetSourceNameWithoutModifier(instruction, 1);
-                    if (instruction.Comparison == IfComparison.GE &&
-                        instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
-                        instruction.GetSourceModifier(1) == SourceModifier.Abs &&
-                        left == right)
+                    string ifComparison;
+                    switch (instruction.Comparison)
                     {
-                        WriteLine("if ({0} == 0) {{", left);
+                        case IfComparison.GT:
+                            ifComparison = ">";
+                            break;
+                        case IfComparison.EQ:
+                            ifComparison = "==";
+                            break;
+                        case IfComparison.GE:
+                            ifComparison = ">=";
+                            break;
+                        case IfComparison.LE:
+                            ifComparison = "<=";
+                            break;
+                        case IfComparison.NE:
+                            ifComparison = "!=";
+                            break;
+                        case IfComparison.LT:
+                            ifComparison = "<";
+                            break;
+                        default:
+                            throw new InvalidOperationException();
                     }
-                    else if (instruction.Comparison == IfComparison.LT &&
-                        instruction.GetSourceModifier(0) == SourceModifier.AbsAndNegate &&
-                        instruction.GetSourceModifier(1) == SourceModifier.Abs &&
-                        left == right)
-                    {
-                        WriteLine("if ({0} != 0) {{", left);
-                    }
-                    else
-                    {
-                        string ifComparison;
-                        switch (instruction.Comparison)
-                        {
-                            case IfComparison.GT:
-                                ifComparison = ">";
-                                break;
-                            case IfComparison.EQ:
-                                ifComparison = "==";
-                                break;
-                            case IfComparison.GE:
-                                ifComparison = ">=";
-                                break;
-                            case IfComparison.LE:
-                                ifComparison = "<=";
-                                break;
-                            case IfComparison.NE:
-                                ifComparison = "!=";
-                                break;
-                            case IfComparison.LT:
-                                ifComparison = "<";
-                                break;
-                            default:
-                                throw new InvalidOperationException();
-                        }
-                        WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparison);
-                    }
+                    WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparison);
                     indent += "\t";
                     break;
                 case Opcode.Log:
@@ -261,19 +242,8 @@ namespace HlslDecompiler
                     WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Sge:
-                    string sourceName1 = GetSourceNameWithoutModifier(instruction, 1);
-                    string sourceName2 = GetSourceNameWithoutModifier(instruction, 2);
-                    if (instruction.GetSourceModifier(1) == SourceModifier.AbsAndNegate &&
-                        instruction.GetSourceModifier(2) == SourceModifier.Abs &&
-                        sourceName1 == sourceName2)
-                    {
-                        WriteLine("{0} = ({1} == 0) ? 1 : 0;", GetDestinationName(instruction), sourceName1);
-                    }
-                    else
-                    {
-                        WriteLine("{0} = ({1} >= {2}) ? 1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1),
-                            GetSourceName(instruction, 2));
-                    }
+                    WriteLine("{0} = ({1} >= {2}) ? 1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1),
+                        GetSourceName(instruction, 2));
                     break;
                 case Opcode.Slt:
                     WriteLine("{0} = ({1} < {2}) ? 1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1),
@@ -366,12 +336,6 @@ namespace HlslDecompiler
 
         private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
         {
-            string source = GetSourceNameWithoutModifier(instruction, srcIndex, destinationLength);
-            return ApplyModifier(instruction.GetSourceModifier(srcIndex), source);
-        }
-
-        private string GetSourceNameWithoutModifier(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
-        {
             string sourceRegisterName;
 
             var registerType = instruction.GetParamRegisterType(srcIndex);
@@ -441,7 +405,8 @@ namespace HlslDecompiler
             sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
 
             sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
-            return sourceRegisterName + instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+            sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+            return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
         }
 
         private static string GetRelativeAddressingName(Instruction instruction, int srcIndex)

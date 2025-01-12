@@ -205,7 +205,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     {
                         destinationMask = 7;
                     }
-                    else if (Opcode == Opcode.Dp4 || Opcode == Opcode.IfC)
+                    else if (Opcode == Opcode.Dp4 || Opcode == Opcode.IfC || Opcode == Opcode.BreakC)
                     {
                         destinationMask = 15;
                     }

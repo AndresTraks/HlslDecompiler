@@ -104,7 +104,31 @@ namespace HlslDecompiler
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case Opcode.BreakC:
-                    WriteLine("break;");
+                    string ifComparisonBreak;
+                    switch (instruction.Comparison)
+                    {
+                        case IfComparison.GT:
+                            ifComparisonBreak = ">";
+                            break;
+                        case IfComparison.EQ:
+                            ifComparisonBreak = "==";
+                            break;
+                        case IfComparison.GE:
+                            ifComparisonBreak = ">=";
+                            break;
+                        case IfComparison.LE:
+                            ifComparisonBreak = "<=";
+                            break;
+                        case IfComparison.NE:
+                            ifComparisonBreak = "!=";
+                            break;
+                        case IfComparison.LT:
+                            ifComparisonBreak = "<";
+                            break;
+                        default:
+                            throw new InvalidOperationException();
+                    }
+                    WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparisonBreak);
                     break;
                 case Opcode.Cmp:
                     // TODO: should be per-component

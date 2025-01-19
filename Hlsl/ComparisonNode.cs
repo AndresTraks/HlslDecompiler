@@ -5,10 +5,10 @@ namespace HlslDecompiler.Hlsl
 {
     public class ComparisonNode : HlslTreeNode
     {
-        public ComparisonNode(HlslTreeNode factor1, HlslTreeNode factor2, IfComparison comparison)
+        public ComparisonNode(HlslTreeNode left, HlslTreeNode right, IfComparison comparison)
         {
-            AddInput(factor1);
-            AddInput(factor2);
+            AddInput(left);
+            AddInput(right);
             Comparison = comparison;
         }
 

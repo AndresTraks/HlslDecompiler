@@ -101,7 +101,7 @@ namespace HlslDecompiler.Hlsl
             }
             else
             {
-                string comparison = _compiler.Compile(breakStatement.Comparison);
+                string comparison = _compiler.Compile(Reduce(breakStatement.Comparison));
                 WriteLine($"if ({comparison}) {{");
                 indent += "\t";
                 WriteLine("break;");
@@ -114,7 +114,7 @@ namespace HlslDecompiler.Hlsl
         {
             WriteTempVariableAssignments(ifStatement.Closure);
 
-            string comparison = _compiler.Compile(ifStatement.Comparison);
+            string comparison = _compiler.Compile(Reduce(ifStatement.Comparison));
             WriteLine($"if ({comparison}) {{");
             indent += "\t";
             WriteStatement(ifStatement.TrueBody);

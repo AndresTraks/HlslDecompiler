@@ -467,6 +467,9 @@
     <None Update="ShaderSources\ps_3_0\if.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderSources\ps_3_0\loop_nested.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderSources\ps_3_0\tex1d.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

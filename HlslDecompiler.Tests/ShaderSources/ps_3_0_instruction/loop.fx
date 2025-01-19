@@ -10,7 +10,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r1.x = 3;
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r1.x < count.x) {
-			break;
+			if (1 != -1) break;
 		}
 		r0 = r0 + texcoord;
 		r1.x = r1.x + 1;

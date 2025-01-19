@@ -1,4 +1,4 @@
-float count;
+sampler2D sampler0;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
@@ -6,14 +6,17 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 
 	float4 r0;
 	float4 r1;
-	float4 r2;
-	r0 = float4(1, 2, 3, 4) + abs(texcoord);
-	r1.x = max(count.x, texcoord.x);
-	r1.x = -r1.x + texcoord.y;
-	r0 = (r1.x >= 0) ? float4(1, 2, 3, 4) : r0;
-	r2 = float4(2, 3, 4, 5) * texcoord;
-	r1 = (r1.x >= 0) ? float4(2, 3, 4, 5) : r2;
-	o = r0 + r1;
+	if (-texcoord.y < 0) {
+		r0 = tex2Dlod(sampler0, texcoord);
+	} else {
+		r0 = float4(1, 0, 3, 4);
+	}
+	if (-texcoord.x >= 0) {
+		r1 = tex2D(sampler0, texcoord.xy);
+		o = r0 + r1;
+	} else {
+		o = r0 + float4(1, 0, 3, 4);
+	}
 
 	return o;
 }

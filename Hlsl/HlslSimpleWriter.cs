@@ -522,6 +522,8 @@ namespace HlslDecompiler
                             .Take(destinationLength.Value)
                             .Select(s => constantRegister[s]).ToArray();
 
+                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
+
                         switch (instruction.GetSourceModifier(srcIndex))
                         {
                             case SourceModifier.None:
@@ -532,6 +534,18 @@ namespace HlslDecompiler
                                     constant[i] = -constant[i];
                                 }
                                 break;
+                            case SourceModifier.Abs:
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    return $"abs(float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))}))";
+                                }
+                                break;
+                            case SourceModifier.AbsAndNegate:
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    return $"-abs(float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))}))";
+                                }
+                                break;
                             default:
                                 throw new NotImplementedException();
                         }
@@ -540,7 +554,6 @@ namespace HlslDecompiler
                         {
                             return constant[0].ToString(_culture);
                         }
-                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
                         return $"float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))})";
                     }
                 default:

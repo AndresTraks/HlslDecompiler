@@ -269,6 +269,10 @@ namespace HlslDecompiler.Hlsl
             {
                 InsertIfStatement(instruction);
             }
+            else if (instruction.Opcode == Opcode.Else)
+            {
+                SwitchToElseBranch();
+            }
             else if (instruction.Opcode == Opcode.Endif)
             {
                 EndIf(instruction);
@@ -392,6 +396,18 @@ namespace HlslDecompiler.Hlsl
             _currentStatements.Push(ifStatement.TrueBody);
         }
 
+        private void SwitchToElseBranch()
+        {
+            Closure closure = GetCurrentClosure();
+
+            _currentStatements.Pop();
+            IfStatement ifStatement = _currentStatements.Peek() as IfStatement;
+            _activeOutputs = ifStatement.Closure.Outputs;
+            ifStatement.TrueEndClosure = closure;
+            ifStatement.FalseBody = new StatementSequence(ifStatement.Closure);
+            _currentStatements.Push(ifStatement.FalseBody);
+        }
+
         private void EndIf(D3D9Instruction instruction)
         {
             Closure closure = GetCurrentClosure();
@@ -401,7 +417,14 @@ namespace HlslDecompiler.Hlsl
             while ((ifStatement = _currentStatements.Pop() as IfStatement) == null)
             {
             }
-            ifStatement.EndClosure = closure;
+            if (ifStatement.FalseBody != null)
+            {
+                ifStatement.FalseEndClosure = closure;
+            }
+            else
+            {
+                ifStatement.TrueEndClosure = closure;
+            }
         }
 
         private void InsertReturnStatement()

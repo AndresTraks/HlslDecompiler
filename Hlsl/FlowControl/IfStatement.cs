@@ -14,6 +14,8 @@
         public HlslTreeNode Comparison { get; }
         
         public StatementSequence TrueBody { get; }
-        public Closure EndClosure { get; set; }
+        public StatementSequence FalseBody { get; set; }
+        public Closure TrueEndClosure { get; set; }
+        public Closure FalseEndClosure { get; set; }
     }
 }

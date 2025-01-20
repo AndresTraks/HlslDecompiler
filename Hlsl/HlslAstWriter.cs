@@ -118,9 +118,21 @@ namespace HlslDecompiler.Hlsl
             WriteLine($"if ({comparison}) {{");
             indent += "\t";
             WriteStatement(ifStatement.TrueBody);
-            WriteTempVariableAssignments(ifStatement.EndClosure);
+            WriteTempVariableAssignments(ifStatement.TrueEndClosure);
             indent = indent.Substring(0, indent.Length - 1);
-            WriteLine("}");
+            if (ifStatement.FalseBody != null)
+            {
+                WriteLine("} else {");
+                indent += "\t";
+                WriteStatement(ifStatement.FalseBody);
+                WriteTempVariableAssignments(ifStatement.FalseEndClosure);
+                indent = indent.Substring(0, indent.Length - 1);
+                WriteLine("}");
+            }
+            else
+            {
+                WriteLine("}");
+            }
         }
 
         private void WriteReturnStatement(ReturnStatement returnStatement)

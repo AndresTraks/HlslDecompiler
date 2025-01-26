@@ -353,7 +353,7 @@ namespace HlslDecompiler
             string registerName = _registers.GetRegisterName(registerKey);
             registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
             int registerLength = _registers.GetRegisterFullLength(registerKey);
-            string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength, true);
+            string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength);
 
             return string.Format("{0}{1}", registerName, writeMaskName);
         }
@@ -452,7 +452,15 @@ namespace HlslDecompiler
             {
                 if (instruction.HasDestination)
                 {
-                    destinationLength = instruction.GetDestinationMaskLength();
+                    int writeMask = instruction.GetDestinationWriteMask();
+                    destinationLength = 0;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if ((writeMask & (1 << i)) != 0)
+                        {
+                            destinationLength++;
+                        }
+                    }
                 }
                 else
                 {

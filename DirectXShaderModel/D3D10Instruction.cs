@@ -275,7 +275,7 @@ namespace HlslDecompiler.DirectXShaderModel
         public override string GetDeclSemantic()
         {
             string name;
-            switch (GetOperandType(0))
+            switch (GetOperandType(GetDestinationParamIndex()))
             {
                 case OperandType.Input:
                     name = "SV_Position";
@@ -292,6 +292,15 @@ namespace HlslDecompiler.DirectXShaderModel
                 name += declIndex;
             }
             return name;
+        }
+
+        public override int GetDestinationSemanticSize()
+        {
+            if (GetOperandType(GetDestinationParamIndex()) == OperandType.OutputDepth)
+            {
+                return 1;
+            }
+            return 4;
         }
 
         private byte[] GetOperandValueBytes(int index, int componentIndex)

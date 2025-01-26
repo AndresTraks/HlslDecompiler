@@ -21,18 +21,12 @@
 
         public abstract int GetDestinationWriteMask();
 
-        public string GetDestinationWriteMaskName(int destinationLength, bool hlsl)
+        public string GetDestinationWriteMaskName(int destinationLength)
         {
-            int writeMask = GetDestinationWriteMask();
-            int writeMaskLength = GetDestinationMaskLength();
+            int destinationMask = (1 << destinationLength) - 1;
+            int writeMask = GetDestinationWriteMask() & destinationMask;
 
-            if (!hlsl)
-            {
-                destinationLength = 4; // explicit mask in assembly
-            }
-
-            // Check if mask is the same length and of the form .xyzw
-            if (writeMaskLength == destinationLength && writeMask == ((1 << writeMaskLength) - 1))
+            if (writeMask == destinationMask)
             {
                 return "";
             }
@@ -77,5 +71,7 @@
         public abstract string GetSourceSwizzleName(int srcIndex, int? destinationLength);
 
         public abstract string GetDeclSemantic();
+
+        public abstract int GetDestinationSemanticSize();
     }
 }

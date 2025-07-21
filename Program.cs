@@ -42,7 +42,7 @@ namespace HlslDecompiler
             }
         }
 
-        private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis, bool PrintToConsole)
+        private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis, bool printToConsole)
         {
             using (var input = new ShaderReader(inputStream, true))
             {
@@ -50,7 +50,7 @@ namespace HlslDecompiler
 
                 AsmWriter writer = new AsmWriter(shader);
                 string asmFilename = $"{baseFilename}.asm";
-                if (!PrintToConsole)
+                if (!printToConsole)
                 {
                     Console.WriteLine("Writing {0}", asmFilename);
                     writer.Write(asmFilename);
@@ -58,7 +58,7 @@ namespace HlslDecompiler
 
                 var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
                 string hlslFilename = $"{baseFilename}.fx";
-                if (PrintToConsole)
+                if (printToConsole)
                 {
                     hlslWriter.Write(Console.Out);
                 }

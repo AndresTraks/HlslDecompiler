@@ -26,12 +26,12 @@ namespace HlslDecompiler
 
         protected void WriteLine()
         {
-            hlslWriter.WriteLine(indent);
+            hlslWriter.WriteLine();
         }
 
         protected void WriteLine(TextWriter writer)
         {
-            writer.WriteLine(indent);
+            writer.WriteLine();
         }
 
         protected void WriteLine(TextWriter writer, string value)

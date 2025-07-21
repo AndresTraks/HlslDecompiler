@@ -25,7 +25,7 @@ namespace HlslDecompiler
                 switch (format)
                 {
                     case ShaderFileFormat.ShaderModel3:
-                        ReadShaderModel(baseFilename, inputStream, options.DoAstAnalysis);
+                        ReadShaderModel(baseFilename, inputStream, options.DoAstAnalysis, options.PrintToConsole);
                         break;
                     case ShaderFileFormat.Rgxa:
                         ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
@@ -36,10 +36,13 @@ namespace HlslDecompiler
                 }
             }
 
-            Console.WriteLine("Finished.");
+            if (!options.PrintToConsole)
+            {
+                Console.WriteLine("Finished.");
+            }
         }
 
-        private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis)
+        private static void ReadShaderModel(string baseFilename, FileStream inputStream, bool doAstAnalysis, bool PrintToConsole)
         {
             using (var input = new ShaderReader(inputStream, true))
             {
@@ -47,13 +50,23 @@ namespace HlslDecompiler
 
                 AsmWriter writer = new AsmWriter(shader);
                 string asmFilename = $"{baseFilename}.asm";
-                Console.WriteLine("Writing {0}", asmFilename);
-                writer.Write(asmFilename);
+                if (!PrintToConsole)
+                {
+                    Console.WriteLine("Writing {0}", asmFilename);
+                    writer.Write(asmFilename);
+                }
 
                 var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
                 string hlslFilename = $"{baseFilename}.fx";
-                Console.WriteLine("Writing {0}", hlslFilename);
-                hlslWriter.Write(hlslFilename);
+                if (PrintToConsole)
+                {
+                    hlslWriter.Write(Console.Out);
+                }
+                else
+                {
+                    Console.WriteLine("Writing {0}", hlslFilename);
+                    hlslWriter.Write(hlslFilename);
+                }
             }
         }
 

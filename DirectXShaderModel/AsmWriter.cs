@@ -420,23 +420,28 @@ namespace HlslDecompiler.DirectXShaderModel
             }
         }
 
-        private static string GetModifier(D3D9Instruction instruction)
-        {
-            ResultModifier resultModifier = instruction.GetDestinationResultModifier();
-            switch (resultModifier)
-            {
-                case ResultModifier.None:
-                    return string.Empty;
-                case ResultModifier.Centroid:
-                    return "_centroid";
-                case ResultModifier.PartialPrecision:
-                    return "_pp";
-                case ResultModifier.Saturate:
-                    return "_sat";
-                default:
-                    throw new NotSupportedException("Not supported result modifier " + resultModifier);
-            }
-        }
+		private static string GetModifier(D3D9Instruction instruction)
+		{
+			string result = "";
+			var modifier = instruction.GetDestinationResultModifier();
+			if((modifier & (ResultModifier.Saturate)) != 0)
+			{
+				result += "_sat";
+			}
+			if((modifier & (ResultModifier.PartialPrecision)) != 0)
+			{
+				result += "_pp";
+			}
+			if((modifier & (ResultModifier.Centroid)) != 0)
+			{
+				result += "_centroid";
+			}
+			if((modifier & (ResultModifier.Saturate)) != 0 & ((modifier & (ResultModifier.PartialPrecision)) != 0))
+			{
+				result += "sat_pp";
+			}
+			return result;
+		}
 
         private static string ApplyModifier(D3D10OperandModifier modifier, string value)
         {

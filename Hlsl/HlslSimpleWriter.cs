@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.IO;
 
 namespace HlslDecompiler
 {
@@ -17,25 +18,25 @@ namespace HlslDecompiler
         {
         }
 
-        protected override void WriteMethodBody()
+        protected override void WriteMethodBody(TextWriter writer)
         {
-            WriteLine("{0} o;", GetMethodReturnType());
-            WriteLine();
+            WriteLine(writer, "{0} o;", GetMethodReturnType());
+            WriteLine(writer);
 
-            WriteTemporaryVariableDeclarations();
+            WriteTemporaryVariableDeclarations(writer);
             foreach (Instruction instruction in _shader.Instructions)
             {
                 if (instruction is D3D9Instruction d9Instruction)
                 {
-                    WriteInstruction(d9Instruction);
+                    WriteInstruction(writer, d9Instruction);
                 }
             }
 
-            WriteLine();
-            WriteLine("return o;");
+            WriteLine(writer);
+            WriteLine(writer, "return o;");
         }
 
-        private void WriteTemporaryVariableDeclarations()
+        private void WriteTemporaryVariableDeclarations(TextWriter writer)
         {
             Dictionary<string, int> tempRegisters = FindTemporaryRegisterAssignments();
 
@@ -63,7 +64,7 @@ namespace HlslDecompiler
                         break;
                         //throw new NotImplementedException();
                 }
-                WriteLine("{0} {1};", writeMaskName, registerName);
+                WriteLine(writer, "{0} {1};", writeMaskName, registerName);
             }
         }
 
@@ -91,17 +92,37 @@ namespace HlslDecompiler
             return tempRegisters;
         }
 
-        private void WriteInstruction(D3D9Instruction instruction)
+        private static string GetModifier(D3D9Instruction instruction)
+        {
+            ResultModifier resultModifier = instruction.GetDestinationResultModifier();
+            switch (resultModifier)
+            {
+                case ResultModifier.None:
+                    return "{0} = {1};";
+                case ResultModifier.Centroid:
+                    return "{0} = {1};";
+                case ResultModifier.PartialPrecision:
+                    return "{0} = {1};";
+                case ResultModifier.Saturate:
+                    return "{0} = saturate({1});";
+                case ResultModifier.Saturate | ResultModifier.PartialPrecision:
+                    return "{0} = saturate({1});";
+                default:
+                    throw new NotSupportedException("Not supported result modifier " + resultModifier);
+            }
+        }
+
+        private void WriteInstruction(TextWriter writer, D3D9Instruction instruction)
         {
             switch (instruction.Opcode)
             {
                 case Opcode.Abs:
-                    WriteLine("{0} = abs({1});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"abs({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Add:
-                    WriteLine("{0} = {1} + {2};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"{GetSourceName(instruction, 1)} + {GetSourceName(instruction, 2)}");
                     break;
                 case Opcode.BreakC:
                     string ifComparisonBreak;
@@ -128,48 +149,50 @@ namespace HlslDecompiler
                         default:
                             throw new InvalidOperationException();
                     }
-                    WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparisonBreak);
+                    WriteLine(writer, "if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparisonBreak);
                     break;
                 case Opcode.Cmp:
                     // TODO: should be per-component
-                    WriteLine("{0} = ({1} >= 0) ? {2} : {3};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
                     break;
                 case Opcode.DP2Add:
-                    WriteLine("{0} = dot({1}, {2}) + {3};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)}) + {GetSourceName(instruction, 3)}");
                     break;
                 case Opcode.Dp3:
-                    WriteLine("{0} = dot({1}, {2});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                     break;
                 case Opcode.Dp4:
-                    WriteLine("{0} = dot({1}, {2});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                     break;
                 case Opcode.Else:
                     indent = indent.Substring(0, indent.Length - 1);
-                    WriteLine("} else {");
+                    WriteLine(writer, "} else {");
                     indent += "\t";
                     break;
                 case Opcode.Endif:
                     indent = indent.Substring(0, indent.Length - 1);
-                    WriteLine("}");
+                    WriteLine(writer, "}");
                     break;
                 case Opcode.EndLoop:
                 case Opcode.EndRep:
                     indent = indent.Substring(0, indent.Length - 1);
-                    WriteLine("}");
+                    WriteLine(writer, "}");
                     _loopVariableIndex--;
                     break;
                 case Opcode.Exp:
-                    WriteLine("{0} = exp2({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"exp2({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Frc:
-                    WriteLine("{0} = frac({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"frac({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.If:
-                    WriteLine("if ({0}) {{", GetSourceName(instruction, 0));
+                    WriteLine(writer, "if ({0}) {{", GetSourceName(instruction, 0));
                     indent += "\t";
                     break;
                 case Opcode.IfC:
@@ -197,11 +220,12 @@ namespace HlslDecompiler
                         default:
                             throw new InvalidOperationException();
                     }
-                    WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparison);
+                    WriteLine(writer, "if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparison);
                     indent += "\t";
                     break;
                 case Opcode.Log:
-                    WriteLine("{0} = log2({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"log2({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Loop:
                     ConstantIntRegister intRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(1));
@@ -212,73 +236,76 @@ namespace HlslDecompiler
                     string loopVariable = "i" + _loopVariableIndex;
                     if (stride == 1)
                     {
-                        WriteLine("for (int {2} = {0}; {2} < {1}; {2}++) {{", start, end, loopVariable);
+                        WriteLine(writer, "for (int {2} = {0}; {2} < {1}; {2}++) {{", start, end, loopVariable);
                     }
                     else
                     {
-                        WriteLine("for (int {3} = {0}; {3} < {1}; {3} += {2}) {{", start, end, stride, loopVariable);
+                        WriteLine(writer, "for (int {3} = {0}; {3} < {1}; {3} += {2}) {{", start, end, stride, loopVariable);
                     }
                     indent += "\t";
                     break;
                 case Opcode.Lrp:
-                    WriteLine("{0} = lerp({2}, {3}, {1});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"lerp({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 3)}, {GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Mad:
-                    WriteLine("{0} = {1} * {2} + {3};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"{GetSourceName(instruction, 1)} * {GetSourceName(instruction, 2)} + {GetSourceName(instruction, 3)}");
                     break;
                 case Opcode.Max:
-                    WriteLine("{0} = max({1}, {2});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"max({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                     break;
                 case Opcode.Min:
-                    WriteLine("{0} = min({1}, {2});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"min({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                     break;
                 case Opcode.Mov:
-                    WriteLine("{0} = {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.MovA:
-                    WriteLine("{0} = {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Mul:
-                    WriteLine("{0} = {1} * {2};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"{GetSourceName(instruction, 1)} * {GetSourceName(instruction, 2)}");
                     break;
                 case Opcode.Nrm:
-                    WriteLine("{0} = normalize({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"normalize({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Pow:
-                    WriteLine("{0} = pow({1}, {2});", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"pow({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                     break;
                 case Opcode.Rcp:
-                    WriteLine("{0} = 1 / {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"1 / {GetSourceName(instruction, 1)}");
                     break;
                 case Opcode.Rep:
                     ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(0));
                     _loopVariableIndex++;
-                    WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex);
+                    WriteLine(writer, "for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex);
                     indent += "\t";
                     break;
                 case Opcode.Rsq:
-                    WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"1 / sqrt({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Sge:
-                    WriteLine("{0} = ({1} >= {2}) ? 1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1),
-                        GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"({GetSourceName(instruction, 1)} >= {GetSourceName(instruction, 2)}) ? 1 : 0");
                     break;
                 case Opcode.Slt:
-                    WriteLine("{0} = ({1} < {2}) ? 1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1),
-                        GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"({GetSourceName(instruction, 1)} < {GetSourceName(instruction, 2)}) ? 1 : 0");
                     break;
                 case Opcode.SinCos:
-                    WriteLine("sincos({1}, {0}, {0});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine(writer, "sincos({1}, {0}, {0});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.Sub:
-                    WriteLine("{0} = {1} - {2};", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                        $"{GetSourceName(instruction, 1)} - {GetSourceName(instruction, 2)}");
                     break;
                 case Opcode.Tex:
                     if ((_shader.MajorVersion == 1 && _shader.MinorVersion >= 4) || (_shader.MajorVersion > 1))
@@ -288,23 +315,23 @@ namespace HlslDecompiler
                         string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
                         if (instruction.TexldControls.HasFlag(TexldControls.Project))
                         {
-                            WriteLine("{1} = tex{0}proj({3}, {2});", samplerType, GetDestinationName(instruction),
-                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                            WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                                $"tex{samplerType}proj({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, 4)})");
                         }
                         else if (instruction.TexldControls.HasFlag(TexldControls.Bias))
                         {
-                            WriteLine("{1} = tex{0}bias({3}, {2});", samplerType, GetDestinationName(instruction),
-                                GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                            WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                                $"tex{samplerType}bias({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, 4)})");
                         }
                         else
                         {
-                            WriteLine("{1} = tex{0}({3}, {2});", samplerType, GetDestinationName(instruction),
-                                GetSourceName(instruction, 1, samplerDimension), GetSourceName(instruction, 2));
+                            WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                                $"tex{samplerType}({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, samplerDimension)})");
                         }
                     }
                     else
                     {
-                        WriteLine("{0} = tex2D();", GetDestinationName(instruction));
+                        WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction), "tex2D()");
                     }
                     break;
                 case Opcode.TexLDL:
@@ -312,8 +339,8 @@ namespace HlslDecompiler
                         ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
                         int samplerDimension = sampler.GetSamplerDimension();
                         string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
-                        WriteLine("{1} = tex{0}lod({3}, {2});", samplerType, GetDestinationName(instruction),
-                            GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
+                        WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                            $"tex{samplerType}lod({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, 4)})");
                         break;
                     }
                 case Opcode.TexLDD:
@@ -321,17 +348,12 @@ namespace HlslDecompiler
                         ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
                         int samplerDimension = sampler.GetSamplerDimension();
                         string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
-                        WriteLine("{1} = tex{0}grad({3}, {2}, {4}, {5});",
-                            samplerType,
-                            GetDestinationName(instruction),
-                            GetSourceName(instruction, 1, samplerDimension),
-                            GetSourceName(instruction, 2),
-                            GetSourceName(instruction, 3, samplerDimension),
-                            GetSourceName(instruction, 4, samplerDimension));
+                        WriteLine(writer, GetModifier(instruction), GetDestinationName(instruction),
+                            $"tex{samplerType}grad({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, samplerDimension)}, {GetSourceName(instruction, 3, samplerDimension)}, {GetSourceName(instruction, 4, samplerDimension)})");
                         break;
                     }
                 case Opcode.TexKill:
-                    WriteLine("clip({0});", GetDestinationName(instruction));
+                    WriteLine(writer, "clip({0});", GetDestinationName(instruction));
                     break;
                 case Opcode.Def:
                 case Opcode.DefB:

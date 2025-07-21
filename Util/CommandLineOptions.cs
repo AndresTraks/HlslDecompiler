@@ -6,6 +6,7 @@ namespace HlslDecompiler.Util
     {
         public string InputFilename { get; }
         public bool DoAstAnalysis { get; }
+        public bool PrintToConsole { get; }
 
         public static CommandLineOptions Parse(string[] args)
         {
@@ -22,6 +23,10 @@ namespace HlslDecompiler.Util
                     if (option == "ast")
                     {
                         DoAstAnalysis = true;
+                    }
+                    else if (option == "print")
+                    {
+                        PrintToConsole = true;
                     }
                     else
                     {

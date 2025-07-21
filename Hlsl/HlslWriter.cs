@@ -22,23 +22,28 @@ namespace HlslDecompiler
             _shader = shader;
         }
 
-        protected abstract void WriteMethodBody();
+        protected abstract void WriteMethodBody(TextWriter writer);
 
         protected void WriteLine()
         {
-            hlslWriter.WriteLine();
+            hlslWriter.WriteLine(indent);
         }
 
-        protected void WriteLine(string value)
+        protected void WriteLine(TextWriter writer)
         {
-            hlslWriter.Write(indent);
-            hlslWriter.WriteLine(value);
+            writer.WriteLine(indent);
         }
 
-        protected void WriteLine(string format, params object[] args)
+        protected void WriteLine(TextWriter writer, string value)
         {
-            hlslWriter.Write(indent);
-            hlslWriter.WriteLine(format, args);
+            writer.Write(indent);
+            writer.WriteLine(value);
+        }
+
+        protected void WriteLine(TextWriter writer, string format, params object[] args)
+        {
+            writer.Write(indent);
+            writer.WriteLine(format, args);
         }
 
         private static string GetConstantTypeName(ConstantDeclaration declaration)
@@ -89,79 +94,90 @@ namespace HlslDecompiler
             hlslFile = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
             hlslWriter = new StreamWriter(hlslFile);
 
-            _ast = InstructionParser.Parse(_shader);
-            _registers = _ast.RegisterState;
-
-            WriteConstantDeclarations();
-
-            if (_registers.MethodInputRegisters.Count > 1)
-            {
-                WriteInputStructureDeclaration();
-            }
-
-            if (_registers.MethodOutputRegisters.Count > 1)
-            {
-                WriteOutputStructureDeclaration();
-            }
-
-            string methodReturnType = GetMethodReturnType();
-            string methodParameters = GetMethodParameters();
-            string methodSemantic = GetMethodSemantic();
-            WriteLine("{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
-            WriteLine("{");
-            indent = "\t";
-
-            WriteMethodBody();
-
-            indent = "";
-            WriteLine("}");
+            WriteInternal(hlslWriter);
 
             hlslWriter.Dispose();
             hlslFile.Dispose();
         }
 
-        private void WriteConstantDeclarations()
+        public void Write(TextWriter writer)
+        {
+            WriteInternal(writer);
+        }
+
+        private void WriteInternal(TextWriter writer)
+        {
+            _ast = InstructionParser.Parse(_shader);
+            _registers = _ast.RegisterState;
+
+            WriteConstantDeclarations(writer);
+
+            if (_registers.MethodInputRegisters.Count > 1)
+            {
+                WriteInputStructureDeclaration(writer);
+            }
+
+            if (_registers.MethodOutputRegisters.Count > 1)
+            {
+                WriteOutputStructureDeclaration(writer);
+            }
+
+            string methodReturnType = GetMethodReturnType();
+            string methodParameters = GetMethodParameters();
+            string methodSemantic = GetMethodSemantic();
+
+            WriteLine(writer, "{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
+            WriteLine(writer, "{");
+            indent = "\t";
+
+            WriteMethodBody(writer);
+
+            indent = "";
+            WriteLine(writer, "}");
+        }
+
+        private void WriteConstantDeclarations(TextWriter writer)
         {
             if (_registers.ConstantDeclarations.Count != 0)
             {
                 foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
                 {
                     string typeName = GetConstantTypeName(declaration);
-                    WriteLine("{0} {1};", typeName, declaration.Name);
+                    WriteLine(writer, "{0} {1};", typeName, declaration.Name);
                 }
 
-                WriteLine();
+                WriteLine(writer);
             }
         }
 
-        private void WriteInputStructureDeclaration()
+        private void WriteInputStructureDeclaration(TextWriter writer)
         {
             var inputStructType = _shader.Type == ShaderType.Pixel ? "PS_IN" : "VS_IN";
-            WriteLine($"struct {inputStructType}");
-            WriteLine("{");
+            WriteLine(writer, $"struct {inputStructType}");
+            WriteLine(writer, "{");
             indent = "\t";
             foreach (var input in _registers.MethodInputRegisters.Values)
             {
-                WriteLine($"{input.TypeName} {input.Name} : {input.Semantic};");
+                WriteLine(writer, $"{input.TypeName} {input.Name} : {input.Semantic};");
             }
             indent = "";
-            WriteLine("};");
-            WriteLine();
+            WriteLine(writer, "};");
+            WriteLine(writer);
         }
 
-        private void WriteOutputStructureDeclaration()
+        private void WriteOutputStructureDeclaration(TextWriter writer)
         {
             var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
-            WriteLine($"struct {outputStructType}");
-            WriteLine("{");
+            WriteLine(writer, $"struct {outputStructType}");
+            WriteLine(writer, "{");
             indent = "\t";
             foreach (var output in _registers.MethodOutputRegisters.Values)
             {
-                WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
+                WriteLine(writer, $"{output.TypeName} {output.Name} : {output.Semantic};");
             }
             indent = "";
-            WriteLine("};");
-            WriteLine();
+            WriteLine(writer, "};");
+            WriteLine(writer);
         }
 
         protected string GetMethodReturnType()

@@ -3,6 +3,7 @@ using HlslDecompiler.Hlsl.FlowControl;
 using HlslDecompiler.Hlsl.TemplateMatch;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -17,125 +18,125 @@ namespace HlslDecompiler.Hlsl
         {
         }
 
-        protected override void WriteMethodBody()
+        protected override void WriteMethodBody(TextWriter writer)
         {
             if (_registers.MethodOutputRegisters.Count > 1)
             {
                 var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
-                WriteLine($"{outputStructType} o;");
-                WriteLine();
+                WriteLine(writer, $"{outputStructType} o;");
+                WriteLine(writer);
             }
 
-            WriteAst(_ast);
+            WriteAst(writer, _ast);
         }
 
-        private void WriteAst(HlslAst ast)
+        private void WriteAst(TextWriter writer, HlslAst ast)
         {
             _compiler = new NodeCompiler(_registers);
             _grouper = new NodeGrouper(_registers);
             _templateMatcher = new TemplateMatcher(_grouper);
 
-            WriteStatement(ast.Statement);
+            WriteStatement(writer, ast.Statement);
         }
 
-        private void WriteStatement(IStatement statement)
+        private void WriteStatement(TextWriter writer, IStatement statement)
         {
             if (statement is ClipStatement clip)
             {
-                WriteClipStatement(clip);
+                WriteClipStatement(writer, clip);
             }
             else if (statement is LoopStatement loop)
             {
-                WriteLoopStatement(loop);
+                WriteLoopStatement(writer, loop);
             }
             else if (statement is BreakStatement breakStatement)
             {
-                WriteBreakStatement(breakStatement);
+                WriteBreakStatement(writer, breakStatement);
             }
             else if (statement is IfStatement ifStatement)
             {
-                WriteIfStatement(ifStatement);
+                WriteIfStatement(writer, ifStatement);
             }
             else if (statement is ReturnStatement returnStatement)
             {
-                WriteReturnStatement(returnStatement);
+                WriteReturnStatement(writer, returnStatement);
             }
             else if (statement is StatementSequence sequence)
             {
                 foreach (IStatement subStatement in sequence.Statements)
                 {
-                    WriteStatement(subStatement);
+                    WriteStatement(writer, subStatement);
                 }
             }
         }
 
-        private void WriteClipStatement(ClipStatement clip)
+        private void WriteClipStatement(TextWriter writer, ClipStatement clip)
         {
-            WriteTempVariableAssignments(clip.Closure);
+            WriteTempVariableAssignments(writer, clip.Closure);
 
             string compiled = _compiler.Compile(Reduce(clip.Value));
-            WriteLine($"clip({compiled});");
+            WriteLine(writer, $"clip({compiled});");
         }
 
-        private void WriteLoopStatement(LoopStatement loop)
+        private void WriteLoopStatement(TextWriter writer, LoopStatement loop)
         {
-            WriteTempVariableAssignments(loop.Closure);
+            WriteTempVariableAssignments(writer, loop.Closure);
 
             string variableName = "i";
-            WriteLine($"for (int {variableName} = 0; {variableName} < {loop.RepeatCount}; {variableName}++) {{");
+            WriteLine(writer, $"for (int {variableName} = 0; {variableName} < {loop.RepeatCount}; {variableName}++) {{");
             indent += "\t";
-            WriteStatement(loop.Body);
-            WriteTempVariableAssignments(loop.EndClosure);
+            WriteStatement(writer, loop.Body);
+            WriteTempVariableAssignments(writer, loop.EndClosure);
             indent = indent.Substring(0, indent.Length - 1);
-            WriteLine("}");
+            WriteLine(writer, "}");
         }
 
-        private void WriteBreakStatement(BreakStatement breakStatement)
+        private void WriteBreakStatement(TextWriter writer, BreakStatement breakStatement)
         {
-            WriteTempVariableAssignments(breakStatement.Closure);
+            WriteTempVariableAssignments(writer, breakStatement.Closure);
 
             bool? constantComparison = ConstantMatcher.TryEvaluateComparison(breakStatement.Comparison);
             if (constantComparison.HasValue && constantComparison.Value)
             {
-                WriteLine("break;");
+                WriteLine(writer, "break;");
             }
             else
             {
                 string comparison = _compiler.Compile(Reduce(breakStatement.Comparison));
-                WriteLine($"if ({comparison}) {{");
+                WriteLine(writer, $"if ({comparison}) {{");
                 indent += "\t";
-                WriteLine("break;");
+                WriteLine(writer, "break;");
                 indent = indent.Substring(0, indent.Length - 1);
-                WriteLine("}");
+                WriteLine(writer, "}");
             }
         }
 
-        private void WriteIfStatement(IfStatement ifStatement)
+        private void WriteIfStatement(TextWriter writer, IfStatement ifStatement)
         {
-            WriteTempVariableAssignments(ifStatement.Closure);
+            WriteTempVariableAssignments(writer, ifStatement.Closure);
 
             string comparison = _compiler.Compile(Reduce(ifStatement.Comparison));
-            WriteLine($"if ({comparison}) {{");
+            WriteLine(writer, $"if ({comparison}) {{");
             indent += "\t";
-            WriteStatement(ifStatement.TrueBody);
-            WriteTempVariableAssignments(ifStatement.TrueEndClosure);
+            WriteStatement(writer, ifStatement.TrueBody);
+            WriteTempVariableAssignments(writer, ifStatement.TrueEndClosure);
             indent = indent.Substring(0, indent.Length - 1);
             if (ifStatement.FalseBody != null)
             {
-                WriteLine("} else {");
+                WriteLine(writer, "} else {");
                 indent += "\t";
-                WriteStatement(ifStatement.FalseBody);
-                WriteTempVariableAssignments(ifStatement.FalseEndClosure);
+                WriteStatement(writer, ifStatement.FalseBody);
+                WriteTempVariableAssignments(writer, ifStatement.FalseEndClosure);
                 indent = indent.Substring(0, indent.Length - 1);
-                WriteLine("}");
+                WriteLine(writer, "}");
             }
             else
             {
-                WriteLine("}");
+                WriteLine(writer, "}");
             }
         }
 
-        private void WriteReturnStatement(ReturnStatement returnStatement)
+        private void WriteReturnStatement(TextWriter writer, ReturnStatement returnStatement)
         {
             Dictionary<RegisterKey, HlslTreeNode> outputs =
                 GroupComponents(returnStatement.Closure.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
@@ -144,7 +145,7 @@ namespace HlslDecompiler.Hlsl
             if (outputs.Count == 1)
             {
                 string compiled = _compiler.Compile(outputs.Single().Value);
-                WriteLine($"return {compiled};");
+                WriteLine(writer, $"return {compiled};");
             }
             else
             {
@@ -152,14 +153,14 @@ namespace HlslDecompiler.Hlsl
                 {
                     RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
                     string compiled = _compiler.Compile(rootGroup.Value);
-                    WriteLine($"o.{outputRegister.Name} = {compiled};");
+                    WriteLine(writer, $"o.{outputRegister.Name} = {compiled};");
                 }
-                WriteLine();
-                WriteLine($"return o;");
+                WriteLine(writer);
+                WriteLine(writer, $"return o;");
             }
         }
 
-        private void WriteTempVariableAssignments(Closure closure)
+        private void WriteTempVariableAssignments(TextWriter writer, Closure closure)
         {
             Dictionary<RegisterKey, TempAssignmentNode[]> assignments = GroupAssignments(closure);
             foreach (var assignment in assignments)
@@ -169,7 +170,7 @@ namespace HlslDecompiler.Hlsl
                     var group = new GroupNode(declaration.ToArray());
                     var reduced = Reduce(group);
                     string compiled = _compiler.Compile(reduced);
-                    WriteLine(compiled);
+                    WriteLine(writer, compiled);
                 }
             }
         }

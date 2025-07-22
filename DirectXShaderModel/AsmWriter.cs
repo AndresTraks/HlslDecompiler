@@ -129,7 +129,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     {
                         dclInstruction += "_" + instruction.GetDeclSemantic().ToLower();
                     }
-                    WriteLine("{0} {1}", dclInstruction, GetDestinationName(instruction));
+                    WriteLine("{0}{1} {2}", dclInstruction, GetModifier(instruction), GetDestinationName(instruction));
                     if (instruction.GetParamRegisterType(1) == RegisterType.Sampler)
                     {
                         var registerKey = instruction.GetParamRegisterKey(1);
@@ -422,22 +422,21 @@ namespace HlslDecompiler.DirectXShaderModel
 
         private static string GetModifier(D3D9Instruction instruction)
         {
-            ResultModifier resultModifier = instruction.GetDestinationResultModifier();
-            switch (resultModifier)
+            string result = "";
+            ResultModifier modifier = instruction.GetDestinationResultModifier();
+            if ((modifier & ResultModifier.Saturate) != 0)
             {
-                case ResultModifier.None:
-                    return string.Empty;
-                case ResultModifier.Centroid:
-                    return "_centroid";
-                case ResultModifier.PartialPrecision:
-                    return "_pp";
-                case ResultModifier.Saturate:
-                    return "_sat";
-                case ResultModifier.Saturate | ResultModifier.PartialPrecision:
-                    return "_sat_pp";
-                default:
-                    throw new NotSupportedException("Not supported result modifier " + resultModifier);
+                result += "_sat";
             }
+            if ((modifier & ResultModifier.PartialPrecision) != 0)
+            {
+                result += "_pp";
+            }
+            if ((modifier & ResultModifier.Centroid) != 0)
+            {
+                result += "_centroid";
+            }
+            return result;
         }
 
         private static string ApplyModifier(D3D10OperandModifier modifier, string value)

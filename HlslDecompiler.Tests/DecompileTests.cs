@@ -22,6 +22,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_3_0", "float4_constant")]
         [TestCase("ps_3_0", "multiply_subtract")]
         [TestCase("ps_3_0", "absolute_multiply")]
+        [TestCase("ps_3_0", "modifier")]
         [TestCase("ps_3_0", "negate_absolute")]
         [TestCase("ps_3_0", "semantics")]
         [TestCase("ps_3_0", "tex1d")]

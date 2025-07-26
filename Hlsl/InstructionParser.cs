@@ -305,6 +305,7 @@ namespace HlslDecompiler.Hlsl
             foreach (RegisterComponentKey destinationKey in destinationKeys)
             {
                 HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                instructionTree = ApplyModifier(instructionTree, instruction.GetDestinationResultModifier());
                 newOutputs[destinationKey] = instructionTree;
             }
 
@@ -929,6 +930,15 @@ namespace HlslDecompiler.Hlsl
                 default:
                     throw new NotImplementedException();
             }
+        }
+
+        private static HlslTreeNode ApplyModifier(HlslTreeNode input, ResultModifier modifier)
+        {
+            if ((modifier & ResultModifier.Saturate) != 0)
+            {
+                return new SaturateOperation(input);
+            }
+            return input;
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, D3D10OperandModifier modifier)

@@ -7,7 +7,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float4 t1 = 0;
 	float t2 = 3;
 	for (int i = 0; i < 255; i++) {
-		if (t2.x >= count) {
+		if (t2 >= count) {
 			break;
 		}
 		float4 t3 = t1;

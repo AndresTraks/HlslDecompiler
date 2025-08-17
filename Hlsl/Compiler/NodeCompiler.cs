@@ -26,7 +26,7 @@ namespace HlslDecompiler.Hlsl
 
         public string Compile(HlslTreeNode node)
         {
-            return Compile(new List<HlslTreeNode>() { node });
+            return Compile([node]);
         }
 
         public string Compile(IEnumerable<HlslTreeNode> group, int promoteToVectorSize = PromoteToAnyVectorSize)
@@ -304,6 +304,9 @@ namespace HlslDecompiler.Hlsl
 
             if (first is TempAssignmentNode tempAssignment)
             {
+                // Compile variable once with all components
+                string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
+
                 string type;
                 if (tempAssignment.IsReassignment)
                 {
@@ -312,14 +315,13 @@ namespace HlslDecompiler.Hlsl
                 else
                 {
                     type = "float";
-                    if (components.Count > 1)
+                    if (tempAssignment.TempVariable.VariableSize > 1)
                     {
-                        type += components.Count;
+                        type += tempAssignment.TempVariable.VariableSize;
                     }
                     type += " ";
+                    variableCompiled = $"t{tempAssignment.TempVariable.DeclarationIndex}";
                 }
-                string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
-
                 string compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
                 return $"{type}{variableCompiled} = {compiled};";
             }
@@ -330,13 +332,16 @@ namespace HlslDecompiler.Hlsl
                 {
                     int index = _tempAssignmentindexCounter;
                     _tempAssignmentindexCounter++;
-                    foreach (var component in components)
+                    for (int i = 0; i < components.Count; i++)
                     {
-                        (component as TempVariableNode).DeclarationIndex = index;
+                        var component = components[i] as TempVariableNode;
+                        component.DeclarationIndex = index;
+                        component.ComponentIndex = i;
+                        component.VariableSize = components.Count;
                     }
                 }
 
-                string swizzle = GetAstSourceSwizzleName(componentsWithIndices, components.Count);
+                string swizzle = GetAstSourceSwizzleName(componentsWithIndices, (int)tempVariable.VariableSize);
                 return $"t{tempVariable.DeclarationIndex}{swizzle}";
             }
 

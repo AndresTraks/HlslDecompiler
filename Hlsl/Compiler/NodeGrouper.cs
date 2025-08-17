@@ -127,9 +127,7 @@ namespace HlslDecompiler.Hlsl
 
             if (node1 is TempVariableNode tempVariable1 && node2 is TempVariableNode tempVariable2)
             {
-                return tempVariable1.RegisterComponentKey.RegisterKey.Equals(
-                    tempVariable2.RegisterComponentKey.RegisterKey) &&
-                    tempVariable1.DeclarationIndex == tempVariable2.DeclarationIndex;
+                return tempVariable1.DeclarationIndex == tempVariable2.DeclarationIndex;
             }
 
             if (node1 is ComparisonNode comparison1 && node2 is ComparisonNode comparison2)

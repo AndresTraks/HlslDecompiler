@@ -4,16 +4,9 @@ namespace HlslDecompiler.Hlsl
 {
     public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     {
-        public TempVariableNode(RegisterComponentKey registerComponentKey)
-        {
-            RegisterComponentKey = registerComponentKey;
-        }
-
-        public RegisterComponentKey RegisterComponentKey { get; }
-
-        public int ComponentIndex => RegisterComponentKey.ComponentIndex;
-
         public int? DeclarationIndex { get; set; }
+        public int ComponentIndex { get; set; }
+        public int? VariableSize { get; set; }
 
         public override string ToString()
         {

@@ -190,10 +190,12 @@ namespace HlslDecompiler.Hlsl
             {
                 foreach (var group in GroupAssignments(newAssignments))
                 {
-                    int size = group.Value.Length;
-                    string sizeString = size > 1 ? size.ToString() : "";
-                    string variableName = _compiler.Compile(group.Value);
-                    WriteLine($"float{sizeString} {variableName};");
+                    // Compile variable with all components
+                    _compiler.Compile(group.Value);
+
+                    var variable = group.Value.First() as TempVariableNode;
+                    string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
+                    WriteLine($"float{variable.VariableSize} t{variable.DeclarationIndex};");
                 }
             }
         }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HlslDecompiler.DirectXShaderModel;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -127,74 +128,102 @@ namespace HlslDecompiler.Hlsl.FlowControl
             }
         }
 
-        private static void InsertTempVariables(IList<IStatement> statements)
+        private void InsertTempVariables(IList<IStatement> statements)
         {
-            foreach (var statement in statements)
+            for (int i = 0; i < statements.Count; i++)
             {
-                var newAssignments = statement.Outputs.Where(o => o.Key.RegisterKey.IsTempRegister && !statement.Inputs.ContainsKey(o.Key)).ToList();
-                foreach (var newAssignment in newAssignments)
-                {
-                    HlslTreeNode tempInput = newAssignment.Value;
+                InsertTempVariables(statements, i);
+            }
+        }
 
-                    if (statement is AssignmentStatement)
+        private void InsertTempVariables(IList<IStatement> statements, int i)
+        {
+            IStatement statement = statements[i];
+            var newAssignments = statement.Outputs
+                .Where(o => o.Key.RegisterKey.IsTempRegister)
+                .Where(o => !statement.Inputs.ContainsKey(o.Key) || statement.Inputs[o.Key] != statement.Outputs[o.Key])
+                .ToList();
+            foreach (var newAssignment in newAssignments)
+            {
+                HlslTreeNode tempInput = newAssignment.Value;
+
+                if (statement is AssignmentStatement)
+                {
+                    // Insert temp variable if any output exits statement
+                    // or if an iteration variable is changed
+                    statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
+                    var tempInputAssignment = inputAssignment as TempAssignmentNode;
+                    if (tempInput.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values)) || tempInputAssignment != null)
                     {
-                        if (tempInput.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values)))
+                        List<HlslTreeNode> tempUsages = tempInput.Outputs.ToList();
+                        tempInput.Outputs.Clear();
+                        TempVariableNode tempVariable = tempInputAssignment != null
+                            ? tempInputAssignment.TempVariable
+                            : new TempVariableNode();
+                        var tempAssignment = new TempAssignmentNode(tempVariable, tempInput);
+                        if (tempUsages.All(u => u is PhiNode) || tempInputAssignment != null)
                         {
-                            List<HlslTreeNode> tempUsages = tempInput.Outputs.ToList();
-                            tempInput.Outputs.Clear();
-                            TempVariableNode tempVariable = new(newAssignment.Key);
-                            var tempAssignment = new TempAssignmentNode(tempVariable, tempInput);
-                            if (tempUsages.All(u => u is PhiNode))
-                            {
-                                tempAssignment.IsReassignment = true;
-                            }
-                            foreach (var tempUsage in tempUsages)
-                            {
-                                int index = tempUsage.Inputs.IndexOf(tempInput);
-                                if (tempUsage is PhiNode)
-                                {
-                                    foreach (var output in tempUsage.Outputs)
-                                    {
-                                        for (int i = 0; i < output.Inputs.Count; i++)
-                                        {
-                                            if (output.Inputs[i] == tempUsage)
-                                            {
-                                                output.Inputs[i] = tempVariable;
-                                            }
-                                        }
-                                        tempVariable.Outputs.Add(output);
-                                    }
-                                }
-                                tempUsage.Inputs[index] = tempVariable;
-                                statement.Outputs[newAssignment.Key] = tempAssignment;
-                            }
+                            tempAssignment.IsReassignment = true;
                         }
+                        foreach (var tempUsage in tempUsages)
+                        {
+                            if (tempUsage is PhiNode)
+                            {
+                                foreach (var output in tempUsage.Outputs)
+                                {
+                                    for (int j = 0; j < output.Inputs.Count; j++)
+                                    {
+                                        if (output.Inputs[j] == tempUsage)
+                                        {
+                                            output.Inputs[j] = tempVariable;
+                                        }
+                                    }
+                                    tempVariable.Outputs.Add(output);
+                                }
+                            }
+                            int index = tempUsage.Inputs.IndexOf(tempInput);
+                            tempUsage.Inputs[index] = tempVariable;
+                        }
+                        ReplaceAnyAssignment(newAssignment.Key, tempInput, tempAssignment);
                     }
                 }
+            }
 
-                if (statement is IfStatement ifStatement)
+            if (statement is IfStatement ifStatement)
+            {
+                InsertTempVariables(ifStatement.TrueBody);
+                if (ifStatement.FalseBody != null)
                 {
-                    InsertTempVariables(ifStatement.TrueBody);
-                    if (ifStatement.FalseBody != null)
-                    {
-                        InsertTempVariables(ifStatement.FalseBody);
-                    }
+                    InsertTempVariables(ifStatement.FalseBody);
 
                     foreach (var trueTempAssignment in ifStatement.TrueBody.Last().Outputs.Where(o => o.Value is TempAssignmentNode))
                     {
-                        var falseTempAssignment = ifStatement.FalseBody.Last().Outputs[trueTempAssignment.Key] as TempAssignmentNode;
-                        if (falseTempAssignment != null)
+                        if (ifStatement.FalseBody.Last().Outputs.TryGetValue(trueTempAssignment.Key, out var falseAssignment))
                         {
-                            TempAssignmentNode trueValue = trueTempAssignment.Value as TempAssignmentNode;
-                            falseTempAssignment.TempVariable.Replace(trueValue.TempVariable);
-                            falseTempAssignment.TempVariable = trueValue.TempVariable;
-                            ifStatement.Outputs[trueTempAssignment.Key] = trueValue.TempVariable;
+                            if (falseAssignment is TempAssignmentNode falseTempAssignment)
+                            {
+                                TempAssignmentNode trueValue = trueTempAssignment.Value as TempAssignmentNode;
+                                //falseTempAssignment.TempVariable.Replace(trueValue.TempVariable);
+                                falseTempAssignment.TempVariable = trueValue.TempVariable;
+                                ifStatement.Outputs[trueTempAssignment.Key] = trueValue.TempVariable;
+                            }
                         }
                     }
                 }
-                else if (statement is LoopStatement loopStatement)
+            }
+            else if (statement is LoopStatement loopStatement)
+            {
+                InsertTempVariables(loopStatement.Body);
+
+                foreach (var loopBodyAssignment in loopStatement.Body.Last().Outputs.Where(o => o.Value is TempAssignmentNode).ToList())
                 {
-                    InsertTempVariables(loopStatement.Body);
+                    if (i >= 1 && statements[i - 1] is AssignmentStatement loopAssignmentStatement)
+                    {
+                        var loopAssignment = loopAssignmentStatement.Outputs[loopBodyAssignment.Key] as TempAssignmentNode;
+                        TempAssignmentNode loopBodyAssignmentNode = loopBodyAssignment.Value as TempAssignmentNode;
+                        //loopBodyAssignmentNode.TempVariable.Replace(loopAssignment.TempVariable);
+                        loopBodyAssignmentNode.TempVariable = loopAssignment.TempVariable;
+                    }
                 }
             }
         }
@@ -241,6 +270,21 @@ namespace HlslDecompiler.Hlsl.FlowControl
                     {
                         statement.Outputs.Remove(item.Key);
                     }
+                }
+            });
+        }
+
+        private void ReplaceAnyAssignment(RegisterComponentKey componentKey, HlslTreeNode node, TempAssignmentNode replacement)
+        {
+            new StatementVisitor(_statements).Visit(s =>
+            {
+                if (s.Inputs.TryGetValue(componentKey, out var input) && input == node)
+                {
+                    s.Inputs[componentKey] = replacement;
+                }
+                if (s.Outputs.TryGetValue(componentKey, out var output) && output == node)
+                {
+                    s.Outputs[componentKey] = replacement;
                 }
             });
         }

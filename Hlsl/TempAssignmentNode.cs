@@ -11,7 +11,7 @@
         public TempVariableNode TempVariable { get; set; }
 
         public HlslTreeNode Value => Inputs[0];
-        public int ComponentIndex => TempVariable.RegisterComponentKey.ComponentIndex;
+        public int ComponentIndex => TempVariable.ComponentIndex;
 
         public bool IsReassignment { get; set; } = false;
 

@@ -32,7 +32,8 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
                 new SubtractNegateTemplate(),
                 new SubtractZeroTemplate(),
                 new CompareConstantTemplate(),
-                new CompareNegativeWithZeroTemplate()
+                new CompareNegativeWithZeroTemplate(),
+                new ComparePositiveAndNegativeTemplate()
             };
             _groupTemplates = new List<IGroupTemplate>
             {

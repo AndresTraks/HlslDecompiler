@@ -1,7 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using System;
 using System.Linq;
-using System.Reflection.Metadata;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch
 {

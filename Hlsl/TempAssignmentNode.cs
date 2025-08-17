@@ -8,7 +8,7 @@
             TempVariable = tempVariable;
         }
 
-        public TempVariableNode TempVariable { get; }
+        public TempVariableNode TempVariable { get; set; }
 
         public HlslTreeNode Value => Inputs[0];
         public int ComponentIndex => TempVariable.RegisterComponentKey.ComponentIndex;

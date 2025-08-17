@@ -1,21 +1,25 @@
-﻿namespace HlslDecompiler.Hlsl.FlowControl
+﻿using HlslDecompiler.DirectXShaderModel;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HlslDecompiler.Hlsl.FlowControl
 {
     public class IfStatement : IStatement
     {
-        public IfStatement(HlslTreeNode comparison, Closure closure)
+        public HlslTreeNode Comparison { get; }
+        public IList<IStatement> TrueBody { get; set; } = [];
+        public IList<IStatement> FalseBody { get; set; }
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
+
+        public bool IsTrueParsed { get; set; } = false;
+        public bool IsParsed { get; set; } = false;
+
+        public IfStatement(HlslTreeNode comparison, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
         {
             Comparison = comparison;
-            Closure = closure;
-            
-            TrueBody = new StatementSequence(closure);
+            Inputs = inputs.ToDictionary();
+            Outputs = inputs.ToDictionary();
         }
-
-        public Closure Closure { get; }
-        public HlslTreeNode Comparison { get; }
-        
-        public StatementSequence TrueBody { get; }
-        public StatementSequence FalseBody { get; set; }
-        public Closure TrueEndClosure { get; set; }
-        public Closure FalseEndClosure { get; set; }
     }
 }

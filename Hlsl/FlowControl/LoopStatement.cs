@@ -1,19 +1,23 @@
-﻿namespace HlslDecompiler.Hlsl.FlowControl
+﻿using HlslDecompiler.DirectXShaderModel;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HlslDecompiler.Hlsl.FlowControl
 {
     public class LoopStatement : IStatement
     {
-        public LoopStatement(uint repeatCount, Closure closure)
+        public uint RepeatCount { get; }
+        public IList<IStatement> Body { get; } = [];
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
+
+        public bool IsParsed { get; set; } = false;
+
+        public LoopStatement(uint repeatCount, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
         {
             RepeatCount = repeatCount;
-            Closure = closure;
-
-            Body = new StatementSequence(closure);
+            Inputs = inputs.ToDictionary();
+            Outputs = inputs.ToDictionary();
         }
-
-        public uint RepeatCount { get; }
-        public Closure Closure { get; }
-        public StatementSequence Body { get; }
-
-        public Closure EndClosure { get; set; }
     }
 }

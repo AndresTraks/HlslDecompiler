@@ -4,15 +4,13 @@ using System.Linq;
 
 namespace HlslDecompiler.Hlsl.FlowControl
 {
-    public class ClipStatement : IStatement
+    public class AssignmentStatement : IStatement
     {
-        public HlslTreeNode Value { get; }
         public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
         public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
-        public ClipStatement(HlslTreeNode value, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
+        public AssignmentStatement(IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
         {
-            Value = value;
             Inputs = inputs.ToDictionary();
             Outputs = inputs.ToDictionary();
         }

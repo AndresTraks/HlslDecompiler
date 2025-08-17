@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HlslDecompiler.Hlsl
 {
     public class HlslTreeNode
     {
-        public IList<HlslTreeNode> Inputs { get; } = new List<HlslTreeNode>();
-        public IList<HlslTreeNode> Outputs { get; } = new List<HlslTreeNode>();
+        public IList<HlslTreeNode> Inputs { get; } = [];
+        public IList<HlslTreeNode> Outputs { get; } = [];
 
         public virtual HlslTreeNode Reduce()
         {
@@ -34,6 +35,28 @@ namespace HlslDecompiler.Hlsl
                 }
                 with.Outputs.Add(output);
             }
+        }
+
+        public void Remove()
+        {
+            foreach (var input in Inputs)
+            {
+                input.Outputs.Remove(this);
+            }
+            if (Outputs.Count != 0)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        public bool IsInputOf(IEnumerable<HlslTreeNode> nodes)
+        {
+            return nodes.Any(IsInputOf);
+        }
+
+        public bool IsInputOf(HlslTreeNode node)
+        {
+            return node == this || IsInputOf(node.Inputs);
         }
 
         protected void AddInput(HlslTreeNode node)

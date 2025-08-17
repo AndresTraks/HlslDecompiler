@@ -1,19 +1,38 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
-using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace HlslDecompiler.Hlsl
 {
     class InstructionParser
     {
-        private Dictionary<RegisterComponentKey, HlslTreeNode> _activeOutputs;
         private RegisterState _registerState;
+        private IList<IStatement> _statements;
         private Stack<IStatement> _currentStatements;
+
+        private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
+        private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
+        private IList<IStatement> ActiveStatementSequence
+        {
+            get
+            {
+                if (_currentStatements.Count == 0)
+                {
+                    return _statements;
+                }
+                if (_currentStatements.Peek() is IfStatement ifStatement)
+                {
+                    return ifStatement.IsTrueParsed ? ifStatement.FalseBody : ifStatement.TrueBody;
+                }
+                if (_currentStatements.Peek() is LoopStatement loopStatement)
+                {
+                    return loopStatement.Body;
+                }
+                throw new NotImplementedException();
+            }
+        }
 
         public static HlslAst Parse(ShaderModel shader)
         {
@@ -23,32 +42,31 @@ namespace HlslDecompiler.Hlsl
 
         private HlslAst ParseToAst(ShaderModel shader)
         {
-            _activeOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
             _registerState = new RegisterState(shader);
+            _statements = new List<IStatement>();
             _currentStatements = new Stack<IStatement>();
 
             LoadConstantOutputs(shader);
 
             int instructionPointer = 0;
-            while (instructionPointer < shader.Instructions.Count)
+            if (shader.Instructions[0] is D3D10Instruction)
             {
-                var instruction = shader.Instructions[instructionPointer];
-                if (instruction is D3D10Instruction d3D10Instruction)
+                while (instructionPointer < shader.Instructions.Count)
                 {
-                    ParseInstruction(d3D10Instruction);
+                    ParseInstruction(shader.Instructions[instructionPointer] as D3D10Instruction);
+                    instructionPointer++;
                 }
-                else if (instruction is D3D9Instruction d3D9Instruction)
+            }
+            else
+            {
+                while (instructionPointer < shader.Instructions.Count)
                 {
-                    ParseInstruction(d3D9Instruction);
+                    ParseInstruction(shader.Instructions[instructionPointer] as D3D9Instruction);
+                    instructionPointer++;
                 }
-                else
-                {
-                    throw new NotImplementedException();
-                }
-                instructionPointer++;
             }
 
-            return new HlslAst(_currentStatements.Pop(), _registerState);
+            return new HlslAst(_statements, _registerState);
         }
 
         private void ParseInstruction(D3D9Instruction instruction)
@@ -127,9 +145,7 @@ namespace HlslDecompiler.Hlsl
                         }
                     case D3D10Opcode.DclResource:
                     case D3D10Opcode.DclSampler:
-                        break;
                     case D3D10Opcode.Ret:
-                        InsertReturnStatement();
                         break;
                     default:
                         throw new NotImplementedException(instruction.Opcode.ToString());
@@ -139,105 +155,29 @@ namespace HlslDecompiler.Hlsl
 
         private void ParseConstantTableComment(D3D9Instruction instruction)
         {
-            int ctabToken = FourCC.Make("CTAB");
-            if (instruction.Params[0] != ctabToken)
+            using var reader = new ConstantTableCommentReader(instruction);
+            IList<ConstantDeclaration> constants = reader.ReadConstantDeclarations();
+            foreach (ConstantDeclaration constant in constants)
             {
-                return;
-            }
+                _registerState.DeclareConstant(constant);
 
-            byte[] constantTable = new byte[instruction.Params.Count * 4];
-            for (int i = 1; i < instruction.Params.Count; i++)
-            {
-                constantTable[i * 4 - 4] = (byte)(instruction.Params[i] & 0xFF);
-                constantTable[i * 4 - 3] = (byte)((instruction.Params[i] >> 8) & 0xFF);
-                constantTable[i * 4 - 2] = (byte)((instruction.Params[i] >> 16) & 0xFF);
-                constantTable[i * 4 - 1] = (byte)((instruction.Params[i] >> 24) & 0xFF);
-            }
-
-            var ctabStream = new MemoryStream(constantTable);
-            using (var ctabReader = new BinaryReader(ctabStream))
-            {
-                int ctabSize = ctabReader.ReadInt32();
-                System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
-                long creatorPosition = ctabReader.ReadInt32();
-
-                int minorVersion = ctabReader.ReadByte();
-                int majorVersion = ctabReader.ReadByte();
-                var shaderType = (ShaderType)ctabReader.ReadUInt16();
-
-                int numConstants = ctabReader.ReadInt32();
-                long constantInfoPosition = ctabReader.ReadInt32();
-                ShaderFlags shaderFlags = (ShaderFlags)ctabReader.ReadInt32();
-
-                long shaderModelPosition = ctabReader.ReadInt32();
-
-                ctabStream.Position = creatorPosition;
-                string compilerInfo = ReadStringNullTerminated(ctabStream);
-
-                ctabStream.Position = shaderModelPosition;
-                string shaderModel = ReadStringNullTerminated(ctabStream);
-
-                for (int i = 0; i < numConstants; i++)
+                var registerType = constant.RegisterSet switch
                 {
-                    ctabStream.Position = constantInfoPosition + i * 20;
-                    ConstantDeclaration constant = ReadConstantDeclaration(ctabReader);
-                    LoadConstantDeclaration(constant);
-                }
-            }
-        }
-
-        private static ConstantDeclaration ReadConstantDeclaration(BinaryReader ctabReader)
-        {
-            var ctabStream = ctabReader.BaseStream;
-
-            // D3DXSHADER_CONSTANTINFO
-            int nameOffset = ctabReader.ReadInt32();
-            RegisterSet registerSet = (RegisterSet)ctabReader.ReadInt16();
-            short registerIndex = ctabReader.ReadInt16();
-            short registerCount = ctabReader.ReadInt16();
-            ctabStream.Position += sizeof(short); // Reserved
-            int typeInfoOffset = ctabReader.ReadInt32();
-            int defaultValueOffset = ctabReader.ReadInt32();
-            System.Diagnostics.Debug.Assert(defaultValueOffset == 0);
-
-            ctabStream.Position = nameOffset;
-            string name = ReadStringNullTerminated(ctabStream);
-
-            // D3DXSHADER_TYPEINFO
-            ctabStream.Position = typeInfoOffset;
-            ParameterClass cl = (ParameterClass)ctabReader.ReadInt16();
-            ParameterType type = (ParameterType)ctabReader.ReadInt16();
-            short rows = ctabReader.ReadInt16();
-            short columns = ctabReader.ReadInt16();
-            short numElements = ctabReader.ReadInt16();
-            short numStructMembers = ctabReader.ReadInt16();
-            int structMemberInfoOffset = ctabReader.ReadInt32();
-            //System.Diagnostics.Debug.Assert(numElements == 1);
-            System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
-
-            return new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
-        }
-
-        private void LoadConstantDeclaration(ConstantDeclaration constant)
-        {
-            _registerState.DeclareConstant(constant);
-
-            var registerType = constant.RegisterSet switch
-            {
-                RegisterSet.Bool => RegisterType.ConstBool,
-                RegisterSet.Float4 => RegisterType.Const,
-                RegisterSet.Int4 => RegisterType.Input,
-                RegisterSet.Sampler => RegisterType.Sampler,
-                _ => throw new InvalidOperationException(),
-            };
-            for (int r = 0; r < constant.RegisterCount; r++)
-            {
-                var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
-                for (int i = 0; i < 4; i++)
+                    RegisterSet.Bool => RegisterType.ConstBool,
+                    RegisterSet.Float4 => RegisterType.Const,
+                    RegisterSet.Int4 => RegisterType.Input,
+                    RegisterSet.Sampler => RegisterType.Sampler,
+                    _ => throw new InvalidOperationException(),
+                };
+                for (int r = 0; r < constant.RegisterCount; r++)
                 {
-                    var destinationKey = new RegisterComponentKey(registerKey, i);
-                    var shaderInput = new RegisterInputNode(destinationKey);
-                    SetActiveOutput(destinationKey, shaderInput); // TODO: add to global scope instead
+                    var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var destinationKey = new RegisterComponentKey(registerKey, i);
+                        var shaderInput = new RegisterInputNode(destinationKey);
+                        SetActiveOutput(destinationKey, shaderInput);
+                    }
                 }
             }
         }
@@ -261,10 +201,6 @@ namespace HlslDecompiler.Hlsl
             {
                 InsertBreak(instruction);
             }
-            else if (instruction.Opcode == Opcode.End)
-            {
-                InsertReturnStatement();
-            }
             else if (instruction.Opcode == Opcode.IfC)
             {
                 InsertIfStatement(instruction);
@@ -275,7 +211,10 @@ namespace HlslDecompiler.Hlsl
             }
             else if (instruction.Opcode == Opcode.Endif)
             {
-                EndIf(instruction);
+                EndIf();
+            }
+            else if (instruction.Opcode == Opcode.End)
+            {
             }
         }
 
@@ -305,6 +244,10 @@ namespace HlslDecompiler.Hlsl
             foreach (RegisterComponentKey destinationKey in destinationKeys)
             {
                 HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                if (instructionTree is RegisterInputNode registerInput && registerInput.RegisterComponentKey.RegisterKey.IsOutput)
+                {
+                    continue;
+                }
                 instructionTree = ApplyModifier(instructionTree, instruction.GetDestinationResultModifier());
                 newOutputs[destinationKey] = instructionTree;
             }
@@ -315,178 +258,207 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        private void InsertStatement(IStatement statement)
+        {
+            if (_currentStatements.Count == 0)
+            {
+                ActiveStatementSequence.Add(statement);
+                _currentStatements.Push(statement);
+            }
+            else if (_currentStatements.Peek() is IfStatement ifStatement)
+            {
+                if (ifStatement.IsParsed)
+                {
+                    _currentStatements.Pop();
+                }
+                ActiveStatementSequence.Add(statement);
+                _currentStatements.Push(statement);
+            }
+            else if (_currentStatements.Peek() is LoopStatement loopStatement)
+            {
+                if (loopStatement.IsParsed)
+                {
+                    _currentStatements.Pop();
+                }
+                ActiveStatementSequence.Add(statement);
+                _currentStatements.Push(statement);
+            }
+            else
+            {
+                _currentStatements.Pop();
+                ActiveStatementSequence.Add(statement);
+                _currentStatements.Push(statement);
+            }
+        }
+
+        private void InsertAssignment()
+        {
+            if (ActiveStatement == null)
+            {
+                InsertStatement(new AssignmentStatement(new Dictionary<RegisterComponentKey, HlslTreeNode>()));
+            }
+            else if (ActiveStatement is not AssignmentStatement)
+            {
+                InsertStatement(new AssignmentStatement(ActiveOutputs));
+            }
+        }
+
         private void InsertClip(Instruction instruction)
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
-
             HlslTreeNode value;
             if (instruction is D3D10Instruction)
             {
                 value = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
-                    .Select(k => _activeOutputs[k])
+                    .Select(k => ActiveOutputs[k])
                     .ToArray());
             }
             else
             {
                 value = new GroupNode(GetDestinationKeys(instruction)
-                    .Select(k => _activeOutputs[k])
+                    .Select(k => ActiveOutputs[k])
                     .ToArray());
             }
-            var clip = new ClipStatement(value, closure);
-
-            StatementSequence sequence = GetOrCreateStatementSequence(closure);
-            sequence.Statements.Add(clip);
+            var clip = new ClipStatement(value, ActiveOutputs);
+            InsertStatement(clip);
         }
 
         private void InsertLoop(Instruction instruction)
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
-
             uint repeatCount = _registerState.FindConstantIntRegister(instruction.GetParamRegisterNumber(0))[0];
-            var loop = new LoopStatement(repeatCount, closure);
+            var loop = new LoopStatement(repeatCount, ActiveOutputs);
 
-            StatementSequence sequence = GetOrCreateStatementSequence(closure);
-            sequence.Statements.Add(loop);
-            _currentStatements.Push(loop);
-            _currentStatements.Push(loop.Body);
+            InsertStatement(loop);
         }
 
         private void InsertBreak(D3D9Instruction instruction)
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
-
             HlslTreeNode comparison = new GroupNode(Enumerable.Range(0, 4)
                 .Select(i => GetInputs(instruction, i))
                 .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
                 .ToArray());
-            var breakStatement = new BreakStatement(comparison, closure);
+            var breakStatement = new BreakStatement(comparison, ActiveOutputs);
 
-            StatementSequence sequence = GetOrCreateStatementSequence(closure);
-            sequence.Statements.Add(breakStatement);
+            InsertStatement(breakStatement);
         }
 
         private void EndLoop()
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
+            LoopStatement loopStatement;
 
-            LoopStatement loop;
-            while ((loop = _currentStatements.Pop() as LoopStatement) == null)
+            while ((loopStatement = _currentStatements.Peek() as LoopStatement) == null)
             {
+                _currentStatements.Pop();
             }
-            loop.EndClosure = closure;
+            loopStatement.IsParsed = true;
+
+            foreach (var output in loopStatement.Body.Last().Outputs)
+            {
+                RegisterComponentKey registerComponent = output.Key;
+                HlslTreeNode node = output.Value;
+                if (loopStatement.Outputs.TryGetValue(registerComponent, out var parentNode))
+                {
+                    if (node == parentNode)
+                    {
+                        continue;
+                    }
+                    loopStatement.Outputs[registerComponent] = new PhiNode(node, parentNode);
+                }
+                else
+                {
+                    // Variable is assigned only in loop body, not passing output forward
+                }
+            }
         }
 
         private void InsertIfStatement(D3D9Instruction instruction)
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
-
             HlslTreeNode comparison = new GroupNode(Enumerable.Range(0, 4)
                 .Select(i => GetInputs(instruction, i))
                 .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
                 .ToArray());
-            var ifStatement = new IfStatement(comparison, closure);
+            var ifStatement = new IfStatement(comparison, ActiveOutputs);
 
-            StatementSequence sequence = GetOrCreateStatementSequence(closure);
-            sequence.Statements.Add(ifStatement);
-            _currentStatements.Push(ifStatement);
-            _currentStatements.Push(ifStatement.TrueBody);
+            InsertStatement(ifStatement);
         }
 
         private void SwitchToElseBranch()
         {
-            Closure closure = GetCurrentClosure();
+            while (ActiveStatement is not IfStatement)
+            {
+                _currentStatements.Pop();
+            }
 
-            _currentStatements.Pop();
-            IfStatement ifStatement = _currentStatements.Peek() as IfStatement;
-            _activeOutputs = ifStatement.Closure.Outputs;
-            ifStatement.TrueEndClosure = closure;
-            ifStatement.FalseBody = new StatementSequence(ifStatement.Closure);
-            _currentStatements.Push(ifStatement.FalseBody);
+            var ifStatement = ActiveStatement as IfStatement;
+            ifStatement.IsTrueParsed = true;
+            ifStatement.FalseBody = [];
         }
 
-        private void EndIf(D3D9Instruction instruction)
+        private void EndIf()
         {
-            Closure closure = GetCurrentClosure();
-            SetTempVariablesActive(closure);
-
             IfStatement ifStatement;
-            while ((ifStatement = _currentStatements.Pop() as IfStatement) == null)
+            while ((ifStatement = _currentStatements.Peek() as IfStatement) == null || ifStatement.IsParsed)
             {
+                _currentStatements.Pop();
             }
+            ifStatement.IsTrueParsed = true;
+            ifStatement.IsParsed = true;
+
+            foreach (var trueOutput in ifStatement.TrueBody.Last().Outputs)
+            {
+                RegisterComponentKey registerComponent = trueOutput.Key;
+                HlslTreeNode trueNode = trueOutput.Value;
+                if (ifStatement.FalseBody != null && ifStatement.FalseBody.Last().Outputs.TryGetValue(registerComponent, out var falseNode))
+                {
+                    if (trueNode == falseNode)
+                    {
+                        continue;
+                    }
+                    ifStatement.Outputs[registerComponent] = new PhiNode(trueNode, falseNode);
+                }
+                else if (ifStatement.Outputs.TryGetValue(registerComponent, out var parentNode))
+                {
+                    if (trueNode == parentNode)
+                    {
+                        continue;
+                    }
+                    ifStatement.Outputs[registerComponent] = new PhiNode(trueNode, parentNode);
+                }
+                else
+                {
+                    // Variable is assigned only in true branch, not passing output forward
+                }
+            }
+
             if (ifStatement.FalseBody != null)
             {
-                ifStatement.FalseEndClosure = closure;
-            }
-            else
-            {
-                ifStatement.TrueEndClosure = closure;
-            }
-        }
-
-        private void InsertReturnStatement()
-        {
-            Closure closure = GetCurrentClosure();
-            var returnStatement = new ReturnStatement(closure);
-
-            StatementSequence sequence = GetOrCreateStatementSequence(closure);
-            sequence.Statements.Add(returnStatement);
-        }
-
-        private Closure GetCurrentClosure()
-        {
-            return new Closure(_activeOutputs.ToDictionary(o => o.Key, o =>
-            {
-                if (o.Key.RegisterKey.IsTempRegister && o.Value is not TempAssignmentNode)
+                foreach (var falseOutput in ifStatement.FalseBody.Last().Outputs)
                 {
-                    if (o.Value is TempVariableNode existingVariable && existingVariable.RegisterComponentKey.Equals(o.Key))
+                    RegisterComponentKey registerComponent = falseOutput.Key;
+                    HlslTreeNode falseNode = falseOutput.Value;
+                    if (ifStatement.TrueBody.Last().Outputs.ContainsKey(registerComponent))
                     {
-                        return o.Value;
+                        // Phi node was already created
                     }
-                    var tempVariable = new TempVariableNode(o.Key);
-                    return new TempAssignmentNode(tempVariable, o.Value);
-                }
-                return o.Value;
-            }));
-        }
-
-        private StatementSequence GetOrCreateStatementSequence(Closure closure)
-        {
-            if (_currentStatements.TryPeek(out IStatement statement) && statement is StatementSequence)
-            {
-                return (StatementSequence)statement;
-            }
-
-            var sequence = new StatementSequence(closure);
-            _currentStatements.Push(sequence);
-            return sequence;
-        }
-
-        private void SetTempVariablesActive(Closure closure)
-        {
-            foreach (var output in closure.Outputs.Where(o => o.Key.RegisterKey.IsTempRegister))
-            {
-                if (output.Value is TempAssignmentNode tempAssignment)
-                {
-                    SetActiveOutput(output.Key, tempAssignment.TempVariable);
+                    else if (ifStatement.Outputs.TryGetValue(registerComponent, out var parentNode))
+                    {
+                        if (falseNode == parentNode)
+                        {
+                            continue;
+                        }
+                        ifStatement.Outputs[registerComponent] = new PhiNode(falseNode, parentNode);
+                    }
+                    else
+                    {
+                        // Variable is assigned only in false branch, not passing output forward
+                    }
                 }
             }
         }
 
-        private void SetActiveOutput(RegisterComponentKey outputRegisterComponent, HlslTreeNode value)
+        private void SetActiveOutput(RegisterComponentKey registerComponent, HlslTreeNode value)
         {
-            if (_activeOutputs.TryGetValue(outputRegisterComponent, out HlslTreeNode existing) && existing is TempVariableNode tempVariable)
-            {
-                value = new TempAssignmentNode(tempVariable, value)
-                {
-                    IsReassignment = true
-                };
-            }
-            _activeOutputs[outputRegisterComponent] = value;
+            InsertAssignment();
+            ActiveOutputs[registerComponent] = value;
         }
 
         private void ParseAssignmentInstruction(D3D10Instruction instruction)
@@ -868,7 +840,7 @@ namespace HlslDecompiler.Hlsl
             {
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
                 SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
-                inputs[i] = ApplyModifier(_activeOutputs[inputKey], modifier);
+                inputs[i] = ApplyModifier(ActiveOutputs[inputKey], modifier);
                 parameterIndex++;
             }
             return inputs;
@@ -889,7 +861,7 @@ namespace HlslDecompiler.Hlsl
                 else
                 {
                     var inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
-                    HlslTreeNode input = _activeOutputs[inputKey];
+                    HlslTreeNode input = ActiveOutputs[inputKey];
                     D3D10OperandModifier modifier = instruction.GetOperandModifier(inputParameterIndex);
                     input = ApplyModifier(input, modifier);
                     inputs[i] = input;
@@ -904,7 +876,7 @@ namespace HlslDecompiler.Hlsl
             for (int i = 0; i < numComponents; i++)
             {
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, i);
-                HlslTreeNode input = _activeOutputs[inputKey];
+                HlslTreeNode input = ActiveOutputs[inputKey];
                 if (instruction is D3D9Instruction d9Instruction)
                 {
                     var modifier = d9Instruction.GetSourceModifier(inputParameterIndex);
@@ -1058,17 +1030,6 @@ namespace HlslDecompiler.Hlsl
                 componentIndex = swizzle[component];
             }
             return new RegisterComponentKey(registerKey, componentIndex);
-        }
-
-        private static string ReadStringNullTerminated(Stream stream)
-        {
-            var builder = new StringBuilder();
-            char b;
-            while ((b = (char)stream.ReadByte()) != 0)
-            {
-                builder.Append(b);
-            }
-            return builder.ToString();
         }
     }
 }

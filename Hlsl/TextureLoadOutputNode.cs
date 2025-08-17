@@ -72,6 +72,13 @@ namespace HlslDecompiler.Hlsl
         public IEnumerable<HlslTreeNode> DerivativeY => Inputs.Skip(1 + 2 * _numTextureCoordinates).Take(_numTextureCoordinates);
         public int ComponentIndex { get; }
         public TextureLoadControls Controls { get; private set; }
+
+        public override string ToString()
+        {
+            return $"tex({Sampler}, {TextureCoordinateInputs
+                .Select(i => i.ToString())
+                .Aggregate((a, b) => a + ", " + b)})";
+        }
     }
 
     [Flags]

@@ -305,11 +305,9 @@ namespace HlslDecompiler.Hlsl
             if (first is TempAssignmentNode tempAssignment)
             {
                 string type;
-                string variableCompiled;
                 if (tempAssignment.IsReassignment)
                 {
                     type = string.Empty;
-                    variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
                 }
                 else
                 {
@@ -319,22 +317,25 @@ namespace HlslDecompiler.Hlsl
                         type += components.Count;
                     }
                     type += " ";
-
-                    int index = _tempAssignmentindexCounter;
-                    _tempAssignmentindexCounter++;
-                    foreach (var component in components)
-                    {
-                        var assignment = component as TempAssignmentNode;
-                        assignment.TempVariable.DeclarationIndex = index;
-                    }
-                    variableCompiled = $"t{tempAssignment.TempVariable.DeclarationIndex}";
                 }
+                string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
+
                 string compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
                 return $"{type}{variableCompiled} = {compiled};";
             }
 
             if (first is TempVariableNode tempVariable)
             {
+                if (tempVariable.DeclarationIndex == null)
+                {
+                    int index = _tempAssignmentindexCounter;
+                    _tempAssignmentindexCounter++;
+                    foreach (var component in components)
+                    {
+                        (component as TempVariableNode).DeclarationIndex = index;
+                    }
+                }
+
                 string swizzle = GetAstSourceSwizzleName(componentsWithIndices, components.Count);
                 return $"t{tempVariable.DeclarationIndex}{swizzle}";
             }

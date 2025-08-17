@@ -1,7 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl.FlowControl
+﻿using HlslDecompiler.DirectXShaderModel;
+using System.Collections.Generic;
+
+namespace HlslDecompiler.Hlsl.FlowControl
 {
     public interface IStatement
     {
-        public Closure Closure { get; }
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
+        public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
     }
 }

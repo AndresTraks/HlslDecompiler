@@ -82,7 +82,7 @@ namespace HlslDecompiler.Tests
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal at " + asmOutputFilename);
             FileAssert.AreEqual(hlslInstructionExpectedFilename, hlslInstructionOutputFilename, "HLSL not equal at " + hlslInstructionOutputFilename);
-            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
+            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "AST HLSL not equal at " + hlslOutputFilename);
         }
     }
 }

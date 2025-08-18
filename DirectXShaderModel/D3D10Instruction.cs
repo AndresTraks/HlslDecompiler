@@ -375,6 +375,7 @@ namespace HlslDecompiler.DirectXShaderModel
             int registerNumber = GetParamRegisterNumber(index);
 
             string registerTypeName;
+            string size = "";
             switch (operandType)
             {
                 case OperandType.Input:
@@ -388,12 +389,13 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case OperandType.ConstantBuffer:
                     registerTypeName = "cb";
+                    size = "[" + GetParamConstantBufferSize(index) + "]";
                     break;
                 default:
                     throw new NotImplementedException();
             }
 
-            return $"{registerTypeName}{registerNumber}";
+            return $"{registerTypeName}{registerNumber}{size}";
         }
 
         public override int GetParamRegisterNumber(int index)
@@ -404,11 +406,18 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 return (int)span[2];
             }
-            if (GetOperandType(index) == OperandType.ConstantBuffer)
-            {
-                return (int)span[2];
-            }
             return (int) span[1];
+        }
+
+        public int GetParamConstantBufferSize(int index)
+        {
+            Span<uint> span = OperandTokens.GetSpan(index);
+            bool isExtended = (span[0] & 0x80000000) != 0;
+            if (isExtended)
+            {
+                return (int)span[3];
+            }
+            return (int)span[2];
         }
 
         public override string ToString()

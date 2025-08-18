@@ -108,6 +108,9 @@ namespace HlslDecompiler.Hlsl
                     case OperandType.Input:
                         var decl = _registerDeclarations[registerKey];
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                    case OperandType.Output:
+                        decl = _registerDeclarations[registerKey];
+                        return (MethodOutputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     default:
                         throw new NotImplementedException();
                 }

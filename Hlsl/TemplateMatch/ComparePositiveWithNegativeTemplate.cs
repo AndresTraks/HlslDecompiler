@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using System;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch
 {
@@ -7,17 +8,27 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
         public override bool Match(HlslTreeNode node)
         {
             return node is ComparisonNode comp &&
-                ((comp.Left is NegateOperation negLeft && negLeft.Value == comp.Right)
-                || (comp.Right is NegateOperation negRight && negRight.Value == comp.Left));
+                ((comp.Left is NegateOperation negLeft && negLeft.Value == comp.Right) ||
+                (comp.Right is NegateOperation negRight && negRight.Value == comp.Left));
         }
 
         public override HlslTreeNode Reduce(ComparisonNode node)
         {
             if (node.Left is NegateOperation)
             {
-                return new ComparisonNode(node.Right, new ConstantNode(0), IfComparison.NE);
+                var comparison = node.Comparison switch
+                {
+                    IfComparison.GT => IfComparison.LT,
+                    IfComparison.GE => IfComparison.LE,
+                    IfComparison.LT => IfComparison.GT,
+                    IfComparison.LE => IfComparison.GE,
+                    IfComparison.EQ => IfComparison.EQ,
+                    IfComparison.NE => IfComparison.NE,
+                    _ => throw new InvalidOperationException(node.Comparison.ToString()),
+                };
+                return new ComparisonNode(node.Right, new ConstantNode(0), comparison);
             }
-            return new ComparisonNode(node.Left, new ConstantNode(0), IfComparison.NE);
+            return new ComparisonNode(node.Left, new ConstantNode(0), node.Comparison);
         }
     }
 }

@@ -43,7 +43,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override bool Equals(object obj)
         {
-            if (!(obj is RegisterComponentKey other))
+            if (obj is not RegisterComponentKey other)
             {
                 return false;
             }

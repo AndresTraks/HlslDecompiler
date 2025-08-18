@@ -77,9 +77,9 @@ namespace HlslDecompiler.DirectXShaderModel
                             string name = ReadStringNullTerminated();
 
                             // TODO
-                            int registerNumber = variableOffset / 16;
+                            int registerNumber = i;
                             int maskedSize = variableSize / 4;
-                            var description = new ConstantBufferDescription(registerNumber, maskedSize, name);
+                            var description = new ConstantBufferDescription(registerNumber, variableOffset, maskedSize, name);
                             constantBufferDescriptions.Add(description);
                         }
                     }

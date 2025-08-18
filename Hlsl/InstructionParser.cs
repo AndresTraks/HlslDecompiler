@@ -309,7 +309,7 @@ namespace HlslDecompiler.Hlsl
             if (instruction is D3D10Instruction)
             {
                 value = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
-                    .Select(k => ActiveOutputs[k])
+                    .Select(k => GetActiveOutput(k))
                     .ToArray());
             }
             else
@@ -455,6 +455,15 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
+        private HlslTreeNode GetActiveOutput(RegisterComponentKey registerComponent)
+        {
+            if (registerComponent.RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32)
+            {
+                return new ConstantNode(d3D10RegisterKey.Number);
+            }
+            return ActiveOutputs[registerComponent];
+        }
+
         private void SetActiveOutput(RegisterComponentKey registerComponent, HlslTreeNode value)
         {
             InsertAssignment();
@@ -471,6 +480,10 @@ namespace HlslDecompiler.Hlsl
             foreach (RegisterComponentKey destinationKey in destinationKeys)
             {
                 HlslTreeNode instructionTree = CreateInstructionTree(instruction, destinationKey);
+                if (instructionTree is RegisterInputNode registerInput && registerInput.RegisterComponentKey.RegisterKey.IsOutput)
+                {
+                    continue;
+                }
                 newOutputs[destinationKey] = instructionTree;
             }
 
@@ -840,7 +853,7 @@ namespace HlslDecompiler.Hlsl
             {
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
                 SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
-                inputs[i] = ApplyModifier(ActiveOutputs[inputKey], modifier);
+                inputs[i] = ApplyModifier(GetActiveOutput(inputKey), modifier);
                 parameterIndex++;
             }
             return inputs;
@@ -861,7 +874,7 @@ namespace HlslDecompiler.Hlsl
                 else
                 {
                     var inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
-                    HlslTreeNode input = ActiveOutputs[inputKey];
+                    HlslTreeNode input = GetActiveOutput(inputKey);
                     D3D10OperandModifier modifier = instruction.GetOperandModifier(inputParameterIndex);
                     input = ApplyModifier(input, modifier);
                     inputs[i] = input;
@@ -876,7 +889,7 @@ namespace HlslDecompiler.Hlsl
             for (int i = 0; i < numComponents; i++)
             {
                 RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, i);
-                HlslTreeNode input = ActiveOutputs[inputKey];
+                HlslTreeNode input = GetActiveOutput(inputKey);
                 if (instruction is D3D9Instruction d9Instruction)
                 {
                     var modifier = d9Instruction.GetSourceModifier(inputParameterIndex);

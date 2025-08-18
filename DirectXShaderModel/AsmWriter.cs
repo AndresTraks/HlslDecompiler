@@ -30,9 +30,12 @@ namespace HlslDecompiler.DirectXShaderModel
         {
             int destIndex = instruction.GetDestinationParamIndex();
             string registerName = instruction.GetParamRegisterName(destIndex);
+            if (instruction is D3D10Instruction d3D10Instruction && d3D10Instruction.Opcode == D3D10Opcode.DclConstantBuffer)
+            {
+                return registerName;
+            }
             int destinationLength = instruction.GetDestinationSemanticSize();
             string writeMaskName = instruction.GetDestinationWriteMaskName(destinationLength);
-
             return $"{registerName}{writeMaskName}";
         }
 

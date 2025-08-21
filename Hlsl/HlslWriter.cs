@@ -137,10 +137,20 @@ namespace HlslDecompiler
         {
             if (_registers.ConstantDeclarations.Count != 0)
             {
+                int samplerIndex = 0;
                 foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
                 {
                     string typeName = GetConstantTypeName(declaration);
-                    WriteLine("{0} {1};", typeName, declaration.Name);
+                    string registerSpecifier = "";
+                    if (declaration.RegisterSet == RegisterSet.Sampler)
+                    {
+                        if (samplerIndex != declaration.RegisterIndex)
+                        {
+                            registerSpecifier = $" : register(s{declaration.RegisterIndex})";
+                        }
+                        samplerIndex++;
+                    }
+                    WriteLine("{0} {1}{2};", typeName, declaration.Name, registerSpecifier);
                 }
 
                 WriteLine();

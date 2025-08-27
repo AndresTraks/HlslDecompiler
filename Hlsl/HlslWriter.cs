@@ -40,49 +40,6 @@ namespace HlslDecompiler
             internalWriter.WriteLine(format, args);
         }
 
-        private static string GetConstantTypeName(ConstantDeclaration declaration)
-        {
-            switch (declaration.ParameterClass)
-            {
-                case ParameterClass.Scalar:
-                    return declaration.ParameterType.ToString().ToLower();
-                case ParameterClass.Vector:
-                    if (declaration.ParameterType == ParameterType.Float)
-                    {
-                        return "float" + declaration.Columns;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                case ParameterClass.MatrixColumns:
-                case ParameterClass.MatrixRows:
-                    if (declaration.ParameterType == ParameterType.Float)
-                    {
-                        return $"float{declaration.Rows}x{declaration.Columns}";
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                case ParameterClass.Object:
-                    switch (declaration.ParameterType)
-                    {
-                        case ParameterType.Sampler1D:
-                            return "sampler1D";
-                        case ParameterType.Sampler2D:
-                            return "sampler2D";
-                        case ParameterType.Sampler3D:
-                            return "sampler3D";
-                        case ParameterType.SamplerCube:
-                            return "samplerCUBE";
-                        default:
-                            throw new NotImplementedException();
-                    }
-            }
-            throw new NotImplementedException();
-        }
-
         public void Write(string hlslFilename)
         {
             using var file = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
@@ -137,22 +94,11 @@ namespace HlslDecompiler
         {
             if (_registers.ConstantDeclarations.Count != 0)
             {
-                int samplerIndex = 0;
+                var compiler = new ConstantDeclarationCompiler();
                 foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
                 {
-                    string typeName = GetConstantTypeName(declaration);
-                    string registerSpecifier = "";
-                    if (declaration.RegisterSet == RegisterSet.Sampler)
-                    {
-                        if (samplerIndex != declaration.RegisterIndex)
-                        {
-                            registerSpecifier = $" : register(s{declaration.RegisterIndex})";
-                        }
-                        samplerIndex++;
-                    }
-                    WriteLine("{0} {1}{2};", typeName, declaration.Name, registerSpecifier);
+                    WriteLine(compiler.Compile(declaration));
                 }
-
                 WriteLine();
             }
         }

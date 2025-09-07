@@ -30,12 +30,9 @@ namespace HlslDecompiler.Hlsl.FlowControl
                         Visit(ifStatement.FalseBody, action);
                     }
                 }
-                else
+                else if (statement is LoopStatement loopStatement)
                 {
-                    if (statement is LoopStatement loopStatement)
-                    {
-                        Visit(loopStatement.Body, action);
-                    }
+                    Visit(loopStatement.Body, action);
                 }
             }
         }

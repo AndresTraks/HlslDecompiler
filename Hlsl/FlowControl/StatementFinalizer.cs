@@ -14,65 +14,63 @@ namespace HlslDecompiler.Hlsl.FlowControl
             _statements = statements;
         }
 
-        public static void Optimize(IList<IStatement> statements)
+        public static void Finalize(IList<IStatement> statements)
         {
-            var optimizer = new StatementFinalizer(statements);
-            optimizer.OptimizeStatements();
+            var finalizer = new StatementFinalizer(statements);
+            finalizer.FinalizeStatements();
         }
 
-        private void OptimizeStatements()
+        private void FinalizeStatements()
         {
-            RemovePhiNodes(_statements);
-            RemoveAssignments(_statements);
-            InsertTempVariables(_statements);
+            RemoveUnusedAssignmentInputOutput();
+            RemoveUnusedAssignments(_statements);
+            InsertTempVariableAssignments(_statements);
             SetReturnStatement(_statements);
         }
 
-        private static void RemovePhiNodes(IList<IStatement> statements)
+        private void RemoveUnusedAssignmentInputOutput()
         {
-            for (int i = 0; i < statements.Count; i++)
+            new StatementVisitor(_statements).Visit(statement =>
             {
-                RemovePhiNodes(statements, i);
-            }
-        }
+                var inputsToRemove = statement.Inputs
+                    .Where(i => !(i.Key.RegisterKey.IsTempRegister || i.Key.RegisterKey.IsOutput))
+                    .ToList();
+                foreach (var output in inputsToRemove)
+                {
+                    statement.Inputs.Remove(output.Key);
+                }
 
-        private static void RemovePhiNodes(IList<IStatement> statements, int i)
-        {
-            var statement = statements[i];
-            if (statement is AssignmentStatement assignment)
-            {
                 var outputsToRemove = statement.Outputs
-                    .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
+                    .Where(o => !(o.Key.RegisterKey.IsTempRegister || o.Key.RegisterKey.IsOutput))
                     .ToList();
                 foreach (var output in outputsToRemove)
                 {
                     statement.Outputs.Remove(output.Key);
-                    output.Value.Remove();
                 }
-            }
-            else if (statements[i] is IfStatement ifStatement)
-            {
-                RemovePhiNodes(ifStatement.TrueBody);
-                if (ifStatement.FalseBody != null)
+
+                if (statement is AssignmentStatement assignment)
                 {
-                    RemovePhiNodes(ifStatement.FalseBody);
+                    outputsToRemove = statement.Outputs
+                        .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
+                        .ToList();
+                    foreach (var output in outputsToRemove)
+                    {
+                        statement.Outputs.Remove(output.Key);
+                        output.Value.Remove();
+                    }
                 }
-            }
-            else if (statements[i] is LoopStatement loopStatement)
-            {
-                RemovePhiNodes(loopStatement.Body);
-            }
+            });
         }
 
-        private void RemoveAssignments(IList<IStatement> statements)
+        private void RemoveUnusedAssignments(IList<IStatement> statements)
         {
             for (int i = 0; i < statements.Count; i++)
             {
-                RemoveAssignments(statements, i);
+                RemoveUnusedAssignments(statements, i);
             }
         }
 
-        private void RemoveAssignments(IList<IStatement> statements, int i)
+        private void RemoveUnusedAssignments(IList<IStatement> statements, int i)
         {
             if (statements[i] is AssignmentStatement assignment)
             {
@@ -82,7 +80,7 @@ namespace HlslDecompiler.Hlsl.FlowControl
                     var assignmentNode = assignmentOutput.Value;
 
                     // Check if assignment output goes only into itself
-                    if (assignmentNode.Outputs.All(v => v.IsInputOf(assignmentOutputs.Values)))
+                    if (assignmentNode.Outputs.All(v => v.IsInputOf(assignment.Outputs.Values)))
                     {
                         RemoveAnyAssignment(assignmentNode);
                         continue;
@@ -94,7 +92,7 @@ namespace HlslDecompiler.Hlsl.FlowControl
                         IStatement nextStatement = statements[i + 1];
                         if (nextStatement is ClipStatement clip)
                         {
-                            if (assignmentNode.IsInputOf(clip.Value.Inputs))
+                            if (assignmentNode.IsInputOf(clip.Values))
                             {
                                 assignment.Outputs.Remove(assignmentOutput.Key);
                                 clip.Inputs.Remove(assignmentOutput.Key);
@@ -102,7 +100,7 @@ namespace HlslDecompiler.Hlsl.FlowControl
                         }
                         else if (nextStatement is IfStatement ifStatement)
                         {
-                            if (assignmentNode.IsInputOf(ifStatement.Comparison.Inputs))
+                            if (assignmentNode.IsInputOf(ifStatement.Comparison))
                             {
                                 // TODO:
                                 /*
@@ -120,47 +118,49 @@ namespace HlslDecompiler.Hlsl.FlowControl
             }
             else if (statements[i] is IfStatement ifStatement)
             {
-                RemoveAssignments(ifStatement.TrueBody);
+                RemoveUnusedAssignments(ifStatement.TrueBody);
                 if (ifStatement.FalseBody != null)
                 {
-                    RemoveAssignments(ifStatement.FalseBody);
+                    RemoveUnusedAssignments(ifStatement.FalseBody);
                 }
             }
         }
 
-        private void InsertTempVariables(IList<IStatement> statements)
+        private void InsertTempVariableAssignments(IList<IStatement> statements)
         {
             for (int i = 0; i < statements.Count; i++)
             {
-                InsertTempVariables(statements, i);
+                InsertTempVariableAssignments(statements, i);
             }
         }
 
-        private void InsertTempVariables(IList<IStatement> statements, int i)
+        private void InsertTempVariableAssignments(IList<IStatement> statements, int i)
         {
             IStatement statement = statements[i];
-            var newAssignments = statement.Outputs
-                .Where(o => o.Key.RegisterKey.IsTempRegister)
-                .Where(o => !statement.Inputs.ContainsKey(o.Key) || statement.Inputs[o.Key] != statement.Outputs[o.Key])
-                .ToList();
-            foreach (var newAssignment in newAssignments)
-            {
-                HlslTreeNode tempInput = newAssignment.Value;
 
-                if (statement is AssignmentStatement)
+            if (statement is AssignmentStatement)
+            {
+                var newAssignments = statement.Outputs
+                    .Where(o => o.Key.RegisterKey.IsTempRegister)
+                    .Where(o => !statement.Inputs.ContainsKey(o.Key) || statement.Inputs[o.Key] != statement.Outputs[o.Key])
+                    .ToList();
+                foreach (var newAssignment in newAssignments)
                 {
-                    // Insert temp variable if any output exits statement
+                    HlslTreeNode tempValue = newAssignment.Value;
+
+                    // Insert temp variable if value has output outside of current statement
                     // or if an iteration variable is changed
+                    bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values));
                     statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                     var tempInputAssignment = inputAssignment as TempAssignmentNode;
-                    if (tempInput.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values)) || tempInputAssignment != null)
+                    if (doesOutputExitStatement || tempInputAssignment != null)
                     {
-                        List<HlslTreeNode> tempUsages = tempInput.Outputs.ToList();
-                        tempInput.Outputs.Clear();
+                        List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
+                        tempValue.Outputs.Clear();
                         TempVariableNode tempVariable = tempInputAssignment != null
                             ? tempInputAssignment.TempVariable
                             : new TempVariableNode();
-                        var tempAssignment = new TempAssignmentNode(tempVariable, tempInput);
+                        var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                         if (tempUsages.All(u => u is PhiNode) || tempInputAssignment != null)
                         {
                             tempAssignment.IsReassignment = true;
@@ -181,20 +181,19 @@ namespace HlslDecompiler.Hlsl.FlowControl
                                     tempVariable.Outputs.Add(output);
                                 }
                             }
-                            int index = tempUsage.Inputs.IndexOf(tempInput);
+                            int index = tempUsage.Inputs.IndexOf(tempValue);
                             tempUsage.Inputs[index] = tempVariable;
                         }
-                        ReplaceAnyAssignment(newAssignment.Key, tempInput, tempAssignment);
+                        ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
                     }
                 }
             }
-
-            if (statement is IfStatement ifStatement)
+            else if (statement is IfStatement ifStatement)
             {
-                InsertTempVariables(ifStatement.TrueBody);
+                InsertTempVariableAssignments(ifStatement.TrueBody);
                 if (ifStatement.FalseBody != null)
                 {
-                    InsertTempVariables(ifStatement.FalseBody);
+                    InsertTempVariableAssignments(ifStatement.FalseBody);
 
                     foreach (var trueTempAssignment in ifStatement.TrueBody.Last().Outputs.Where(o => o.Value is TempAssignmentNode))
                     {
@@ -213,7 +212,7 @@ namespace HlslDecompiler.Hlsl.FlowControl
             }
             else if (statement is LoopStatement loopStatement)
             {
-                InsertTempVariables(loopStatement.Body);
+                InsertTempVariableAssignments(loopStatement.Body);
 
                 foreach (var loopBodyAssignment in loopStatement.Body.Last().Outputs.Where(o => o.Value is TempAssignmentNode).ToList())
                 {

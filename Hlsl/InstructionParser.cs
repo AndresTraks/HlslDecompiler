@@ -156,8 +156,8 @@ namespace HlslDecompiler.Hlsl
         private void ParseConstantTableComment(D3D9Instruction instruction)
         {
             using var reader = new ConstantTableCommentReader(instruction);
-            IList<ConstantDeclaration> constants = reader.ReadConstantDeclarations();
-            foreach (ConstantDeclaration constant in constants)
+            ConstantTable constantTable = reader.ReadTable();
+            foreach (ConstantDeclaration constant in constantTable.Declarations)
             {
                 _registerState.DeclareConstant(constant);
 
@@ -305,20 +305,20 @@ namespace HlslDecompiler.Hlsl
 
         private void InsertClip(Instruction instruction)
         {
-            HlslTreeNode value;
+            HlslTreeNode[] values;
             if (instruction is D3D10Instruction)
             {
-                value = new GroupNode(GetParameterRegisterKeys(instruction, 0, 15)
-                    .Select(k => GetActiveOutput(k))
-                    .ToArray());
+                values = GetParameterRegisterKeys(instruction, 0, 15)
+                    .Select(GetActiveOutput)
+                    .ToArray();
             }
             else
             {
-                value = new GroupNode(GetDestinationKeys(instruction)
-                    .Select(k => ActiveOutputs[k])
-                    .ToArray());
+                values = GetDestinationKeys(instruction)
+                    .Select(GetActiveOutput)
+                    .ToArray();
             }
-            var clip = new ClipStatement(value, ActiveOutputs);
+            var clip = new ClipStatement(values, ActiveOutputs);
             InsertStatement(clip);
         }
 
@@ -372,10 +372,10 @@ namespace HlslDecompiler.Hlsl
 
         private void InsertIfStatement(D3D9Instruction instruction)
         {
-            HlslTreeNode comparison = new GroupNode(Enumerable.Range(0, 4)
+            HlslTreeNode[] comparison = Enumerable.Range(0, 4)
                 .Select(i => GetInputs(instruction, i))
                 .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
-                .ToArray());
+                .ToArray();
             var ifStatement = new IfStatement(comparison, ActiveOutputs);
 
             InsertStatement(ifStatement);

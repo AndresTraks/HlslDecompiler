@@ -90,7 +90,7 @@ namespace HlslDecompiler.Hlsl
                 return Compile(group.Inputs);
             }
 
-            throw new NotImplementedException();
+            throw new NotImplementedException("Unsupported node: " + first.GetType().Name);
         }
 
         private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)

@@ -8,7 +8,7 @@
         public ConstantRegister(int registerIndex, float value0, float value1, float value2, float value3)
         {
             RegisterIndex = registerIndex;
-            Value = new[] { value0, value1, value2, value3 };
+            Value = [value0, value1, value2, value3];
         }
 
         public float this[int index]

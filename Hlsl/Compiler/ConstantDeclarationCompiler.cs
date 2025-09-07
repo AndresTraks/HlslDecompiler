@@ -7,10 +7,6 @@ namespace HlslDecompiler.Hlsl
     {
         private int[] _index = new int[Enum.GetNames(typeof(RegisterSet)).Length];
 
-        public ConstantDeclarationCompiler()
-        {
-        }
-
         public string Compile(ConstantDeclaration declaration)
         {
             string typeName = GetTypeName(declaration);
@@ -18,7 +14,7 @@ namespace HlslDecompiler.Hlsl
             int registerSet = (int)declaration.RegisterSet;
             if (_index[registerSet] == declaration.RegisterIndex)
             {
-                _index[registerSet]++;
+                _index[registerSet] += declaration.RegisterCount;
             }
             else
             {

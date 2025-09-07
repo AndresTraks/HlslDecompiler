@@ -12,14 +12,14 @@ namespace HlslDecompiler.DirectXShaderModel
         {
         }
 
-        public IList<ConstantDeclaration> ReadConstantDeclarations()
+        public ConstantTable ReadTable()
         {
-            IList<ConstantDeclaration> constants = [];
             if (BaseStream.Length == 0)
             {
-                return constants;
+                return new ConstantTable();
             }
 
+            // D3DXSHADER_CONSTANTTABLE
             int ctabSize = ReadInt32();
             System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
             long creatorPosition = ReadInt32();
@@ -40,13 +40,15 @@ namespace HlslDecompiler.DirectXShaderModel
             BaseStream.Position = shaderModelPosition;
             string shaderModel = ReadStringNullTerminated();
 
+            IList<ConstantDeclaration> declarations = [];
             for (int i = 0; i < numConstants; i++)
             {
                 BaseStream.Position = constantInfoPosition + i * 20;
                 ConstantDeclaration constant = ReadConstantDeclaration();
-                constants.Add(constant);
+                declarations.Add(constant);
             }
-            return constants;
+
+            return new ConstantTable(minorVersion, majorVersion, shaderType, shaderFlags, compilerInfo, shaderModel, declarations);
         }
 
         private ConstantDeclaration ReadConstantDeclaration()

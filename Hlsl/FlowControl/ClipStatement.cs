@@ -6,13 +6,13 @@ namespace HlslDecompiler.Hlsl.FlowControl
 {
     public class ClipStatement : IStatement
     {
-        public HlslTreeNode Value { get; }
+        public HlslTreeNode[] Values { get; }
         public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
         public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
-        public ClipStatement(HlslTreeNode value, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
+        public ClipStatement(HlslTreeNode[] values, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
         {
-            Value = value;
+            Values = values;
             Inputs = inputs.ToDictionary();
             Outputs = inputs.ToDictionary();
         }

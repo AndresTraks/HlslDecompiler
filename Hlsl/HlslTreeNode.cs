@@ -9,15 +9,6 @@ namespace HlslDecompiler.Hlsl
         public IList<HlslTreeNode> Inputs { get; } = [];
         public IList<HlslTreeNode> Outputs { get; } = [];
 
-        public virtual HlslTreeNode Reduce()
-        {
-            for (int i = 0; i < Inputs.Count; i++)
-            {
-                Inputs[i] = Inputs[i].Reduce();
-            }
-            return this;
-        }
-
         public void Replace(HlslTreeNode with)
         {
             foreach (var input in Inputs)

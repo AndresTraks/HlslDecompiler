@@ -25,7 +25,7 @@ namespace HlslDecompiler.Hlsl
             {
                 case 0:
                 case 1:
-                    return new IList<HlslTreeNode>[] { nodes };
+                    return [nodes];
             }
 
             List<IList<HlslTreeNode>> groups;
@@ -60,7 +60,7 @@ namespace HlslDecompiler.Hlsl
                 return groups;
             }
 
-            groups = new List<IList<HlslTreeNode>>();
+            groups = [];
 
             int groupStart = 0;
             int nodeIndex;
@@ -122,6 +122,10 @@ namespace HlslDecompiler.Hlsl
 
             if (node1 is TempAssignmentNode assignment1 && node2 is TempAssignmentNode assignment2)
             {
+                if (assignment1.TempVariable.IsInputOf(assignment2.Value) || assignment2.TempVariable.IsInputOf(assignment1.Value))
+                {
+                    return false;
+                }
                 return CanGroupComponents(assignment1.TempVariable, assignment2.TempVariable);
             }
 

@@ -27,7 +27,7 @@ namespace HlslDecompiler.Hlsl
                     return true;
                 }
             }
-            else if (input is GroupNode inputGroup)
+            else if (input is VirtualGroupNode inputGroup)
             {
                 if (inputGroup.Inputs.Any(i => IsInputOf(i, node)))
                 {

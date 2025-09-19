@@ -94,22 +94,19 @@ namespace HlslDecompiler
 
         private static string GetModifier(D3D9Instruction instruction)
         {
+            string source = "{1}";
             ResultModifier resultModifier = instruction.GetDestinationResultModifier();
-            switch (resultModifier)
+            if (resultModifier.HasFlag(ResultModifier.Saturate))
             {
-                case ResultModifier.None:
-                    return "{0} = {1};";
-                case ResultModifier.Centroid:
-                    return "{0} = {1};";
-                case ResultModifier.PartialPrecision:
-                    return "{0} = {1};";
-                case ResultModifier.Saturate:
-                    return "{0} = saturate({1});";
-                case ResultModifier.Saturate | ResultModifier.PartialPrecision:
-                    return "{0} = saturate({1});";
-                default:
-                    throw new NotSupportedException("Not supported result modifier " + resultModifier);
+                source = $"saturate({source})";
             }
+            if (resultModifier.HasFlag(ResultModifier.PartialPrecision))
+            {
+                string size = instruction.GetDestinationMaskLength().ToString();
+                size = size == "1" ? "" : size;
+                source = $"half{size}({source})";
+            }
+            return "{0} = " + source + ";";
         }
 
         private void WriteInstruction(D3D9Instruction instruction)

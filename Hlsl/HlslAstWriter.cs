@@ -83,8 +83,8 @@ namespace HlslDecompiler.Hlsl
 
         private void WriteAssignmentStatement(AssignmentStatement assignmentStatement)
         {
-            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> tempComponents =
-                assignmentStatement.Outputs
+
+            IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = assignmentStatement.Outputs
                     .Where(o => {
                         if (!o.Key.RegisterKey.IsTempRegister)
                         {
@@ -95,30 +95,12 @@ namespace HlslDecompiler.Hlsl
                             return false;
                         }
                         return true;
-                    });
-            Dictionary<RegisterKey, HlslTreeNode[]> temps = GroupComponents(tempComponents)
-                    .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
-            foreach (var temp in temps.OrderBy(t => new VirtualGroupNode(t.Value), _tempAssignmentOrder))
+                    })
+                    .ToDictionary();
+            foreach (var temp in GroupAssignments(tempComponents))
             {
-                if (temp.Value.All(i => i is TempAssignmentNode))
-                {
-                    // Assign declaration index
-                    _compiler.Compile(temp.Value);
-
-                    foreach (var tempGroup in temp.Value
-                        .GroupBy(v => (v as TempAssignmentNode).TempVariable.DeclarationIndex)
-                        .OrderBy(t => new VirtualGroupNode(t.ToArray()), _tempAssignmentOrder))
-                    {
-                        string compiled = _compiler.Compile(tempGroup);
-                        WriteLine(compiled);
-                    }
-                }
-                else
-                {
-                    string compiled = _compiler.Compile(temp.Value);
-                    string size = temp.Value.Length > 1 ? temp.Value.Length.ToString() : "";
-                    WriteLine($"float{size} t{temp.Key.Number} = {compiled};");
-                }
+                string compiled = _compiler.Compile(temp);
+                WriteLine(compiled);
             }
 
             Dictionary<RegisterKey, HlslTreeNode[]> outputs =
@@ -204,7 +186,7 @@ namespace HlslDecompiler.Hlsl
 
                     var variable = group.First() as TempVariableNode;
                     string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
-                    WriteLine($"float{variable.VariableSize} t{variable.DeclarationIndex};");
+                    WriteLine($"float{size} t{variable.DeclarationIndex};");
                 }
             }
         }
@@ -222,7 +204,7 @@ namespace HlslDecompiler.Hlsl
             }
             else
             {
-                foreach (var rootGroup in outputs.OrderBy(t => new VirtualGroupNode(t.Value), _tempAssignmentOrder).ThenBy(o => o.Key.Number))
+                foreach (var rootGroup in outputs.OrderBy(t => t.Value, _tempAssignmentOrder).ThenBy(o => o.Key.Number))
                 {
                     RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
                     string compiled = _compiler.Compile(rootGroup.Value);
@@ -238,24 +220,38 @@ namespace HlslDecompiler.Hlsl
             return _templateMatcher.Reduce(node);
         }
 
-        private static List<HlslTreeNode[]> GroupAssignments(IDictionary<RegisterComponentKey, HlslTreeNode> outputs)
+        private List<HlslTreeNode[]> GroupAssignments(IDictionary<RegisterComponentKey, HlslTreeNode> outputs)
         {
-            return outputs
+            var nodeGrouper = new NodeGrouper(_registers);
+
+            var groups = new List<HlslTreeNode[]>();
+            foreach (var registerGroup in outputs
                 .Where(o => o.Key.RegisterKey.IsTempRegister || o.Key.RegisterKey.IsOutput)
                 .OrderBy(o => o.Key.ComponentIndex)
                 .GroupBy(o => o.Key.RegisterKey)
-                .Select(o => o.Select(c => c.Value).ToArray())
-                .ToList();
+                .Select(o => o.Select(c => Reduce(c.Value)).ToArray())
+                .Order(_tempAssignmentOrder))
+            {
+                var registerNodes = registerGroup.ToList();
+                _compiler.Compile(registerNodes);
+                foreach (var componentGroup in nodeGrouper.GroupComponents(registerNodes)) {
+                    groups.Add(componentGroup.ToArray());
+                }
+            }
+            groups.Sort(_tempAssignmentOrder);
+            return groups;
         }
 
         private static Dictionary<RegisterKey, HlslTreeNode[]> GroupComponents(IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
         {
             return outputsByComponent
-                .OrderBy(o => o.Key.ComponentIndex)
                 .GroupBy(o => o.Key.RegisterKey)
                 .ToDictionary(
                     o => o.Key,
-                    o => o.Select(o => o.Value).ToArray());
+                    o => o
+                        .OrderBy(o => o.Key.ComponentIndex)
+                        .Select(o => o.Value)
+                        .ToArray());
         }
     }
 }

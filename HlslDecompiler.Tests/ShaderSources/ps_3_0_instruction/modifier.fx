@@ -1,8 +1,16 @@
-half4 main(centroid half4 texcoord : TEXCOORD) : COLOR
+struct PS_IN
 {
-    float4 o;
+	centroid half4 texcoord : TEXCOORD;
+	centroid half texcoord2 : TEXCOORD2;
+};
 
-    o = half4(saturate(texcoord));
+half4 main(PS_IN i) : COLOR
+{
+	half4 o;
 
-    return o;
+	float4 r0;
+	r0 = half4(saturate(i.texcoord));
+	o = half4(r0 + i.texcoord2.x);
+
+	return o;
 }

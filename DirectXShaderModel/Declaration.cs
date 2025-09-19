@@ -48,39 +48,37 @@ namespace HlslDecompiler.DirectXShaderModel
         }
     }
 
-    // https://docs.microsoft.com/en-us/windows-hardware/drivers/display/dcl-instruction
+    // https://learn.microsoft.com/en-us/windows-hardware/drivers/display/dcl-instruction
     public class RegisterDeclaration
     {
-        private readonly int _maskedLength;
-
-        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength)
+        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength, ResultModifier resultModifier)
         {
             RegisterKey = registerKey;
             Semantic = semantic;
-            _maskedLength = maskedLength;
+            MaskedLength = maskedLength;
+            ResultModifier = resultModifier;
+        }
+
+        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength)
+            : this(registerKey, semantic, maskedLength, ResultModifier.None)
+        {
         }
 
         public RegisterKey RegisterKey { get; }
         public string Semantic { get; }
+        public int MaskedLength { get; }
+        public ResultModifier ResultModifier { get; }
+
         public string Name => Semantic.ToLower();
 
         public string TypeName
         {
             get
             {
-                switch (_maskedLength)
-                {
-                    case 1:
-                        return "float";
-                    case 2:
-                        return "float2";
-                    case 3:
-                        return "float3";
-                    case 4:
-                        return "float4";
-                    default:
-                        throw new InvalidOperationException();
-                }
+                string centroid = ResultModifier.HasFlag(ResultModifier.Centroid) ? "centroid " : "";
+                string type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
+                string length = MaskedLength > 1 ? MaskedLength.ToString() : "";
+                return centroid + type + length;
             }
         }
 

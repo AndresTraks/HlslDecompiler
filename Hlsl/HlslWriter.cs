@@ -111,7 +111,7 @@ namespace HlslDecompiler
             indent = "\t";
             foreach (var input in _registers.MethodInputRegisters.Values)
             {
-                WriteLine($"{input.TypeName} {input.Name} : {input.Semantic};");
+                WriteLine(CompileRegisterDeclaration(input) + ';');
             }
             indent = "";
             WriteLine("};");
@@ -126,7 +126,7 @@ namespace HlslDecompiler
             indent = "\t";
             foreach (var output in _registers.MethodOutputRegisters.Values)
             {
-                WriteLine($"{output.TypeName} {output.Name} : {output.Semantic};");
+                WriteLine(CompileRegisterDeclaration(output) + ';');
             }
             indent = "";
             WriteLine("};");
@@ -169,12 +169,17 @@ namespace HlslDecompiler
             else if (_registers.MethodInputRegisters.Count == 1)
             {
                 var input = _registers.MethodInputRegisters.Values.First();
-                return $"{input.TypeName} {input.Name} : {input.Semantic}";
+                return CompileRegisterDeclaration(input);
             }
 
             return _shader.Type == ShaderType.Pixel
                     ? "PS_IN i"
                     : "VS_IN i";
+        }
+
+        private static string CompileRegisterDeclaration(RegisterDeclaration input)
+        {
+            return $"{input.TypeName} {input.Name} : {input.Semantic}";
         }
     }
 }

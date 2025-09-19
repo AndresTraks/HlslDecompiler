@@ -917,13 +917,25 @@ namespace HlslDecompiler.Hlsl
             }
         }
 
-        private static HlslTreeNode ApplyModifier(HlslTreeNode input, ResultModifier modifier)
+        private HlslTreeNode ApplyModifier(HlslTreeNode input, ResultModifier modifier)
         {
+            HlslTreeNode result = input;
             if ((modifier & ResultModifier.Saturate) != 0)
             {
-                return new SaturateOperation(input);
+                result = new SaturateOperation(result);
             }
-            return input;
+            if ((modifier & ResultModifier.PartialPrecision) != 0)
+            {
+                bool inputHasPartialPrecision = input is RegisterInputNode registerInput
+                    && _registerState.MethodInputRegisters.TryGetValue(registerInput.RegisterComponentKey.RegisterKey, out var declaration)
+                    && declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision);
+                if (!inputHasPartialPrecision)
+                {
+                    // TODO: determine vector size
+                    result = new CastOperation(result, "half4");
+                }
+            }
+            return result;
         }
 
         private static HlslTreeNode ApplyModifier(HlslTreeNode input, D3D10OperandModifier modifier)

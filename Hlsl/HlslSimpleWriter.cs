@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.IO;
 
 namespace HlslDecompiler
 {
@@ -74,7 +73,9 @@ namespace HlslDecompiler
             foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
             {
                 int destIndex = instruction.GetDestinationParamIndex();
-                if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Temp)
+                if (instruction is D3D9Instruction d3D9Instruction
+                    && (d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Temp
+                    || d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Addr))
                 {
                     int writeMask = instruction.GetDestinationWriteMask();
 
@@ -369,7 +370,16 @@ namespace HlslDecompiler
             int destIndex = instruction.GetDestinationParamIndex();
             RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
 
-            string registerName = _registers.GetRegisterName(registerKey);
+            string registerName;
+            if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Opcode == Opcode.MovA
+                && (registerKey as D3D9RegisterKey).Type == RegisterType.Addr)
+            {
+                registerName = "a0";
+            }
+            else
+            {
+                registerName = _registers.GetRegisterName(registerKey);
+            }
             registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
             int registerLength = _registers.GetRegisterFullLength(registerKey);
             string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength);
@@ -396,26 +406,8 @@ namespace HlslDecompiler
                         return constantValue;
                     }
 
-                    ParameterType parameterType;
-                    switch (registerType)
-                    {
-                        case RegisterType.Const:
-                        case RegisterType.Const2:
-                        case RegisterType.Const3:
-                        case RegisterType.Const4:
-                            parameterType = ParameterType.Float;
-                            break;
-                        case RegisterType.ConstBool:
-                            parameterType = ParameterType.Bool;
-                            break;
-                        case RegisterType.ConstInt:
-                            parameterType = ParameterType.Int;
-                            break;
-                        default:
-                            throw new NotImplementedException();
-                    }
                     int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
-                    ConstantDeclaration decl = _registers.FindConstant(parameterType, registerNumber);
+                    ConstantDeclaration decl = _registers.FindConstant(registerNumber);
                     if (decl == null)
                     {
                         // Constant register not found in def statements nor the constant table
@@ -456,7 +448,7 @@ namespace HlslDecompiler
         {
             if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Params.HasRelativeAddressing(srcIndex))
             {
-                return "[i]";
+                return "[a0]";
             }
             return string.Empty;
         }
@@ -514,14 +506,26 @@ namespace HlslDecompiler
                             case SourceModifier.None:
                                 break;
                             case SourceModifier.Negate:
-                                throw new NotImplementedException();
-                                /*
                                 for (int i = 0; i < constant.Length; i++)
                                 {
-                                    constant[i] = -constant[i];
+                                    throw new NotImplementedException();
+                                    //constantUint[i] = -constantUint[i];
                                 }
                                 break;
-                                */
+                            case SourceModifier.Abs:
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    throw new NotImplementedException();
+                                    //constantUint[i] = Math.Abs(constantUint[i]);
+                                }
+                                break;
+                            case SourceModifier.AbsAndNegate:
+                                for (int i = 0; i < constant.Length; i++)
+                                {
+                                    throw new NotImplementedException();
+                                    //constantUint[i] = -Math.Abs(constantUint[i]);
+                                }
+                                break;
                             default:
                                 throw new NotImplementedException();
                         }
@@ -533,7 +537,6 @@ namespace HlslDecompiler
                         string size = constant.Length == 1 ? "" : constant.Length.ToString();
                         return $"int{size}({string.Join(", ", constant)})";
                     }
-
                 case RegisterType.Const:
                 case RegisterType.Const2:
                 case RegisterType.Const3:
@@ -549,8 +552,6 @@ namespace HlslDecompiler
                             .Take(destinationLength.Value)
                             .Select(s => constantRegister[s]).ToArray();
 
-                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
-
                         switch (instruction.GetSourceModifier(srcIndex))
                         {
                             case SourceModifier.None:
@@ -564,13 +565,13 @@ namespace HlslDecompiler
                             case SourceModifier.Abs:
                                 for (int i = 0; i < constant.Length; i++)
                                 {
-                                    return $"abs(float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))}))";
+                                    constant[i] = Math.Abs(constant[i]);
                                 }
                                 break;
                             case SourceModifier.AbsAndNegate:
                                 for (int i = 0; i < constant.Length; i++)
                                 {
-                                    return $"-abs(float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))}))";
+                                    constant[i] = -Math.Abs(constant[i]);
                                 }
                                 break;
                             default:
@@ -581,6 +582,7 @@ namespace HlslDecompiler
                         {
                             return constant[0].ToString(_culture);
                         }
+                        string size = constant.Length == 1 ? "" : constant.Length.ToString();
                         return $"float{size}({string.Join(", ", constant.Select(c => c.ToString(_culture)))})";
                     }
                 default:

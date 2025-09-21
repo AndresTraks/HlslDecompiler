@@ -21,7 +21,9 @@ namespace HlslDecompiler.Hlsl
                 char type = "btcs"[registerSet];
                 registerSpecifier = $" : register({type}{declaration.RegisterIndex})";
             }
-            return string.Format("{0} {1}{2};", typeName, declaration.Name, registerSpecifier);
+            int arrayCount = declaration.RegisterCount / (declaration.Rows * declaration.Columns);
+            string arrayCountSpecifier = arrayCount > 1 ? $"[{arrayCount}]" : "";
+            return $"{typeName} {declaration.Name}{arrayCountSpecifier}{registerSpecifier};";
         }
 
         private static string GetTypeName(ConstantDeclaration declaration)

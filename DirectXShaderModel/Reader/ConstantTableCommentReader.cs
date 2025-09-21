@@ -61,7 +61,6 @@ namespace HlslDecompiler.DirectXShaderModel
             BaseStream.Position += sizeof(short); // Reserved
             int typeInfoOffset = ReadInt32();
             int defaultValueOffset = ReadInt32();
-            System.Diagnostics.Debug.Assert(defaultValueOffset == 0);
 
             BaseStream.Position = nameOffset;
             string name = ReadStringNullTerminated();
@@ -77,6 +76,12 @@ namespace HlslDecompiler.DirectXShaderModel
             int structMemberInfoOffset = ReadInt32();
             //System.Diagnostics.Debug.Assert(numElements == 1);
             System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
+
+            if (defaultValueOffset != 0)
+            {
+                BaseStream.Position = defaultValueOffset;
+                // TODO
+            }
 
             return new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
         }

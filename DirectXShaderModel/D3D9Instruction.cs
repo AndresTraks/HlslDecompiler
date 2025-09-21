@@ -359,24 +359,29 @@ namespace HlslDecompiler.DirectXShaderModel
                     throw new NotImplementedException();
             }
 
-            string relativeAddressing = string.Empty;
             if (Params.HasRelativeAddressing(index))
             {
                 RegisterType relativeType = GetRelativeParamRegisterType(index);
                 switch (relativeType)
                 {
                     case RegisterType.Loop:
-                        relativeAddressing = "[aL]";
-                        break;
+                        if (registerNumber != 0)
+                        {
+                            return $"{registerTypeName}[{registerNumber} + aL]";
+                        }
+                        return $"{registerTypeName}[aL]";
                     case RegisterType.Addr:
-                        relativeAddressing = "";
-                        break;
+                        if (registerNumber != 0)
+                        {
+                            return $"{registerTypeName}[{registerNumber} + a0.x]";
+                        }
+                        return $"{registerTypeName}[a0.x]";
                     default:
                         throw new NotSupportedException(relativeType.ToString());
                 }
             }
 
-            return $"{registerTypeName}{registerNumber}{relativeAddressing}";
+            return registerTypeName + registerNumber;
         }
 
         public override int GetParamRegisterNumber(int index)

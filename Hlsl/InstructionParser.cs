@@ -324,7 +324,8 @@ namespace HlslDecompiler.Hlsl
 
         private void InsertLoop(Instruction instruction)
         {
-            uint repeatCount = _registerState.FindConstantIntRegister(instruction.GetParamRegisterNumber(0))[0];
+            int loopRegisterNumber = instruction.GetParamRegisterNumber(0);
+            uint repeatCount = _registerState.FindConstantIntRegister(loopRegisterNumber)[0];
             var loop = new LoopStatement(repeatCount, ActiveOutputs);
 
             InsertStatement(loop);

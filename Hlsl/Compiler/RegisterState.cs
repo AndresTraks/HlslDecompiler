@@ -30,7 +30,7 @@ namespace HlslDecompiler.Hlsl
         {
             if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Const)
             {
-                var constant = FindConstant(ParameterType.Float, registerKey.Number);
+                var constant = FindConstant(registerKey.Number);
                 return constant.Columns;
             }
 
@@ -54,7 +54,7 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.DepthOut:
                         return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Const:
-                        var constDecl = FindConstant(ParameterType.Float, registerKey.Number);
+                        var constDecl = FindConstant(registerKey.Number);
                         if (constDecl.Rows == 1)
                         {
                             return constDecl.Name;
@@ -111,7 +111,7 @@ namespace HlslDecompiler.Hlsl
             {
                 return null;
             }
-            return FindConstant(ParameterType.Float, register.RegisterComponentKey.Number);
+            return FindConstant(register.RegisterComponentKey.Number);
         }
 
         public ConstantDeclaration FindConstant(RegisterSet set, int index)
@@ -121,10 +121,9 @@ namespace HlslDecompiler.Hlsl
                 c.ContainsIndex(index));
         }
 
-        public ConstantDeclaration FindConstant(ParameterType type, int index)
+        public ConstantDeclaration FindConstant(int index)
         {
             return ConstantDeclarations.FirstOrDefault(c =>
-                c.ParameterType == type &&
                 c.ContainsIndex(index));
         }
 

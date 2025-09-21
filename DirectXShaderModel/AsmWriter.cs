@@ -202,7 +202,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         GetSourceName(instruction, 1));
                     break;
                 case Opcode.Frc:
-                    WriteLine("frac {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    WriteLine("frc {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
                     break;
                 case Opcode.If:
                     WriteLine("if {0}", GetSourceName(instruction, 0));

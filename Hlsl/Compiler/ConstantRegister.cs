@@ -22,5 +22,10 @@
                 Value[index] = value;
             }
         }
+
+        public override string ToString()
+        {
+            return $"c{RegisterIndex}({string.Join(", ", Value)})";
+        }
     }
 }

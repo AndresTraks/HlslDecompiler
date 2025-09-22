@@ -1,6 +1,7 @@
 ﻿using HlslDecompiler.Util;
 using System;
 using System.IO;
+using System.Text;
 
 namespace HlslDecompiler.DirectXShaderModel
 {
@@ -120,8 +121,17 @@ namespace HlslDecompiler.DirectXShaderModel
 
         private string ReadRgxaString()
         {
+            byte first = ReadByte();
+            string result;
+            if (first > 128)
+            {
+                var bytes = ReadBytes(first);
+                return UTF8Encoding.UTF8.GetString(bytes);
+
+            }
+            BaseStream.Position -= 1;
+            result = ReadString();
             // String length included null terminator, so take '\0' out
-            string result = ReadString();
             return result.Substring(0, result.Length - 1);
         }
 
@@ -161,14 +171,14 @@ namespace HlslDecompiler.DirectXShaderModel
                 for (int i = 0; i < numTechniques; i++)
                 {
                     string technique = ReadRgxaString();
-                    Console.WriteLine(technique);
+                    //Console.WriteLine(technique);
                     byte numPasses = ReadByte();
                     for (int p = 0; p < numPasses; p++)
                     {
                         byte a = ReadByte();
                         byte b = ReadByte();
                         byte paramLength = ReadByte();
-                        Console.WriteLine("\t{0} {1} {2}", a, b, paramLength);
+                        //Console.WriteLine("\t{0} {1} {2}", a, b, paramLength);
                         BaseStream.Position += paramLength * 8;
                     }
                 }

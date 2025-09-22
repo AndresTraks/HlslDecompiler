@@ -201,9 +201,13 @@ namespace HlslDecompiler.Hlsl
             {
                 InsertBreak(instruction);
             }
-            else if (instruction.Opcode == Opcode.IfC)
+            else if (instruction.Opcode == Opcode.If)
             {
                 InsertIfStatement(instruction);
+            }
+            else if (instruction.Opcode == Opcode.IfC)
+            {
+                InsertIfCStatement(instruction);
             }
             else if (instruction.Opcode == Opcode.Else)
             {
@@ -372,6 +376,13 @@ namespace HlslDecompiler.Hlsl
         }
 
         private void InsertIfStatement(D3D9Instruction instruction)
+        {
+            var ifStatement = new IfStatement(GetInputs(instruction, 0), ActiveOutputs);
+
+            InsertStatement(ifStatement);
+        }
+
+        private void InsertIfCStatement(D3D9Instruction instruction)
         {
             HlslTreeNode[] comparison = Enumerable.Range(0, 4)
                 .Select(i => GetInputs(instruction, i))
@@ -975,6 +986,7 @@ namespace HlslDecompiler.Hlsl
                 case Opcode.Rsq:
                 case Opcode.SinCos:
                 case Opcode.TexKill:
+                case Opcode.If:
                     return 1;
                 case Opcode.Add:
                 case Opcode.Bem:

@@ -54,6 +54,8 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.DepthOut:
                         return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Const:
+                    case RegisterType.ConstInt:
+                    case RegisterType.ConstBool:
                         var constDecl = FindConstant(registerKey.Number);
                         if (constDecl.Rows == 1)
                         {

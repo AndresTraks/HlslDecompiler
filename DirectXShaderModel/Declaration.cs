@@ -51,11 +51,11 @@ namespace HlslDecompiler.DirectXShaderModel
     // https://learn.microsoft.com/en-us/windows-hardware/drivers/display/dcl-instruction
     public class RegisterDeclaration
     {
-        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength, ResultModifier resultModifier)
+        public RegisterDeclaration(RegisterKey registerKey, string semantic, int writeMask, ResultModifier resultModifier)
         {
             RegisterKey = registerKey;
             Semantic = semantic;
-            MaskedLength = maskedLength;
+            WriteMask = writeMask;
             ResultModifier = resultModifier;
         }
 
@@ -66,7 +66,6 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public RegisterKey RegisterKey { get; }
         public string Semantic { get; }
-        public int MaskedLength { get; }
         public ResultModifier ResultModifier { get; }
 
         public string Name => Semantic.ToLower();
@@ -79,6 +78,25 @@ namespace HlslDecompiler.DirectXShaderModel
                 string type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
                 string length = MaskedLength > 1 ? MaskedLength.ToString() : "";
                 return centroid + type + length;
+            }
+        }
+
+        public int WriteMask { get; set; }
+
+        // Length of ".xy" = 2
+        // Length of ".yw" = 4 (xyzw)
+        public int MaskedLength
+        {
+            get
+            {
+                for (int i = 3; i >= 0; i--)
+                {
+                    if ((WriteMask & (1 << i)) != 0)
+                    {
+                        return i + 1;
+                    }
+                }
+                return 0;
             }
         }
 

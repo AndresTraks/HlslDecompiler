@@ -16,7 +16,7 @@ float4 main(VS_IN i) : POSITION
 	float2 r0;
 	o.x = dot(constant4, i.position);
 	o.y = dot(constant3.xyz, i.texcoord.xyz);
-	r0.xy = constant2.xy * i.texcoord1.xy;
+	r0 = constant2.xy * i.texcoord1.xy;
 	o.z = r0.y + r0.x;
 	o.w = 4;
 

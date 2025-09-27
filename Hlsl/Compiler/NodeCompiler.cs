@@ -266,7 +266,7 @@ namespace HlslDecompiler.Hlsl
                     && !(registerKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32))
                 {
                     swizzle = GetAstSourceSwizzleName(componentsWithIndices,
-                        _registers.GetRegisterFullLength(registerKey),
+                        _registers.GetRegisterMaskedLength(registerKey),
                         promoteToVectorSize);
                 }
 

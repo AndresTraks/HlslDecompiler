@@ -187,7 +187,7 @@ namespace HlslDecompiler.Hlsl
             if (instruction.Opcode == Opcode.Loop)
             {
                 D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
-                _registerState.DeclareRegister(registerKey);
+                _registerState.DeclareRegister(registerKey, 1);
             }
             else if (instruction.Opcode == Opcode.Rep)
             {

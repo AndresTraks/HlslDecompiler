@@ -26,7 +26,7 @@ float4 main(float3 texcoord : TEXCOORD) : COLOR
 ```
 
 With the --ast option, the program will attempt generate more readable HLSL.
-It does this by taking the shader bytecode, constructing an abstract syntax tree, simplyfying it and compiling to HLSL:
+It does this by taking the shader bytecode, constructing an abstract syntax tree, simplifying it and compiling to HLSL:
 ```hlsl
 float4 main(float3 texcoord : TEXCOORD) : COLOR
 {

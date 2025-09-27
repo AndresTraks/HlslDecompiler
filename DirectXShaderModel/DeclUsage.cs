@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    // https://docs.microsoft.com/en-us/windows/win32/direct3d9/d3ddeclusage
+    // https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3ddeclusage
     public enum DeclUsage
     {
         Position,

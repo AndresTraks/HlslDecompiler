@@ -22,7 +22,7 @@ VS_OUT main(float4 position : POSITION)
 	o.position2.x = dot(abs(position.yxz), transpose(matrix_3x3)[0].xyz);
 	o.position2.y = dot(abs(position.yxz), transpose(matrix_3x3)[1].xyz);
 	o.position2.z = dot(abs(position.yxz), transpose(matrix_3x3)[2].xyz);
-	r0.xyz = float3(1, 2, 3) * position.yxz;
+	r0 = float3(1, 2, 3) * position.yxz;
 	o.position3.x = dot(r0.xyz, transpose(matrix_3x3)[0].xyz);
 	o.position3.y = dot(r0.xyz, transpose(matrix_3x3)[1].xyz);
 	o.position3.z = dot(r0.xyz, transpose(matrix_3x3)[2].xyz);

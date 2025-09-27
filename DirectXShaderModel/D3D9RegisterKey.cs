@@ -15,7 +15,9 @@
         public bool IsOutput =>
             Type == RegisterType.Output ||
             Type == RegisterType.ColorOut ||
-            Type == RegisterType.DepthOut;
+            Type == RegisterType.DepthOut ||
+            Type == RegisterType.AttrOut ||
+            Type == RegisterType.RastOut;
 
         public bool TypeEquals(RegisterKey registerKey)
         {

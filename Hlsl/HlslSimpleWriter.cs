@@ -37,11 +37,9 @@ namespace HlslDecompiler
 
         private void WriteTemporaryVariableDeclarations()
         {
-            Dictionary<string, int> tempRegisters = FindTemporaryRegisterAssignments();
-
-            foreach (var registerName in tempRegisters.Keys)
+            foreach (var register in FindTemporaryRegisterAssignments())
             {
-                int writeMask = tempRegisters[registerName];
+                int writeMask = register.Value;
                 string writeMaskName;
                 switch (writeMask)
                 {
@@ -63,13 +61,13 @@ namespace HlslDecompiler
                         break;
                         //throw new NotImplementedException();
                 }
-                WriteLine("{0} {1};", writeMaskName, registerName);
+                WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
             }
         }
 
-        private Dictionary<string, int> FindTemporaryRegisterAssignments()
+        private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments()
         {
-            var tempRegisters = new Dictionary<string, int>();
+            var tempRegisters = new Dictionary<RegisterKey, int>();
             foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
             {
                 int destIndex = instruction.GetDestinationParamIndex();
@@ -79,18 +77,23 @@ namespace HlslDecompiler
                 {
                     int writeMask = instruction.GetDestinationWriteMask();
 
-                    string registerName = instruction.GetParamRegisterName(destIndex);
-                    if (tempRegisters.ContainsKey(registerName))
+                    var registerKey = instruction.GetParamRegisterKey(destIndex);
+                    if (!tempRegisters.TryAdd(registerKey, writeMask))
                     {
-                        tempRegisters[registerName] |= writeMask;
-                    }
-                    else
-                    {
-                        tempRegisters.Add(registerName, writeMask);
+                        tempRegisters[registerKey] |= writeMask;
                     }
                 }
             }
             return tempRegisters;
+        }
+
+        private static String GetTempRegisterName(RegisterKey registerKey)
+        {
+            if (registerKey.IsTempRegister)
+            {
+                return "r" + registerKey.Number;
+            }
+            throw new NotImplementedException();
         }
 
         private static string GetModifier(D3D9Instruction instruction)
@@ -380,8 +383,7 @@ namespace HlslDecompiler
             {
                 registerName = _registers.GetRegisterName(registerKey);
             }
-            registerName = registerName ?? instruction.GetParamRegisterName(destIndex);
-            int registerLength = _registers.GetRegisterFullLength(registerKey);
+            int registerLength = _registers.GetRegisterMaskedLength(registerKey);
             string writeMaskName = instruction.GetDestinationWriteMaskName(registerLength);
 
             return string.Format("{0}{1}", registerName, writeMaskName);
@@ -436,8 +438,6 @@ namespace HlslDecompiler
                     sourceRegisterName = _registers.GetRegisterName(registerKey);
                     break;
             }
-
-            sourceRegisterName = sourceRegisterName ?? instruction.GetParamRegisterName(srcIndex);
 
             sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
             sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);

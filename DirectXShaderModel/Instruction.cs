@@ -15,8 +15,6 @@
 
         public abstract int GetParamRegisterNumber(int index);
 
-        public abstract string GetParamRegisterName(int index);
-
         public abstract int GetDestinationParamIndex();
 
         public abstract int GetDestinationWriteMask();

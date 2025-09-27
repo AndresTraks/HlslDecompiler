@@ -369,35 +369,6 @@ namespace HlslDecompiler.DirectXShaderModel
             return (OperandType)((span[0] >> 12) & 0xFF);
         }
 
-        public override string GetParamRegisterName(int index)
-        {
-            var operandType = GetOperandType(index);
-            int registerNumber = GetParamRegisterNumber(index);
-
-            string registerTypeName;
-            string size = "";
-            switch (operandType)
-            {
-                case OperandType.Input:
-                    registerTypeName = "v";
-                    break;
-                case OperandType.Output:
-                    registerTypeName = "o";
-                    break;
-                case OperandType.Temp:
-                    registerTypeName = "r";
-                    break;
-                case OperandType.ConstantBuffer:
-                    registerTypeName = "cb";
-                    size = "[" + GetParamConstantBufferSize(index) + "]";
-                    break;
-                default:
-                    throw new NotImplementedException();
-            }
-
-            return $"{registerTypeName}{registerNumber}{size}";
-        }
-
         public override int GetParamRegisterNumber(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);

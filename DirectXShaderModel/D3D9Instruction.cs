@@ -7,7 +7,7 @@ namespace HlslDecompiler.DirectXShaderModel
     // 40000000 co-issue
     // 20000000 reserved, set to 0
     // 10000000 predicated
-    // 0F000000 instruction length
+    // 0F000000 instruction length (except vs_1_1, ps_1_x)
     // 07FF0000 instruction length for comment
     // 00FF0000 opcode specific control
     // 00070000 comparison
@@ -286,102 +286,6 @@ namespace HlslDecompiler.DirectXShaderModel
         {
             uint p = Params.GetRelativeToken(index);
             return (RegisterType)(((p >> 28) & 0x7) | ((p >> 8) & 0x18));
-        }
-
-        public override string GetParamRegisterName(int index)
-        {
-            var registerType = GetParamRegisterType(index);
-            int registerNumber = GetParamRegisterNumber(index);
-
-            string registerTypeName;
-            switch (registerType)
-            {
-                case RegisterType.Addr:
-                    registerTypeName = "a";
-                    break;
-                case RegisterType.Const:
-                    registerTypeName = "c";
-                    break;
-                case RegisterType.Const2:
-                    registerTypeName = "c";
-                    registerNumber += 2048;
-                    break;
-                case RegisterType.Const3:
-                    registerTypeName = "c";
-                    registerNumber += 4096;
-                    break;
-                case RegisterType.Const4:
-                    registerTypeName = "c";
-                    registerNumber += 6144;
-                    break;
-                case RegisterType.ConstBool:
-                    registerTypeName = "b";
-                    break;
-                case RegisterType.ConstInt:
-                    registerTypeName = "i";
-                    break;
-                case RegisterType.Input:
-                    registerTypeName = "v";
-                    break;
-                case RegisterType.Output:
-                    registerTypeName = "o";
-                    break;
-                case RegisterType.RastOut:
-                    registerTypeName = "rast";
-                    break;
-                case RegisterType.Temp:
-                    registerTypeName = "r";
-                    break;
-                case RegisterType.Sampler:
-                    registerTypeName = "s";
-                    break;
-                case RegisterType.ColorOut:
-                    registerTypeName = "oC";
-                    break;
-                case RegisterType.DepthOut:
-                    return "oDepth";
-                case RegisterType.MiscType:
-                    if (registerNumber == 0)
-                    {
-                        return "vPos";
-                    }
-                    else if (registerNumber == 1)
-                    {
-                        return "vFace";
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                case RegisterType.Loop:
-                    return "aL";
-                default:
-                    throw new NotImplementedException();
-            }
-
-            if (Params.HasRelativeAddressing(index))
-            {
-                RegisterType relativeType = GetRelativeParamRegisterType(index);
-                switch (relativeType)
-                {
-                    case RegisterType.Loop:
-                        if (registerNumber != 0)
-                        {
-                            return $"{registerTypeName}[{registerNumber} + aL]";
-                        }
-                        return $"{registerTypeName}[aL]";
-                    case RegisterType.Addr:
-                        if (registerNumber != 0)
-                        {
-                            return $"{registerTypeName}[{registerNumber} + a0.x]";
-                        }
-                        return $"{registerTypeName}[a0.x]";
-                    default:
-                        throw new NotSupportedException(relativeType.ToString());
-                }
-            }
-
-            return registerTypeName + registerNumber;
         }
 
         public override int GetParamRegisterNumber(int index)

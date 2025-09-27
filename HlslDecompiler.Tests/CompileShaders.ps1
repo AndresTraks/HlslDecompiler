@@ -68,6 +68,7 @@ function CompileAll {
     }
     Write-Host "Using $fxc"
 
+    CompileByProfile "vs_1_1" $fxc
     CompileByProfile "ps_3_0" $fxc
     CompileByProfile "ps_4_0" $fxc
     CompileByProfile "vs_3_0" $fxc

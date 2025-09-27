@@ -26,10 +26,12 @@ namespace HlslDecompiler.DirectXShaderModel
             asmWriter.WriteLine(format, args);
         }
 
-        static string GetDestinationName(Instruction instruction)
+        private string GetDestinationName(Instruction instruction)
         {
             int destIndex = instruction.GetDestinationParamIndex();
-            string registerName = instruction.GetParamRegisterName(destIndex);
+            string registerName = (instruction is D3D9Instruction d3D9Instruction)
+                ? GetParamRegisterName(d3D9Instruction, destIndex)
+                : GetParamRegisterName(instruction as D3D10Instruction, destIndex);
             if (instruction is D3D10Instruction d3D10Instruction && d3D10Instruction.Opcode == D3D10Opcode.DclConstantBuffer)
             {
                 return registerName;
@@ -39,9 +41,9 @@ namespace HlslDecompiler.DirectXShaderModel
             return $"{registerName}{writeMaskName}";
         }
 
-        private static string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+        private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
         {
-            string sourceName = instruction.GetParamRegisterName(srcIndex);
+            string sourceName = GetParamRegisterName(instruction, srcIndex);
             sourceName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
             sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
             return sourceName;
@@ -76,7 +78,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
             }
 
-            string sourceName = instruction.GetParamRegisterName(srcIndex);
+            string sourceName = GetParamRegisterName(instruction, srcIndex);
             sourceName += instruction.GetSourceSwizzleName(srcIndex);
             sourceName = ApplyModifier(instruction.GetOperandModifier(srcIndex), sourceName);
             return sourceName;
@@ -152,7 +154,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case Opcode.Def:
                     {
-                        string constRegisterName = instruction.GetParamRegisterName(0);
+                        string constRegisterName = GetParamRegisterName(instruction, 0);
                         string constValue0 = ConstantFormatter.Format(instruction.GetParamSingle(1));
                         string constValue1 = ConstantFormatter.Format(instruction.GetParamSingle(2));
                         string constValue2 = ConstantFormatter.Format(instruction.GetParamSingle(3));
@@ -162,7 +164,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case Opcode.DefI:
                     {
-                        string constRegisterName = instruction.GetParamRegisterName(0);
+                        string constRegisterName = GetParamRegisterName(instruction, 0);
                         WriteLine("defi {0}, {1}, {2}, {3}, {4}", constRegisterName,
                             instruction.Params[1], instruction.Params[2], instruction.Params[3], instruction.Params[4]);
                     }
@@ -494,6 +496,152 @@ namespace HlslDecompiler.DirectXShaderModel
                 default:
                     throw new NotImplementedException();
             }
+        }
+
+        private string GetParamRegisterName(D3D9Instruction instruction, int index)
+        {
+            var registerType = instruction.GetParamRegisterType(index);
+            int registerNumber = instruction.GetParamRegisterNumber(index);
+
+            string registerTypeName;
+            switch (registerType)
+            {
+                case RegisterType.Addr:
+                    registerTypeName = "a";
+                    break;
+                case RegisterType.AttrOut:
+                    registerTypeName = "oD";
+                    break;
+                case RegisterType.Const:
+                    registerTypeName = "c";
+                    break;
+                case RegisterType.Const2:
+                    registerTypeName = "c";
+                    registerNumber += 2048;
+                    break;
+                case RegisterType.Const3:
+                    registerTypeName = "c";
+                    registerNumber += 4096;
+                    break;
+                case RegisterType.Const4:
+                    registerTypeName = "c";
+                    registerNumber += 6144;
+                    break;
+                case RegisterType.ConstBool:
+                    registerTypeName = "b";
+                    break;
+                case RegisterType.ConstInt:
+                    registerTypeName = "i";
+                    break;
+                case RegisterType.Input:
+                    registerTypeName = "v";
+                    break;
+                case RegisterType.Output:
+                    if (shader.MajorVersion == 1)
+                    {
+                        registerTypeName = "oT";
+                    }
+                    else
+                    {
+                        registerTypeName = "o";
+                    }
+                    break;
+                case RegisterType.RastOut:
+                    if (registerNumber == 0)
+                    {
+                        return "oPos";
+                    }
+                    else if (registerNumber == 1)
+                    {
+                        return "oFog";
+                    }
+                    else if (registerNumber == 2)
+                    {
+                        return "oPts";
+                    }
+                    throw new NotImplementedException();
+                case RegisterType.Temp:
+                    registerTypeName = "r";
+                    break;
+                case RegisterType.Sampler:
+                    registerTypeName = "s";
+                    break;
+                case RegisterType.ColorOut:
+                    registerTypeName = "oC";
+                    break;
+                case RegisterType.DepthOut:
+                    return "oDepth";
+                case RegisterType.MiscType:
+                    if (registerNumber == 0)
+                    {
+                        return "vPos";
+                    }
+                    else if (registerNumber == 1)
+                    {
+                        return "vFace";
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
+                case RegisterType.Loop:
+                    return "aL";
+                default:
+                    throw new NotImplementedException();
+            }
+
+            if (instruction.Params.HasRelativeAddressing(index))
+            {
+                RegisterType relativeType = instruction.GetRelativeParamRegisterType(index);
+                switch (relativeType)
+                {
+                    case RegisterType.Loop:
+                        if (registerNumber != 0)
+                        {
+                            return $"{registerTypeName}[{registerNumber} + aL]";
+                        }
+                        return $"{registerTypeName}[aL]";
+                    case RegisterType.Addr:
+                        if (registerNumber != 0)
+                        {
+                            return $"{registerTypeName}[{registerNumber} + a0.x]";
+                        }
+                        return $"{registerTypeName}[a0.x]";
+                    default:
+                        throw new NotSupportedException(relativeType.ToString());
+                }
+            }
+
+            return registerTypeName + registerNumber;
+        }
+
+        private static string GetParamRegisterName(D3D10Instruction instruction, int index)
+        {
+            var operandType = instruction.GetOperandType(index);
+            int registerNumber = instruction.GetParamRegisterNumber(index);
+
+            string registerTypeName;
+            string size = "";
+            switch (operandType)
+            {
+                case OperandType.Input:
+                    registerTypeName = "v";
+                    break;
+                case OperandType.Output:
+                    registerTypeName = "o";
+                    break;
+                case OperandType.Temp:
+                    registerTypeName = "r";
+                    break;
+                case OperandType.ConstantBuffer:
+                    registerTypeName = "cb";
+                    size = "[" + instruction.GetParamConstantBufferSize(index) + "]";
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+
+            return $"{registerTypeName}{registerNumber}{size}";
         }
     }
 }

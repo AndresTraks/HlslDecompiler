@@ -27,13 +27,18 @@
                     break;
                 case Opcode.Def:
                     {
-                        Assert(instruction.Params.Count == 5);
-                        var registerType = instruction.GetParamRegisterType(0);
-                        Assert(
-                            registerType == RegisterType.Const ||
-                            registerType == RegisterType.Const2 ||
-                            registerType == RegisterType.Const3 ||
-                            registerType == RegisterType.Const4);
+                        if (instruction.Params.Count == 5) {
+                            var registerType = instruction.GetParamRegisterType(0);
+                            Assert(
+                                registerType == RegisterType.Const ||
+                                registerType == RegisterType.Const2 ||
+                                registerType == RegisterType.Const3 ||
+                                registerType == RegisterType.Const4);
+                        }
+                        else
+                        {
+                            Assert(instruction.Params.Count == 0);
+                        }
                     }
                     break;
                 case Opcode.DefI:

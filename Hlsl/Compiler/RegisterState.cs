@@ -39,9 +39,13 @@ namespace HlslDecompiler.Hlsl
 
         public string GetRegisterName(RegisterKey registerKey)
         {
+            var decl = _registerDeclarations[registerKey];
+            if (registerKey.IsOutput)
+            {
+                return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
+            }
             if (registerKey is D3D9RegisterKey d3D9RegisterKey)
             {
-                var decl = _registerDeclarations[registerKey];
                 switch (d3D9RegisterKey.Type)
                 {
                     case RegisterType.Texture:
@@ -49,10 +53,6 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.Input:
                     case RegisterType.MiscType:
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
-                    case RegisterType.Output:
-                    case RegisterType.ColorOut:
-                    case RegisterType.DepthOut:
-                        return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
                     case RegisterType.Const:
                     case RegisterType.ConstInt:
                     case RegisterType.ConstBool:
@@ -95,11 +95,7 @@ namespace HlslDecompiler.Hlsl
                     case OperandType.Immediate32:
                         return d3D10RegisterKey.Number.ToString();
                     case OperandType.Input:
-                        var decl = _registerDeclarations[registerKey];
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
-                    case OperandType.Output:
-                        decl = _registerDeclarations[registerKey];
-                        return (MethodOutputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     default:
                         throw new NotImplementedException();
                 }
@@ -179,7 +175,8 @@ namespace HlslDecompiler.Hlsl
         {
             if (instruction.Opcode == Opcode.Dcl)
             {
-                var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex()) as D3D9RegisterKey;
+                int destIndex = instruction.GetDestinationParamIndex();
+                var registerKey = instruction.GetParamRegisterKey(destIndex) as D3D9RegisterKey;
                 int maskedLength = GetMaskedLength(instruction.GetDestinationWriteMask());
                 D3D9RegisterKey paramRegisterKey = (D3D9RegisterKey)instruction.GetParamRegisterKey(1);
                 if (paramRegisterKey.Type == RegisterType.MiscType && paramRegisterKey.Number == 1)
@@ -188,19 +185,15 @@ namespace HlslDecompiler.Hlsl
                 }
 
                 var registerDeclaration = new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), maskedLength, instruction.GetDestinationResultModifier());
-
                 _registerDeclarations.Add(registerKey, registerDeclaration);
 
-                switch (registerKey.Type)
+                if (registerKey.IsOutput)
                 {
-                    case RegisterType.Input:
-                    case RegisterType.MiscType:
-                        MethodInputRegisters.Add(registerKey, registerDeclaration);
-                        break;
-                    case RegisterType.Output:
-                    case RegisterType.ColorOut:
-                        MethodOutputRegisters.Add(registerKey, registerDeclaration);
-                        break;
+                    MethodOutputRegisters.Add(registerKey, registerDeclaration);
+                }
+                else if (registerKey.Type == RegisterType.Input || registerKey.Type == RegisterType.MiscType)
+                {
+                    MethodInputRegisters.Add(registerKey, registerDeclaration);
                 }
             }
             else if (instruction.Opcode == Opcode.Def)
@@ -225,12 +218,10 @@ namespace HlslDecompiler.Hlsl
             else
             {
                 int destIndex = instruction.GetDestinationParamIndex();
-                RegisterType registerType = instruction.GetParamRegisterType(destIndex);
+                var registerKey = instruction.GetParamRegisterKey(destIndex) as D3D9RegisterKey;
 
-                if (registerType == RegisterType.ColorOut || registerType == RegisterType.DepthOut)
+                if (registerKey.IsOutput)
                 {
-                    int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                    var registerKey = new D3D9RegisterKey(registerType, registerNumber);
                     if (MethodOutputRegisters.ContainsKey(registerKey) == false)
                     {
                         var reg = CreateRegisterDeclarationFromRegisterKey(registerKey, instruction.GetDestinationResultModifier());
@@ -243,20 +234,16 @@ namespace HlslDecompiler.Hlsl
                         }
                     }
                 }
-                else if (registerType == RegisterType.Temp)
+                else if (registerKey.IsTempRegister)
                 {
-                    int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                    var registerKey = new D3D9RegisterKey(registerType, registerNumber);
                     if (!_registerDeclarations.TryGetValue(registerKey, out _))
                     {
                         var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey, instruction.GetDestinationResultModifier());
                         _registerDeclarations.Add(registerKey, registerDeclaration);
                     }
                 }
-                else if (registerType == RegisterType.Addr)
+                else if (registerKey.Type == RegisterType.Addr)
                 {
-                    int registerNumber = instruction.GetParamRegisterNumber(destIndex);
-                    var registerKey = new D3D9RegisterKey(registerType, registerNumber);
                     if (!_registerDeclarations.TryGetValue(registerKey, out _))
                     {
                         var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey, instruction.GetDestinationResultModifier());
@@ -297,6 +284,9 @@ namespace HlslDecompiler.Hlsl
             {
                 case RegisterType.ColorOut:
                 case RegisterType.DepthOut:
+                case RegisterType.Output:
+                case RegisterType.RastOut:
+                case RegisterType.AttrOut:
                 case RegisterType.Const:
                 case RegisterType.Const2:
                 case RegisterType.Const3:
@@ -317,6 +307,35 @@ namespace HlslDecompiler.Hlsl
             {
                 semantic = "DEPTH";
                 maskedLength = 1;
+            }
+            else if (type == RegisterType.RastOut)
+            {
+                switch (registerKey.Number)
+                {
+                    case 0:
+                        semantic = "POSITION";
+                        maskedLength = 4;
+                        break;
+                    case 1:
+                        semantic = "FOG";
+                        maskedLength = 1;
+                        break;
+                    case 2:
+                        semantic = "PSIZE";
+                        maskedLength = 1;
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
+            }
+            else if (type == RegisterType.Output)
+            {
+                semantic = "TEXCOORD";
+                if (registerKey.Number != 0)
+                {
+                    semantic += registerKey.Number;
+                }
+                maskedLength = 4;
             }
             else
             {

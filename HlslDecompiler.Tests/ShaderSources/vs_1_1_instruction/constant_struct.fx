@@ -1,10 +1,10 @@
 struct VS_OUT
 {
-	float4 position : POSITION;
-	float4 texcoord : TEXCOORD;
 	float3 color : COLOR;
-	float psize : PSIZE;
 	float fog : FOG;
+	float4 position : POSITION;
+	float psize : PSIZE;
+	float4 texcoord : TEXCOORD;
 };
 
 VS_OUT main()

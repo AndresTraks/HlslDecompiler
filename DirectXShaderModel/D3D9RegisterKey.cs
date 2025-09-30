@@ -18,6 +18,13 @@
             Type == RegisterType.DepthOut ||
             Type == RegisterType.AttrOut ||
             Type == RegisterType.RastOut;
+        public bool IsConstant =>
+            Type == RegisterType.Const ||
+            Type == RegisterType.Const2 ||
+            Type == RegisterType.Const3 ||
+            Type == RegisterType.Const4 ||
+            Type == RegisterType.ConstBool ||
+            Type == RegisterType.ConstInt;
 
         public bool TypeEquals(RegisterKey registerKey)
         {

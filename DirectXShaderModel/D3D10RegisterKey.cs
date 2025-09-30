@@ -13,6 +13,11 @@
 
         public bool IsTempRegister => OperandType == OperandType.Temp;
         public bool IsOutput => OperandType == OperandType.Output;
+        public bool IsConstant =>
+            OperandType == OperandType.ConstantBuffer ||
+            OperandType == OperandType.Immediate32 ||
+            OperandType == OperandType.Immediate64 ||
+            OperandType == OperandType.ImmediateConstantBuffer;
 
         public bool TypeEquals(RegisterKey registerKey)
         {

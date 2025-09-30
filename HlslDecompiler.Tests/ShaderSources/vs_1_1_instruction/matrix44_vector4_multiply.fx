@@ -3,10 +3,10 @@ float4x4 matrix_4x4;
 struct VS_OUT
 {
 	float4 position : POSITION;
-	float4 texcoord4 : TEXCOORD4;
 	float4 texcoord1 : TEXCOORD1;
 	float4 texcoord2 : TEXCOORD2;
 	float4 texcoord3 : TEXCOORD3;
+	float4 texcoord4 : TEXCOORD4;
 };
 
 VS_OUT main(float4 position : POSITION)

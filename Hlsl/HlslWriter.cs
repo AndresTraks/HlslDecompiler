@@ -1,6 +1,7 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -124,7 +125,12 @@ namespace HlslDecompiler
             WriteLine($"struct {outputStructType}");
             WriteLine("{");
             indent = "\t";
-            foreach (var output in _registers.MethodOutputRegisters.Values)
+            IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
+            if (_shader.MajorVersion == 1)
+            {
+                outputs = outputs.OrderBy(o => o.Semantic).ToList();
+            }
+            foreach (var output in outputs)
             {
                 WriteLine(CompileRegisterDeclaration(output) + ';');
             }
@@ -140,7 +146,7 @@ namespace HlslDecompiler
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    return _registers.MethodOutputRegisters.Values.First().TypeName;
+                    return _registers.MethodOutputRegisters.First().TypeName;
                 default:
                     return _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
             }
@@ -153,7 +159,7 @@ namespace HlslDecompiler
                 case 0:
                     throw new InvalidOperationException();
                 case 1:
-                    string semantic = _registers.MethodOutputRegisters.Values.First().Semantic;
+                    string semantic = _registers.MethodOutputRegisters.First().Semantic;
                     return $" : {semantic}";
                 default:
                     return string.Empty;

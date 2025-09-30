@@ -108,7 +108,7 @@ namespace HlslDecompiler.Hlsl
                     .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
             foreach (var rootGroup in outputs.OrderBy(o => o.Key.Number))
             {
-                RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
+                RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
                 string compiled = _compiler.Compile(rootGroup.Value);
                 WriteLine($"o.{outputRegister.Name} = {compiled};");
             }
@@ -206,7 +206,7 @@ namespace HlslDecompiler.Hlsl
             {
                 foreach (var rootGroup in outputs.OrderBy(t => t.Value, _tempAssignmentOrder).ThenBy(o => o.Key.Number))
                 {
-                    RegisterDeclaration outputRegister = _registers.MethodOutputRegisters[rootGroup.Key];
+                    RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
                     string compiled = _compiler.Compile(rootGroup.Value);
                     WriteLine($"o.{outputRegister.Name} = {compiled};");
                 }
@@ -217,7 +217,9 @@ namespace HlslDecompiler.Hlsl
 
         private HlslTreeNode Reduce(HlslTreeNode node)
         {
-            return _templateMatcher.Reduce(node);
+            node = _templateMatcher.Reduce(node);
+            NodeFinalizer.Finalize([node]);
+            return node;
         }
 
         private List<HlslTreeNode[]> GroupAssignments(IDictionary<RegisterComponentKey, HlslTreeNode> outputs)

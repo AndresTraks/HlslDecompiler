@@ -8,5 +8,6 @@
 
         public bool IsTempRegister { get; }
         public bool IsOutput { get; }
+        public bool IsConstant { get; }
     }
 }

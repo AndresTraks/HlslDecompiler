@@ -144,6 +144,15 @@ namespace HlslDecompiler.Hlsl
                             break;
                         }
                     case D3D10Opcode.DclResource:
+                        {
+                            int number = (int)instruction.GetParamInt(0);
+                            var registerKey = new D3D10RegisterKey(OperandType.Resource, number);
+                            _registerState.DeclareRegister(registerKey);
+                            var destinationKey = new RegisterComponentKey(registerKey, 0);
+                            var resourceInput = new RegisterInputNode(destinationKey);
+                            SetActiveOutput(destinationKey, resourceInput);
+                            break;
+                        }
                     case D3D10Opcode.DclSampler:
                     case D3D10Opcode.Ret:
                         break;
@@ -677,10 +686,12 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.DerivRty:
                 case D3D10Opcode.Exp:
                 case D3D10Opcode.Frc:
+                case D3D10Opcode.GE:
                 case D3D10Opcode.Log:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Max:
                 case D3D10Opcode.Min:
+                case D3D10Opcode.MovC:
                 case D3D10Opcode.Mul:
                 case D3D10Opcode.Rsq:
                 case D3D10Opcode.SinCos:
@@ -699,6 +710,8 @@ namespace HlslDecompiler.Hlsl
                                 return new ExponentialOperation(inputs[0]);
                             case D3D10Opcode.Frc:
                                 return new FractionalOperation(inputs[0]);
+                            case D3D10Opcode.GE:
+                                return new GreaterEqualOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Log:
                                 return new LogOperation(inputs[0]);
                             case D3D10Opcode.Mad:
@@ -709,6 +722,8 @@ namespace HlslDecompiler.Hlsl
                                 return new MinimumOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Mov:
                                 return new MoveOperation(inputs[0]);
+                            case D3D10Opcode.MovC:
+                                return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
                             case D3D10Opcode.Mul:
                                 return new MultiplyOperation(inputs[0], inputs[1]);
                             case D3D10Opcode.Rsq:
@@ -1043,11 +1058,13 @@ namespace HlslDecompiler.Hlsl
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
+                case D3D10Opcode.GE:
                 case D3D10Opcode.Max:
                 case D3D10Opcode.Min:
                 case D3D10Opcode.Mul:
                     return 2;
                 case D3D10Opcode.Mad:
+                case D3D10Opcode.MovC:
                     return 3;
                 default:
                     throw new NotImplementedException();

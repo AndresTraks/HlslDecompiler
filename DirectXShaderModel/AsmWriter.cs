@@ -395,12 +395,20 @@ namespace HlslDecompiler.DirectXShaderModel
                     WriteLine("dp4 {0}, {1}, {2}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case D3D10Opcode.GE:
+                    WriteLine("ge {0}, {1}, {2}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
                 case D3D10Opcode.Mad:
                     WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case D3D10Opcode.Mov:
                     WriteLine("mov {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.MovC:
+                    WriteLine("movc {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case D3D10Opcode.Mul:
                     WriteLine("mul {0}, {1}, {2}", GetDestinationName(instruction),

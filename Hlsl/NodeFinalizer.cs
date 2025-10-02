@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.Hlsl.FlowControl;
-using HlslDecompiler.Operations;
 using System.Collections.Generic;
 using System.Linq;
 

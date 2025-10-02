@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using HlslDecompiler.Operations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -237,6 +236,13 @@ namespace HlslDecompiler.Hlsl
 
                         return $"{value1} >= 0 ? {value2} : {value3}";
                     }
+                case GreaterEqualOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        var value2 = Compile(components.Select(g => g.Inputs[1]));
+
+                        return $"{value1} >= {value2}";
+                    }
                 case DotProductOperation _:
                     {
                         var x = Compile(components.Select(g => g.Inputs[0]));
@@ -247,6 +253,14 @@ namespace HlslDecompiler.Hlsl
                     {
                         var value1 = Compile(components.Select(g => g.Inputs[0]));
                         return $"length({value1})";
+                    }
+                case MoveConditionalOperation _:
+                    {
+                        var value1 = Compile(components.Select(g => g.Inputs[0]));
+                        var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
+                        var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
+
+                        return $"{value1} ? {value2} : {value3}";
                     }
                 default:
                     throw new NotImplementedException(operation.GetType().Name);

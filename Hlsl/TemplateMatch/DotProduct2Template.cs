@@ -1,6 +1,4 @@
-﻿using HlslDecompiler.Operations;
-
-namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch
 {
     // 2 by 2 dot product has a pattern of:
     // a*x + b*y

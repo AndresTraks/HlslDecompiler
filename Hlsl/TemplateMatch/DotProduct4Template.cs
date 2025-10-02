@@ -1,6 +1,4 @@
-﻿using HlslDecompiler.Operations;
-
-namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch
 {
     // 4 by 4 dot product has a pattern of:
     // #1  dot3(abc, xyz) + dw

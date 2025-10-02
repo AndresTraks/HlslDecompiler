@@ -1,5 +1,4 @@
-﻿using HlslDecompiler.Operations;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch
 {

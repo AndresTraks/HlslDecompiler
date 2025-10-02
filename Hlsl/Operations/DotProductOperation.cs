@@ -1,6 +1,4 @@
-﻿using HlslDecompiler.Hlsl;
-
-namespace HlslDecompiler.Operations
+﻿namespace HlslDecompiler.Hlsl
 {
     public class DotProductOperation : Operation
     {

@@ -1,6 +1,6 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    // D3DXPARAMETER_TYPE
+    // D3DXPARAMETER_TYPE / D3D_SHADER_VARIABLE_TYPE
     public enum ParameterType
     {
         Void,
@@ -22,6 +22,44 @@
         VertexShader,
         PixelFragment,
         VertexFragment,
-        Unsupported
+        Uint,
+        Uint8,
+        GeometryShader,
+        Rasterizer,
+        DepthStencil,
+        Blend,
+        Buffer,
+        Cbuffer,
+        Tbuffer,
+        Texture1DArray,
+        Texture2DArray,
+        RenderTargetView,
+        DepthStencilView,
+        Texture2Dms,
+        Texture2DmsArray,
+        TextureCubeArray,
+        HullShader,
+        DomainShader,
+        InterfacePointer,
+        ComputeShader,
+        Double,
+        RWTexture1D,
+        RWTexture1DArray,
+        RWTexturre2D,
+        RWTexture2DArray,
+        RWTexture3D,
+        RWBuffer,
+        ByteaddressBuffer,
+        RWByteaddressBuffer,
+        StructuredBuffer,
+        RWStructuredBuffer,
+        AppendStructuredBuffer,
+        ConsumeStructuredBuffer,
+        Min8Float,
+        Min10Float,
+        Min16Float,
+        Min12Int,
+        Min16Int,
+        Min16Uint
     }
 }

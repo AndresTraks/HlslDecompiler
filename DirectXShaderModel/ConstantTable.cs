@@ -10,14 +10,14 @@ namespace HlslDecompiler.DirectXShaderModel
         public ShaderFlags ShaderFlags { get; }
         public string CompilerInfo { get; }
         public string ShaderModel { get; }
-        public IList<ConstantDeclaration> Declarations { get; }
+        public IList<D3D9ConstantDeclaration> Declarations { get; }
 
         public ConstantTable()
         {
             Declarations = [];
         }
 
-        public ConstantTable(int minorVersion, int majorVersion, ShaderType shaderType, ShaderFlags shaderFlags, string compilerInfo, string shaderModel, IList<ConstantDeclaration> declarations)
+        public ConstantTable(int minorVersion, int majorVersion, ShaderType shaderType, ShaderFlags shaderFlags, string compilerInfo, string shaderModel, IList<D3D9ConstantDeclaration> declarations)
         {
             MinorVersion = minorVersion;
             MajorVersion = majorVersion;

@@ -46,8 +46,6 @@ namespace HlslDecompiler.Hlsl
             _statements = new List<IStatement>();
             _currentStatements = new Stack<IStatement>();
 
-            LoadConstantOutputs(shader);
-
             int instructionPointer = 0;
             if (shader.Instructions[0] is D3D10Instruction)
             {
@@ -135,11 +133,14 @@ namespace HlslDecompiler.Hlsl
                         }
                     case D3D10Opcode.DclConstantBuffer:
                         {
-                            int count = (int)instruction.GetParamInt(0);
-                            for (int registerNumber = 0; registerNumber < count; registerNumber++)
+                            int registerNumber = (int)instruction.GetParamInt(0);
+                            var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
+                            _registerState.DeclareRegister(registerKey);
+                            for (int i = 0; i < 4; i++)
                             {
-                                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
-                                _registerState.DeclareRegister(registerKey);
+                                var destinationKey = new RegisterComponentKey(registerKey, i);
+                                var resourceInput = new RegisterInputNode(destinationKey);
+                                SetActiveOutput(destinationKey, resourceInput);
                             }
                             break;
                         }
@@ -166,7 +167,7 @@ namespace HlslDecompiler.Hlsl
         {
             using var reader = new ConstantTableCommentReader(instruction);
             ConstantTable constantTable = reader.ReadTable();
-            foreach (ConstantDeclaration constant in constantTable.Declarations)
+            foreach (D3D9ConstantDeclaration constant in constantTable.Declarations)
             {
                 _registerState.DeclareConstant(constant);
 
@@ -228,22 +229,6 @@ namespace HlslDecompiler.Hlsl
             }
             else if (instruction.Opcode == Opcode.End)
             {
-            }
-        }
-
-        private void LoadConstantOutputs(ShaderModel shader)
-        {
-            foreach (ConstantBufferDescription constantBuffer in shader.ConstantBufferDescriptions)
-            {
-                // TODO
-                int registerNumber = constantBuffer.RegisterNumber;
-                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
-                for (int i = 0; i < constantBuffer.Size; i++)
-                {
-                    var destinationKey = new RegisterComponentKey(registerKey, i);
-                    var shaderInput = new RegisterInputNode(destinationKey);
-                    SetActiveOutput(destinationKey, shaderInput);
-                }
             }
         }
 

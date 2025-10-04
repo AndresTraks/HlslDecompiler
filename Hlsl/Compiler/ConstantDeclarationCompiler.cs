@@ -9,6 +9,16 @@ namespace HlslDecompiler.Hlsl
 
         public string Compile(ConstantDeclaration declaration)
         {
+            if (declaration is D3D9ConstantDeclaration d3D9ConstantDeclaration)
+            {
+                return Compile(d3D9ConstantDeclaration);
+            }
+            string typeName = GetTypeName(declaration);
+            return $"{typeName} {declaration.Name};";
+        }
+
+        public string Compile(D3D9ConstantDeclaration declaration)
+        {
             string typeName = GetTypeName(declaration);
             string registerSpecifier = "";
             int registerSet = (int)declaration.RegisterSet;

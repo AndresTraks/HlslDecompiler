@@ -114,7 +114,7 @@ namespace HlslDecompiler.Hlsl
         public ConstantDeclaration FindConstant(RegisterSet set, int index)
         {
             return ConstantDeclarations.FirstOrDefault(c =>
-                c.RegisterSet == set &&
+                (c as D3D9ConstantDeclaration).RegisterSet == set &&
                 c.ContainsIndex(index));
         }
 
@@ -140,9 +140,16 @@ namespace HlslDecompiler.Hlsl
         {
             var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey);
             RegisterDeclarations.Add(registerKey, registerDeclaration);
+            if (registerKey.IsConstant)
+            {
+                foreach (var declaraion in _shaderModel.ConstantDeclarations.Where(d => d.RegisterIndex == registerKey.Number))
+                {
+                    ConstantDeclarations.Add(declaraion);
+                }
+            }
         }
 
-        public void DeclareConstant(ConstantDeclaration constant)
+        public void DeclareConstant(D3D9ConstantDeclaration constant)
         {
             ConstantDeclarations.Add(constant);
 
@@ -249,19 +256,26 @@ namespace HlslDecompiler.Hlsl
                 instruction.Opcode == D3D10Opcode.DclInputPSSiv ||
                 instruction.Opcode == D3D10Opcode.DclOutput)
             {
-                var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction);
-                D3D10RegisterKey registerKey = (D3D10RegisterKey)registerDeclaration.RegisterKey;
+                var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex()) as D3D10RegisterKey;
 
-                RegisterDeclarations.Add(registerKey, registerDeclaration);
-
-                switch (registerKey.OperandType)
+                if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
                 {
-                    case OperandType.Input:
-                        MethodInputRegisters.Add(registerKey, registerDeclaration);
-                        break;
-                    case OperandType.Output:
-                        MethodOutputRegisters.Add(registerDeclaration);
-                        break;
+                    existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                }
+                else
+                {
+                    var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction);
+                    RegisterDeclarations.Add(registerKey, registerDeclaration);
+
+                    switch (registerKey.OperandType)
+                    {
+                        case OperandType.Input:
+                            MethodInputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                        case OperandType.Output:
+                            MethodOutputRegisters.Add(registerDeclaration);
+                            break;
+                    }
                 }
             }
         }

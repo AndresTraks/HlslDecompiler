@@ -311,10 +311,6 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 value = span[0];
             }
-            else if (Opcode == D3D10Opcode.DclConstantBuffer)
-            {
-                value = span[2];
-            }
             else
             {
                 var componentSelection = GetOperandComponentSelection(index);

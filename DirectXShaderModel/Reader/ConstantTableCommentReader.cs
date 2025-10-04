@@ -40,18 +40,18 @@ namespace HlslDecompiler.DirectXShaderModel
             BaseStream.Position = shaderModelPosition;
             string shaderModel = ReadStringNullTerminated();
 
-            IList<ConstantDeclaration> declarations = [];
+            IList<D3D9ConstantDeclaration> declarations = [];
             for (int i = 0; i < numConstants; i++)
             {
                 BaseStream.Position = constantInfoPosition + i * 20;
-                ConstantDeclaration constant = ReadConstantDeclaration();
+                D3D9ConstantDeclaration constant = ReadConstantDeclaration();
                 declarations.Add(constant);
             }
 
             return new ConstantTable(minorVersion, majorVersion, shaderType, shaderFlags, compilerInfo, shaderModel, declarations);
         }
 
-        private ConstantDeclaration ReadConstantDeclaration()
+        private D3D9ConstantDeclaration ReadConstantDeclaration()
         {
             // D3DXSHADER_CONSTANTINFO
             int nameOffset = ReadInt32();
@@ -83,7 +83,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 // TODO
             }
 
-            return new ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
+            return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
         }
 
         private static MemoryStream ReadRawTable(D3D9Instruction instruction)

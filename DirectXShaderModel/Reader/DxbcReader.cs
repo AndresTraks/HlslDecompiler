@@ -36,7 +36,7 @@ namespace HlslDecompiler.DirectXShaderModel
             var inputSignatures = new List<RegisterSignature>();
             var outputSignatures = new List<RegisterSignature>();
             var instructions = new List<Instruction>();
-            var constantBufferDescriptions = new List<ConstantBufferDescription>();
+            var constantDeclarations = new List<D3D10ConstantDeclaration>();
 
             foreach (int chunkOffset in chunkOffsets)
             {
@@ -61,8 +61,8 @@ namespace HlslDecompiler.DirectXShaderModel
                         int variableCount = ReadInt32();
                         int variableDescriptionOffset = ReadInt32();
                         int size = ReadInt32();
-                        int flags = ReadInt32();
-                        int bufferType = ReadInt32();
+                        D3D10ShaderCbufferFlags flags = (D3D10ShaderCbufferFlags)ReadInt32();
+                        D3D10CbufferType bufferType = (D3D10CbufferType)ReadInt32();
 
                         for (int j = 0; j < variableCount; j++)
                         {
@@ -70,17 +70,26 @@ namespace HlslDecompiler.DirectXShaderModel
                             int variableNameOffset = ReadInt32();
                             int variableOffset = ReadInt32();
                             int variableSize = ReadInt32();
+                            D3D10ShaderVariableFlags variableFlags = (D3D10ShaderVariableFlags)ReadInt32();
                             int variableTypeOffset = ReadInt32();
                             int defaultValueOffset = ReadInt32();
 
                             BaseStream.Position = chunkOffset + variableNameOffset + 8;
                             string name = ReadStringNullTerminated();
 
+                            BaseStream.Position = chunkOffset + variableTypeOffset + 8;
+                            ParameterClass variableClass = (ParameterClass)ReadInt16();
+                            ParameterType variableType = (ParameterType)ReadInt16();
+                            short rows = ReadInt16();
+                            short columns = ReadInt16();
+                            short numElements = ReadInt16();
+                            short numStructMembers = ReadInt16();
+                            int firstMemberOffset = ReadInt32();
+
                             // TODO
-                            int registerNumber = i;
-                            int maskedSize = variableSize / 4;
-                            var description = new ConstantBufferDescription(registerNumber, variableOffset, maskedSize, name);
-                            constantBufferDescriptions.Add(description);
+                            short registerNumber = (short)i;
+                            var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, variableClass, variableType, rows, columns);
+                            constantDeclarations.Add(description);
                         }
                     }
 
@@ -124,7 +133,7 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
             }
 
-            return new ShaderModel(majorVersion.Value, minorVersion.Value, shaderType.Value, inputSignatures, outputSignatures, constantBufferDescriptions, instructions);
+            return new ShaderModel(majorVersion.Value, minorVersion.Value, shaderType.Value, inputSignatures, outputSignatures, constantDeclarations, instructions);
         }
 
         private D3D10Instruction ReadInstruction()

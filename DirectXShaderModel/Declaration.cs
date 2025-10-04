@@ -5,7 +5,6 @@ namespace HlslDecompiler.DirectXShaderModel
     public class ConstantDeclaration
     {
         public string Name { get; private set; }
-        public RegisterSet RegisterSet { get; private set; }
         public short RegisterIndex { get; private set; }
         public short RegisterCount { get; private set; }
         public ParameterClass ParameterClass { get; private set; }
@@ -13,11 +12,10 @@ namespace HlslDecompiler.DirectXShaderModel
         public int Rows { get; private set; }
         public int Columns { get; set; }
 
-        public ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount,
+        internal ConstantDeclaration(string name, short registerIndex, short registerCount,
             ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
         {
             Name = name;
-            RegisterSet = registerSet;
             RegisterIndex = registerIndex;
             RegisterCount = registerCount;
             ParameterClass = parameterClass;
@@ -45,6 +43,25 @@ namespace HlslDecompiler.DirectXShaderModel
         public override string ToString()
         {
             return Name;
+        }
+    }
+
+    public class D3D9ConstantDeclaration : ConstantDeclaration
+    {
+        public RegisterSet RegisterSet { get; private set; }
+
+        public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
+            : base(name, registerIndex, registerCount, parameterClass, parameterType, rows, columns)
+        {
+            RegisterSet = registerSet;
+        }
+    }
+
+    public class D3D10ConstantDeclaration : ConstantDeclaration
+    {
+        public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
+            : base(name, registerIndex, registerCount, parameterClass, parameterType, rows, columns)
+        {
         }
     }
 

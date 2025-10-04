@@ -59,9 +59,12 @@ namespace HlslDecompiler.DirectXShaderModel
 
     public class D3D10ConstantDeclaration : ConstantDeclaration
     {
-        public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
+        public int Offset { get; }
+
+        public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns, int offset)
             : base(name, registerIndex, registerCount, parameterClass, parameterType, rows, columns)
         {
+            Offset = offset;
         }
     }
 
@@ -76,8 +79,8 @@ namespace HlslDecompiler.DirectXShaderModel
             ResultModifier = resultModifier;
         }
 
-        public RegisterDeclaration(RegisterKey registerKey, string semantic, int maskedLength)
-            : this(registerKey, semantic, maskedLength, ResultModifier.None)
+        public RegisterDeclaration(RegisterKey registerKey, string semantic, int writeMask)
+            : this(registerKey, semantic, writeMask, ResultModifier.None)
         {
         }
 

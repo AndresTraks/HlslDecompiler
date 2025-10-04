@@ -354,8 +354,16 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public override RegisterKey GetParamRegisterKey(int index)
         {
+            OperandType operandType = GetOperandType(index);
+            if (operandType == OperandType.ConstantBuffer)
+            {
+                return new D3D10RegisterKey(
+                    operandType,
+                    GetParamRegisterNumber(index),
+                    GetParamConstantBufferOffset(index));
+            }
             return new D3D10RegisterKey(
-                GetOperandType(index),
+                operandType,
                 GetParamRegisterNumber(index));
         }
 
@@ -376,7 +384,7 @@ namespace HlslDecompiler.DirectXShaderModel
             return (int) span[1];
         }
 
-        public int GetParamConstantBufferSize(int index)
+        public int GetParamConstantBufferOffset(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
             bool isExtended = (span[0] & 0x80000000) != 0;

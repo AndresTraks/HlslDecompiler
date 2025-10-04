@@ -205,6 +205,17 @@ namespace HlslDecompiler.Hlsl
                     {
                         return dot.X.Inputs;
                     }
+                    if (firstConstantRegister.RegisterComponentKey.RegisterKey is D3D10RegisterKey firstD3D10RegisterKey &&
+                        constantRegister.RegisterComponentKey.RegisterKey is D3D10RegisterKey d3D10RegisterKey)
+                    {
+                        if (d3D10RegisterKey.TypeEquals(d3D10RegisterKey) &&
+                            firstD3D10RegisterKey.Number == d3D10RegisterKey.Number &&
+                            firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex &&
+                            firstD3D10RegisterKey.ConstantBufferOffset + row == d3D10RegisterKey.ConstantBufferOffset)
+                        {
+                            return dot.X.Inputs;
+                        }
+                    }
                 }
             }
 

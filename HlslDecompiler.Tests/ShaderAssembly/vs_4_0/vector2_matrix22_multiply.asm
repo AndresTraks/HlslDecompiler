@@ -2,8 +2,7 @@ vs_4_0
 dcl_constantbuffer cb0[2], immediateIndexed
 dcl_input v0.xy
 dcl_output o0
-dcl_output o1.xy
-dcl_output o1.zw
+dcl_output o1
 dcl_temps 1
 dp2 o0.x, v0.xy, cb0[0].xy
 dp2 o0.y, v0.xy, cb0[1].xy

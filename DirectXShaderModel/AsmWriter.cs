@@ -643,7 +643,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     break;
                 case OperandType.ConstantBuffer:
                     registerTypeName = "cb";
-                    size = "[" + instruction.GetParamConstantBufferSize(index) + "]";
+                    size = "[" + instruction.GetParamConstantBufferOffset(index) + "]";
                     break;
                 default:
                     throw new NotImplementedException();

@@ -8,8 +8,15 @@
             Number = registerNumber;
         }
 
+        public D3D10RegisterKey(OperandType operandType, int registerNumber, int constantBufferOffset)
+            : this(operandType, registerNumber)
+        {
+            ConstantBufferOffset = constantBufferOffset;
+        }
+
         public OperandType OperandType { get; }
         public int Number { get; }
+        public int? ConstantBufferOffset { get; }
 
         public bool IsTempRegister => OperandType == OperandType.Temp;
         public bool IsOutput => OperandType == OperandType.Output;
@@ -44,12 +51,17 @@
             int hashCode =
                 Number.GetHashCode() ^
                 OperandType.GetHashCode();
+            if (ConstantBufferOffset != null)
+            {
+                hashCode ^= ConstantBufferOffset.GetHashCode();
+            }
             return hashCode;
         }
 
         public override string ToString()
         {
-            return $"{OperandType}{Number}";
+            string constantBufferOffset = ConstantBufferOffset != null ? $"[{ConstantBufferOffset}]" : "";
+            return $"{OperandType}{Number}{constantBufferOffset}";
         }
     }
 }

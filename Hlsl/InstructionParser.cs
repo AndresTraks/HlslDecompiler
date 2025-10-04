@@ -134,13 +134,17 @@ namespace HlslDecompiler.Hlsl
                     case D3D10Opcode.DclConstantBuffer:
                         {
                             int registerNumber = (int)instruction.GetParamInt(0);
-                            var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber);
-                            _registerState.DeclareRegister(registerKey);
-                            for (int i = 0; i < 4; i++)
+                            int constantBufferSize = instruction.GetParamConstantBufferOffset(0);
+                            for (int i = 0; i < constantBufferSize; i++)
                             {
-                                var destinationKey = new RegisterComponentKey(registerKey, i);
-                                var resourceInput = new RegisterInputNode(destinationKey);
-                                SetActiveOutput(destinationKey, resourceInput);
+                                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber, i);
+                                _registerState.DeclareRegister(registerKey);
+                                for (int c = 0; c < 4; c++)
+                                {
+                                    var destinationKey = new RegisterComponentKey(registerKey, c);
+                                    var resourceInput = new RegisterInputNode(destinationKey);
+                                    SetActiveOutput(destinationKey, resourceInput);
+                                }
                             }
                             break;
                         }

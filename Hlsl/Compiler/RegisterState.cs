@@ -1,7 +1,9 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -29,7 +31,7 @@ namespace HlslDecompiler.Hlsl
         {
             if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Const)
             {
-                var constant = FindConstant(registerKey.Number);
+                var constant = FindConstant(registerKey);
                 return constant.Columns;
             }
 
@@ -55,7 +57,7 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.Const:
                     case RegisterType.ConstInt:
                     case RegisterType.ConstBool:
-                        var constDecl = FindConstant(registerKey.Number);
+                        var constDecl = FindConstant(registerKey);
                         if (constDecl.Rows == 1)
                         {
                             return constDecl.Name;
@@ -70,7 +72,7 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.Temp:
                         return "r" + registerKey.Number;
                     case RegisterType.Sampler:
-                        ConstantDeclaration samplerDecl = FindConstant(RegisterSet.Sampler, registerKey.Number);
+                        ConstantDeclaration samplerDecl = FindConstant(registerKey);
                         if (samplerDecl != null)
                         {
                             return samplerDecl.Name;
@@ -90,7 +92,8 @@ namespace HlslDecompiler.Hlsl
                 switch (d3D10RegisterKey.OperandType)
                 {
                     case OperandType.ConstantBuffer:
-                        return "constant" + d3D10RegisterKey.Number.ToString();
+                        var declaration = FindConstant(registerKey);
+                        return declaration.Name;
                     case OperandType.Immediate32:
                         return d3D10RegisterKey.Number.ToString();
                     case OperandType.Input:
@@ -104,11 +107,7 @@ namespace HlslDecompiler.Hlsl
 
         public ConstantDeclaration FindConstant(RegisterInputNode register)
         {
-            if (register.RegisterComponentKey.RegisterKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type != RegisterType.Const)
-            {
-                return null;
-            }
-            return FindConstant(register.RegisterComponentKey.Number);
+            return FindConstant(register.RegisterComponentKey.RegisterKey);
         }
 
         public ConstantDeclaration FindConstant(RegisterSet set, int index)
@@ -118,10 +117,32 @@ namespace HlslDecompiler.Hlsl
                 c.ContainsIndex(index));
         }
 
-        public ConstantDeclaration FindConstant(int index)
+        public ConstantDeclaration FindConstant(RegisterKey registerKey)
         {
-            return ConstantDeclarations.FirstOrDefault(c =>
-                c.ContainsIndex(index));
+            if (registerKey is D3D10RegisterKey d3D10RegisterKey)
+            {
+                if (d3D10RegisterKey.OperandType == OperandType.ConstantBuffer)
+                {
+                    ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == d3D10RegisterKey.Number
+                        && (d as D3D10ConstantDeclaration).Offset == d3D10RegisterKey.ConstantBufferOffset);
+                    if (declaration == null)
+                    {
+                        declaration = ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == d3D10RegisterKey.Number);
+                    }
+                    return declaration;
+                }
+                return null;
+            }
+            return FindConstant(registerKey as D3D9RegisterKey);
+        }
+
+        public ConstantDeclaration FindConstant(D3D9RegisterKey registerKey)
+        {
+            if (registerKey.Type == RegisterType.Const || registerKey.Type == RegisterType.Sampler)
+            {
+                return ConstantDeclarations.FirstOrDefault(c => c.ContainsIndex(registerKey.Number));
+            }
+            return null;
         }
 
         public ConstantIntRegister FindConstantIntRegister(int index)
@@ -138,15 +159,16 @@ namespace HlslDecompiler.Hlsl
 
         public void DeclareRegister(D3D10RegisterKey registerKey)
         {
-            var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey);
-            RegisterDeclarations.Add(registerKey, registerDeclaration);
             if (registerKey.IsConstant)
             {
-                foreach (var declaraion in _shaderModel.ConstantDeclarations.Where(d => d.RegisterIndex == registerKey.Number))
+                var declaration = _shaderModel.ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == registerKey.Number && d.Offset == registerKey.ConstantBufferOffset);
+                if (declaration != null)
                 {
-                    ConstantDeclarations.Add(declaraion);
+                    ConstantDeclarations.Add(declaration);
                 }
             }
+            var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey);
+            RegisterDeclarations.Add(registerKey, registerDeclaration);
         }
 
         public void DeclareConstant(D3D9ConstantDeclaration constant)
@@ -341,13 +363,28 @@ namespace HlslDecompiler.Hlsl
             return new RegisterDeclaration(registerKey, semantic, writeMask, resultModifier);
         }
 
-        private static RegisterDeclaration CreateRegisterDeclarationFromRegisterKey(D3D10RegisterKey registerKey)
+        private RegisterDeclaration CreateRegisterDeclarationFromRegisterKey(D3D10RegisterKey registerKey)
         {
             string semantic = registerKey.Number == 0
                 ? "SV_Target"
                 : "SV_Target" + registerKey.Number;
 
-            return new RegisterDeclaration(registerKey, semantic, 4);
+            int writeMask = 0xF;
+            if (registerKey.OperandType == OperandType.ConstantBuffer)
+            {
+                ConstantDeclaration declaration = FindConstant(registerKey);
+                if (declaration != null)
+                {
+                    writeMask = 0;
+                    int maskedLength = declaration.Rows * declaration.Columns;
+                    for (int i = 0; i < maskedLength; i++)
+                    {
+                        writeMask |= 1 << i;
+                    }
+                }
+            }
+
+            return new RegisterDeclaration(registerKey, semantic, writeMask);
         }
 
         private RegisterDeclaration CreateRegisterDeclarationFromD3D10Dcl(Instruction instruction)

@@ -182,9 +182,8 @@ namespace HlslDecompiler.Hlsl
                 return false;
             }
 
-            int constIndex1 = input1.RegisterComponentKey.Number;
             int constIndex2 = input2.RegisterComponentKey.Number;
-            var constantRegister = _registers.FindConstant(constIndex1);
+            var constantRegister = _registers.FindConstant(input1);
             return constantRegister != null
                 && constantRegister.ContainsIndex(constIndex2)
                 && IsMatrixConstantRegister(constantRegister);
@@ -198,8 +197,7 @@ namespace HlslDecompiler.Hlsl
                 return false;
             }
 
-            int constIndex = input1.RegisterComponentKey.Number;
-            var constantRegister = _registers.FindConstant(constIndex);
+            var constantRegister = _registers.FindConstant(input1);
             return constantRegister != null
                 && IsMatrixConstantRegister(constantRegister);
         }

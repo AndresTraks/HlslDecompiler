@@ -393,8 +393,8 @@ namespace HlslDecompiler
         {
             string sourceRegisterName;
 
-            var registerType = instruction.GetParamRegisterType(srcIndex);
-            switch (registerType)
+            var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D9RegisterKey;
+            switch (registerKey.Type)
             {
                 case RegisterType.Const:
                 case RegisterType.Const2:
@@ -408,8 +408,7 @@ namespace HlslDecompiler
                         return constantValue;
                     }
 
-                    int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
-                    ConstantDeclaration decl = _registers.FindConstant(registerNumber);
+                    ConstantDeclaration decl = _registers.FindConstant(registerKey);
                     if (decl == null)
                     {
                         // Constant register not found in def statements nor the constant table
@@ -419,13 +418,13 @@ namespace HlslDecompiler
                     if ((decl.ParameterClass == ParameterClass.MatrixRows && _registers.ColumnMajorOrder) ||
                         (decl.ParameterClass == ParameterClass.MatrixColumns && !_registers.ColumnMajorOrder))
                     {
-                        int row = registerNumber - decl.RegisterIndex;
+                        int row = registerKey.Number - decl.RegisterIndex;
                         sourceRegisterName = $"{decl.Name}[{row}]";
                     }
                     else if ((decl.ParameterClass == ParameterClass.MatrixColumns && _registers.ColumnMajorOrder) ||
                         (decl.ParameterClass == ParameterClass.MatrixRows && !_registers.ColumnMajorOrder))
                     {
-                        int column = registerNumber - decl.RegisterIndex;
+                        int column = registerKey.Number - decl.RegisterIndex;
                         sourceRegisterName = $"transpose({decl.Name})[{column}]";
                     }
                     else
@@ -434,7 +433,6 @@ namespace HlslDecompiler
                     }
                     break;
                 default:
-                    RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
                     sourceRegisterName = _registers.GetRegisterName(registerKey);
                     break;
             }

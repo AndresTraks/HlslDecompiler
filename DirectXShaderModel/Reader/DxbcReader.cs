@@ -88,7 +88,8 @@ namespace HlslDecompiler.DirectXShaderModel
 
                             // TODO
                             short registerNumber = (short)i;
-                            var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, variableClass, variableType, rows, columns);
+                            short elementOffset = (short)j;
+                            var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, variableClass, variableType, rows, columns, elementOffset);
                             constantDeclarations.Add(description);
                         }
                     }

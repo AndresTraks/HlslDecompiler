@@ -37,6 +37,7 @@ namespace HlslDecompiler.Tests
         [TestCase("ps_3_0", "if")]
         [TestCase("ps_3_0", "loop")]
         [TestCase("ps_3_0", "loop_nested")]
+        [TestCase("ps_3_0", "struct")]
         [TestCase("ps_3_0", "temp_assignment")]
         [TestCase("vs_1_1", "constant")]
         [TestCase("vs_1_1", "constant_struct")]

@@ -296,7 +296,7 @@ namespace HlslDecompiler.Hlsl
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs);
                 var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
                     textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
-                string samplerType = samplerConstant.ParameterType == ParameterType.SamplerCube
+                string samplerType = samplerConstant.TypeInfo.ParameterType == ParameterType.SamplerCube
                     ? "CUBE"
                     : (samplerConstant.GetSamplerDimension() + "D");
                 string bias = textureLoad.Controls.HasFlag(TextureLoadControls.Bias) ? "bias" : "";
@@ -393,6 +393,11 @@ namespace HlslDecompiler.Hlsl
             foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
             {
                 swizzleName += "xyzw"[swizzle];
+            }
+
+            if (registerSize > 4)
+            {
+                return "";
             }
 
             if (swizzleName.Equals("xyzw".Substring(0, registerSize)))

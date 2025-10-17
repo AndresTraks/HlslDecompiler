@@ -204,8 +204,8 @@ namespace HlslDecompiler.Hlsl
 
         private static bool IsMatrixConstantRegister(ConstantDeclaration constantRegister)
         {
-            return constantRegister.ParameterClass == ParameterClass.MatrixColumns
-                || constantRegister.ParameterClass == ParameterClass.MatrixRows;
+            return constantRegister.TypeInfo.ParameterClass == ParameterClass.MatrixColumns
+                || constantRegister.TypeInfo.ParameterClass == ParameterClass.MatrixRows;
         }
 
         public static bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)

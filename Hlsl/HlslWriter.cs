@@ -96,6 +96,27 @@ namespace HlslDecompiler
             if (_registers.ConstantDeclarations.Count != 0)
             {
                 var compiler = new ConstantDeclarationCompiler();
+
+                foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
+                {
+                    compiler.SetStructOrder(declaration);
+                }
+
+                IList<ShaderTypeInfo> structs = compiler.GetStructDeclarations();
+                for (int i = 0; i < structs.Count; i++)
+                {
+                    WriteLine($"struct struct{i + 1}");
+                    WriteLine("{");
+                    indent = "\t";
+                    foreach (var member in structs[i].MemberInfo)
+                    {
+                        WriteLine(compiler.Compile(member));
+                    }
+                    indent = "";
+                    WriteLine("};");
+                    WriteLine();
+                }
+
                 foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
                 {
                     WriteLine(compiler.Compile(declaration));

@@ -4,24 +4,17 @@ namespace HlslDecompiler.DirectXShaderModel
 {
     public class ConstantDeclaration
     {
-        public string Name { get; private set; }
-        public short RegisterIndex { get; private set; }
-        public short RegisterCount { get; private set; }
-        public ParameterClass ParameterClass { get; private set; }
-        public ParameterType ParameterType { get; private set; }
-        public int Rows { get; private set; }
-        public int Columns { get; set; }
+        public string Name { get; }
+        public short RegisterIndex { get; }
+        public short RegisterCount { get; }
+        public ShaderTypeInfo TypeInfo { get; }
 
-        internal ConstantDeclaration(string name, short registerIndex, short registerCount,
-            ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
+        public ConstantDeclaration(string name, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
         {
             Name = name;
             RegisterIndex = registerIndex;
             RegisterCount = registerCount;
-            ParameterClass = parameterClass;
-            ParameterType = parameterType;
-            Rows = rows;
-            Columns = columns;
+            TypeInfo = typeInfo;
         }
 
         public bool ContainsIndex(int index)
@@ -31,7 +24,7 @@ namespace HlslDecompiler.DirectXShaderModel
 
         public int GetSamplerDimension()
         {
-            return ParameterType switch
+            return TypeInfo.ParameterType switch
             {
                 ParameterType.Sampler1D => 1,
                 ParameterType.Sampler2D => 2,
@@ -50,8 +43,8 @@ namespace HlslDecompiler.DirectXShaderModel
     {
         public RegisterSet RegisterSet { get; private set; }
 
-        public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns)
-            : base(name, registerIndex, registerCount, parameterClass, parameterType, rows, columns)
+        public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
+            : base(name, registerIndex, registerCount, typeInfo)
         {
             RegisterSet = registerSet;
         }
@@ -61,8 +54,8 @@ namespace HlslDecompiler.DirectXShaderModel
     {
         public int Offset { get; }
 
-        public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ParameterClass parameterClass, ParameterType parameterType, int rows, int columns, int offset)
-            : base(name, registerIndex, registerCount, parameterClass, parameterType, rows, columns)
+        public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ShaderTypeInfo typeInfo, int offset)
+            : base(name, registerIndex, registerCount, typeInfo)
         {
             Offset = offset;
         }

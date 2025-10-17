@@ -32,7 +32,7 @@ namespace HlslDecompiler.Hlsl
             if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Const)
             {
                 var constant = FindConstant(registerKey);
-                return constant.Columns;
+                return constant.TypeInfo.Columns;
             }
 
             return RegisterDeclarations[registerKey].MaskedLength;
@@ -58,7 +58,7 @@ namespace HlslDecompiler.Hlsl
                     case RegisterType.ConstInt:
                     case RegisterType.ConstBool:
                         var constDecl = FindConstant(registerKey);
-                        if (constDecl.Rows == 1)
+                        if (constDecl.TypeInfo.Rows == 1)
                         {
                             return constDecl.Name;
                         }
@@ -376,7 +376,7 @@ namespace HlslDecompiler.Hlsl
                 if (declaration != null)
                 {
                     writeMask = 0;
-                    int maskedLength = declaration.Rows * declaration.Columns;
+                    int maskedLength = declaration.TypeInfo.Rows * declaration.TypeInfo.Columns;
                     for (int i = 0; i < maskedLength; i++)
                     {
                         writeMask |= 1 << i;

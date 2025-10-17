@@ -85,11 +85,12 @@ namespace HlslDecompiler.DirectXShaderModel
                             short numElements = ReadInt16();
                             short numStructMembers = ReadInt16();
                             int firstMemberOffset = ReadInt32();
+                            var typeInfo = new ShaderTypeInfo(variableClass, variableType, rows, columns, numElements, null);
 
                             // TODO
                             short registerNumber = (short)i;
                             short elementOffset = (short)j;
-                            var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, variableClass, variableType, rows, columns, elementOffset);
+                            var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, typeInfo, elementOffset);
                             constantDeclarations.Add(description);
                         }
                     }

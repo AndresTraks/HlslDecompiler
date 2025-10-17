@@ -313,7 +313,7 @@ namespace HlslDecompiler
                     {
                         ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
                         int samplerDimension = sampler.GetSamplerDimension();
-                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
+                        string samplerType = sampler.TypeInfo.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
                         if (instruction.TexldControls.HasFlag(TexldControls.Project))
                         {
                             WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -339,7 +339,7 @@ namespace HlslDecompiler
                     {
                         ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
                         int samplerDimension = sampler.GetSamplerDimension();
-                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
+                        string samplerType = sampler.TypeInfo.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
                         WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                             $"tex{samplerType}lod({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, 4)})");
                         break;
@@ -348,7 +348,7 @@ namespace HlslDecompiler
                     {
                         ConstantDeclaration sampler = _registers.FindConstant(RegisterSet.Sampler, instruction.GetParamRegisterNumber(2));
                         int samplerDimension = sampler.GetSamplerDimension();
-                        string samplerType = sampler.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
+                        string samplerType = sampler.TypeInfo.ParameterType == ParameterType.SamplerCube ? "CUBE" : (samplerDimension + "D");
                         WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                             $"tex{samplerType}grad({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1, samplerDimension)}, {GetSourceName(instruction, 3, samplerDimension)}, {GetSourceName(instruction, 4, samplerDimension)})");
                         break;
@@ -415,14 +415,14 @@ namespace HlslDecompiler
                         throw new NotImplementedException();
                     }
 
-                    if ((decl.ParameterClass == ParameterClass.MatrixRows && _registers.ColumnMajorOrder) ||
-                        (decl.ParameterClass == ParameterClass.MatrixColumns && !_registers.ColumnMajorOrder))
+                    if ((decl.TypeInfo.ParameterClass == ParameterClass.MatrixRows && _registers.ColumnMajorOrder) ||
+                        (decl.TypeInfo.ParameterClass == ParameterClass.MatrixColumns && !_registers.ColumnMajorOrder))
                     {
                         int row = registerKey.Number - decl.RegisterIndex;
                         sourceRegisterName = $"{decl.Name}[{row}]";
                     }
-                    else if ((decl.ParameterClass == ParameterClass.MatrixColumns && _registers.ColumnMajorOrder) ||
-                        (decl.ParameterClass == ParameterClass.MatrixRows && !_registers.ColumnMajorOrder))
+                    else if ((decl.TypeInfo.ParameterClass == ParameterClass.MatrixColumns && _registers.ColumnMajorOrder) ||
+                        (decl.TypeInfo.ParameterClass == ParameterClass.MatrixRows && !_registers.ColumnMajorOrder))
                     {
                         int column = registerKey.Number - decl.RegisterIndex;
                         sourceRegisterName = $"transpose({decl.Name})[{column}]";

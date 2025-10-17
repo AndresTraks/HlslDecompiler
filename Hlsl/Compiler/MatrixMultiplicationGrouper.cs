@@ -171,8 +171,8 @@ namespace HlslDecompiler.Hlsl
             {
                 var matrixBaseConstant = _registers.FindConstant(register1);
                 if (matrixBaseConstant != null && 
-                    (matrixBaseConstant.Rows == dimension ||
-                    matrixBaseConstant.Columns == dimension))
+                    (matrixBaseConstant.TypeInfo.Rows == dimension ||
+                    matrixBaseConstant.TypeInfo.Columns == dimension))
                 {
                     return matrixBaseConstant;
                 }
@@ -186,7 +186,7 @@ namespace HlslDecompiler.Hlsl
             if (dot.X.Inputs[0] is RegisterInputNode constantRegister)
             {
                 ConstantDeclaration constant = _registers.FindConstant(constantRegister);
-                if(constant != null && constant.Rows > 1)
+                if(constant != null && constant.TypeInfo.Rows > 1)
                 {
                     if (row == 0)
                     {
@@ -222,7 +222,7 @@ namespace HlslDecompiler.Hlsl
             if (dot.Y.Inputs[0] is RegisterInputNode constantRegister1)
             {
                 ConstantDeclaration constant = _registers.FindConstant(constantRegister1);
-                if (constant != null && constant.Rows > 1)
+                if (constant != null && constant.TypeInfo.Rows > 1)
                 {
                     if (row == 0)
                     {

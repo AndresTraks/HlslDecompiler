@@ -14,7 +14,7 @@
             string matrixName = context.MatrixDeclaration.Name;
             if (context.Vector.Length != context.MatrixRowCount)
             {
-                matrixName = $"(float{context.MatrixDeclaration.Columns}x{context.Vector.Length}){matrixName}";
+                matrixName = $"(float{context.MatrixDeclaration.TypeInfo.Columns}x{context.Vector.Length}){matrixName}";
             }
             string vector = nodeCompiler.Compile(context.Vector);
             return context.IsMatrixByVector

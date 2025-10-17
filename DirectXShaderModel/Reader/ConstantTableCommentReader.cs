@@ -65,17 +65,8 @@ namespace HlslDecompiler.DirectXShaderModel
             BaseStream.Position = nameOffset;
             string name = ReadStringNullTerminated();
 
-            // D3DXSHADER_TYPEINFO
             BaseStream.Position = typeInfoOffset;
-            ParameterClass cl = (ParameterClass)ReadInt16();
-            ParameterType type = (ParameterType)ReadInt16();
-            short rows = ReadInt16();
-            short columns = ReadInt16();
-            short numElements = ReadInt16();
-            short numStructMembers = ReadInt16();
-            int structMemberInfoOffset = ReadInt32();
-            //System.Diagnostics.Debug.Assert(numElements == 1);
-            System.Diagnostics.Debug.Assert(structMemberInfoOffset == 0);
+            ShaderTypeInfo typeInfo = ReadTypeInfo();
 
             if (defaultValueOffset != 0)
             {
@@ -83,7 +74,42 @@ namespace HlslDecompiler.DirectXShaderModel
                 // TODO
             }
 
-            return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, cl, type, rows, columns);
+            return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, typeInfo);
+        }
+
+        private ShaderTypeInfo ReadTypeInfo()
+        {
+            // D3DXSHADER_TYPEINFO
+            ParameterClass cl = (ParameterClass)ReadInt16();
+            ParameterType type = (ParameterType)ReadInt16();
+            short rows = ReadInt16();
+            short columns = ReadInt16();
+            short numElements = ReadInt16();
+            short numStructMembers = ReadInt16();
+            int structMemberInfoOffset = ReadInt32();
+
+            IList<ShaderStructMemberInfo> memberInfo = null;
+            if (cl == ParameterClass.Struct)
+            {
+                // D3DXSHADER_STRUCTMEMBERINFO
+                memberInfo = new List<ShaderStructMemberInfo>();
+                for (int i = 0; i < numStructMembers; i++)
+                {
+                    BaseStream.Position = structMemberInfoOffset + i * 8;
+
+                    int structMemberNameOffset = ReadInt32();
+                    int structMemberTypeInfoOffset = ReadInt32();
+
+                    BaseStream.Position = structMemberNameOffset;
+                    string structMemberName = ReadStringNullTerminated();
+
+                    BaseStream.Position = structMemberTypeInfoOffset;
+                    ShaderTypeInfo typeInfo = ReadTypeInfo();
+                    memberInfo.Add(new ShaderStructMemberInfo(structMemberName, typeInfo));
+                }
+            }
+
+            return new ShaderTypeInfo(cl, type, rows, columns, numElements, memberInfo);
         }
 
         private static MemoryStream ReadRawTable(D3D9Instruction instruction)

@@ -1,5 +1,5 @@
-Texture2D texture0;
 SamplerState samplerState0;
+Texture2D texture0;
 
 float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {

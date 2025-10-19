@@ -4,12 +4,15 @@ namespace HlslDecompiler.DirectXShaderModel
 {
     public class D3D10OperandTokenCollection
     {
+        private readonly bool _isResourceDeclaration;
+
         public uint[] Tokens { get; }
         public virtual int Count => Tokens.Length;
 
-        public D3D10OperandTokenCollection(uint[] paramTokens)
+        public D3D10OperandTokenCollection(uint[] paramTokens, bool isResourceDeclaration)
         {
             Tokens = paramTokens;
+            _isResourceDeclaration = isResourceDeclaration;
         }
 
         public Span<uint> GetSpan(int index)
@@ -21,8 +24,6 @@ namespace HlslDecompiler.DirectXShaderModel
                 uint token = Tokens[i];
                 i++;
 
-                D3D10OperandNumComponents componentSelection = (D3D10OperandNumComponents)(token & 3);
-
                 bool isExtended = (token & 0x80000000) != 0;
                 if (isExtended)
                 {
@@ -30,32 +31,40 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
 
                 OperandType operandType = (OperandType)((token >> 12) & 0xFF);
-                if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+                if (_isResourceDeclaration)
                 {
-                    if (operandType == OperandType.Immediate32)
-                    {
-                        i++;
-                    }
+                    i += 2;
                 }
-                else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+                else
                 {
-                    if (operandType == OperandType.Immediate32)
+                    D3D10OperandNumComponents componentSelection = (D3D10OperandNumComponents)(token & 3);
+                    if (componentSelection == D3D10OperandNumComponents.Operand1Component)
                     {
-                        i += 4;
+                        if (operandType == OperandType.Immediate32)
+                        {
+                            i++;
+                        }
                     }
-                }
+                    else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
+                    {
+                        if (operandType == OperandType.Immediate32)
+                        {
+                            i += 4;
+                        }
+                    }
 
-                int indexDimension = (int)((token >> 20) & 3);
-                for (int r = 0; r < indexDimension; r++)
-                {
-                    D3D10OperandIndexRepresentation indexRepresentation = (D3D10OperandIndexRepresentation)((token >> (22 + r * 3)) & 7);
-                    if (indexRepresentation == D3D10OperandIndexRepresentation.Immediate32)
+                    int indexDimension = (int)((token >> 20) & 3);
+                    for (int r = 0; r < indexDimension; r++)
                     {
-                        i++;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
+                        D3D10OperandIndexRepresentation indexRepresentation = (D3D10OperandIndexRepresentation)((token >> (22 + r * 3)) & 7);
+                        if (indexRepresentation == D3D10OperandIndexRepresentation.Immediate32)
+                        {
+                            i++;
+                        }
+                        else
+                        {
+                            throw new NotImplementedException();
+                        }
                     }
                 }
 

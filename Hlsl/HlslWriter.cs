@@ -102,7 +102,7 @@ namespace HlslDecompiler
                     compiler.SetStructOrder(declaration);
                 }
 
-                IList<ShaderTypeInfo> structs = compiler.GetStructDeclarations();
+                IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
                 for (int i = 0; i < structs.Count; i++)
                 {
                     WriteLine($"struct struct{i + 1}");
@@ -120,6 +120,26 @@ namespace HlslDecompiler
                 foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
                 {
                     WriteLine(compiler.Compile(declaration));
+                }
+                WriteLine();
+            }
+
+            if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
+            {
+                foreach (var resource in _registers.ResourceDefinitions)
+                {
+                    if (resource.ShaderInputType == D3DShaderInputType.Texture)
+                    {
+                        WriteLine($"{resource.Dimension} {resource.Name};");
+                    }
+                    else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
+                    {
+                        WriteLine($"SamplerState {resource.Name};");
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
                 }
                 WriteLine();
             }

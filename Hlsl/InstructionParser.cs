@@ -150,15 +150,22 @@ namespace HlslDecompiler.Hlsl
                         }
                     case D3D10Opcode.DclResource:
                         {
-                            int number = (int)instruction.GetParamInt(0);
-                            var registerKey = new D3D10RegisterKey(OperandType.Resource, number);
-                            _registerState.DeclareRegister(registerKey);
+                            var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                            _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
                             var destinationKey = new RegisterComponentKey(registerKey, 0);
                             var resourceInput = new RegisterInputNode(destinationKey);
                             SetActiveOutput(destinationKey, resourceInput);
                             break;
                         }
                     case D3D10Opcode.DclSampler:
+                        {
+                            var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                            _registerState.DeclareRegister(registerKey);
+                            var destinationKey = new RegisterComponentKey(registerKey, 0);
+                            var resourceInput = new RegisterInputNode(destinationKey);
+                            SetActiveOutput(destinationKey, resourceInput);
+                            break;
+                        }
                     case D3D10Opcode.Ret:
                         break;
                     default:
@@ -743,14 +750,16 @@ namespace HlslDecompiler.Hlsl
         private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
         {
             const int TextureCoordsParamIndex = 1;
-            const int SamplerParamIndex = 2;
 
-            bool isBias = false;
-            bool isLod = false;
-            bool isGrad = false;
-            bool isProj = false;
             if (instruction is D3D9Instruction d3D9Instruction)
             {
+                const int SamplerParamIndex = 2;
+                var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
+
+                bool isBias = false;
+                bool isLod = false;
+                bool isGrad = false;
+                bool isProj = false;
                 if (d3D9Instruction.Opcode == Opcode.Tex)
                 {
                     isProj = d3D9Instruction.TexldControls.HasFlag(TexldControls.Project);
@@ -764,33 +773,48 @@ namespace HlslDecompiler.Hlsl
                 {
                     isGrad = true;
                 }
-            }
+                var samplerConstant = _registerState.FindConstant(RegisterSet.Sampler, sampler.RegisterComponentKey.RegisterKey.Number);
+                int numSamplerOutputComponents = (isBias || isLod || isProj) ? 4 : samplerConstant.GetSamplerDimension();
+                HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, numSamplerOutputComponents);
 
-            var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
-            var samplerConstant = _registerState.FindConstant(RegisterSet.Sampler, sampler.RegisterComponentKey.RegisterKey.Number);
-            int numSamplerOutputComponents = (isBias || isLod ||  isProj) ? 4 : samplerConstant.GetSamplerDimension();
+                if (isBias)
+                {
+                    return TextureLoadOutputNode.CreateBias(sampler, texCoords, outputComponent);
+                }
+                if (isGrad)
+                {
+                    HlslTreeNode[] ddx = GetInputComponents(instruction, 3, numSamplerOutputComponents);
+                    HlslTreeNode[] ddy = GetInputComponents(instruction, 4, numSamplerOutputComponents);
+                    return TextureLoadOutputNode.CreateGrad(sampler, texCoords, outputComponent, ddx, ddy);
+                }
+                if (isLod)
+                {
+                    return TextureLoadOutputNode.CreateLod(sampler, texCoords, outputComponent);
+                }
+                if (isProj)
+                {
+                    return TextureLoadOutputNode.CreateProj(sampler, texCoords, outputComponent);
+                }
+                return TextureLoadOutputNode.Create(sampler, texCoords, outputComponent);
+            }
+            else
+            {
+                const int TextureParamIndex = 2;
+                const int SamplerParamIndex = 3;
 
-            HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, numSamplerOutputComponents);
+                var texture = GetInputComponents(instruction, TextureParamIndex, 1)[0] as RegisterInputNode;
+                var textureDefinition = _registerState.ResourceDefinitions
+                    .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                    .FirstOrDefault(d => d.BindPoint == texture.RegisterComponentKey.RegisterKey.Number);
+                var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
+                var samplerDefinition = _registerState.ResourceDefinitions
+                    .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
+                    .FirstOrDefault(d => d.BindPoint == sampler.RegisterComponentKey.RegisterKey.Number);
 
-            if (isBias)
-            {
-                return TextureLoadOutputNode.CreateBias(sampler, texCoords, outputComponent);
+                HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, textureDefinition.GetDimensionSize());
+
+                return TextureLoadOutputNode.Create(sampler, texCoords, outputComponent, texture);
             }
-            if (isGrad)
-            {
-                HlslTreeNode[] ddx = GetInputComponents(instruction, 3, numSamplerOutputComponents);
-                HlslTreeNode[] ddy = GetInputComponents(instruction, 4, numSamplerOutputComponents);
-                return TextureLoadOutputNode.CreateGrad(sampler, texCoords, outputComponent, ddx, ddy);
-            }
-            if (isLod)
-            {
-                return TextureLoadOutputNode.CreateLod(sampler, texCoords, outputComponent);
-            }
-            if (isProj)
-            {
-                return TextureLoadOutputNode.CreateProj(sampler, texCoords, outputComponent);
-            }
-            return TextureLoadOutputNode.Create(sampler, texCoords, outputComponent);
         }
 
         private HlslTreeNode CreateDotProduct2AddNode(Instruction instruction)

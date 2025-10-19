@@ -371,6 +371,12 @@ namespace HlslDecompiler.DirectXShaderModel
                 case D3D10Opcode.DclOutput:
                     WriteLine("dcl_output {0}", GetDestinationName(instruction));
                     break;
+                case D3D10Opcode.DclResource:
+                    WriteLine("dcl_resource_texture2d (float,float,float,float) {0}", GetDestinationName(instruction));
+                    break;
+                case D3D10Opcode.DclSampler:
+                    WriteLine("dcl_sampler {0}, mode_default", GetDestinationName(instruction)); // TODO: mode
+                    break;
                 case D3D10Opcode.DclTemps:
                     WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                     break;
@@ -420,6 +426,10 @@ namespace HlslDecompiler.DirectXShaderModel
                 case D3D10Opcode.Rsq:
                     WriteLine("rsq {0}, {1}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.Sample:
+                    WriteLine("sample {0}, {1}, {2}, {3}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                     break;
                 case D3D10Opcode.Sqrt:
                     WriteLine("sqrt {0}, {1}", GetDestinationName(instruction),
@@ -644,6 +654,12 @@ namespace HlslDecompiler.DirectXShaderModel
                 case OperandType.ConstantBuffer:
                     registerTypeName = "cb";
                     size = "[" + instruction.GetParamConstantBufferOffset(index) + "]";
+                    break;
+                case OperandType.Resource:
+                    registerTypeName = "t";
+                    break;
+                case OperandType.Sampler:
+                    registerTypeName = "s";
                     break;
                 default:
                     throw new NotImplementedException();

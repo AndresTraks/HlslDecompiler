@@ -11,7 +11,7 @@ namespace HlslDecompiler.Hlsl
         private IDictionary<ShaderTypeInfo, int> _structIndices = new Dictionary<ShaderTypeInfo, int>();
         private int _structIndex = 1;
 
-        public IList<ShaderTypeInfo> GetStructDeclarations()
+        public IList<ShaderTypeInfo> GetOrderedStructs()
         {
             return _structIndices.OrderBy(s => s.Value).Select(s => s.Key).ToList();
         }

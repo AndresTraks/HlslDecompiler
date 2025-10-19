@@ -31,6 +31,7 @@ namespace HlslDecompiler.Hlsl.TemplateMatch
                 new ReciprocalSquareRootTemplate(),
                 new SubtractNegateTemplate(),
                 new SubtractZeroTemplate(),
+                //new NegateSubtractTemplate(),
                 new CompareConstantTemplate(),
                 new CompareNegativeWithZeroTemplate(),
                 new ComparePositiveAndNegativeTemplate(),

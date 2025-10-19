@@ -13,8 +13,16 @@ namespace HlslDecompiler.DirectXShaderModel
         public IList<RegisterSignature> InputSignatures { get; }
         public IList<RegisterSignature> OutputSignatures { get; }
         public IList<D3D10ConstantDeclaration> ConstantDeclarations { get; }
+        public IList<ResourceDefinition> ResourceDefinitions { get; }
 
-        public ShaderModel(int majorVersion, int minorVersion, ShaderType type, IList<RegisterSignature> inputSignatures, IList<RegisterSignature> outputSignatures, IList<D3D10ConstantDeclaration> constantDeclarations, IList<Instruction> instructions)
+        public ShaderModel(int majorVersion,
+            int minorVersion,
+            ShaderType type,
+            IList<RegisterSignature> inputSignatures, 
+            IList<RegisterSignature> outputSignatures, 
+            IList<D3D10ConstantDeclaration> constantDeclarations, 
+            IList<ResourceDefinition> resourceDefinitions,
+            IList<Instruction> instructions)
         {
             MajorVersion = majorVersion;
             MinorVersion = minorVersion;
@@ -22,6 +30,7 @@ namespace HlslDecompiler.DirectXShaderModel
             InputSignatures = inputSignatures;
             OutputSignatures = outputSignatures;
             ConstantDeclarations = constantDeclarations;
+            ResourceDefinitions = resourceDefinitions;
             Instructions = instructions;
         }
 

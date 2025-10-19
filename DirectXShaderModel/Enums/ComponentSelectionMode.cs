@@ -1,6 +1,7 @@
 ﻿namespace HlslDecompiler.DirectXShaderModel
 {
-    public enum D3D10ComponentSelectionMode
+    // D3D10_SB_OPERAND_4_COMPONENT_SELECTION_MODE
+    public enum ComponentSelectionMode
     {
         Mask,
         Swizzle,

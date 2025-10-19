@@ -24,7 +24,7 @@
             int destinationMask = (1 << destinationLength) - 1;
             int writeMask = GetDestinationWriteMask() & destinationMask;
 
-            if (writeMask == destinationMask)
+            if (writeMask == destinationMask || writeMask == 0)
             {
                 return "";
             }

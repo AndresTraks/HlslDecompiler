@@ -2,15 +2,61 @@
 
 namespace HlslDecompiler.DirectXShaderModel
 {
+    // Instruction
+    // 80000000 extended opcode token
+    // 7F000000 instruction length
+    // 00FFF800 opcode specific control
+    // 00780000 precise value
+    // 00040000 boolean test
+    // 00002000 saturate mask
+    // 00001800 return type
+    // 000007FF shader instruction opcode
+
+    // Operand
+    // 80000000 extended operand token
+    // 7FC00000 index representation
+    // 00300000 index dimension
+    // 000FF000 operand type
+    // 00000FFC component selection
+    // 00000003 number of components
+
+    // Extended operand
+    // 80000000 extended operand token
+    // 7FFC0000 ignored
+    // 00020000 non-uniform
+    // 0001C000 min precision
+    // 00003FC0 operand modifier
+    // 0000003F extended operand type
+
+    // Resource return type token
+    // FFFF0000 reserved
+    // 0000F000 component W
+    // 00000F00 component Z
+    // 000000F0 component Y
+    // 0000000F component X
+
     public class D3D10Instruction : Instruction
     {
+        private ResourceDimension _resourceDimension;
+
         public D3D10Opcode Opcode { get; }
         public D3D10OperandTokenCollection OperandTokens { get; }
 
         public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens)
         {
             Opcode = opcode;
-            OperandTokens = new D3D10OperandTokenCollection(paramTokens);
+            OperandTokens = new D3D10OperandTokenCollection(paramTokens, opcode == D3D10Opcode.DclResource);
+        }
+
+        public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension)
+            : this(opcode, paramTokens)
+        {
+            _resourceDimension = resourceDimension;
+        }
+
+        public ResourceDimension GetResourceDimension()
+        {
+            return _resourceDimension;
         }
 
         public override bool HasDestination
@@ -78,14 +124,14 @@ namespace HlslDecompiler.DirectXShaderModel
             if (componentSelection == D3D10OperandNumComponents.Operand1Component ||
                 componentSelection == D3D10OperandNumComponents.Operand4Component)
             {
-                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
-                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
+                if (selectionMode == ComponentSelectionMode.Mask)
                 {
                     Span<uint> span = OperandTokens.GetSpan(destinationParamIndex);
                     int mask = (int)((span[0] >> 4) & 0xF);
                     return mask;
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                else if (selectionMode == ComponentSelectionMode.Swizzle)
                 {
                     int mask = 0;
                     int dimension = GetOperandIndexDimension(destinationParamIndex);
@@ -99,10 +145,14 @@ namespace HlslDecompiler.DirectXShaderModel
                     }
                     return mask;
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                else if (selectionMode == ComponentSelectionMode.Select1)
                 {
                     throw new NotImplementedException();
                 }
+            }
+            else if (componentSelection == D3D10OperandNumComponents.Operand0Component)
+            {
+                return 0;
             }
             throw new NotImplementedException();
         }
@@ -150,10 +200,10 @@ namespace HlslDecompiler.DirectXShaderModel
             return (D3D10OperandNumComponents)(span[0] & 3);
         }
 
-        private D3D10ComponentSelectionMode GetOperandComponentSelectionMode(int index)
+        private ComponentSelectionMode GetOperandComponentSelectionMode(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
-            return (D3D10ComponentSelectionMode)((span[0] >> 2) & 3);
+            return (ComponentSelectionMode)((span[0] >> 2) & 3);
         }
 
         private int GetOperandComponentSwizzle(int index, int component)
@@ -161,21 +211,21 @@ namespace HlslDecompiler.DirectXShaderModel
             D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand4Component)
             {
-                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(index);
-                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(index);
+                if (selectionMode == ComponentSelectionMode.Mask)
                 {
                     Span<uint> span = OperandTokens.GetSpan(index);
                     int mask = (int)((span[0] >> 4) & 0xF);
                     throw new NotImplementedException();
                     //return component;
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                else if (selectionMode == ComponentSelectionMode.Swizzle)
                 {
                     Span<uint> span = OperandTokens.GetSpan(index);
                     int swizzle = (int)((span[0] >> 2) & 3);
                     return (swizzle >> (2 * component)) & 3;
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                else if (selectionMode == ComponentSelectionMode.Select1)
                 {
                     throw new NotImplementedException();
                 }
@@ -192,28 +242,37 @@ namespace HlslDecompiler.DirectXShaderModel
             }
             else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
             {
-                D3D10ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(srcIndex);
-                if (selectionMode == D3D10ComponentSelectionMode.Mask)
+                ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(srcIndex);
+                if (selectionMode == ComponentSelectionMode.Mask)
                 {
                     return (0 << 0) | (1 << 2) | (2 << 4) | (3 << 6);
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Swizzle)
+                else if (selectionMode == ComponentSelectionMode.Swizzle)
                 {
                     Span<uint> span = OperandTokens.GetSpan(srcIndex);
                     return (int)((span[0] >> 4) & 0xFF);
                 }
-                else if (selectionMode == D3D10ComponentSelectionMode.Select1)
+                else if (selectionMode == ComponentSelectionMode.Select1)
                 {
                     Span<uint> span = OperandTokens.GetSpan(srcIndex);
                     int component = (int)((span[0] >> 4) & 3);
                     return component * 0x55;
                 }
             }
+            else if (componentSelection == D3D10OperandNumComponents.Operand0Component)
+            {
+                return 0;
+            }
             throw new NotImplementedException();
         }
 
         public override string GetSourceSwizzleName(int srcIndex, int? destinationLength = null)
         {
+            if (GetOperandComponentSelection(srcIndex) == D3D10OperandNumComponents.Operand0Component)
+            {
+                return "";
+            }
+
             int destinationMask;
             switch (Opcode)
             {
@@ -345,11 +404,12 @@ namespace HlslDecompiler.DirectXShaderModel
         public D3D10OperandModifier GetOperandModifier(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
-            if ((span[0] & 0x80000000f) == 0)
+            bool isExtended = (span[0] & 0x80000000) != 0;
+            if (isExtended)
             {
-                throw new InvalidOperationException();
+                return (D3D10OperandModifier)((span[1] >> 6) & 0xFF);
             }
-            return (D3D10OperandModifier) ((span[1] >> 6) & 0xFF);
+            return D3D10OperandModifier.None;
         }
 
         public override RegisterKey GetParamRegisterKey(int index)
@@ -387,6 +447,17 @@ namespace HlslDecompiler.DirectXShaderModel
         public int GetParamConstantBufferOffset(int index)
         {
             Span<uint> span = OperandTokens.GetSpan(index);
+            bool isExtended = (span[0] & 0x80000000) != 0;
+            if (isExtended)
+            {
+                return (int)span[3];
+            }
+            return (int)span[2];
+        }
+
+        public int GetResourceReturnTypeToken()
+        {
+            Span<uint> span = OperandTokens.GetSpan(0);
             bool isExtended = (span[0] & 0x80000000) != 0;
             if (isExtended)
             {

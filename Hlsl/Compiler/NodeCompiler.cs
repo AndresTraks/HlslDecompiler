@@ -96,7 +96,7 @@ namespace HlslDecompiler.Hlsl
         {
             UngroupConstantGroups(componentGroups);
 
-            IEnumerable<string> compiledConstructorParts = componentGroups.Select(Compile);
+            IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g));
             return $"float{components.Count}({string.Join(", ", compiledConstructorParts)})";
         }
 
@@ -292,21 +292,35 @@ namespace HlslDecompiler.Hlsl
             {
                 string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
 
-                string sampler = Compile(new[] { textureLoad.Sampler });
-                string texcoords = Compile(textureLoad.TextureCoordinateInputs);
-                var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
-                    textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
-                string samplerType = samplerConstant.TypeInfo.ParameterType == ParameterType.SamplerCube
-                    ? "CUBE"
-                    : (samplerConstant.GetSamplerDimension() + "D");
-                string bias = textureLoad.Controls.HasFlag(TextureLoadControls.Bias) ? "bias" : "";
-                string lod = textureLoad.Controls.HasFlag(TextureLoadControls.Lod) ? "lod" : "";
-                string grad = textureLoad.Controls.HasFlag(TextureLoadControls.Grad) ? "grad" : "";
-                string gradParams = textureLoad.Controls.HasFlag(TextureLoadControls.Grad)
-                    ? (", " + Compile(textureLoad.DerivativeX) + ", " + Compile(textureLoad.DerivativeY))
-                    : "";
-                string proj = textureLoad.Controls.HasFlag(TextureLoadControls.Project) ? "proj" : "";
-                return $"tex{samplerType}{bias}{lod}{grad}{proj}({sampler}, {texcoords}{gradParams}){swizzle}";
+                var textureDefinition = _registers.ResourceDefinitions
+                    .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                    .FirstOrDefault(d => d.BindPoint == textureLoad.Texture.RegisterComponentKey.RegisterKey.Number);
+                if (textureDefinition != null)
+                {
+                    var samplerDefinition = _registers.ResourceDefinitions
+                        .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
+                        .FirstOrDefault(d => d.BindPoint == textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
+                    string texcoords = Compile(textureLoad.TextureCoordinateInputs, textureDefinition.GetDimensionSize());
+                    return $"{textureDefinition.Name}.Sample({samplerDefinition.Name}, {texcoords}){swizzle}";
+                }
+                else
+                {
+                    string sampler = Compile(new[] { textureLoad.Sampler });
+                    string texcoords = Compile(textureLoad.TextureCoordinateInputs);
+                    var samplerConstant = _registers.FindConstant(RegisterSet.Sampler,
+                        textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
+                    string samplerType = samplerConstant.TypeInfo.ParameterType == ParameterType.SamplerCube
+                        ? "CUBE"
+                        : (samplerConstant.GetSamplerDimension() + "D");
+                    string bias = textureLoad.Controls.HasFlag(TextureLoadControls.Bias) ? "bias" : "";
+                    string lod = textureLoad.Controls.HasFlag(TextureLoadControls.Lod) ? "lod" : "";
+                    string grad = textureLoad.Controls.HasFlag(TextureLoadControls.Grad) ? "grad" : "";
+                    string gradParams = textureLoad.Controls.HasFlag(TextureLoadControls.Grad)
+                        ? (", " + Compile(textureLoad.DerivativeX) + ", " + Compile(textureLoad.DerivativeY))
+                        : "";
+                    string proj = textureLoad.Controls.HasFlag(TextureLoadControls.Project) ? "proj" : "";
+                    return $"tex{samplerType}{bias}{lod}{grad}{proj}({sampler}, {texcoords}{gradParams}){swizzle}";
+                }
             }
 
             if (first is NormalizeOutputNode)
@@ -384,7 +398,7 @@ namespace HlslDecompiler.Hlsl
             int registerSize, 
             int promoteToVectorSize = PromoteToAnyVectorSize)
         {
-            if (registerSize == 1)
+            if (registerSize == 1 || registerSize > 4)
             {
                 return "";
             }
@@ -394,10 +408,9 @@ namespace HlslDecompiler.Hlsl
             {
                 swizzleName += "xyzw"[swizzle];
             }
-
-            if (registerSize > 4)
+            if (promoteToVectorSize != PromoteToAnyVectorSize)
             {
-                return "";
+                swizzleName = swizzleName.Substring(0, promoteToVectorSize);
             }
 
             if (swizzleName.Equals("xyzw".Substring(0, registerSize)))

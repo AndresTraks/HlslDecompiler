@@ -1,9 +1,7 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 
 namespace HlslDecompiler.Hlsl
 {
@@ -14,6 +12,7 @@ namespace HlslDecompiler.Hlsl
         public ICollection<ConstantRegister> ConstantDefinitions = new List<ConstantRegister>();
         public ICollection<ConstantIntRegister> ConstantIntDefinitions = new List<ConstantIntRegister>();
         public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = new List<ConstantDeclaration>();
+        public ICollection<ResourceDefinition> ResourceDefinitions { get; } = new List<ResourceDefinition>();
         public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
 
         public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
@@ -98,6 +97,8 @@ namespace HlslDecompiler.Hlsl
                         return d3D10RegisterKey.Number.ToString();
                     case OperandType.Input:
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                    case OperandType.Resource:
+                        return ResourceDefinitions.Where(d => d.ShaderInputType == D3DShaderInputType.Texture).First().Name;
                     default:
                         throw new NotImplementedException();
                 }
@@ -167,8 +168,30 @@ namespace HlslDecompiler.Hlsl
                     ConstantDeclarations.Add(declaration);
                 }
             }
+            else if (registerKey.OperandType == OperandType.Sampler)
+            {
+                var definition = _shaderModel.ResourceDefinitions
+                    .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
+                    .FirstOrDefault(d => d.BindPoint == registerKey.Number);
+                if (definition != null)
+                {
+                    ResourceDefinitions.Add(definition);
+                }
+            }
             var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey);
             RegisterDeclarations.Add(registerKey, registerDeclaration);
+        }
+
+        public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType)
+        {
+            ResourceDefinition definition = _shaderModel.ResourceDefinitions
+                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                .FirstOrDefault(d => d.BindPoint == registerKey.Number);
+            if (definition != null)
+            {
+                definition.Dimension = resourceDimension;
+                ResourceDefinitions.Add(definition);
+            }
         }
 
         public void DeclareConstant(D3D9ConstantDeclaration constant)

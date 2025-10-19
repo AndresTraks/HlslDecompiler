@@ -37,6 +37,7 @@ namespace HlslDecompiler.DirectXShaderModel
             var outputSignatures = new List<RegisterSignature>();
             var instructions = new List<Instruction>();
             var constantDeclarations = new List<D3D10ConstantDeclaration>();
+            var resourceDefinitions = new List<ResourceDefinition>();
 
             foreach (int chunkOffset in chunkOffsets)
             {
@@ -62,7 +63,7 @@ namespace HlslDecompiler.DirectXShaderModel
                         int variableDescriptionOffset = ReadInt32();
                         int size = ReadInt32();
                         D3D10ShaderCbufferFlags flags = (D3D10ShaderCbufferFlags)ReadInt32();
-                        D3D10CbufferType bufferType = (D3D10CbufferType)ReadInt32();
+                        D3DCbufferType bufferType = (D3DCbufferType)ReadInt32();
 
                         for (int j = 0; j < variableCount; j++)
                         {
@@ -98,19 +99,29 @@ namespace HlslDecompiler.DirectXShaderModel
                     resourceBindingOffset = chunkOffset + resourceBindingOffset + 8;
                     for (int i = 0; i < resourceBindingCount; i++)
                     {
-                        BaseStream.Position = resourceBindingOffset + i * 40;
+                        BaseStream.Position = resourceBindingOffset + i * 32;
                         int bindingNameOffset = ReadInt32();
-                        int shaderInputType = ReadInt32();
-                        int resourceReturnType = ReadInt32();
+                        D3DShaderInputType shaderInputType = (D3DShaderInputType) ReadInt32();
+                        D3DResourceReturnType resourceReturnType = (D3DResourceReturnType) ReadInt32();
                         int resourceViewDimension = ReadInt32();
                         int numSamples = ReadInt32();
                         int bindPoint = ReadInt32();
                         int bindCount = ReadInt32();
-                        int flags = ReadInt32();
+                        D3DShaderInputFlags flags = (D3DShaderInputFlags) ReadInt32();
 
                         BaseStream.Position = chunkOffset + bindingNameOffset + 8;
                         string name = ReadStringNullTerminated();
-                        name.ToString();
+
+                        var resourceDefinition = new ResourceDefinition(
+                            name,
+                            shaderInputType,
+                            resourceReturnType,
+                            resourceViewDimension,
+                            numSamples,
+                            bindPoint,
+                            bindCount,
+                            flags);
+                        resourceDefinitions.Add(resourceDefinition);
                     }
                 }
                 else if (chunkType == "ISGN")
@@ -135,7 +146,15 @@ namespace HlslDecompiler.DirectXShaderModel
                 }
             }
 
-            return new ShaderModel(majorVersion.Value, minorVersion.Value, shaderType.Value, inputSignatures, outputSignatures, constantDeclarations, instructions);
+            return new ShaderModel(
+                majorVersion.Value,
+                minorVersion.Value,
+                shaderType.Value,
+                inputSignatures,
+                outputSignatures,
+                constantDeclarations,
+                resourceDefinitions,
+                instructions);
         }
 
         private D3D10Instruction ReadInstruction()
@@ -156,6 +175,13 @@ namespace HlslDecompiler.DirectXShaderModel
             {
                 operandTokens[i] = ReadUInt32();
             }
+
+            if (opcode == D3D10Opcode.DclResource)
+            {
+                var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
+                return new D3D10Instruction(opcode, operandTokens, resourceDimension);
+            }
+
             var instruction = new D3D10Instruction(opcode, operandTokens);
             return instruction;
         }

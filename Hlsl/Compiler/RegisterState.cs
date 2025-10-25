@@ -100,7 +100,15 @@ namespace HlslDecompiler.Hlsl
                         var decl = RegisterDeclarations[registerKey];
                         return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
                     case OperandType.Resource:
-                        return ResourceDefinitions.Where(d => d.ShaderInputType == D3DShaderInputType.Texture).First().Name;
+                        return ResourceDefinitions
+                            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                            .First(d => d.BindPoint == registerKey.Number)
+                            .Name;
+                    case OperandType.Sampler:
+                        return ResourceDefinitions
+                            .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
+                            .First(d => d.BindPoint == registerKey.Number)
+                            .Name;
                     case OperandType.Temp:
                         return "r" + registerKey.Number;
                     default:

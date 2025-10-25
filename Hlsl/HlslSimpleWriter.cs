@@ -180,9 +180,6 @@ namespace HlslDecompiler
                         $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)}) + {GetSourceName(instruction, 3)}");
                     break;
                 case Opcode.Dp3:
-                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                        $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
-                    break;
                 case Opcode.Dp4:
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                         $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
@@ -401,8 +398,19 @@ namespace HlslDecompiler
                 case D3D10Opcode.Add:
                     WriteLine("{0} = {1} + {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
+                case D3D10Opcode.DerivRtx:
+                    WriteLine("{0} = ddx({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.DerivRty:
+                    WriteLine("{0} = ddy({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
                 case D3D10Opcode.Discard:
                     WriteLine("clip({0});", GetSourceName(instruction, 0));
+                    break;
+                case D3D10Opcode.Dp2:
+                case D3D10Opcode.Dp3:
+                case D3D10Opcode.Dp4:
+                    WriteLine("{0} = dot({1}, {2});", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
                 case D3D10Opcode.GE:
                     WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
@@ -420,11 +428,28 @@ namespace HlslDecompiler
                 case D3D10Opcode.Mul:
                     WriteLine("{0} = {1} * {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                     break;
-                case D3D10Opcode.DclTemps:
+                case D3D10Opcode.Rsq:
+                    WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.Sample:
+                    var samplerKey = instruction.GetParamRegisterKey(2);
+                    int texCoordLength = _registers.ResourceDefinitions
+                        .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                        .First(d => d.BindPoint == samplerKey.Number)
+                        .GetDimensionSize();
+                    WriteLine("{0} = {2}.Sample({3}, {1});", GetDestinationName(instruction), GetSourceName(instruction, 1, texCoordLength), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    break;
+                case D3D10Opcode.Sqrt:
+                    WriteLine("{0} = sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.DclConstantBuffer:
+                case D3D10Opcode.DclInput:
                 case D3D10Opcode.DclInputPS:
                 case D3D10Opcode.DclInputPSSiv:
                 case D3D10Opcode.DclOutput:
+                case D3D10Opcode.DclResource:
                 case D3D10Opcode.DclSampler:
+                case D3D10Opcode.DclTemps:
                 case D3D10Opcode.Ret:
                     break;
                 default:
@@ -698,11 +723,12 @@ namespace HlslDecompiler
             {
                 return ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
             }
-            float[] constant = swizzle
+            string[] constant = swizzle
                             .Take(destinationLength.Value)
                             .Select(s => registerKey.ImmediateSingle[s])
+                            .Select(ConstantFormatter.Format)
                             .ToArray();
-            return "float4(" + string.Join(", ", constant.Select(ConstantFormatter.Format)) + ")";
+            return $"float{destinationLength.Value}(" + string.Join(", ", constant) + ")";
         }
 
         private static string ApplyModifier(SourceModifier modifier, string value)
@@ -735,7 +761,7 @@ namespace HlslDecompiler
             }
             if (modifier.HasFlag(D3D10OperandModifier.Neg))
             {
-                value = $"abs({value})";
+                value = $"-({value})";
             }
             return value;
         }

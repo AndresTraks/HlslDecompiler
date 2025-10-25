@@ -274,19 +274,41 @@ namespace HlslDecompiler.DirectXShaderModel
             }
 
             int destinationMask;
-            switch (Opcode)
+            switch (destinationLength)
             {
-                case D3D10Opcode.Dp2:
+                case 1:
+                    destinationMask = 1;
+                    break;
+                case 2:
                     destinationMask = 3;
                     break;
-                case D3D10Opcode.Dp3:
+                case 3:
                     destinationMask = 7;
                     break;
-                case D3D10Opcode.Dp4:
+                case 4:
                     destinationMask = 15;
                     break;
                 default:
-                    destinationMask = GetDestinationWriteMask();
+                    if (Opcode == D3D10Opcode.Dp2)
+                    {
+                        destinationMask = 3;
+                        destinationLength = 2;
+                    }
+                    else if (Opcode == D3D10Opcode.Dp3)
+                    {
+                        destinationMask = 7;
+                        destinationLength = 3;
+                    }
+                    else if (Opcode == D3D10Opcode.Dp4)
+                    {
+                        destinationMask = 15;
+                        destinationLength = 4;
+                    }
+                    else
+                    {
+                        destinationMask = GetDestinationWriteMask();
+                        destinationLength = GetDestinationMaskLength();
+                    }
                     break;
             }
 

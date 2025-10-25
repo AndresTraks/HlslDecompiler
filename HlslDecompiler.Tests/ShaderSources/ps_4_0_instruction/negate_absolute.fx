@@ -1,4 +1,10 @@
 float4 main(float3 texcoord : TEXCOORD) : SV_Target
 {
-	return float4(-abs(texcoord.z), texcoord.x, 1, 2);
+	float4 o;
+
+	o.x = -(abs(texcoord.z));
+	o.y = texcoord.x;
+	o.zw = float2(0, 0);
+
+	return o;
 }

@@ -38,7 +38,7 @@ namespace HlslDecompiler
                     }
                     else
                     {
-                        ShaderType versionToken = (ShaderType)(signature << 16);
+                        ShaderType versionToken = (ShaderType)(signature >> 16);
                         if (versionToken == ShaderType.Vertex || versionToken == ShaderType.Pixel)
                         {
                             format = ShaderFileFormat.ShaderModel;

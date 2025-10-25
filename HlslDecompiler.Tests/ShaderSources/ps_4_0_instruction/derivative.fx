@@ -1,4 +1,10 @@
 float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
-	return float4(ddx(texcoord.x), ddy(texcoord.y), 1, 0);
+	float4 o;
+
+	o.x = ddx(texcoord.x);
+	o.y = ddy(texcoord.y);
+	o.zw = float2(0, 0);
+
+	return o;
 }

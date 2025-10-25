@@ -260,9 +260,9 @@ namespace HlslDecompiler.DirectXShaderModel
             return (RegisterType)(((p >> 28) & 0x7) | ((p >> 8) & 0x18));
         }
 
-        public override float GetParamSingle(int index)
+        public override float[] GetParamSingle(int index)
         {
-            return BitConverter.ToSingle(GetParamBytes(index), 0);
+            return [ BitConverter.ToSingle(GetParamBytes(index), 0) ];
         }
 
         public override float GetParamInt(int index)

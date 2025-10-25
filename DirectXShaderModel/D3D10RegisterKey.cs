@@ -14,9 +14,23 @@
             ConstantBufferOffset = constantBufferOffset;
         }
 
+        public D3D10RegisterKey(float[] immediateSingle)
+        {
+            OperandType = OperandType.Immediate32;
+            ImmediateSingle = immediateSingle;
+        }
+
+        public D3D10RegisterKey(int immediateInt)
+        {
+            OperandType = OperandType.Immediate32;
+            ImmediateInt = immediateInt;
+        }
+
         public OperandType OperandType { get; }
         public int Number { get; }
         public int? ConstantBufferOffset { get; }
+        public float[] ImmediateSingle { get; }
+        public int? ImmediateInt { get; }
 
         public bool IsTempRegister => OperandType == OperandType.Temp;
         public bool IsOutput => OperandType == OperandType.Output;
@@ -41,9 +55,32 @@
             {
                 return false;
             }
+            if (other.ImmediateSingle == null)
+            {
+                if (ImmediateSingle != null)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (other.ImmediateSingle.Length != ImmediateSingle.Length)
+                {
+                    return false;
+                }
+                for (int i = 0; i < ImmediateSingle.Length; i++)
+                {
+                    if (other.ImmediateSingle[i] != ImmediateSingle[i])
+                    {
+                        return false;
+                    }
+                }
+            }
             return
                 other.Number == Number &&
-                other.OperandType == OperandType;
+                other.OperandType == OperandType &&
+                other.ConstantBufferOffset == ConstantBufferOffset &&
+                other.ImmediateInt == ImmediateInt;
         }
 
         public override int GetHashCode()
@@ -55,11 +92,34 @@
             {
                 hashCode ^= ConstantBufferOffset.GetHashCode();
             }
+            if (ImmediateSingle != null)
+            {
+                for (int i = 0; i < ImmediateSingle.Length; i++)
+                {
+                    hashCode ^= ImmediateSingle[i].GetHashCode();
+                }
+            }
+            if (ImmediateInt != null)
+            {
+                hashCode ^= ImmediateInt.GetHashCode();
+            }
             return hashCode;
         }
 
         public override string ToString()
         {
+            if (ImmediateSingle != null)
+            {
+                if (ImmediateSingle.Length == 1)
+                {
+                    return ImmediateSingle[0].ToString();
+                }
+                return "[" + string.Join(", ", ImmediateSingle) + "]";
+            }
+            if (ImmediateInt.HasValue)
+            {
+                return ImmediateInt.Value.ToString();
+            }
             string constantBufferOffset = ConstantBufferOffset != null ? $"[{ConstantBufferOffset}]" : "";
             return $"{OperandType}{Number}{constantBufferOffset}";
         }

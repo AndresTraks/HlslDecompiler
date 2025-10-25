@@ -47,8 +47,10 @@ namespace HlslDecompiler.Tests
             string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";
             string asmExpectedFilename = $"ShaderAssembly{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.asm";
             string hlslExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fx";
+            string hlslInstructionExpectedFilename = $"ShaderSources{Path.DirectorySeparatorChar}{profile}_instruction{Path.DirectorySeparatorChar}{baseFilename}.fx";
             string asmOutputFilename = $"{profile}{Path.DirectorySeparatorChar}{baseFilename}.asm";
             string hlslOutputFilename = $"{profile}{Path.DirectorySeparatorChar}{baseFilename}.fx";
+            string hlslInstructionOutputFilename = $"{profile}{Path.DirectorySeparatorChar}{baseFilename}_instruction.fx";
 
             ShaderModel shader;
 
@@ -62,12 +64,17 @@ namespace HlslDecompiler.Tests
             FileUtil.MakeFolder(asmOutputFilename);
             asmWriter.Write(asmOutputFilename);
 
+            var hlslInstructionWriter = new HlslSimpleWriter(shader);
+            FileUtil.MakeFolder(hlslInstructionOutputFilename);
+            hlslInstructionWriter.Write(hlslInstructionOutputFilename);
+
             var hlslWriter = new HlslAstWriter(shader);
             FileUtil.MakeFolder(hlslOutputFilename);
             hlslWriter.Write(hlslOutputFilename);
 
             FileAssert.AreEqual(asmExpectedFilename, asmOutputFilename, "Assembly not equal at " + asmOutputFilename);
-            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "HLSL not equal at " + hlslOutputFilename);
+            FileAssert.AreEqual(hlslInstructionExpectedFilename, hlslInstructionOutputFilename, "HLSL not equal at " + hlslInstructionOutputFilename);
+            FileAssert.AreEqual(hlslExpectedFilename, hlslOutputFilename, "AST HLSL not equal at " + hlslOutputFilename);
         }
     }
 }

@@ -8,7 +8,7 @@ namespace HlslDecompiler
 {
     class Program
     {
-        static void Main(string[] args)
+        public static void Main(string[] args)
         {
             var options = CommandLineOptions.Parse(args);
             if (options.InputFilename == null)
@@ -24,8 +24,11 @@ namespace HlslDecompiler
                 var format = FormatDetector.Detect(inputStream);
                 switch (format)
                 {
-                    case ShaderFileFormat.ShaderModel3:
+                    case ShaderFileFormat.ShaderModel:
                         ReadShaderModel(baseFilename, inputStream, options);
+                        break;
+                    case ShaderFileFormat.Dxbc:
+                        ReadDxbc(baseFilename, inputStream, options);
                         break;
                     case ShaderFileFormat.Rgxa:
                         ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
@@ -45,6 +48,34 @@ namespace HlslDecompiler
         private static void ReadShaderModel(string baseFilename, FileStream inputStream, CommandLineOptions options)
         {
             using (var input = new ShaderReader(inputStream, true))
+            {
+                ShaderModel shader = input.ReadShader();
+
+                if (!options.PrintToConsole)
+                {
+                    var writer = new AsmWriter(shader);
+                    string asmFilename = $"{baseFilename}.asm";
+                    Console.WriteLine("Writing {0}", asmFilename);
+                    writer.Write(asmFilename);
+                }
+
+                var hlslWriter = CreateHlslWriter(shader, options.DoAstAnalysis);
+                if (options.PrintToConsole)
+                {
+                    hlslWriter.Write(Console.Out);
+                }
+                else
+                {
+                    string hlslFilename = $"{baseFilename}.fx";
+                    Console.WriteLine("Writing {0}", hlslFilename);
+                    hlslWriter.Write(hlslFilename);
+                }
+            }
+        }
+
+        private static void ReadDxbc(string baseFilename, FileStream inputStream, CommandLineOptions options)
+        {
+            using (var input = new DxbcReader(inputStream, true))
             {
                 ShaderModel shader = input.ReadShader();
 

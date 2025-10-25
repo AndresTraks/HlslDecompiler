@@ -64,7 +64,7 @@ namespace HlslDecompiler.DirectXShaderModel
                     }
                     else
                     {
-                        immediate = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex));
+                        immediate = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex)[0]);
                     }
                     return $"l({immediate})";
                 }
@@ -155,10 +155,10 @@ namespace HlslDecompiler.DirectXShaderModel
                 case Opcode.Def:
                     {
                         string constRegisterName = GetParamRegisterName(instruction, 0);
-                        string constValue0 = ConstantFormatter.Format(instruction.GetParamSingle(1));
-                        string constValue1 = ConstantFormatter.Format(instruction.GetParamSingle(2));
-                        string constValue2 = ConstantFormatter.Format(instruction.GetParamSingle(3));
-                        string constValue3 = ConstantFormatter.Format(instruction.GetParamSingle(4));
+                        string constValue0 = ConstantFormatter.Format(instruction.GetParamSingle(1)[0]);
+                        string constValue1 = ConstantFormatter.Format(instruction.GetParamSingle(2)[0]);
+                        string constValue2 = ConstantFormatter.Format(instruction.GetParamSingle(3)[0]);
+                        string constValue3 = ConstantFormatter.Format(instruction.GetParamSingle(4)[0]);
                         WriteLine("def {0}, {1}, {2}, {3}, {4}", constRegisterName, constValue0, constValue1, constValue2, constValue3);
                     }
                     break;

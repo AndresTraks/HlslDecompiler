@@ -7,7 +7,7 @@
 
         public abstract bool IsTextureOperation { get; }
 
-        public abstract float GetParamSingle(int index);
+        public abstract float[] GetParamSingle(int index);
         
         public abstract float GetParamInt(int index);
 

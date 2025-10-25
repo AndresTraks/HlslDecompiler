@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -11,6 +12,7 @@ namespace HlslDecompiler
     {
         private int _loopVariableIndex = -1;
         private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
+        private Dictionary<RegisterKey, int> _registerWriteMasks;
 
         public HlslSimpleWriter(ShaderModel shader)
             : base(shader)
@@ -22,12 +24,17 @@ namespace HlslDecompiler
             WriteLine("{0} o;", GetMethodReturnType());
             WriteLine();
 
+            _registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
             WriteTemporaryVariableDeclarations();
             foreach (Instruction instruction in _shader.Instructions)
             {
-                if (instruction is D3D9Instruction d9Instruction)
+                if (instruction is D3D9Instruction d3d9Instruction)
                 {
-                    WriteInstruction(d9Instruction);
+                    WriteInstruction(d3d9Instruction);
+                }
+                else if (instruction is D3D10Instruction d9d10Instruction)
+                {
+                    WriteInstruction(d9d10Instruction);
                 }
             }
 
@@ -37,7 +44,7 @@ namespace HlslDecompiler
 
         private void WriteTemporaryVariableDeclarations()
         {
-            foreach (var register in FindTemporaryRegisterAssignments())
+            foreach (var register in _registerWriteMasks)
             {
                 int writeMask = register.Value;
                 string writeMaskName;
@@ -65,15 +72,26 @@ namespace HlslDecompiler
             }
         }
 
-        private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments()
+        private static Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
         {
             var tempRegisters = new Dictionary<RegisterKey, int>();
-            foreach (Instruction instruction in _shader.Instructions.Where(i => i.HasDestination))
+            foreach (Instruction instruction in instructions.Where(i => i.HasDestination))
             {
                 int destIndex = instruction.GetDestinationParamIndex();
                 if (instruction is D3D9Instruction d3D9Instruction
                     && (d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Temp
                     || d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Addr))
+                {
+                    int writeMask = instruction.GetDestinationWriteMask();
+
+                    var registerKey = instruction.GetParamRegisterKey(destIndex);
+                    if (!tempRegisters.TryAdd(registerKey, writeMask))
+                    {
+                        tempRegisters[registerKey] |= writeMask;
+                    }
+                }
+                else if (instruction is D3D10Instruction d3D10Instruction
+                    && d3D10Instruction.GetParamRegisterKey(destIndex).IsTempRegister)
                 {
                     int writeMask = instruction.GetDestinationWriteMask();
 
@@ -168,6 +186,14 @@ namespace HlslDecompiler
                 case Opcode.Dp4:
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                         $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
+                    break;
+                case Opcode.DSX:
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"ddx({GetSourceName(instruction, 1)})");
+                    break;
+                case Opcode.DSY:
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"ddy({GetSourceName(instruction, 1)})");
                     break;
                 case Opcode.Else:
                     indent = indent.Substring(0, indent.Length - 1);
@@ -368,6 +394,44 @@ namespace HlslDecompiler
             }
         }
 
+        private void WriteInstruction(D3D10Instruction instruction)
+        {
+            switch (instruction.Opcode)
+            {
+                case D3D10Opcode.Add:
+                    WriteLine("{0} = {1} + {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Discard:
+                    WriteLine("clip({0});", GetSourceName(instruction, 0));
+                    break;
+                case D3D10Opcode.GE:
+                    WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.Mad:
+                    WriteLine("{0} = {1} * {2} + {3};", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    break;
+                case D3D10Opcode.Mov:
+                    WriteLine("{0} = {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                    break;
+                case D3D10Opcode.MovC:
+                    WriteLine("{0} = ({1} != 0) ? {2} : {3};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                    break;
+                case D3D10Opcode.Mul:
+                    WriteLine("{0} = {1} * {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                    break;
+                case D3D10Opcode.DclTemps:
+                case D3D10Opcode.DclInputPS:
+                case D3D10Opcode.DclInputPSSiv:
+                case D3D10Opcode.DclOutput:
+                case D3D10Opcode.DclSampler:
+                case D3D10Opcode.Ret:
+                    break;
+                default:
+                    break;
+            }
+        }
+
         private string GetDestinationName(Instruction instruction)
         {
             int destIndex = instruction.GetDestinationParamIndex();
@@ -440,6 +504,23 @@ namespace HlslDecompiler
             sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
             sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
             return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+        }
+
+        private string GetSourceName(D3D10Instruction instruction, int srcIndex, int? destinationLength = null)
+        {
+            string sourceRegisterName;
+
+            var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
+            switch (registerKey.OperandType)
+            {
+                case OperandType.Immediate32:
+                    return GetSourceConstantValue(instruction, srcIndex, destinationLength);
+                default:
+                    sourceRegisterName = _registers.GetRegisterName(registerKey);
+                    break;
+            }
+            sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+            return ApplyModifier(instruction.GetOperandModifier(srcIndex), sourceRegisterName);
         }
 
         private static string GetRelativeAddressingName(Instruction instruction, int srcIndex)
@@ -588,6 +669,42 @@ namespace HlslDecompiler
             }
         }
 
+        private static string GetSourceConstantValue(D3D10Instruction instruction, int srcIndex, int? destinationLength = null)
+        {
+            D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
+
+            if (destinationLength == null)
+            {
+                if (instruction.HasDestination)
+                {
+                    int writeMask = instruction.GetDestinationWriteMask();
+                    destinationLength = 0;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if ((writeMask & (1 << i)) != 0)
+                        {
+                            destinationLength++;
+                        }
+                    }
+                }
+                else
+                {
+                    destinationLength = 4;
+                }
+            }
+
+            if (registerKey.ImmediateSingle.Length == 1)
+            {
+                return ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
+            }
+            float[] constant = swizzle
+                            .Take(destinationLength.Value)
+                            .Select(s => registerKey.ImmediateSingle[s])
+                            .ToArray();
+            return "float4(" + string.Join(", ", constant.Select(ConstantFormatter.Format)) + ")";
+        }
+
         private static string ApplyModifier(SourceModifier modifier, string value)
         {
             return modifier switch
@@ -608,6 +725,19 @@ namespace HlslDecompiler
                 SourceModifier.Not => throw new NotImplementedException(),
                 _ => throw new NotImplementedException(),
             };
+        }
+
+        private static string ApplyModifier(D3D10OperandModifier modifier, string value)
+        {
+            if (modifier.HasFlag(D3D10OperandModifier.Abs))
+            {
+                value = $"abs({value})";
+            }
+            if (modifier.HasFlag(D3D10OperandModifier.Neg))
+            {
+                value = $"abs({value})";
+            }
+            return value;
         }
     }
 }

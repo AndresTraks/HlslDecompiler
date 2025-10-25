@@ -1,4 +1,6 @@
-﻿using HlslDecompiler.Util;
+﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Util;
+using System;
 using System.IO;
 using System.Text;
 
@@ -7,7 +9,7 @@ namespace HlslDecompiler
     enum ShaderFileFormat
     {
         Unknown,
-        ShaderModel3,
+        ShaderModel,
         Dxbc,
         Rgxa
     }
@@ -30,9 +32,17 @@ namespace HlslDecompiler
                 {
                     stream.Position = tempPosition;
                     signature = reader.ReadUInt32();
-                    if (signature == 0xFFFE0300 || signature == 0xFFFF0300)
+                    if (signature == FourCC.Make("DXBC"))
                     {
-                        format = ShaderFileFormat.ShaderModel3;
+                        format = ShaderFileFormat.Dxbc;
+                    }
+                    else
+                    {
+                        ShaderType versionToken = (ShaderType)(signature << 16);
+                        if (versionToken == ShaderType.Vertex || versionToken == ShaderType.Pixel)
+                        {
+                            format = ShaderFileFormat.ShaderModel;
+                        }
                     }
                 }
             }

@@ -385,11 +385,24 @@ namespace HlslDecompiler.DirectXShaderModel
             return BitConverter.GetBytes(value);
         }
 
-        public override float GetParamSingle(int index)
+        public override float[] GetParamSingle(int index)
         {
-            return BitConverter.ToSingle(GetOperandValueBytes(index, 0), 0);
+            D3D10OperandNumComponents selection = GetOperandComponentSelection(index);
+            if (selection == D3D10OperandNumComponents.Operand1Component)
+            {
+                return [BitConverter.ToSingle(GetOperandValueBytes(index, 0), 0)];
+            }
+            else if (selection == D3D10OperandNumComponents.Operand4Component)
+            {
+                return [
+                    BitConverter.ToSingle(GetOperandValueBytes(index, 0), 0),
+                    BitConverter.ToSingle(GetOperandValueBytes(index, 1), 0),
+                    BitConverter.ToSingle(GetOperandValueBytes(index, 2), 0),
+                    BitConverter.ToSingle(GetOperandValueBytes(index, 3), 0)
+                    ];
+            }
+            throw new NotImplementedException();
         }
-
 
         public float GetParamSingle(int index, int componentIndex)
         {
@@ -421,6 +434,14 @@ namespace HlslDecompiler.DirectXShaderModel
                     operandType,
                     GetParamRegisterNumber(index),
                     GetParamConstantBufferOffset(index));
+            }
+            else if (operandType == OperandType.Immediate32)
+            {
+                if (Opcode == D3D10Opcode.Discard)
+                {
+                    return new D3D10RegisterKey([ GetParamInt(index) ]);
+                }
+                return new D3D10RegisterKey(GetParamSingle(index));
             }
             return new D3D10RegisterKey(
                 operandType,

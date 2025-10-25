@@ -127,7 +127,8 @@ namespace HlslDecompiler.Hlsl
                             for (int registerNumber = 0; registerNumber < count; registerNumber++)
                             {
                                 var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
-                                _registerState.DeclareRegister(registerKey);
+                                int writeMask = 1; // declare only first component here, expand later
+                                _registerState.DeclareRegister(registerKey, writeMask);
                             }
                             break;
                         }
@@ -138,7 +139,7 @@ namespace HlslDecompiler.Hlsl
                             for (int i = 0; i < constantBufferSize; i++)
                             {
                                 var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, registerNumber, i);
-                                _registerState.DeclareRegister(registerKey);
+                                _registerState.DeclareRegister(registerKey, 0xF);
                                 for (int c = 0; c < 4; c++)
                                 {
                                     var destinationKey = new RegisterComponentKey(registerKey, c);
@@ -160,7 +161,7 @@ namespace HlslDecompiler.Hlsl
                     case D3D10Opcode.DclSampler:
                         {
                             var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
-                            _registerState.DeclareRegister(registerKey);
+                            _registerState.DeclareRegister(registerKey, 0xF);
                             var destinationKey = new RegisterComponentKey(registerKey, 0);
                             var resourceInput = new RegisterInputNode(destinationKey);
                             SetActiveOutput(destinationKey, resourceInput);
@@ -476,7 +477,15 @@ namespace HlslDecompiler.Hlsl
         {
             if (registerComponent.RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32)
             {
-                return new ConstantNode(d3D10RegisterKey.Number);
+                if (d3D10RegisterKey.ImmediateSingle != null)
+                {
+                    if (d3D10RegisterKey.ImmediateSingle.Length == 1)
+                    {
+                        return new ConstantNode(d3D10RegisterKey.ImmediateSingle[0]);
+                    }
+                    return new ConstantNode(d3D10RegisterKey.ImmediateSingle[registerComponent.ComponentIndex]);
+                }
+                return new ConstantNode(d3D10RegisterKey.ImmediateInt.Value);
             }
             return ActiveOutputs[registerComponent];
         }
@@ -555,7 +564,7 @@ namespace HlslDecompiler.Hlsl
                     }
                 case Opcode.Def:
                     {
-                        var constant = new ConstantNode(instruction.GetParamSingle(componentIndex + 1));
+                        var constant = new ConstantNode(instruction.GetParamSingle(componentIndex + 1)[0]);
                         return constant;
                     }
                 case Opcode.DefI:

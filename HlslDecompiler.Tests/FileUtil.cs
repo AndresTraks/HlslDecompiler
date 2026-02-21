@@ -1,16 +1,15 @@
 ﻿using System.IO;
 
-namespace HlslDecompiler.Tests
+namespace HlslDecompiler.Tests;
+
+public static class FileUtil
 {
-    public static class FileUtil
+    public static void MakeFolder(string hlslOutputFilename)
     {
-        public static void MakeFolder(string hlslOutputFilename)
+        string directory = Path.GetDirectoryName(hlslOutputFilename);
+        if (!Directory.Exists(directory))
         {
-            string directory = Path.GetDirectoryName(hlslOutputFilename);
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
+            Directory.CreateDirectory(directory);
         }
     }
 }

@@ -1,25 +1,24 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public sealed class MatrixMultiplicationCompiler
 {
-    public sealed class MatrixMultiplicationCompiler
+    private NodeCompiler nodeCompiler;
+
+    public MatrixMultiplicationCompiler(NodeCompiler nodeCompiler)
     {
-        private NodeCompiler nodeCompiler;
+        this.nodeCompiler = nodeCompiler;
+    }
 
-        public MatrixMultiplicationCompiler(NodeCompiler nodeCompiler)
+    public string Compile(MatrixMultiplicationContext context)
+    {
+        string matrixName = context.MatrixDeclaration.Name;
+        if (context.Vector.Length != context.MatrixRowCount)
         {
-            this.nodeCompiler = nodeCompiler;
+            matrixName = $"(float{context.MatrixDeclaration.TypeInfo.Columns}x{context.Vector.Length}){matrixName}";
         }
-
-        public string Compile(MatrixMultiplicationContext context)
-        {
-            string matrixName = context.MatrixDeclaration.Name;
-            if (context.Vector.Length != context.MatrixRowCount)
-            {
-                matrixName = $"(float{context.MatrixDeclaration.TypeInfo.Columns}x{context.Vector.Length}){matrixName}";
-            }
-            string vector = nodeCompiler.Compile(context.Vector);
-            return context.IsMatrixByVector
-                ? $"mul({matrixName}, {vector})"
-                : $"mul({vector}, {matrixName})";
-        }
+        string vector = nodeCompiler.Compile(context.Vector);
+        return context.IsMatrixByVector
+            ? $"mul({matrixName}, {vector})"
+            : $"mul({vector}, {matrixName})";
     }
 }

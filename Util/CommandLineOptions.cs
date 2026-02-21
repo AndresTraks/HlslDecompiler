@@ -1,42 +1,41 @@
 ﻿using System;
 
-namespace HlslDecompiler.Util
+namespace HlslDecompiler.Util;
+
+public class CommandLineOptions
 {
-    public class CommandLineOptions
+    public string InputFilename { get; }
+    public bool DoAstAnalysis { get; }
+    public bool PrintToConsole { get; }
+
+    public static CommandLineOptions Parse(string[] args)
     {
-        public string InputFilename { get; }
-        public bool DoAstAnalysis { get; }
-        public bool PrintToConsole { get; }
+        return new CommandLineOptions(args);
+    }
 
-        public static CommandLineOptions Parse(string[] args)
+    private CommandLineOptions(string[] args)
+    {
+        foreach (string arg in args)
         {
-            return new CommandLineOptions(args);
-        }
-
-        private CommandLineOptions(string[] args)
-        {
-            foreach (string arg in args)
+            if (arg.StartsWith("--"))
             {
-                if (arg.StartsWith("--"))
+                string option = arg.Substring(2);
+                if (option == "ast")
                 {
-                    string option = arg.Substring(2);
-                    if (option == "ast")
-                    {
-                        DoAstAnalysis = true;
-                    }
-                    else if (option == "print")
-                    {
-                        PrintToConsole = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Unknown option: --" + option);
-                    }
+                    DoAstAnalysis = true;
+                }
+                else if (option == "print")
+                {
+                    PrintToConsole = true;
                 }
                 else
                 {
-                    InputFilename = arg;
+                    Console.WriteLine("Unknown option: --" + option);
                 }
+            }
+            else
+            {
+                InputFilename = arg;
             }
         }
     }

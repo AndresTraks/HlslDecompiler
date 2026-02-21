@@ -1,12 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl
-{
-    public class FractionalOperation : ConsumerOperation
-    {
-        public FractionalOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+﻿namespace HlslDecompiler.Hlsl;
 
-        public override string Mnemonic => "frc";
+public class FractionalOperation : ConsumerOperation
+{
+    public FractionalOperation(HlslTreeNode value)
+    {
+        AddInput(value);
     }
+
+    public override string Mnemonic => "frc";
 }

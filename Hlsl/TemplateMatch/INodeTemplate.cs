@@ -1,8 +1,7 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+
+public interface INodeTemplate
 {
-    public interface INodeTemplate
-    {
-        bool Match(HlslTreeNode node);
-        HlslTreeNode Reduce(HlslTreeNode node);
-    }
+    bool Match(HlslTreeNode node);
+    HlslTreeNode Reduce(HlslTreeNode node);
 }

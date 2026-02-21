@@ -1,12 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl
-{
-    public class SaturateOperation : ConsumerOperation
-    {
-        public SaturateOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+﻿namespace HlslDecompiler.Hlsl;
 
-        public override string Mnemonic => "saturate";
+public class SaturateOperation : ConsumerOperation
+{
+    public SaturateOperation(HlslTreeNode value)
+    {
+        AddInput(value);
     }
+
+    public override string Mnemonic => "saturate";
 }

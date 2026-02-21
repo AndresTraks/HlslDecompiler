@@ -4,51 +4,50 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace HlslDecompiler
+namespace HlslDecompiler;
+
+enum ShaderFileFormat
 {
-    enum ShaderFileFormat
-    {
-        Unknown,
-        ShaderModel,
-        Dxbc,
-        Rgxa
-    }
+    Unknown,
+    ShaderModel,
+    Dxbc,
+    Rgxa
+}
 
-    class FormatDetector
+class FormatDetector
+{
+    public static ShaderFileFormat Detect(Stream stream)
     {
-        public static ShaderFileFormat Detect(Stream stream)
+        long tempPosition = stream.Position;
+        var format = ShaderFileFormat.Unknown;
+
+        using (var reader = new BinaryReader(stream, new UTF8Encoding(), true))
         {
-            long tempPosition = stream.Position;
-            var format = ShaderFileFormat.Unknown;
-
-            using (var reader = new BinaryReader(stream, new UTF8Encoding(), true))
+            uint signature = (uint)reader.ReadInt32();
+            if (signature == FourCC.Make("rgxa"))
             {
-                uint signature = (uint)reader.ReadInt32();
-                if (signature == FourCC.Make("rgxa"))
+                format = ShaderFileFormat.Rgxa;
+            }
+            else
+            {
+                stream.Position = tempPosition;
+                signature = reader.ReadUInt32();
+                if (signature == FourCC.Make("DXBC"))
                 {
-                    format = ShaderFileFormat.Rgxa;
+                    format = ShaderFileFormat.Dxbc;
                 }
                 else
                 {
-                    stream.Position = tempPosition;
-                    signature = reader.ReadUInt32();
-                    if (signature == FourCC.Make("DXBC"))
+                    ShaderType versionToken = (ShaderType)(signature >> 16);
+                    if (versionToken == ShaderType.Vertex || versionToken == ShaderType.Pixel)
                     {
-                        format = ShaderFileFormat.Dxbc;
-                    }
-                    else
-                    {
-                        ShaderType versionToken = (ShaderType)(signature >> 16);
-                        if (versionToken == ShaderType.Vertex || versionToken == ShaderType.Pixel)
-                        {
-                            format = ShaderFileFormat.ShaderModel;
-                        }
+                        format = ShaderFileFormat.ShaderModel;
                     }
                 }
             }
-
-            stream.Position = tempPosition;
-            return format;
         }
+
+        stream.Position = tempPosition;
+        return format;
     }
 }

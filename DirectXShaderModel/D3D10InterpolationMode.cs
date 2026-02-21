@@ -1,14 +1,13 @@
-﻿namespace HlslDecompiler.DirectXShaderModel
+﻿namespace HlslDecompiler.DirectXShaderModel;
+
+public enum D3D10InterpolationMode
 {
-    public enum D3D10InterpolationMode
-    {
-        Undefined,
-        Constant,
-        Linear,
-        LinearCentroid,
-        LinearNoPerspective,
-        LinearNoPerspectiveCentroid,
-        LinearSample,
-        LinearNoPerspectiveSample
-    }
+    Undefined,
+    Constant,
+    Linear,
+    LinearCentroid,
+    LinearNoPerspective,
+    LinearNoPerspectiveCentroid,
+    LinearSample,
+    LinearNoPerspectiveSample
 }

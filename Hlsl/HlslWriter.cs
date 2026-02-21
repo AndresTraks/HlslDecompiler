@@ -5,228 +5,227 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace HlslDecompiler
+namespace HlslDecompiler;
+
+public abstract class HlslWriter
 {
-    public abstract class HlslWriter
+    protected readonly ShaderModel _shader;
+
+    TextWriter internalWriter;
+    protected string indent = "";
+
+    protected HlslAst _ast;
+    protected RegisterState _registers;
+
+    public HlslWriter(ShaderModel shader)
     {
-        protected readonly ShaderModel _shader;
+        _shader = shader;
+    }
 
-        TextWriter internalWriter;
-        protected string indent = "";
+    protected abstract void WriteMethodBody();
 
-        protected HlslAst _ast;
-        protected RegisterState _registers;
+    protected void WriteLine()
+    {
+        internalWriter.WriteLine();
+    }
 
-        public HlslWriter(ShaderModel shader)
+    protected void WriteLine(string value)
+    {
+        internalWriter.Write(indent);
+        internalWriter.WriteLine(value);
+    }
+
+    protected void WriteLine(string format, params object[] args)
+    {
+        internalWriter.Write(indent);
+        internalWriter.WriteLine(format, args);
+    }
+
+    public void Write(string hlslFilename)
+    {
+        using var file = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
+        using (var writer = new StreamWriter(file))
         {
-            _shader = shader;
+            Write(writer);
+
+            writer.Dispose();
         }
 
-        protected abstract void WriteMethodBody();
+        file.Dispose();
+    }
 
-        protected void WriteLine()
+    public void Write(TextWriter writer)
+    {
+        internalWriter = writer;
+        WriteInternal();
+    }
+
+    private void WriteInternal()
+    {
+        _ast = InstructionParser.Parse(_shader);
+        _registers = _ast.RegisterState;
+
+        WriteConstantDeclarations();
+
+        if (_registers.MethodInputRegisters.Count > 1)
         {
-            internalWriter.WriteLine();
+            WriteInputStructureDeclaration();
         }
 
-        protected void WriteLine(string value)
+        if (_registers.MethodOutputRegisters.Count > 1)
         {
-            internalWriter.Write(indent);
-            internalWriter.WriteLine(value);
+            WriteOutputStructureDeclaration();
         }
 
-        protected void WriteLine(string format, params object[] args)
-        {
-            internalWriter.Write(indent);
-            internalWriter.WriteLine(format, args);
-        }
+        string methodReturnType = GetMethodReturnType();
+        string methodParameters = GetMethodParameters();
+        string methodSemantic = GetMethodSemantic();
 
-        public void Write(string hlslFilename)
+        WriteLine("{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
+        WriteLine("{");
+        indent = "\t";
+
+        WriteMethodBody();
+
+        indent = "";
+        WriteLine("}");
+    }
+
+    private void WriteConstantDeclarations()
+    {
+        if (_registers.ConstantDeclarations.Count != 0)
         {
-            using var file = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
-            using (var writer = new StreamWriter(file))
+            var compiler = new ConstantDeclarationCompiler();
+
+            foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
-                Write(writer);
-
-                writer.Dispose();
+                compiler.SetStructOrder(declaration);
             }
 
-            file.Dispose();
-        }
-
-        public void Write(TextWriter writer)
-        {
-            internalWriter = writer;
-            WriteInternal();
-        }
-
-        private void WriteInternal()
-        {
-            _ast = InstructionParser.Parse(_shader);
-            _registers = _ast.RegisterState;
-
-            WriteConstantDeclarations();
-
-            if (_registers.MethodInputRegisters.Count > 1)
+            IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
+            for (int i = 0; i < structs.Count; i++)
             {
-                WriteInputStructureDeclaration();
-            }
-
-            if (_registers.MethodOutputRegisters.Count > 1)
-            {
-                WriteOutputStructureDeclaration();
-            }
-
-            string methodReturnType = GetMethodReturnType();
-            string methodParameters = GetMethodParameters();
-            string methodSemantic = GetMethodSemantic();
-
-            WriteLine("{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
-            WriteLine("{");
-            indent = "\t";
-
-            WriteMethodBody();
-
-            indent = "";
-            WriteLine("}");
-        }
-
-        private void WriteConstantDeclarations()
-        {
-            if (_registers.ConstantDeclarations.Count != 0)
-            {
-                var compiler = new ConstantDeclarationCompiler();
-
-                foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
+                WriteLine($"struct struct{i + 1}");
+                WriteLine("{");
+                indent = "\t";
+                foreach (var member in structs[i].MemberInfo)
                 {
-                    compiler.SetStructOrder(declaration);
+                    WriteLine(compiler.Compile(member));
                 }
-
-                IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
-                for (int i = 0; i < structs.Count; i++)
-                {
-                    WriteLine($"struct struct{i + 1}");
-                    WriteLine("{");
-                    indent = "\t";
-                    foreach (var member in structs[i].MemberInfo)
-                    {
-                        WriteLine(compiler.Compile(member));
-                    }
-                    indent = "";
-                    WriteLine("};");
-                    WriteLine();
-                }
-
-                foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
-                {
-                    WriteLine(compiler.Compile(declaration));
-                }
+                indent = "";
+                WriteLine("};");
                 WriteLine();
             }
 
-            if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
+            foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
-                foreach (var resource in _registers.ResourceDefinitions)
+                WriteLine(compiler.Compile(declaration));
+            }
+            WriteLine();
+        }
+
+        if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
+        {
+            foreach (var resource in _registers.ResourceDefinitions)
+            {
+                if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
-                    if (resource.ShaderInputType == D3DShaderInputType.Texture)
-                    {
-                        WriteLine($"{resource.Dimension} {resource.Name};");
-                    }
-                    else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
-                    {
-                        WriteLine($"SamplerState {resource.Name};");
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
+                    WriteLine($"{resource.Dimension} {resource.Name};");
                 }
-                WriteLine();
+                else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
+                {
+                    WriteLine($"SamplerState {resource.Name};");
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
             }
-        }
-
-        private void WriteInputStructureDeclaration()
-        {
-            var inputStructType = _shader.Type == ShaderType.Pixel ? "PS_IN" : "VS_IN";
-            WriteLine($"struct {inputStructType}");
-            WriteLine("{");
-            indent = "\t";
-            foreach (var input in _registers.MethodInputRegisters.Values)
-            {
-                WriteLine(CompileRegisterDeclaration(input) + ';');
-            }
-            indent = "";
-            WriteLine("};");
             WriteLine();
         }
+    }
 
-        private void WriteOutputStructureDeclaration()
+    private void WriteInputStructureDeclaration()
+    {
+        var inputStructType = _shader.Type == ShaderType.Pixel ? "PS_IN" : "VS_IN";
+        WriteLine($"struct {inputStructType}");
+        WriteLine("{");
+        indent = "\t";
+        foreach (var input in _registers.MethodInputRegisters.Values)
         {
-            var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
-            WriteLine($"struct {outputStructType}");
-            WriteLine("{");
-            indent = "\t";
-            IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
-            if (_shader.MajorVersion == 1)
-            {
-                outputs = outputs.OrderBy(o => o.Semantic).ToList();
-            }
-            foreach (var output in outputs)
-            {
-                WriteLine(CompileRegisterDeclaration(output) + ';');
-            }
-            indent = "";
-            WriteLine("};");
-            WriteLine();
+            WriteLine(CompileRegisterDeclaration(input) + ';');
         }
+        indent = "";
+        WriteLine("};");
+        WriteLine();
+    }
 
-        protected string GetMethodReturnType()
+    private void WriteOutputStructureDeclaration()
+    {
+        var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+        WriteLine($"struct {outputStructType}");
+        WriteLine("{");
+        indent = "\t";
+        IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
+        if (_shader.MajorVersion == 1)
         {
-            switch (_registers.MethodOutputRegisters.Count)
-            {
-                case 0:
-                    throw new InvalidOperationException();
-                case 1:
-                    return _registers.MethodOutputRegisters.First().TypeName;
-                default:
-                    return _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
-            }
+            outputs = outputs.OrderBy(o => o.Semantic).ToList();
         }
-
-        private string GetMethodSemantic()
+        foreach (var output in outputs)
         {
-            switch (_registers.MethodOutputRegisters.Count)
-            {
-                case 0:
-                    throw new InvalidOperationException();
-                case 1:
-                    string semantic = _registers.MethodOutputRegisters.First().Semantic;
-                    return $" : {semantic}";
-                default:
-                    return string.Empty;
-            }
+            WriteLine(CompileRegisterDeclaration(output) + ';');
         }
+        indent = "";
+        WriteLine("};");
+        WriteLine();
+    }
 
-        private string GetMethodParameters()
+    protected string GetMethodReturnType()
+    {
+        switch (_registers.MethodOutputRegisters.Count)
         {
-            if (_registers.MethodInputRegisters.Count == 0)
-            {
+            case 0:
+                throw new InvalidOperationException();
+            case 1:
+                return _registers.MethodOutputRegisters.First().TypeName;
+            default:
+                return _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+        }
+    }
+
+    private string GetMethodSemantic()
+    {
+        switch (_registers.MethodOutputRegisters.Count)
+        {
+            case 0:
+                throw new InvalidOperationException();
+            case 1:
+                string semantic = _registers.MethodOutputRegisters.First().Semantic;
+                return $" : {semantic}";
+            default:
                 return string.Empty;
-            }
-            else if (_registers.MethodInputRegisters.Count == 1)
-            {
-                var input = _registers.MethodInputRegisters.Values.First();
-                return CompileRegisterDeclaration(input);
-            }
-
-            return _shader.Type == ShaderType.Pixel
-                    ? "PS_IN i"
-                    : "VS_IN i";
         }
+    }
 
-        private static string CompileRegisterDeclaration(RegisterDeclaration input)
+    private string GetMethodParameters()
+    {
+        if (_registers.MethodInputRegisters.Count == 0)
         {
-            return $"{input.TypeName} {input.Name} : {input.Semantic}";
+            return string.Empty;
         }
+        else if (_registers.MethodInputRegisters.Count == 1)
+        {
+            var input = _registers.MethodInputRegisters.Values.First();
+            return CompileRegisterDeclaration(input);
+        }
+
+        return _shader.Type == ShaderType.Pixel
+                ? "PS_IN i"
+                : "VS_IN i";
+    }
+
+    private static string CompileRegisterDeclaration(RegisterDeclaration input)
+    {
+        return $"{input.TypeName} {input.Name} : {input.Semantic}";
     }
 }

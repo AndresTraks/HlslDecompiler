@@ -1,17 +1,16 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public class MoveOperation : ConsumerOperation
 {
-    public class MoveOperation : ConsumerOperation
+    public MoveOperation(HlslTreeNode value)
     {
-        public MoveOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+        AddInput(value);
+    }
 
-        public override string Mnemonic => "mov";
+    public override string Mnemonic => "mov";
 
-        public override string ToString()
-        {
-            return Value.ToString();
-        }
+    public override string ToString()
+    {
+        return Value.ToString();
     }
 }

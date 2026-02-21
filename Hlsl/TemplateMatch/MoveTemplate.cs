@@ -1,10 +1,9 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+
+public class MoveTemplate : NodeTemplate<MoveOperation>
 {
-    public class MoveTemplate : NodeTemplate<MoveOperation>
+    public override HlslTreeNode Reduce(MoveOperation node)
     {
-        public override HlslTreeNode Reduce(MoveOperation node)
-        {
-            return node.Value;
-        }
+        return node.Value;
     }
 }

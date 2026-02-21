@@ -1,8 +1,7 @@
-﻿namespace HlslDecompiler.DirectXShaderModel
+﻿namespace HlslDecompiler.DirectXShaderModel;
+
+public enum ShaderType
 {
-    public enum ShaderType
-    {
-        Vertex = 0xFFFE,
-        Pixel = 0xFFFF
-    }
+    Vertex = 0xFFFE,
+    Pixel = 0xFFFF
 }

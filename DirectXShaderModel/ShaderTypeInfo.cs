@@ -1,76 +1,75 @@
 ﻿using System.Collections.Generic;
 
-namespace HlslDecompiler.DirectXShaderModel
+namespace HlslDecompiler.DirectXShaderModel;
+
+public class ShaderTypeInfo
 {
-    public class ShaderTypeInfo
+    public ParameterClass ParameterClass { get; }
+    public ParameterType ParameterType { get; }
+    public int Rows { get; }
+    public int Columns { get; }
+    public int NumElements { get; }
+    public IList<ShaderStructMemberInfo> MemberInfo { get; }
+
+    public ShaderTypeInfo(ParameterClass parameterClass, ParameterType parameterType, int rows, int columns, int numElements, IList<ShaderStructMemberInfo> memberInfo)
     {
-        public ParameterClass ParameterClass { get; }
-        public ParameterType ParameterType { get; }
-        public int Rows { get; }
-        public int Columns { get; }
-        public int NumElements { get; }
-        public IList<ShaderStructMemberInfo> MemberInfo { get; }
+        ParameterClass = parameterClass;
+        ParameterType = parameterType;
+        Rows = rows;
+        Columns = columns;
+        NumElements = numElements;
+        MemberInfo = memberInfo;
+    }
 
-        public ShaderTypeInfo(ParameterClass parameterClass, ParameterType parameterType, int rows, int columns, int numElements, IList<ShaderStructMemberInfo> memberInfo)
+    public override string ToString()
+    {
+        return ParameterClass.ToString();
+    }
+
+    public override bool Equals(object obj)
+    {
+        if (obj is not ShaderTypeInfo info)
         {
-            ParameterClass = parameterClass;
-            ParameterType = parameterType;
-            Rows = rows;
-            Columns = columns;
-            NumElements = numElements;
-            MemberInfo = memberInfo;
+            return false;
         }
-
-        public override string ToString()
-        {
-            return ParameterClass.ToString();
+        // Exclude NumElements
+        if (!ParameterClass.Equals(info.ParameterClass)
+            || !ParameterType.Equals(info.ParameterType)
+            || !Rows.Equals(info.Rows)
+            || !Columns.Equals(info.Columns)) {
+            return false;
         }
-
-        public override bool Equals(object obj)
+        if (MemberInfo != null)
         {
-            if (obj is not ShaderTypeInfo info)
+            if (MemberInfo.Count != info.MemberInfo.Count)
             {
                 return false;
             }
-            // Exclude NumElements
-            if (!ParameterClass.Equals(info.ParameterClass)
-                || !ParameterType.Equals(info.ParameterType)
-                || !Rows.Equals(info.Rows)
-                || !Columns.Equals(info.Columns)) {
-                return false;
-            }
-            if (MemberInfo != null)
+            for (int i = 0; i < MemberInfo.Count; i++)
             {
-                if (MemberInfo.Count != info.MemberInfo.Count)
+                if (!MemberInfo[i].Equals(info.MemberInfo[i]))
                 {
                     return false;
                 }
-                for (int i = 0; i < MemberInfo.Count; i++)
-                {
-                    if (!MemberInfo[i].Equals(info.MemberInfo[i]))
-                    {
-                        return false;
-                    }
-                }
             }
-            return true;
         }
+        return true;
+    }
 
-        public override int GetHashCode()
+    public override int GetHashCode()
+    {
+        // Exclude NumElements
+        int hashCode = ParameterClass.GetHashCode() 
+            ^ ParameterType.GetHashCode()
+            ^ Rows.GetHashCode()
+            ^ Columns.GetHashCode();
+        if (MemberInfo != null)
         {
-            // Exclude NumElements
-            int hashCode = ParameterClass.GetHashCode() 
-                ^ ParameterType.GetHashCode()
-                ^ Rows.GetHashCode()
-                ^ Columns.GetHashCode();
-            if (MemberInfo != null)
+            foreach (var member in MemberInfo)
             {
-                foreach (var member in MemberInfo)
-                {
-                    hashCode ^= member.GetHashCode();
-                }
+                hashCode ^= member.GetHashCode();
             }
-            return hashCode;
         }
+        return hashCode;
     }
 }

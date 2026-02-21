@@ -1,62 +1,61 @@
-﻿namespace HlslDecompiler.DirectXShaderModel
+﻿namespace HlslDecompiler.DirectXShaderModel;
+
+public class D3D9RegisterKey : RegisterKey
 {
-    public class D3D9RegisterKey : RegisterKey
+    public D3D9RegisterKey(RegisterType registerType, int registerNumber)
     {
-        public D3D9RegisterKey(RegisterType registerType, int registerNumber)
+        Type = registerType;
+        Number = registerNumber;
+    }
+
+    public RegisterType Type { get; }
+    public int Number { get; }
+
+    public bool IsTempRegister => Type == RegisterType.Temp;
+    public bool IsOutput =>
+        Type == RegisterType.Output ||
+        Type == RegisterType.ColorOut ||
+        Type == RegisterType.DepthOut ||
+        Type == RegisterType.AttrOut ||
+        Type == RegisterType.RastOut;
+    public bool IsConstant =>
+        Type == RegisterType.Const ||
+        Type == RegisterType.Const2 ||
+        Type == RegisterType.Const3 ||
+        Type == RegisterType.Const4 ||
+        Type == RegisterType.ConstBool ||
+        Type == RegisterType.ConstInt;
+
+    public bool TypeEquals(RegisterKey registerKey)
+    {
+        if (registerKey is not D3D9RegisterKey other)
         {
-            Type = registerType;
-            Number = registerNumber;
+            return false;
         }
+        return other.Type == Type;
+    }
 
-        public RegisterType Type { get; }
-        public int Number { get; }
-
-        public bool IsTempRegister => Type == RegisterType.Temp;
-        public bool IsOutput =>
-            Type == RegisterType.Output ||
-            Type == RegisterType.ColorOut ||
-            Type == RegisterType.DepthOut ||
-            Type == RegisterType.AttrOut ||
-            Type == RegisterType.RastOut;
-        public bool IsConstant =>
-            Type == RegisterType.Const ||
-            Type == RegisterType.Const2 ||
-            Type == RegisterType.Const3 ||
-            Type == RegisterType.Const4 ||
-            Type == RegisterType.ConstBool ||
-            Type == RegisterType.ConstInt;
-
-        public bool TypeEquals(RegisterKey registerKey)
+    public override bool Equals(object obj)
+    {
+        if (obj is not D3D9RegisterKey other)
         {
-            if (registerKey is not D3D9RegisterKey other)
-            {
-                return false;
-            }
-            return other.Type == Type;
+            return false;
         }
+        return
+            other.Number == Number &&
+            other.Type == Type;
+    }
 
-        public override bool Equals(object obj)
-        {
-            if (obj is not D3D9RegisterKey other)
-            {
-                return false;
-            }
-            return
-                other.Number == Number &&
-                other.Type == Type;
-        }
+    public override int GetHashCode()
+    {
+        int hashCode =
+            Number.GetHashCode() ^
+            Type.GetHashCode();
+        return hashCode;
+    }
 
-        public override int GetHashCode()
-        {
-            int hashCode =
-                Number.GetHashCode() ^
-                Type.GetHashCode();
-            return hashCode;
-        }
-
-        public override string ToString()
-        {
-            return $"{Type}{Number}";
-        }
+    public override string ToString()
+    {
+        return $"{Type}{Number}";
     }
 }

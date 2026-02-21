@@ -1,12 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl
-{
-    public class ReciprocalSquareRootOperation : ConsumerOperation
-    {
-        public ReciprocalSquareRootOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+﻿namespace HlslDecompiler.Hlsl;
 
-        public override string Mnemonic => "rsqrt";
+public class ReciprocalSquareRootOperation : ConsumerOperation
+{
+    public ReciprocalSquareRootOperation(HlslTreeNode value)
+    {
+        AddInput(value);
     }
+
+    public override string Mnemonic => "rsqrt";
 }

@@ -1,15 +1,14 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public class CastOperation : ConsumerOperation
 {
-    public class CastOperation : ConsumerOperation
+    private readonly string _mnemonic;
+
+    public CastOperation(HlslTreeNode value, string mnemonic)
     {
-        private readonly string _mnemonic;
-
-        public CastOperation(HlslTreeNode value, string mnemonic)
-        {
-            AddInput(value);
-            _mnemonic = mnemonic;
-        }
-
-        public override string Mnemonic => _mnemonic;
+        AddInput(value);
+        _mnemonic = mnemonic;
     }
+
+    public override string Mnemonic => _mnemonic;
 }

@@ -1,20 +1,19 @@
 ﻿using System.Linq;
 
-namespace HlslDecompiler.Hlsl.FlowControl
-{
-    public class PhiNode : HlslTreeNode
-    {
-        public PhiNode(params HlslTreeNode[] inputs)
-        {
-            foreach (HlslTreeNode input in inputs)
-            {
-                AddInput(input);
-            }
-        }
+namespace HlslDecompiler.Hlsl.FlowControl;
 
-        public override string ToString()
+public class PhiNode : HlslTreeNode
+{
+    public PhiNode(params HlslTreeNode[] inputs)
+    {
+        foreach (HlslTreeNode input in inputs)
         {
-            return "phi(" + string.Join(", ", Inputs.Select(i => i.ToString())) + ")";
+            AddInput(input);
         }
+    }
+
+    public override string ToString()
+    {
+        return "phi(" + string.Join(", ", Inputs.Select(i => i.ToString())) + ")";
     }
 }

@@ -1,12 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl
-{
-    public class ReciprocalOperation : ConsumerOperation
-    {
-        public ReciprocalOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+﻿namespace HlslDecompiler.Hlsl;
 
-        public override string Mnemonic => "rcp";
+public class ReciprocalOperation : ConsumerOperation
+{
+    public ReciprocalOperation(HlslTreeNode value)
+    {
+        AddInput(value);
     }
+
+    public override string Mnemonic => "rcp";
 }

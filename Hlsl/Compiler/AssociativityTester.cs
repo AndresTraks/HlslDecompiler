@@ -1,17 +1,16 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public static class AssociativityTester
 {
-    public static class AssociativityTester
+    public static bool TestForMultiplication(HlslTreeNode node)
     {
-        public static bool TestForMultiplication(HlslTreeNode node)
+        switch (node)
         {
-            switch (node)
-            {
-                case AddOperation _:
-                case SubtractOperation _:
-                    return false;
-                default:
-                    return true;
-            }
+            case AddOperation _:
+            case SubtractOperation _:
+                return false;
+            default:
+                return true;
         }
     }
 }

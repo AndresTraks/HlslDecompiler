@@ -1,8 +1,7 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+
+public interface IGroupTemplate
 {
-    public interface IGroupTemplate
-    {
-        IGroupContext Match(HlslTreeNode node);
-        HlslTreeNode Reduce(HlslTreeNode node, IGroupContext groupContext);
-    }
+    IGroupContext Match(HlslTreeNode node);
+    HlslTreeNode Reduce(HlslTreeNode node, IGroupContext groupContext);
 }

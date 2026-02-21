@@ -1,21 +1,20 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 
-namespace HlslDecompiler.Hlsl
+namespace HlslDecompiler.Hlsl;
+
+public class RegisterInputNode : HlslTreeNode, IHasComponentIndex
 {
-    public class RegisterInputNode : HlslTreeNode, IHasComponentIndex
+    public RegisterInputNode(RegisterComponentKey registerComponentKey)
     {
-        public RegisterInputNode(RegisterComponentKey registerComponentKey)
-        {
-            RegisterComponentKey = registerComponentKey;
-        }
+        RegisterComponentKey = registerComponentKey;
+    }
 
-        public RegisterComponentKey RegisterComponentKey { get; }
+    public RegisterComponentKey RegisterComponentKey { get; }
 
-        public int ComponentIndex => RegisterComponentKey.ComponentIndex;
+    public int ComponentIndex => RegisterComponentKey.ComponentIndex;
 
-        public override string ToString()
-        {
-            return RegisterComponentKey.ToString();
-        }
+    public override string ToString()
+    {
+        return RegisterComponentKey.ToString();
     }
 }

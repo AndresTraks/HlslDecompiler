@@ -1,11 +1,10 @@
-﻿namespace HlslDecompiler.DirectXShaderModel
+﻿namespace HlslDecompiler.DirectXShaderModel;
+
+// D3DXREGISTER_SET
+public enum RegisterSet
 {
-    // D3DXREGISTER_SET
-    public enum RegisterSet
-    {
-        Bool,
-        Int4,
-        Float4,
-        Sampler
-    }
+    Bool,
+    Int4,
+    Float4,
+    Sampler
 }

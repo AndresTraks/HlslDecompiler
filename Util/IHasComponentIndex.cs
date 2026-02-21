@@ -1,7 +1,6 @@
-﻿namespace HlslDecompiler
+﻿namespace HlslDecompiler;
+
+public interface IHasComponentIndex
 {
-    public interface IHasComponentIndex
-    {
-        int ComponentIndex { get; }
-    }
+    int ComponentIndex { get; }
 }

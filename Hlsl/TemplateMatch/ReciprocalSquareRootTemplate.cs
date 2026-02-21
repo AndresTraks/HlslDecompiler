@@ -1,10 +1,9 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+
+public class ReciprocalSquareRootTemplate : NodeTemplate<ReciprocalSquareRootOperation>
 {
-    public class ReciprocalSquareRootTemplate : NodeTemplate<ReciprocalSquareRootOperation>
+    public override HlslTreeNode Reduce(ReciprocalSquareRootOperation node)
     {
-        public override HlslTreeNode Reduce(ReciprocalSquareRootOperation node)
-        {
-            return new DivisionOperation(new ConstantNode(1), new SquareRootOperation(node.Value));
-        }
+        return new DivisionOperation(new ConstantNode(1), new SquareRootOperation(node.Value));
     }
 }

@@ -1,14 +1,13 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public class LengthOperation : Operation
 {
-    public class LengthOperation : Operation
+    public LengthOperation(GroupNode node)
     {
-        public LengthOperation(GroupNode node)
-        {
-            AddInput(node);
-        }
-
-        public GroupNode X => Inputs[0] as GroupNode;
-
-        public override string Mnemonic => "length";
+        AddInput(node);
     }
+
+    public GroupNode X => Inputs[0] as GroupNode;
+
+    public override string Mnemonic => "length";
 }

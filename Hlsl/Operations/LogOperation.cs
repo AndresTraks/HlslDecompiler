@@ -1,12 +1,11 @@
-﻿namespace HlslDecompiler.Hlsl
-{
-    public class LogOperation : ConsumerOperation
-    {
-        public LogOperation(HlslTreeNode value)
-        {
-            AddInput(value);
-        }
+﻿namespace HlslDecompiler.Hlsl;
 
-        public override string Mnemonic => "log";
+public class LogOperation : ConsumerOperation
+{
+    public LogOperation(HlslTreeNode value)
+    {
+        AddInput(value);
     }
+
+    public override string Mnemonic => "log";
 }

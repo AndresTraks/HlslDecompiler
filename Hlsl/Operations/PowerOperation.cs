@@ -1,16 +1,15 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public class PowerOperation : Operation
 {
-    public class PowerOperation : Operation
+    public PowerOperation(HlslTreeNode value, HlslTreeNode power)
     {
-        public PowerOperation(HlslTreeNode value, HlslTreeNode power)
-        {
-            AddInput(value);
-            AddInput(power);
-        }
-
-        public HlslTreeNode Value => Inputs[0];
-        public HlslTreeNode Power => Inputs[1];
-
-        public override string Mnemonic => "pow";
+        AddInput(value);
+        AddInput(power);
     }
+
+    public HlslTreeNode Value => Inputs[0];
+    public HlslTreeNode Power => Inputs[1];
+
+    public override string Mnemonic => "pow";
 }

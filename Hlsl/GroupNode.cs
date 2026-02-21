@@ -1,26 +1,25 @@
-﻿namespace HlslDecompiler.Hlsl
+﻿namespace HlslDecompiler.Hlsl;
+
+public class GroupNode : HlslTreeNode
 {
-    public class GroupNode : HlslTreeNode
+    public GroupNode(params HlslTreeNode[] components)
     {
-        public GroupNode(params HlslTreeNode[] components)
+        foreach (HlslTreeNode component in components)
         {
-            foreach (HlslTreeNode component in components)
-            {
-                AddInput(component);
-            }
+            AddInput(component);
         }
+    }
 
-        public int Length => Inputs.Count;
+    public int Length => Inputs.Count;
 
-        public HlslTreeNode this[int index]
-        {
-            get => Inputs[index];
-            set => Inputs[index] = value;
-        }
+    public HlslTreeNode this[int index]
+    {
+        get => Inputs[index];
+        set => Inputs[index] = value;
+    }
 
-        public override string ToString()
-        {
-            return $"({string.Join(",", Inputs)})";
-        }
+    public override string ToString()
+    {
+        return $"({string.Join(",", Inputs)})";
     }
 }

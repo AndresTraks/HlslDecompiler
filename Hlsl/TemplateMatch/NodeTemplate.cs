@@ -1,17 +1,16 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch
+﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+
+public abstract class NodeTemplate<T> : INodeTemplate where T : HlslTreeNode
 {
-    public abstract class NodeTemplate<T> : INodeTemplate where T : HlslTreeNode
+    public virtual bool Match(HlslTreeNode node)
     {
-        public virtual bool Match(HlslTreeNode node)
-        {
-            return node is T;
-        }
+        return node is T;
+    }
 
-        public abstract HlslTreeNode Reduce(T node);
+    public abstract HlslTreeNode Reduce(T node);
 
-        public HlslTreeNode Reduce(HlslTreeNode node)
-        {
-            return Reduce(node as T);
-        }
+    public HlslTreeNode Reduce(HlslTreeNode node)
+    {
+        return Reduce(node as T);
     }
 }

@@ -149,6 +149,16 @@ class InstructionParser
                         }
                         break;
                     }
+                case D3D10Opcode.DclGSInputPrimitive:
+                    {
+                        _registerState.InputPrimitive = instruction.GetPrimitive();
+                        break;
+                    }
+                case D3D10Opcode.DclGSMaxOutputVertexCount:
+                    {
+                        _registerState.MaxOutputVertexCount = (int)instruction.GetParamInt(0);
+                        break;
+                    }
                 case D3D10Opcode.DclResource:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
@@ -167,6 +177,7 @@ class InstructionParser
                         SetActiveOutput(destinationKey, resourceInput);
                         break;
                     }
+                case D3D10Opcode.DclGlobalFlags:
                 case D3D10Opcode.Ret:
                     break;
                 default:
@@ -677,6 +688,8 @@ class InstructionParser
             case D3D10Opcode.DclInputPS:
             case D3D10Opcode.DclInputPSSgv:
             case D3D10Opcode.DclInputPSSiv:
+            case D3D10Opcode.DclInputSiv:
+            case D3D10Opcode.DclInputSgv:
             case D3D10Opcode.DclInput:
             case D3D10Opcode.DclOutput:
             case D3D10Opcode.DclOutputSgv:

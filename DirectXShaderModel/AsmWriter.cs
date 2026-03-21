@@ -88,8 +88,13 @@ public class AsmWriter
     {
         var asmFile = new FileStream(asmFilename, FileMode.Create, FileAccess.Write);
         asmWriter = new StreamWriter(asmFile);
-
-        string shaderType = (shader.Type == ShaderType.Vertex) ? "vs" : "ps";
+        string shaderType = shader.Type switch
+        {
+            ShaderType.Vertex => "vs",
+            ShaderType.Pixel => "ps",
+            ShaderType.Geometry => "gs",
+            _ => throw new NotImplementedException(shader.Type.ToString()),
+        };
         WriteLine("{0}_{1}_{2}", shaderType, shader.MajorVersion, shader.MinorVersion);
 
         foreach (Instruction instruction in shader.Instructions)
@@ -359,6 +364,18 @@ public class AsmWriter
             case D3D10Opcode.DclConstantBuffer:
                 WriteLine("dcl_constantbuffer {0}, {1}", GetDestinationName(instruction), "immediateIndexed"); // TODO: AccessPattern
                 break;
+            case D3D10Opcode.DclGlobalFlags:
+                string globalFlags = "";
+                foreach (D3D10GlobalFlags flag in Enum.GetValues(typeof(D3D10GlobalFlags)))
+                {
+                    if (flag != D3D10GlobalFlags.None && instruction.GetGlobalFlags().HasFlag(flag))
+                    {
+                        string flagString = flag.ToString();
+                        globalFlags += " " + char.ToLower(flagString[0]) + flagString.Substring(1);
+                    }
+                }
+                WriteLine("dcl_globalFlags{0}", globalFlags);
+                break;
             case D3D10Opcode.DclInputPS:
                 WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
                 break;
@@ -367,6 +384,24 @@ public class AsmWriter
                 break;
             case D3D10Opcode.DclInput:
                 WriteLine("dcl_input {0}", GetDestinationName(instruction));
+                break;
+            case D3D10Opcode.DclGSInputPrimitive:
+                string primitive = instruction.GetPrimitive() switch
+                {
+                    D3D10Primitive.Point => "point",
+                    D3D10Primitive.Line => "line",
+                    D3D10Primitive.Triangle => "triangle",
+                    D3D10Primitive.LineAdj => "line_adj",
+                    D3D10Primitive.TriangleAdj => "triangle_adj",
+                    _ => throw new NotImplementedException(instruction.GetPrimitive().ToString()),
+                };
+                WriteLine("dcl_inputprimitive {0}", primitive);
+                break;
+            case D3D10Opcode.DclInputSiv:
+                WriteLine("dcl_input_siv {0}", GetDestinationName(instruction)); // TODO
+                break;
+            case D3D10Opcode.DclGSMaxOutputVertexCount:
+                WriteLine("dcl_maxout {0}", instruction.GetParamInt(0));
                 break;
             case D3D10Opcode.DclOutput:
                 WriteLine("dcl_output {0}", GetDestinationName(instruction));

@@ -170,6 +170,18 @@ public class DxbcReader : BinaryReader
             throw new NotImplementedException();
         }
 
+        if (opcode == D3D10Opcode.DclGlobalFlags)
+        {
+            D3D10GlobalFlags globalFlags = (D3D10GlobalFlags)((opcodeToken >> 11) & 0x1ff);
+            return new D3D10Instruction(opcode, globalFlags);
+        }
+
+        if (opcode == D3D10Opcode.DclGSInputPrimitive)
+        {
+            D3D10Primitive inputPrimitive = (D3D10Primitive)((opcodeToken >> 11) & 0xff);
+            return new D3D10Instruction(opcode, inputPrimitive);
+        }
+
         uint[] operandTokens = new uint[operandCount];
         for (int i = 0; i < operandCount; i++)
         {

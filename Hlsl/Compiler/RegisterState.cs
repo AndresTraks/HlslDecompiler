@@ -18,6 +18,8 @@ public sealed class RegisterState
     public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
     public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
+    public int? MaxOutputVertexCount { get; set; }
+    public D3D10Primitive? InputPrimitive { get; set; }
 
     private ShaderModel _shaderModel;
 

@@ -73,6 +73,7 @@ function CompileAll {
     CompileByProfile "vs_1_1" $fxc
     CompileByProfile "vs_3_0" $fxc
     CompileByProfile "vs_4_0" $fxc
+	CompileByProfile "gs_4_1" $fxc
 }
 
 CompileAll

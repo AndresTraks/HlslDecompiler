@@ -38,6 +38,8 @@ namespace HlslDecompiler.DirectXShaderModel;
 public class D3D10Instruction : Instruction
 {
     private ResourceDimension _resourceDimension;
+    private D3D10GlobalFlags _globalFlags;
+    private D3D10Primitive _primitive;
 
     public D3D10Opcode Opcode { get; }
     public D3D10OperandTokenCollection OperandTokens { get; }
@@ -54,9 +56,31 @@ public class D3D10Instruction : Instruction
         _resourceDimension = resourceDimension;
     }
 
+    public D3D10Instruction(D3D10Opcode opcode, D3D10GlobalFlags globalFlags)
+        : this(opcode, [])
+    {
+        _globalFlags = globalFlags;
+    }
+
+    public D3D10Instruction(D3D10Opcode opcode, D3D10Primitive primitive)
+        : this(opcode, [])
+    {
+        _primitive = primitive;
+    }
+
     public ResourceDimension GetResourceDimension()
     {
         return _resourceDimension;
+    }
+
+    public D3D10GlobalFlags GetGlobalFlags()
+    {
+        return _globalFlags;
+    }
+
+    public D3D10Primitive GetPrimitive()
+    {
+        return _primitive;
     }
 
     public override bool HasDestination
@@ -70,6 +94,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DclInputPSSgv:
                 case D3D10Opcode.DclInputPSSiv:
                 case D3D10Opcode.DclInputPS:
+                case D3D10Opcode.DclInputSiv:
+                case D3D10Opcode.DclInputSgv:
                 case D3D10Opcode.DclInput:
                 case D3D10Opcode.DclOutputSgv:
                 case D3D10Opcode.DclOutputSiv:
@@ -369,7 +395,7 @@ public class D3D10Instruction : Instruction
     {
         Span<uint> span = OperandTokens.GetSpan(index);
         uint value;
-        if (Opcode == D3D10Opcode.DclTemps)
+        if (Opcode == D3D10Opcode.DclTemps || Opcode == D3D10Opcode.DclGSMaxOutputVertexCount)
         {
             value = span[0];
         }

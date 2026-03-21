@@ -71,6 +71,11 @@ public abstract class HlslWriter
             WriteOutputStructureDeclaration();
         }
 
+        if (_registers.MaxOutputVertexCount != null)
+        {
+            WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
+        }
+
         string methodReturnType = GetMethodReturnType();
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
@@ -141,7 +146,13 @@ public abstract class HlslWriter
 
     private void WriteInputStructureDeclaration()
     {
-        var inputStructType = _shader.Type == ShaderType.Pixel ? "PS_IN" : "VS_IN";
+        string inputStructType = _shader.Type switch
+        {
+            ShaderType.Pixel => "PS_IN",
+            ShaderType.Vertex => "VS_IN",
+            ShaderType.Geometry => "GS_IN",
+            _ => throw new NotImplementedException(_shader.Type.ToString()),
+        };
         WriteLine($"struct {inputStructType}");
         WriteLine("{");
         indent = "\t";
@@ -179,7 +190,7 @@ public abstract class HlslWriter
         switch (_registers.MethodOutputRegisters.Count)
         {
             case 0:
-                throw new InvalidOperationException();
+                return "void";
             case 1:
                 return _registers.MethodOutputRegisters.First().TypeName;
             default:
@@ -189,16 +200,12 @@ public abstract class HlslWriter
 
     private string GetMethodSemantic()
     {
-        switch (_registers.MethodOutputRegisters.Count)
+        if (_registers.MethodOutputRegisters.Count == 1)
         {
-            case 0:
-                throw new InvalidOperationException();
-            case 1:
-                string semantic = _registers.MethodOutputRegisters.First().Semantic;
-                return $" : {semantic}";
-            default:
-                return string.Empty;
+            string semantic = _registers.MethodOutputRegisters.First().Semantic;
+            return $" : {semantic}";
         }
+        return string.Empty;
     }
 
     private string GetMethodParameters()

@@ -21,8 +21,11 @@ public class HlslSimpleWriter : HlslWriter
 
     protected override void WriteMethodBody()
     {
-        WriteLine("{0} o;", GetMethodReturnType());
-        WriteLine();
+        if (_registers.MethodOutputRegisters.Count != 0)
+        {
+            WriteLine("{0} o;", GetMethodReturnType());
+            WriteLine();
+        }
 
         _registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
         WriteTemporaryVariableDeclarations();
@@ -38,8 +41,11 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
 
-        WriteLine();
-        WriteLine("return o;");
+        if (_registers.MethodOutputRegisters.Count != 0)
+        {
+            WriteLine();
+            WriteLine("return o;");
+        }
     }
 
     private void WriteTemporaryVariableDeclarations()

@@ -8,7 +8,7 @@ public class ConstantIntRegister
     public ConstantIntRegister(int registerIndex, uint value0, uint value1, uint value2, uint value3)
     {
         RegisterIndex = registerIndex;
-        Value = new[] { value0, value1, value2, value3 };
+        Value = [value0, value1, value2, value3];
     }
 
     public uint this[int index]

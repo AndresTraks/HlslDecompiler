@@ -8,8 +8,8 @@ public class NormalizeGrouper
     public HlslTreeNode[] TryGetContext(IList<HlslTreeNode> components)
     {
         var firstComponent = components[0];
-        if (!(firstComponent is DivisionOperation firstDivision) ||
-            !(firstDivision.Divisor is LengthOperation firstLength))
+        if (firstComponent is not DivisionOperation firstDivision ||
+            firstDivision.Divisor is not LengthOperation firstLength)
         {
             return null;
         }

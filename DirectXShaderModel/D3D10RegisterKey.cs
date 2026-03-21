@@ -114,7 +114,7 @@ public class D3D10RegisterKey : RegisterKey
             {
                 return ImmediateSingle[0].ToString();
             }
-            return "[" + string.Join(", ", ImmediateSingle) + "]";
+            return $"[{string.Join(", ", ImmediateSingle)}]";
         }
         if (ImmediateInt.HasValue)
         {

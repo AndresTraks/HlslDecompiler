@@ -319,54 +319,35 @@ public class D3D10Instruction : Instruction
         {
             if ((destinationMask & (1 << i)) != 0)
             {
-                switch (swizzle[i])
+                swizzleName += swizzle[i] switch
                 {
-                    case 0:
-                        swizzleName += "x";
-                        break;
-                    case 1:
-                        swizzleName += "y";
-                        break;
-                    case 2:
-                        swizzleName += "z";
-                        break;
-                    case 3:
-                        swizzleName += "w";
-                        break;
-                }
+                    0 => "x",
+                    1 => "y",
+                    2 => "z",
+                    3 => "w",
+                    _ => ""
+                };
             }
         }
-        switch (swizzleName)
+        return swizzleName switch
         {
-            case "xyzw":
-                return "";
-            case "xxxx":
-                return ".x";
-            case "yyyy":
-                return ".y";
-            case "zzzz":
-                return ".z";
-            case "wwww":
-                return ".w";
-            default:
-                return "." + swizzleName;
-        }
+            "xyzw" => "",
+            "xxxx" => ".x",
+            "yyyy" => ".y",
+            "zzzz" => ".z",
+            "wwww" => ".w",
+            _ => "." + swizzleName
+        };
     }
 
     public override string GetDeclSemantic()
     {
-        string name;
-        switch (GetOperandType(GetDestinationParamIndex()))
+        string name = GetOperandType(GetDestinationParamIndex()) switch
         {
-            case OperandType.Input:
-                name = "SV_Position";
-                break;
-            case OperandType.Output:
-                name = "SV_Target";
-                break;
-            default:
-                throw new NotImplementedException();
-        }
+            OperandType.Input => "SV_Position",
+            OperandType.Output => "SV_Target",
+            _ => throw new NotImplementedException()
+        };
         int declIndex = (int) OperandTokens.GetSpan(0)[1];
         if (declIndex != 0)
         {

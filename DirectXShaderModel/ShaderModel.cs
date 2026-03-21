@@ -39,28 +39,27 @@ public class ShaderModel
         MajorVersion = majorVersion;
         MinorVersion = minorVersion;
         Type = type;
-        InputSignatures = new List<RegisterSignature>();
-        OutputSignatures = new List<RegisterSignature>();
-        ConstantDeclarations = new List<D3D10ConstantDeclaration>();
+        InputSignatures = [];
+        OutputSignatures = [];
+        ConstantDeclarations = [];
         Instructions = instructions;
     }
 
     public void ToFile(string filename)
     {
-        var file = new FileStream(filename, FileMode.Create, FileAccess.Write);
-        using (var writer = new BinaryWriter(file))
-        {
-            writer.Write((byte)MinorVersion);
-            writer.Write((byte)MajorVersion);
-            writer.Write((ushort)Type);
+        using var file = new FileStream(filename, FileMode.Create, FileAccess.Write);
+        using var writer = new BinaryWriter(file);
 
-            foreach (D3D9Instruction i in Instructions)
+        writer.Write((byte)MinorVersion);
+        writer.Write((byte)MajorVersion);
+        writer.Write((ushort)Type);
+
+        foreach (D3D9Instruction i in Instructions)
+        {
+            writer.Write(i.InstructionToken);
+            for (int p = 0; p < i.Params.Count; p++)
             {
-                writer.Write(i.InstructionToken);
-                for (int p = 0; p < i.Params.Count; p++)
-                {
-                    writer.Write(i.Params[p]);
-                }
+                writer.Write(i.Params[p]);
             }
         }
     }

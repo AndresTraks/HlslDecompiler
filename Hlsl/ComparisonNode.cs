@@ -1,5 +1,4 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
-using System;
 
 namespace HlslDecompiler.Hlsl;
 
@@ -18,17 +17,6 @@ public class ComparisonNode : HlslTreeNode
 
     public override string ToString()
     {
-        string comparison;
-        switch (Comparison)
-        {
-            case IfComparison.GT: comparison = ">"; break;
-            case IfComparison.EQ: comparison = "=="; break;
-            case IfComparison.GE: comparison = ">="; break;
-            case IfComparison.LT: comparison = "<"; break;
-            case IfComparison.NE: comparison = "!="; break;
-            case IfComparison.LE: comparison = "<="; break;
-            default: throw new NotImplementedException(Comparison.ToString());
-        }
-        return $"{Left} {comparison} {Right}";
+        return $"{Left} {Comparison.ToHlslString()} {Right}";
     }
 }

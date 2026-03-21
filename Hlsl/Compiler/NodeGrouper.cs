@@ -33,9 +33,7 @@ public class NodeGrouper
         if (multiplicationGroup != null)
         {
             int dimension = multiplicationGroup.MatrixRowCount;
-            groups = new List<IList<HlslTreeNode>>(new[]
-                { nodes.Take(dimension).ToList()
-            });
+            groups = [nodes.Take(dimension).ToList()];
             if (dimension < nodes.Count)
             {
                 List<HlslTreeNode> rest = nodes.Skip(dimension).ToList();

@@ -13,7 +13,7 @@ public class ConstantNode : HlslTreeNode
 
     public override bool Equals(object obj)
     {
-        return obj is ConstantNode && this == (ConstantNode)obj;
+        return obj is ConstantNode other && this == other;
     }
 
     public override int GetHashCode()

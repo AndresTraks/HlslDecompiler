@@ -324,3 +324,20 @@ public enum TexldControls
     Project = 1,
     Bias = 2
 }
+
+public static class IfComparisonExtensions
+{
+    public static String ToHlslString(this IfComparison ifComparison)
+    {
+        return ifComparison switch
+        {
+            IfComparison.GT => ">",
+            IfComparison.EQ => "==",
+            IfComparison.GE => ">=",
+            IfComparison.LE => "<=",
+            IfComparison.NE => "!=",
+            IfComparison.LT => "<",
+            _ => throw new InvalidOperationException(),
+        };
+    }
+}

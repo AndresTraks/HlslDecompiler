@@ -25,19 +25,14 @@ public class RegisterComponentKey : IHasComponentIndex
     {
         get
         {
-            switch (ComponentIndex)
+            return ComponentIndex switch
             {
-                case 0:
-                    return "x";
-                case 1:
-                    return "y";
-                case 2:
-                    return "z";
-                case 3:
-                    return "w";
-                default:
-                    return $"({ComponentIndex})";
-            }
+                0 => "x",
+                1 => "y",
+                2 => "z",
+                3 => "w",
+                _ => $"({ComponentIndex})",
+            };
         }
     }
 

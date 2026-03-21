@@ -19,24 +19,22 @@ class Program
 
         string baseFilename = Path.GetFileNameWithoutExtension(options.InputFilename);
 
-        using (var inputStream = File.Open(options.InputFilename, FileMode.Open, FileAccess.Read))
+        using var inputStream = File.Open(options.InputFilename, FileMode.Open, FileAccess.Read);
+        var format = FormatDetector.Detect(inputStream);
+        switch (format)
         {
-            var format = FormatDetector.Detect(inputStream);
-            switch (format)
-            {
-                case ShaderFileFormat.ShaderModel:
-                    ReadShaderModel(baseFilename, inputStream, options);
-                    break;
-                case ShaderFileFormat.Dxbc:
-                    ReadDxbc(baseFilename, inputStream, options);
-                    break;
-                case ShaderFileFormat.Rgxa:
-                    ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
-                    break;
-                case ShaderFileFormat.Unknown:
-                    Console.WriteLine("Unknown file format!");
-                    break;
-            }
+            case ShaderFileFormat.ShaderModel:
+                ReadShaderModel(baseFilename, inputStream, options);
+                break;
+            case ShaderFileFormat.Dxbc:
+                ReadDxbc(baseFilename, inputStream, options);
+                break;
+            case ShaderFileFormat.Rgxa:
+                ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
+                break;
+            case ShaderFileFormat.Unknown:
+                Console.WriteLine("Unknown file format!");
+                break;
         }
 
         if (!options.PrintToConsole)
@@ -103,38 +101,36 @@ class Program
 
     private static void ReadRgxa(string baseFilename, FileStream inputStream, bool doAstAnalysis)
     {
-        using (var input = new RgxaReader(inputStream, true))
+        using var input = new RgxaReader(inputStream, true);
+        int ivs = 0, ips = 0;
+        while (true)
         {
-            int ivs = 0, ips = 0;
-            while (true)
+            ShaderModel shader = input.ReadShader();
+            if (shader is null)
             {
-                ShaderModel shader = input.ReadShader();
-                if (shader == null)
-                {
-                    break;
-                }
-
-                string outFilename;
-                if (shader.Type == ShaderType.Vertex)
-                {
-                    outFilename = $"{baseFilename}_vs{ivs}";
-                    ivs++;
-                }
-                else
-                {
-                    outFilename = $"{baseFilename}_ps{ips}";
-                    ips++;
-                }
-                Console.WriteLine(outFilename);
-
-                //shader.ToFile("outFilename.fxc");
-
-                var writer = new AsmWriter(shader);
-                writer.Write(outFilename + ".asm");
-
-                var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
-                hlslWriter.Write(outFilename + ".fx");
+                break;
             }
+
+            string outFilename;
+            if (shader.Type == ShaderType.Vertex)
+            {
+                outFilename = $"{baseFilename}_vs{ivs}";
+                ivs++;
+            }
+            else
+            {
+                outFilename = $"{baseFilename}_ps{ips}";
+                ips++;
+            }
+            Console.WriteLine(outFilename);
+
+            //shader.ToFile("outFilename.fxc");
+
+            var writer = new AsmWriter(shader);
+            writer.Write(outFilename + ".asm");
+
+            var hlslWriter = CreateHlslWriter(shader, doAstAnalysis);
+            hlslWriter.Write(outFilename + ".fx");
         }
     }
 

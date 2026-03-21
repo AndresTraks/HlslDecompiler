@@ -9,10 +9,10 @@ public sealed class RegisterState
 {
     public readonly bool ColumnMajorOrder = true;
 
-    public ICollection<ConstantRegister> ConstantDefinitions = new List<ConstantRegister>();
-    public ICollection<ConstantIntRegister> ConstantIntDefinitions = new List<ConstantIntRegister>();
-    public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = new List<ConstantDeclaration>();
-    public ICollection<ResourceDefinition> ResourceDefinitions { get; } = new List<ResourceDefinition>();
+    public ICollection<ConstantRegister> ConstantDefinitions = [];
+    public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];
+    public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = [];
+    public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
     public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
 
     public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();

@@ -144,31 +144,7 @@ public class HlslSimpleWriter : HlslWriter
                     $"{GetSourceName(instruction, 1)} + {GetSourceName(instruction, 2)}");
                 break;
             case Opcode.BreakC:
-                string ifComparisonBreak;
-                switch (instruction.Comparison)
-                {
-                    case IfComparison.GT:
-                        ifComparisonBreak = ">";
-                        break;
-                    case IfComparison.EQ:
-                        ifComparisonBreak = "==";
-                        break;
-                    case IfComparison.GE:
-                        ifComparisonBreak = ">=";
-                        break;
-                    case IfComparison.LE:
-                        ifComparisonBreak = "<=";
-                        break;
-                    case IfComparison.NE:
-                        ifComparisonBreak = "!=";
-                        break;
-                    case IfComparison.LT:
-                        ifComparisonBreak = "<";
-                        break;
-                    default:
-                        throw new InvalidOperationException();
-                }
-                WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparisonBreak);
+                WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 break;
             case Opcode.Cmp:
                 // TODO: should be per-component
@@ -220,31 +196,7 @@ public class HlslSimpleWriter : HlslWriter
                 indent += "\t";
                 break;
             case Opcode.IfC:
-                string ifComparison;
-                switch (instruction.Comparison)
-                {
-                    case IfComparison.GT:
-                        ifComparison = ">";
-                        break;
-                    case IfComparison.EQ:
-                        ifComparison = "==";
-                        break;
-                    case IfComparison.GE:
-                        ifComparison = ">=";
-                        break;
-                    case IfComparison.LE:
-                        ifComparison = "<=";
-                        break;
-                    case IfComparison.NE:
-                        ifComparison = "!=";
-                        break;
-                    case IfComparison.LT:
-                        ifComparison = "<";
-                        break;
-                    default:
-                        throw new InvalidOperationException();
-                }
-                WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), ifComparison);
+                WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 indent += "\t";
                 break;
             case Opcode.Log:

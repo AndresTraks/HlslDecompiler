@@ -380,18 +380,7 @@ public sealed class NodeCompiler
     {
         var left = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
         var right = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
-        string comparison;
-        switch (first.Comparison)
-        {
-            case IfComparison.GT: comparison = ">"; break;
-            case IfComparison.EQ: comparison = "=="; break;
-            case IfComparison.GE: comparison = ">="; break;
-            case IfComparison.LT: comparison = "<"; break;
-            case IfComparison.NE: comparison = "!="; break;
-            case IfComparison.LE: comparison = "<="; break;
-            default: throw new NotImplementedException(first.Comparison.ToString());
-        }
-        return $"{left} {comparison} {right}";
+        return $"{left} {first.Comparison.ToHlslString()} {right}";
     }
 
     private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,

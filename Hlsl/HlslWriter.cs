@@ -44,14 +44,8 @@ public abstract class HlslWriter
     public void Write(string hlslFilename)
     {
         using var file = new FileStream(hlslFilename, FileMode.Create, FileAccess.Write);
-        using (var writer = new StreamWriter(file))
-        {
-            Write(writer);
-
-            writer.Dispose();
-        }
-
-        file.Dispose();
+        using var writer = new StreamWriter(file);
+        Write(writer);
     }
 
     public void Write(TextWriter writer)

@@ -91,7 +91,7 @@ public enum Opcode
     End = 0xFFFF
 }
 
-public static class Extensions
+public static class OpcodeExtensions
 {
     public static bool HasDestination(this Opcode opcode)
     {

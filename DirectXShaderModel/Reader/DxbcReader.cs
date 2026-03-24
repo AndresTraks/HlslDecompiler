@@ -182,6 +182,12 @@ public class DxbcReader : BinaryReader
             return new D3D10Instruction(opcode, inputPrimitive);
         }
 
+        if (opcode == D3D10Opcode.DclGSOutputPrimitiveTopology)
+        {
+            D3D10PrimitiveTopology primitiveTopology = (D3D10PrimitiveTopology)((opcodeToken >> 11) & 0xff);
+            return new D3D10Instruction(opcode, primitiveTopology);
+        }
+
         uint[] operandTokens = new uint[operandCount];
         for (int i = 0; i < operandCount; i++)
         {

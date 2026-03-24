@@ -20,6 +20,7 @@ public sealed class RegisterState
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
     public int? MaxOutputVertexCount { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
+    public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
 
     private ShaderModel _shaderModel;
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 
 namespace HlslDecompiler.DirectXShaderModel;
 
@@ -40,6 +41,7 @@ public class D3D10Instruction : Instruction
     private ResourceDimension _resourceDimension;
     private D3D10GlobalFlags _globalFlags;
     private D3D10Primitive _primitive;
+    private D3D10PrimitiveTopology _primitiveTopology;
 
     public D3D10Opcode Opcode { get; }
     public D3D10OperandTokenCollection OperandTokens { get; }
@@ -68,6 +70,12 @@ public class D3D10Instruction : Instruction
         _primitive = primitive;
     }
 
+    public D3D10Instruction(D3D10Opcode opcode, D3D10PrimitiveTopology primitiveTopology)
+    : this(opcode, [])
+    {
+        _primitiveTopology = primitiveTopology;
+    }
+
     public ResourceDimension GetResourceDimension()
     {
         return _resourceDimension;
@@ -81,6 +89,11 @@ public class D3D10Instruction : Instruction
     public D3D10Primitive GetPrimitive()
     {
         return _primitive;
+    }
+
+    public D3D10PrimitiveTopology GetPrimitiveTopology()
+    {
+        return _primitiveTopology;
     }
 
     public override bool HasDestination
@@ -212,6 +225,18 @@ public class D3D10Instruction : Instruction
     {
         Span<uint> span = OperandTokens.GetSpan(0);
         return (D3D10InterpolationMode)((span[0] >> 11) & 0xF);
+    }
+
+    public D3D10OperandIndexRepresentation[] GetOperandIndexRepresentation(int index)
+    {
+        int dimension = GetOperandIndexDimension(index);
+        var representation = new D3D10OperandIndexRepresentation[dimension];
+        Span<uint> span = OperandTokens.GetSpan(index);
+        for (int d = 0; d < dimension; d++)
+        {
+            representation[d] = (D3D10OperandIndexRepresentation)((span[0] >> (22 + d * 3)) & 7);
+        }
+        return representation;
     }
 
     private int GetOperandIndexDimension(int index)
@@ -485,35 +510,29 @@ public class D3D10Instruction : Instruction
 
     public override int GetParamRegisterNumber(int index)
     {
-        Span<uint> span = OperandTokens.GetSpan(index);
-        bool isExtended = (span[0] & 0x80000000) != 0;
-        if (isExtended)
-        {
-            return (int)span[2];
-        }
-        return (int) span[1];
+        return (int) GetParamIndexImmediate32(index, 1);
     }
 
     public int GetParamConstantBufferOffset(int index)
     {
-        Span<uint> span = OperandTokens.GetSpan(index);
-        bool isExtended = (span[0] & 0x80000000) != 0;
-        if (isExtended)
-        {
-            return (int)span[3];
-        }
-        return (int)span[2];
+        return (int) GetParamIndexImmediate32(index, 2);
     }
 
     public int GetResourceReturnTypeToken()
     {
-        Span<uint> span = OperandTokens.GetSpan(0);
+        return (int) GetParamIndexImmediate32(0, 2);
+    }
+
+    public uint GetParamIndexImmediate32(int operandIndex, int index)
+    {
+        Span<uint> span = OperandTokens.GetSpan(operandIndex);
         bool isExtended = (span[0] & 0x80000000) != 0;
+        int offset = 0;
         if (isExtended)
         {
-            return (int)span[3];
+            offset += 1;
         }
-        return (int)span[2];
+        return span[offset + index];
     }
 
     public override string ToString()

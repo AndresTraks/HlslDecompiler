@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace HlslDecompiler.DirectXShaderModel;
 
@@ -361,6 +362,9 @@ public class AsmWriter
                 WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case D3D10Opcode.Cut:
+                WriteLine("cut");
+                break;
             case D3D10Opcode.DclConstantBuffer:
                 WriteLine("dcl_constantbuffer {0}, {1}", GetDestinationName(instruction), "immediateIndexed"); // TODO: AccessPattern
                 break;
@@ -398,14 +402,28 @@ public class AsmWriter
                 WriteLine("dcl_inputprimitive {0}", primitive);
                 break;
             case D3D10Opcode.DclInputSiv:
-                WriteLine("dcl_input_siv {0}", GetDestinationName(instruction)); // TODO
-                break;
+                {
+                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
+                    name = name[0].ToString().ToLower() + name.Substring(1).ToString();
+                    WriteLine("dcl_input_siv {0}, {1}", GetDestinationName(instruction), name);
+                    break;
+                }
             case D3D10Opcode.DclGSMaxOutputVertexCount:
                 WriteLine("dcl_maxout {0}", instruction.GetParamInt(0));
+                break;
+            case D3D10Opcode.DclGSOutputPrimitiveTopology:
+                WriteLine("dcl_outputtopology {0}", instruction.GetPrimitiveTopology().ToString().ToLower());
                 break;
             case D3D10Opcode.DclOutput:
                 WriteLine("dcl_output {0}", GetDestinationName(instruction));
                 break;
+            case D3D10Opcode.DclOutputSiv:
+                {
+                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
+                    name = name[0].ToString().ToLower() + name.Substring(1).ToString();
+                    WriteLine("dcl_output_siv {0}, {1}", GetDestinationName(instruction), name);
+                    break;
+                }
             case D3D10Opcode.DclResource:
                 WriteLine("dcl_resource_texture2d (float,float,float,float) {0}", GetDestinationName(instruction));
                 break;
@@ -435,6 +453,9 @@ public class AsmWriter
             case D3D10Opcode.Dp4:
                 WriteLine("dp4 {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case D3D10Opcode.Emit:
+                WriteLine("emit");
                 break;
             case D3D10Opcode.GE:
                 WriteLine("ge {0}, {1}, {2}", GetDestinationName(instruction),
@@ -671,35 +692,50 @@ public class AsmWriter
     private static string GetParamRegisterName(D3D10Instruction instruction, int index)
     {
         var operandType = instruction.GetOperandType(index);
-        int registerNumber = instruction.GetParamRegisterNumber(index);
-
-        string registerTypeName;
-        string size = "";
-        switch (operandType)
+        string registerNumber;
+        if (operandType == OperandType.ConstantBuffer)
         {
-            case OperandType.Input:
-                registerTypeName = "v";
-                break;
-            case OperandType.Output:
-                registerTypeName = "o";
-                break;
-            case OperandType.Temp:
-                registerTypeName = "r";
-                break;
-            case OperandType.ConstantBuffer:
-                registerTypeName = "cb";
-                size = "[" + instruction.GetParamConstantBufferOffset(index) + "]";
-                break;
-            case OperandType.Resource:
-                registerTypeName = "t";
-                break;
-            case OperandType.Sampler:
-                registerTypeName = "s";
-                break;
-            default:
+            registerNumber = instruction.GetParamRegisterNumber(index) + "[" + instruction.GetParamConstantBufferOffset(index) + "]";
+        }
+        else
+        {
+            D3D10OperandIndexRepresentation[] indexRepresentation = instruction.GetOperandIndexRepresentation(index);
+            if (!indexRepresentation.Any(i => i == D3D10OperandIndexRepresentation.Immediate32))
+            {
                 throw new NotImplementedException();
+            }
+            if (indexRepresentation.Length == 1)
+            {
+                registerNumber = instruction.GetParamRegisterNumber(index).ToString();
+            }
+            else
+            {
+                registerNumber = "";
+                for (int i = 0; i < indexRepresentation.Length; i++)
+                {
+                    D3D10OperandIndexRepresentation representation = indexRepresentation[i];
+                    if (representation == D3D10OperandIndexRepresentation.Immediate32)
+                    {
+                        registerNumber += "[" + instruction.GetParamIndexImmediate32(index, i + 1) + "]";
+                    }
+                    else
+                    {
+                        throw new NotImplementedException(representation.ToString());
+                    }
+                }
+            }
         }
 
-        return $"{registerTypeName}{registerNumber}{size}";
+        string registerTypeName = operandType switch
+        {
+            OperandType.Input => "v",
+            OperandType.Output => "o",
+            OperandType.Temp => "r",
+            OperandType.ConstantBuffer => "cb",
+            OperandType.Resource => "t",
+            OperandType.Sampler => "s",
+            _ => throw new NotImplementedException(),
+        };
+        return $"{registerTypeName}{registerNumber}";
     }
 }

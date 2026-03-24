@@ -116,6 +116,9 @@ class InstructionParser
         {
             switch (instruction.Opcode)
             {
+                case D3D10Opcode.Cut:
+                    // TODO: InsertCut(instruction);
+                    break;
                 case D3D10Opcode.Discard:
                     {
                         InsertClip(instruction);
@@ -157,6 +160,11 @@ class InstructionParser
                 case D3D10Opcode.DclGSMaxOutputVertexCount:
                     {
                         _registerState.MaxOutputVertexCount = (int)instruction.GetParamInt(0);
+                        break;
+                    }
+                case D3D10Opcode.DclGSOutputPrimitiveTopology:
+                    {
+                        _registerState.PrimitiveTopology = instruction.GetPrimitiveTopology();
                         break;
                     }
                 case D3D10Opcode.DclResource:

@@ -494,6 +494,10 @@ public class HlslSimpleWriter : HlslWriter
         string sourceRegisterName;
 
         var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
+        if (_shader.Type == ShaderType.Geometry && registerKey.OperandType == OperandType.Input)
+        {
+            registerKey = instruction.GetGSParamRegisterKey(srcIndex);
+        }
         switch (registerKey.OperandType)
         {
             case OperandType.Immediate32:

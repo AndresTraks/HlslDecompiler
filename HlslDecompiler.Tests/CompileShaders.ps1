@@ -35,7 +35,8 @@ function CleanAssemblyListing($assemblyFileName) {
     (Get-Content "$assemblyFileName") |
         Where { $_ -ne "" -and $_ -NotMatch "^//*" } |
         Foreach { $_ -Replace  "    ", "" } |
-        Foreach { $_ -Replace  "ret ", "ret" } |
+        Foreach { $_ -Replace  ".xyzw", "" } |
+        Foreach { $_.Trim() } |
         Set-Content "$assemblyFileName"
 }
 

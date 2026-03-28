@@ -20,10 +20,15 @@ public class D3D10RegisterKey : RegisterKey
         ImmediateSingle = immediateSingle;
     }
 
-    public D3D10RegisterKey(int immediateInt)
+    private D3D10RegisterKey(int gsVertex, int gsAttribute)
+        : this(OperandType.Input, gsVertex)
     {
-        OperandType = OperandType.Immediate32;
-        ImmediateInt = immediateInt;
+        GSAttribute = gsAttribute;
+    }
+
+    public static D3D10RegisterKey CreateGSInput(int vertex, int attribute)
+    {
+        return new D3D10RegisterKey(vertex, attribute);
     }
 
     public OperandType OperandType { get; }
@@ -31,6 +36,7 @@ public class D3D10RegisterKey : RegisterKey
     public int? ConstantBufferOffset { get; }
     public float[] ImmediateSingle { get; }
     public int? ImmediateInt { get; }
+    public int? GSAttribute { get; }
 
     public bool IsTempRegister => OperandType == OperandType.Temp;
     public bool IsOutput => OperandType == OperandType.Output;
@@ -80,7 +86,8 @@ public class D3D10RegisterKey : RegisterKey
             other.Number == Number &&
             other.OperandType == OperandType &&
             other.ConstantBufferOffset == ConstantBufferOffset &&
-            other.ImmediateInt == ImmediateInt;
+            other.ImmediateInt == ImmediateInt &&
+            other.GSAttribute == GSAttribute;
     }
 
     public override int GetHashCode()
@@ -103,6 +110,10 @@ public class D3D10RegisterKey : RegisterKey
         {
             hashCode ^= ImmediateInt.GetHashCode();
         }
+        if (GSAttribute != null)
+        {
+            hashCode ^= GSAttribute.GetHashCode();
+        }
         return hashCode;
     }
 
@@ -119,6 +130,10 @@ public class D3D10RegisterKey : RegisterKey
         if (ImmediateInt.HasValue)
         {
             return ImmediateInt.Value.ToString();
+        }
+        if (GSAttribute != null)
+        {
+            return $"{OperandType}[{Number}][{GSAttribute}]";
         }
         string constantBufferOffset = ConstantBufferOffset != null ? $"[{ConstantBufferOffset}]" : "";
         return $"{OperandType}{Number}{constantBufferOffset}";

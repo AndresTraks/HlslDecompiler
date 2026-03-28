@@ -314,27 +314,52 @@ public sealed class RegisterState
         if (instruction.Opcode == D3D10Opcode.DclInput ||
             instruction.Opcode == D3D10Opcode.DclInputPS ||
             instruction.Opcode == D3D10Opcode.DclInputPSSiv ||
+            instruction.Opcode == D3D10Opcode.DclInputSiv ||
             instruction.Opcode == D3D10Opcode.DclOutput)
         {
             var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex()) as D3D10RegisterKey;
 
-            if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
+            if (_shaderModel.Type == ShaderType.Geometry && registerKey.OperandType == OperandType.Input)
             {
-                existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                registerKey = instruction.GetGSParamRegisterKey(instruction.GetDestinationParamIndex());
+                int attribute = registerKey.GSAttribute.Value;
+
+                for (int vertex = 0; vertex < registerKey.Number; vertex++)
+                {
+                    var vertexKey = D3D10RegisterKey.CreateGSInput(vertex, attribute);
+
+                    if (RegisterDeclarations.TryGetValue(vertexKey, out var existingDeclaration))
+                    {
+                        existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                    }
+                    else
+                    {
+                        var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction);
+                        RegisterDeclarations.Add(vertexKey, registerDeclaration);
+                        MethodInputRegisters.Add(vertexKey, registerDeclaration);
+                    }
+                }
             }
             else
             {
-                var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction);
-                RegisterDeclarations.Add(registerKey, registerDeclaration);
-
-                switch (registerKey.OperandType)
+                if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
                 {
-                    case OperandType.Input:
-                        MethodInputRegisters.Add(registerKey, registerDeclaration);
-                        break;
-                    case OperandType.Output:
-                        MethodOutputRegisters.Add(registerDeclaration);
-                        break;
+                    existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                }
+                else
+                {
+                    var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction);
+                    RegisterDeclarations.Add(registerKey, registerDeclaration);
+
+                    switch (registerKey.OperandType)
+                    {
+                        case OperandType.Input:
+                            MethodInputRegisters.Add(registerKey, registerDeclaration);
+                            break;
+                        case OperandType.Output:
+                            MethodOutputRegisters.Add(registerDeclaration);
+                            break;
+                    }
                 }
             }
         }

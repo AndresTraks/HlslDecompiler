@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Reflection;
 
 namespace HlslDecompiler.DirectXShaderModel;
 
@@ -500,6 +499,18 @@ public class D3D10Instruction : Instruction
         return new D3D10RegisterKey(
             operandType,
             GetParamRegisterNumber(index));
+    }
+
+    public D3D10RegisterKey GetGSParamRegisterKey(int index)
+    {
+        OperandType operandType = GetOperandType(index);
+        if (operandType == OperandType.Input)
+        {
+            return D3D10RegisterKey.CreateGSInput(
+                (int) GetParamIndexImmediate32(index, 1),
+                (int) GetParamIndexImmediate32(index, 2));
+        }
+        return GetParamRegisterKey(index) as D3D10RegisterKey;
     }
 
     public OperandType GetOperandType(int index)

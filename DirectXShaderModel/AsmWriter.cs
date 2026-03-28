@@ -419,8 +419,20 @@ public class AsmWriter
                 break;
             case D3D10Opcode.DclOutputSiv:
                 {
-                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
-                    name = name[0].ToString().ToLower() + name.Substring(1).ToString();
+                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)) switch
+                    {
+                        D3D10Name.Position => "position",
+                        D3D10Name.ClipDistance => "clip_distance",
+                        D3D10Name.CullDistance => "cull_distance",
+                        D3D10Name.RenderTargetArrayIndex => "render_target_array_index",
+                        D3D10Name.ViewportArrayIndex => "viewport_array_index",
+                        D3D10Name.VertexID => "vertex_id",
+                        D3D10Name.PrimitiveID => "primitive_id",
+                        D3D10Name.InstanceID => "instance_id",
+                        D3D10Name.IsFrontFace => "is_front_face",
+                        D3D10Name.SampleIndex => "sample_index",
+                        _ => throw new NotImplementedException(((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString()),
+                    };
                     WriteLine("dcl_output_siv {0}, {1}", GetDestinationName(instruction), name);
                     break;
                 }

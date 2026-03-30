@@ -96,7 +96,17 @@ public sealed class RegisterState
             {
                 case OperandType.ConstantBuffer:
                     var declaration = FindConstant(registerKey);
-                    return declaration.Name;
+                    if (declaration.TypeInfo.Rows == 1)
+                    {
+                        return declaration.Name;
+                    }
+                    if (ColumnMajorOrder)
+                    {
+                        int column = d3D10RegisterKey.ConstantBufferOffset.Value - declaration.RegisterIndex;
+                        return $"transpose({declaration.Name})[{column}]";
+                    }
+                    string row = (registerKey.Number - declaration.RegisterIndex).ToString();
+                    return declaration.Name + $"[{row}]";
                 case OperandType.Immediate32:
                     return d3D10RegisterKey.Number.ToString();
                 case OperandType.Input:

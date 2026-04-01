@@ -48,7 +48,7 @@ public class D3D10Instruction : Instruction
     public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens)
     {
         Opcode = opcode;
-        OperandTokens = new D3D10OperandTokenCollection(paramTokens, opcode == D3D10Opcode.DclResource);
+        OperandTokens = new D3D10OperandTokenCollection(paramTokens, opcode);
     }
 
     public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension)
@@ -392,15 +392,17 @@ public class D3D10Instruction : Instruction
 
     public override string GetDeclSemantic()
     {
-        string name = GetOperandType(GetDestinationParamIndex()) switch
+        OperandType operandType = GetOperandType(GetDestinationParamIndex());
+        string name = operandType switch
         {
             OperandType.Input => "SV_Position",
             OperandType.Output => "SV_Target",
+            OperandType.InputThreadID => "SV_DispatchThreadID",
             _ => throw new NotImplementedException()
         };
-        int declIndex = (int) OperandTokens.GetSpan(0)[1];
-        if (declIndex != 0)
+        if (operandType != OperandType.InputThreadID)
         {
+            int declIndex = (int)OperandTokens.GetSpan(0)[1];
             name += declIndex;
         }
         return name;
@@ -496,6 +498,10 @@ public class D3D10Instruction : Instruction
             }
             return new D3D10RegisterKey(GetParamSingle(index));
         }
+        else if (operandType == OperandType.InputThreadID)
+        {
+            return new D3D10RegisterKey(operandType, 0);
+        }
         return new D3D10RegisterKey(
             operandType,
             GetParamRegisterNumber(index));
@@ -532,6 +538,11 @@ public class D3D10Instruction : Instruction
     public int GetResourceReturnTypeToken()
     {
         return (int) GetParamIndexImmediate32(0, 2);
+    }
+
+    public uint GetResourceStructuredBufferStride()
+    {
+        return GetParamIndexImmediate32(1, 0);
     }
 
     public uint GetParamIndexImmediate32(int operandIndex, int index)

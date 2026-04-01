@@ -134,6 +134,9 @@ class InstructionParser
                             var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
                             int writeMask = 1; // declare only first component here, expand later
                             _registerState.DeclareRegister(registerKey, writeMask);
+                            var destinationKey = new RegisterComponentKey(registerKey, 0);
+                            var tempInput = new RegisterInputNode(destinationKey);
+                            SetActiveOutput(destinationKey, tempInput);
                         }
                         break;
                     }
@@ -178,6 +181,15 @@ class InstructionParser
                         SetActiveOutput(destinationKey, resourceInput);
                         break;
                     }
+                case D3D10Opcode.DclResourceStructured:
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                        _registerState.DeclareStructuredBuffer(registerKey, instruction.GetResourceStructuredBufferStride());
+                        var destinationKey = new RegisterComponentKey(registerKey, 0);
+                        var resourceInput = new RegisterInputNode(destinationKey);
+                        SetActiveOutput(destinationKey, resourceInput);
+                        break;
+                    }
                 case D3D10Opcode.DclSampler:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
@@ -187,9 +199,29 @@ class InstructionParser
                         SetActiveOutput(destinationKey, resourceInput);
                         break;
                     }
+                case D3D10Opcode.DclThreadGroup:
+                    {
+                        // TODO
+                        break;
+                    }
+                case D3D10Opcode.DclUnorderedAccessViewStructured:
+                    {
+                        // TODO
+                        break;
+                    }
                 case D3D10Opcode.Emit:
                     // TODO: InsertAppend();
                     break;
+                case D3D10Opcode.LdStructured:
+                    {
+                        // TODO
+                        break;
+                    }
+                case D3D10Opcode.StoreStructured:
+                    {
+                        // TODO
+                        break;
+                    }
                 case D3D10Opcode.DclGlobalFlags:
                 case D3D10Opcode.Ret:
                     break;

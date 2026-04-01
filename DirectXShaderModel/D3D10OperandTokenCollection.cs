@@ -4,15 +4,15 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class D3D10OperandTokenCollection
 {
-    private readonly bool _isResourceDeclaration;
+    private readonly D3D10Opcode _opcode;
 
     public uint[] Tokens { get; }
     public virtual int Count => Tokens.Length;
 
-    public D3D10OperandTokenCollection(uint[] paramTokens, bool isResourceDeclaration)
+    public D3D10OperandTokenCollection(uint[] paramTokens, D3D10Opcode opcode)
     {
         Tokens = paramTokens;
-        _isResourceDeclaration = isResourceDeclaration;
+        _opcode = opcode;
     }
 
     public Span<uint> GetSpan(int index)
@@ -31,7 +31,7 @@ public class D3D10OperandTokenCollection
             }
 
             OperandType operandType = (OperandType)((token >> 12) & 0xFF);
-            if (_isResourceDeclaration)
+            if (_opcode == D3D10Opcode.DclResource || _opcode == D3D10Opcode.DclThreadGroup)
             {
                 i += 2;
             }

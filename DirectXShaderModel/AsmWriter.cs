@@ -94,6 +94,7 @@ public class AsmWriter
             ShaderType.Vertex => "vs",
             ShaderType.Pixel => "ps",
             ShaderType.Geometry => "gs",
+            ShaderType.Compute => "cs",
             _ => throw new NotImplementedException(shader.Type.ToString()),
         };
         WriteLine("{0}_{1}_{2}", shaderType, shader.MajorVersion, shader.MinorVersion);
@@ -439,11 +440,20 @@ public class AsmWriter
             case D3D10Opcode.DclResource:
                 WriteLine("dcl_resource_texture2d (float,float,float,float) {0}", GetDestinationName(instruction));
                 break;
+            case D3D10Opcode.DclResourceStructured:
+                WriteLine("dcl_resource_structured {0}, {1}", GetDestinationName(instruction), instruction.GetParamIndexImmediate32(1, 0));
+                break;
             case D3D10Opcode.DclSampler:
                 WriteLine("dcl_sampler {0}, mode_default", GetDestinationName(instruction)); // TODO: mode
                 break;
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
+                break;
+            case D3D10Opcode.DclThreadGroup:
+                WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
+                break;
+            case D3D10Opcode.DclUnorderedAccessViewStructured:
+                WriteLine("dcl_uav_structured {0}, {1}", GetDestinationName(instruction), instruction.GetParamIndexImmediate32(1, 0));
                 break;
             case D3D10Opcode.DerivRtx:
                 WriteLine("deriv_rtx {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
@@ -472,6 +482,9 @@ public class AsmWriter
             case D3D10Opcode.GE:
                 WriteLine("ge {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case D3D10Opcode.LdStructured:
+                WriteLine("ld_structured {0}, {1}, {2}, {3}", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
             case D3D10Opcode.Mad:
                 WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
@@ -502,6 +515,9 @@ public class AsmWriter
             case D3D10Opcode.Sqrt:
                 WriteLine("sqrt {0}, {1}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1));
+                break;
+            case D3D10Opcode.StoreStructured:
+                WriteLine("store_structured {0}, {1}, {2}, {3}", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
             default:
                 WriteLine(instruction.Opcode.ToString());
@@ -709,6 +725,10 @@ public class AsmWriter
         {
             registerNumber = instruction.GetParamRegisterNumber(index) + "[" + instruction.GetParamConstantBufferOffset(index) + "]";
         }
+        else if (operandType == OperandType.InputThreadID)
+        {
+            registerNumber = "";
+        }
         else
         {
             D3D10OperandIndexRepresentation[] indexRepresentation = instruction.GetOperandIndexRepresentation(index);
@@ -746,6 +766,8 @@ public class AsmWriter
             OperandType.ConstantBuffer => "cb",
             OperandType.Resource => "t",
             OperandType.Sampler => "s",
+            OperandType.InputThreadID => "vThreadID",
+            OperandType.UnorderedAccessView => "u",
             _ => throw new NotImplementedException(),
         };
         return $"{registerTypeName}{registerNumber}";

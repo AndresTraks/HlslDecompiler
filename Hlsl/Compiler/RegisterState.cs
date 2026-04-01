@@ -219,6 +219,12 @@ public sealed class RegisterState
         }
     }
 
+    public void DeclareStructuredBuffer(D3D10RegisterKey registerKey, uint stride)
+    {
+        //TODO
+        //throw new NotImplementedException();
+    }
+
     public void DeclareConstant(D3D9ConstantDeclaration constant)
     {
         ConstantDeclarations.Add(constant);

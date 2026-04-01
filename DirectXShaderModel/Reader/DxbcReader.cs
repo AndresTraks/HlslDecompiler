@@ -132,7 +132,7 @@ public class DxbcReader : BinaryReader
             {
                 ReadSignatures(chunkOffset, OperandType.Output, outputSignatures);
             }
-            else if (chunkType == "SHDR")
+            else if (chunkType == "SHDR" || chunkType == "SHEX")
             {
                 ReadBytes(8);
                 int chunkSize = ReadInt32() * 4;
@@ -162,7 +162,7 @@ public class DxbcReader : BinaryReader
         uint opcodeToken = ReadUInt32();
         D3D10Opcode opcode = (D3D10Opcode)(opcodeToken & 0x7FF);
 
-        int operandCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
+        int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
 
         bool isExtended = (opcodeToken & 0x80000000) != 0;
         if (isExtended)
@@ -188,8 +188,8 @@ public class DxbcReader : BinaryReader
             return new D3D10Instruction(opcode, primitiveTopology);
         }
 
-        uint[] operandTokens = new uint[operandCount];
-        for (int i = 0; i < operandCount; i++)
+        uint[] operandTokens = new uint[operandDwordCount];
+        for (int i = 0; i < operandDwordCount; i++)
         {
             operandTokens[i] = ReadUInt32();
         }

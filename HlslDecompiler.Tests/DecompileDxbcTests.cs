@@ -42,6 +42,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "vector3_matrix33_multiply")]
     [TestCase("vs_4_0", "vector4_matrix44_multiply")]
     [TestCase("gs_4_1", "main")]
+    [TestCase("cs_4_1", "compute")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

@@ -6,10 +6,10 @@ dcl_input v[3][2]
 dcl_input v[3][3].x
 dcl_inputprimitive triangle
 dcl_outputtopology trianglestrip
-dcl_output_siv o0, position
+dcl_output o0
 dcl_output o1
 dcl_output o2
-dcl_output_siv o3.x, clip_distance
+dcl_output o3.x
 dcl_maxout 6
 cut
 mov o0, v[0][0]

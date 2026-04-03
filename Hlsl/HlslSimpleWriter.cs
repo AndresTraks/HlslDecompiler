@@ -23,7 +23,14 @@ public class HlslSimpleWriter : HlslWriter
     {
         if (_registers.MethodOutputRegisters.Count != 0)
         {
-            WriteLine("{0} o;", GetMethodReturnType());
+            if (_shader.Type == ShaderType.Geometry)
+            {
+                WriteLine("GS_OUT o;");
+            }
+            else
+            {
+                WriteLine("{0} o;", GetMethodReturnType());
+            }
             WriteLine();
         }
 
@@ -41,7 +48,7 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
 
-        if (_registers.MethodOutputRegisters.Count != 0)
+        if (_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry)
         {
             WriteLine();
             WriteLine("return o;");
@@ -356,6 +363,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Add:
                 WriteLine("{0} = {1} + {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case D3D10Opcode.Cut:
+                WriteLine("stream.RestartStrip();");
+                break;
             case D3D10Opcode.DerivRtx:
                 WriteLine("{0} = ddx({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                 break;
@@ -369,6 +379,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
                 WriteLine("{0} = dot({1}, {2});", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case D3D10Opcode.Emit:
+                WriteLine("stream.Append(o);");
                 break;
             case D3D10Opcode.GE:
                 WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
@@ -494,10 +507,6 @@ public class HlslSimpleWriter : HlslWriter
         string sourceRegisterName;
 
         var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
-        if (_shader.Type == ShaderType.Geometry && registerKey.OperandType == OperandType.Input)
-        {
-            registerKey = instruction.GetGSParamRegisterKey(srcIndex);
-        }
         switch (registerKey.OperandType)
         {
             case OperandType.Immediate32:

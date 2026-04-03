@@ -20,15 +20,15 @@ public class D3D10RegisterKey : RegisterKey
         ImmediateSingle = immediateSingle;
     }
 
-    private D3D10RegisterKey(int gsVertex, int gsAttribute)
-        : this(OperandType.Input, gsVertex)
+    private D3D10RegisterKey(int gsAttribute, int gsVertex)
+        : this(OperandType.Input, gsAttribute)
     {
-        GSAttribute = gsAttribute;
+        GSVertex = gsVertex;
     }
 
-    public static D3D10RegisterKey CreateGSInput(int vertex, int attribute)
+    public static D3D10RegisterKey CreateGSInput(int attribute, int vertex)
     {
-        return new D3D10RegisterKey(vertex, attribute);
+        return new D3D10RegisterKey(attribute, vertex);
     }
 
     public OperandType OperandType { get; }
@@ -36,7 +36,7 @@ public class D3D10RegisterKey : RegisterKey
     public int? ConstantBufferOffset { get; }
     public float[] ImmediateSingle { get; }
     public int? ImmediateInt { get; }
-    public int? GSAttribute { get; }
+    public int? GSVertex { get; }
 
     public bool IsTempRegister => OperandType == OperandType.Temp;
     public bool IsOutput => OperandType == OperandType.Output;
@@ -45,6 +45,15 @@ public class D3D10RegisterKey : RegisterKey
         OperandType == OperandType.Immediate32 ||
         OperandType == OperandType.Immediate64 ||
         OperandType == OperandType.ImmediateConstantBuffer;
+
+    public D3D10RegisterKey GetGSBaseKey()
+    {
+        if (GSVertex.HasValue)
+        {
+            return new D3D10RegisterKey(OperandType, Number);
+        }
+        return this;
+    }
 
     public bool TypeEquals(RegisterKey registerKey)
     {
@@ -87,7 +96,7 @@ public class D3D10RegisterKey : RegisterKey
             other.OperandType == OperandType &&
             other.ConstantBufferOffset == ConstantBufferOffset &&
             other.ImmediateInt == ImmediateInt &&
-            other.GSAttribute == GSAttribute;
+            other.GSVertex == GSVertex;
     }
 
     public override int GetHashCode()
@@ -110,9 +119,9 @@ public class D3D10RegisterKey : RegisterKey
         {
             hashCode ^= ImmediateInt.GetHashCode();
         }
-        if (GSAttribute != null)
+        if (GSVertex != null)
         {
-            hashCode ^= GSAttribute.GetHashCode();
+            hashCode ^= GSVertex.GetHashCode();
         }
         return hashCode;
     }
@@ -131,9 +140,9 @@ public class D3D10RegisterKey : RegisterKey
         {
             return ImmediateInt.Value.ToString();
         }
-        if (GSAttribute != null)
+        if (GSVertex != null)
         {
-            return $"{OperandType}[{Number}][{GSAttribute}]";
+            return $"{OperandType}[{GSVertex}][{Number}]";
         }
         string constantBufferOffset = ConstantBufferOffset != null ? $"[{ConstantBufferOffset}]" : "";
         return $"{OperandType}{Number}{constantBufferOffset}";

@@ -230,13 +230,13 @@ public class StatementFinalizer
     private static void SetReturnStatement(IList<IStatement> statements)
     {
         IStatement lastStatement = statements.Last();
-        if (lastStatement is ReturnStatement)
+        if (lastStatement is ReturnStatement || lastStatement is AppendStatement)
         {
             return;
         }
-        if (lastStatement is AssignmentStatement assignment)
+        if (lastStatement is AssignmentStatement)
         {
-            statements[statements.Count - 1] = new ReturnStatement(assignment.Outputs);
+            statements[statements.Count - 1] = new ReturnStatement(lastStatement.Outputs);
             return;
         }
         if (lastStatement is IfStatement ifStatement)

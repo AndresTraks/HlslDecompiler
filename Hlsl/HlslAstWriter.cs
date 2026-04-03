@@ -23,7 +23,13 @@ public class HlslAstWriter : HlslWriter
     {
         if (_registers.MethodOutputRegisters.Count > 1)
         {
-            var outputStructType = _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT";
+            string outputStructType = _shader.Type switch
+            {
+                ShaderType.Pixel => "PS_OUT",
+                ShaderType.Vertex => "VS_OUT",
+                ShaderType.Geometry => "GS_OUT",
+                _ => throw new NotImplementedException(),
+            };
             WriteLine($"{outputStructType} o;");
             WriteLine();
         }
@@ -58,6 +64,14 @@ public class HlslAstWriter : HlslWriter
         else if (statement is ClipStatement clip)
         {
             WriteClipStatement(clip);
+        }
+        else if (statement is AppendStatement append)
+        {
+            WriteLine("stream.Append(o);");
+        }
+        else if (statement is RestartStripStatement restartStrip)
+        {
+            WriteLine("stream.RestartStrip();");
         }
         else if (statement is LoopStatement loop)
         {

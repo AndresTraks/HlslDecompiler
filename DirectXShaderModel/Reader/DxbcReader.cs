@@ -8,6 +8,8 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class DxbcReader : BinaryReader
 {
+    private bool _isGeometryShader = false;
+
     public DxbcReader(Stream input, bool leaveOpen = false)
         : base(input, new UTF8Encoding(false, true), leaveOpen)
     {
@@ -53,6 +55,7 @@ public class DxbcReader : BinaryReader
                 minorVersion = ReadByte();
                 majorVersion = ReadByte();
                 shaderType = (ShaderType)ReadUInt16();
+                _isGeometryShader = shaderType == ShaderType.Geometry;
 
                 constantBufferOffset = chunkOffset + constantBufferOffset + 8;
                 for (int i = 0; i < constantBufferCount; i++)
@@ -173,19 +176,19 @@ public class DxbcReader : BinaryReader
         if (opcode == D3D10Opcode.DclGlobalFlags)
         {
             D3D10GlobalFlags globalFlags = (D3D10GlobalFlags)((opcodeToken >> 11) & 0x1ff);
-            return new D3D10Instruction(opcode, globalFlags);
+            return new D3D10Instruction(opcode, globalFlags, _isGeometryShader);
         }
 
         if (opcode == D3D10Opcode.DclGSInputPrimitive)
         {
             D3D10Primitive inputPrimitive = (D3D10Primitive)((opcodeToken >> 11) & 0xff);
-            return new D3D10Instruction(opcode, inputPrimitive);
+            return new D3D10Instruction(opcode, inputPrimitive, _isGeometryShader);
         }
 
         if (opcode == D3D10Opcode.DclGSOutputPrimitiveTopology)
         {
             D3D10PrimitiveTopology primitiveTopology = (D3D10PrimitiveTopology)((opcodeToken >> 11) & 0xff);
-            return new D3D10Instruction(opcode, primitiveTopology);
+            return new D3D10Instruction(opcode, primitiveTopology, _isGeometryShader);
         }
 
         uint[] operandTokens = new uint[operandDwordCount];
@@ -197,10 +200,10 @@ public class DxbcReader : BinaryReader
         if (opcode == D3D10Opcode.DclResource)
         {
             var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
-            return new D3D10Instruction(opcode, operandTokens, resourceDimension);
+            return new D3D10Instruction(opcode, operandTokens, resourceDimension, _isGeometryShader);
         }
 
-        var instruction = new D3D10Instruction(opcode, operandTokens);
+        var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
         return instruction;
     }
 
@@ -245,7 +248,7 @@ public class DxbcReader : BinaryReader
         name = NormalizeSystemValueRegisterName(name);
 
         var register = new D3D10RegisterKey(operandType, registerNumber);
-        return new RegisterSignature(register, name, index, mask);
+        return new RegisterSignature(register, name, index, mask, valueType, componentType, readWriteMask);
     }
 
     private static string NormalizeSystemValueRegisterName(string name)

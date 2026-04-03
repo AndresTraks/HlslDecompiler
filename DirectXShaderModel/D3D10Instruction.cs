@@ -41,36 +41,38 @@ public class D3D10Instruction : Instruction
     private D3D10GlobalFlags _globalFlags;
     private D3D10Primitive _primitive;
     private D3D10PrimitiveTopology _primitiveTopology;
+    private bool _isGeometryShader;
 
     public D3D10Opcode Opcode { get; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
-    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens)
+    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool isGeometryShader)
     {
         Opcode = opcode;
         OperandTokens = new D3D10OperandTokenCollection(paramTokens, opcode);
+        _isGeometryShader = isGeometryShader;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension)
-        : this(opcode, paramTokens)
+    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension, bool isGeometryShader)
+        : this(opcode, paramTokens, isGeometryShader)
     {
         _resourceDimension = resourceDimension;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10GlobalFlags globalFlags)
-        : this(opcode, [])
+    public D3D10Instruction(D3D10Opcode opcode, D3D10GlobalFlags globalFlags, bool isGeometryShader)
+        : this(opcode, [], isGeometryShader)
     {
         _globalFlags = globalFlags;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10Primitive primitive)
-        : this(opcode, [])
+    public D3D10Instruction(D3D10Opcode opcode, D3D10Primitive primitive, bool isGeometryShader)
+        : this(opcode, [], isGeometryShader)
     {
         _primitive = primitive;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10PrimitiveTopology primitiveTopology)
-    : this(opcode, [])
+    public D3D10Instruction(D3D10Opcode opcode, D3D10PrimitiveTopology primitiveTopology, bool isGeometryShader)
+    : this(opcode, [], isGeometryShader)
     {
         _primitiveTopology = primitiveTopology;
     }
@@ -392,7 +394,8 @@ public class D3D10Instruction : Instruction
 
     public override string GetDeclSemantic()
     {
-        OperandType operandType = GetOperandType(GetDestinationParamIndex());
+        int destIndex = GetDestinationParamIndex();
+        OperandType operandType = GetOperandType(destIndex);
         string name = operandType switch
         {
             OperandType.Input => "SV_Position",
@@ -402,7 +405,8 @@ public class D3D10Instruction : Instruction
         };
         if (operandType != OperandType.InputThreadID)
         {
-            int declIndex = (int)OperandTokens.GetSpan(0)[1];
+            int numberIndex = (_isGeometryShader && operandType == OperandType.Input) ? 2 : 1;
+            int declIndex = (int) GetParamIndexImmediate32(destIndex, numberIndex);
             name += declIndex;
         }
         return name;
@@ -502,21 +506,15 @@ public class D3D10Instruction : Instruction
         {
             return new D3D10RegisterKey(operandType, 0);
         }
+        if (_isGeometryShader && operandType == OperandType.Input)
+        {
+            return D3D10RegisterKey.CreateGSInput(
+                (int)GetParamIndexImmediate32(index, 2),
+                (int)GetParamIndexImmediate32(index, 1));
+        }
         return new D3D10RegisterKey(
             operandType,
             GetParamRegisterNumber(index));
-    }
-
-    public D3D10RegisterKey GetGSParamRegisterKey(int index)
-    {
-        OperandType operandType = GetOperandType(index);
-        if (operandType == OperandType.Input)
-        {
-            return D3D10RegisterKey.CreateGSInput(
-                (int) GetParamIndexImmediate32(index, 1),
-                (int) GetParamIndexImmediate32(index, 2));
-        }
-        return GetParamRegisterKey(index) as D3D10RegisterKey;
     }
 
     public OperandType GetOperandType(int index)

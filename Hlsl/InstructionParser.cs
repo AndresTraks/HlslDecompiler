@@ -119,7 +119,7 @@ class InstructionParser
             switch (instruction.Opcode)
             {
                 case D3D10Opcode.Cut:
-                    // TODO: InsertRestartStrip();
+                    InsertRestartStrip();
                     break;
                 case D3D10Opcode.Discard:
                     {
@@ -210,7 +210,7 @@ class InstructionParser
                         break;
                     }
                 case D3D10Opcode.Emit:
-                    // TODO: InsertAppend();
+                    InsertAppend();
                     break;
                 case D3D10Opcode.LdStructured:
                     {
@@ -386,6 +386,16 @@ class InstructionParser
         }
         var clip = new ClipStatement(values, ActiveOutputs);
         InsertStatement(clip);
+    }
+
+    private void InsertAppend()
+    {
+        InsertStatement(new AppendStatement(ActiveOutputs));
+    }
+
+    private void InsertRestartStrip()
+    {
+        InsertStatement(new RestartStripStatement(ActiveOutputs));
     }
 
     private void InsertLoop(Instruction instruction)
@@ -575,31 +585,28 @@ class InstructionParser
         }
     }
 
-    private IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
+    private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
     {
         int index = instruction.GetDestinationParamIndex();
         int mask = instruction.GetDestinationWriteMask();
         return GetParameterRegisterKeys(instruction, index, mask);
     }
 
-    private IEnumerable<RegisterComponentKey> GetParameterRegisterKeys(Instruction instruction, int index, int mask)
+    private static IEnumerable<RegisterComponentKey> GetParameterRegisterKeys(Instruction instruction, int index, int mask)
     {
         RegisterKey registerKey = instruction.GetParamRegisterKey(index);
 
-        if (instruction is D3D10Instruction d3D10Instruction)
+        if (registerKey is D3D10RegisterKey d3D10RegisterKey)
         {
-            if (_shaderModel.Type == ShaderType.Geometry && (registerKey as D3D10RegisterKey).OperandType == OperandType.Input)
+            if (d3D10RegisterKey.GSVertex.HasValue)
             {
-                D3D10RegisterKey d3D10RegisterKey = d3D10Instruction.GetGSParamRegisterKey(index);
-                int attribute = d3D10RegisterKey.GSAttribute.Value;
-
-                for (int vertex = 0; vertex < d3D10RegisterKey.Number; vertex++)
+                for (int vertex = 0; vertex < d3D10RegisterKey.GSVertex.Value; vertex++)
                 {
                     for (int component = 0; component < 4; component++)
                     {
                         if ((mask & (1 << component)) == 0) continue;
 
-                        RegisterKey vertexKey = D3D10RegisterKey.CreateGSInput(vertex, attribute);
+                        RegisterKey vertexKey = D3D10RegisterKey.CreateGSInput(registerKey.Number, vertex);
                         yield return new RegisterComponentKey(vertexKey, component);
                     }
                 }
@@ -1174,15 +1181,7 @@ class InstructionParser
 
     private RegisterComponentKey GetParamRegisterComponentKey(Instruction instruction, int paramIndex, int component)
     {
-        RegisterKey registerKey;
-        if (_shaderModel.Type == ShaderType.Geometry)
-        {
-            registerKey = (instruction as D3D10Instruction).GetGSParamRegisterKey(paramIndex);
-        }
-        else
-        {
-            registerKey = instruction.GetParamRegisterKey(paramIndex);
-        }
+        RegisterKey registerKey = instruction.GetParamRegisterKey(paramIndex);
 
         int componentIndex;
         if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.MiscType && d3D9RegisterKey.Number == 1)

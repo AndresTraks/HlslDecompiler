@@ -248,6 +248,12 @@ public class StatementFinalizer
             }
             return;
         }
+        if (lastStatement is LoopStatement loopStatement)
+        {
+            SetReturnStatement(loopStatement.Body);
+            statements[statements.Count - 1] = new ReturnStatement(lastStatement.Outputs);
+            return;
+        }
         throw new NotImplementedException();
     }
 

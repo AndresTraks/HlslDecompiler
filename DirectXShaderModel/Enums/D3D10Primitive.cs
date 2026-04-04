@@ -1,4 +1,7 @@
-﻿namespace HlslDecompiler.DirectXShaderModel
+﻿using HlslDecompiler.DirectXShaderModel;
+using System;
+
+namespace HlslDecompiler.DirectXShaderModel
 {
     public enum D3D10Primitive
     {
@@ -40,5 +43,21 @@
         ControlPointPatch30 = 37,
         ControlPointPatch31 = 38,
         ControlPointPatch32 = 39
+    }
+}
+
+public static class D3D10PrimitiveExtensions
+{
+    public static String ToHlslString(this D3D10Primitive primitive)
+    {
+        return primitive switch
+        {
+            D3D10Primitive.Point => "point",
+            D3D10Primitive.Line => "line",
+            D3D10Primitive.Triangle => "triangle",
+            D3D10Primitive.LineAdj => "line_adj",
+            D3D10Primitive.TriangleAdj => "triangle_adj",
+            _ => throw new NotImplementedException(primitive.ToString()),
+        };
     }
 }

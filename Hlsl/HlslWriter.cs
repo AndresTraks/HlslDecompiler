@@ -238,7 +238,8 @@ public abstract class HlslWriter
     {
         if (_shader.Type == ShaderType.Geometry)
         {
-            return "triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream";
+            string primitive = _registers.InputPrimitive.Value.ToHlslString();
+            return $"{primitive} GS_IN i[3], inout TriangleStream<GS_OUT> stream";
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {

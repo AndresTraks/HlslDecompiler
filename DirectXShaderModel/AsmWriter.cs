@@ -363,6 +363,9 @@ public class AsmWriter
                 WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case D3D10Opcode.BreakC:
+                WriteLine("breakc_nz {0}", GetSourceName(instruction, 0));
+                break;
             case D3D10Opcode.Cut:
                 WriteLine("cut");
                 break;
@@ -391,16 +394,7 @@ public class AsmWriter
                 WriteLine("dcl_input {0}", GetDestinationName(instruction));
                 break;
             case D3D10Opcode.DclGSInputPrimitive:
-                string primitive = instruction.GetPrimitive() switch
-                {
-                    D3D10Primitive.Point => "point",
-                    D3D10Primitive.Line => "line",
-                    D3D10Primitive.Triangle => "triangle",
-                    D3D10Primitive.LineAdj => "line_adj",
-                    D3D10Primitive.TriangleAdj => "triangle_adj",
-                    _ => throw new NotImplementedException(instruction.GetPrimitive().ToString()),
-                };
-                WriteLine("dcl_inputprimitive {0}", primitive);
+                WriteLine("dcl_inputprimitive {0}", instruction.GetPrimitive().ToHlslString());
                 break;
             case D3D10Opcode.DclInputSiv:
                 {
@@ -479,12 +473,29 @@ public class AsmWriter
             case D3D10Opcode.Emit:
                 WriteLine("emit");
                 break;
+            case D3D10Opcode.EndLoop:
+                WriteLine("endloop");
+                break;
             case D3D10Opcode.GE:
                 WriteLine("ge {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case D3D10Opcode.IAdd:
+                WriteLine("iadd {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case D3D10Opcode.Ilt:
+                WriteLine("ilt {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case D3D10Opcode.IToF:
+                WriteLine("itof {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                break;
             case D3D10Opcode.LdStructured:
                 WriteLine("ld_structured {0}, {1}, {2}, {3}", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
+            case D3D10Opcode.Loop:
+                WriteLine("loop");
                 break;
             case D3D10Opcode.Mad:
                 WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
@@ -511,6 +522,10 @@ public class AsmWriter
             case D3D10Opcode.Sample:
                 WriteLine("sample {0}, {1}, {2}, {3}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
+            case D3D10Opcode.SinCos:
+                WriteLine("sincos {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
             case D3D10Opcode.Sqrt:
                 WriteLine("sqrt {0}, {1}", GetDestinationName(instruction),

@@ -120,6 +120,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.GE:
+                case D3D10Opcode.IAdd:
+                case D3D10Opcode.IToF:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.MovC:
@@ -131,6 +133,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SampleL:
                 case D3D10Opcode.SampleD:
                 case D3D10Opcode.SampleB:
+                case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
                     return true;
                 default:
@@ -161,8 +164,11 @@ public class D3D10Instruction : Instruction
         int destinationParamIndex = GetDestinationParamIndex();
 
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(destinationParamIndex);
-        if (componentSelection == D3D10OperandNumComponents.Operand1Component ||
-            componentSelection == D3D10OperandNumComponents.Operand4Component)
+        if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+        {
+            throw new NotImplementedException();
+        }
+        else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
         {
             ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
             if (selectionMode == ComponentSelectionMode.Mask)
@@ -187,7 +193,9 @@ public class D3D10Instruction : Instruction
             }
             else if (selectionMode == ComponentSelectionMode.Select1)
             {
-                throw new NotImplementedException();
+                Span<uint> span = OperandTokens.GetSpan(destinationParamIndex);
+                int name = (int)((span[0] >> 4) & 0x2);
+                return 1 << name;
             }
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand0Component)

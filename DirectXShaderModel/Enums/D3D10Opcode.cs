@@ -46,7 +46,7 @@ public enum D3D10Opcode
     INeg,
     ISHL,
     ISHR,
-    ITOF,
+    IToF,
     Label,
     LD,
     LDMS,
@@ -217,9 +217,9 @@ public enum D3D10Opcode
     DFMA,
     DRCP,
     MSAD,
-    DTOI,
-    DTOU,
-    ITOD,
-    UTOD,
+    DToI,
+    DToU,
+    IToD,
+    UToD,
     D3d111Reserved0
 }

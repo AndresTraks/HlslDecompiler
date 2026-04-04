@@ -118,6 +118,9 @@ class InstructionParser
         {
             switch (instruction.Opcode)
             {
+                case D3D10Opcode.BreakC:
+                    //InsertBreak();
+                    break;
                 case D3D10Opcode.Cut:
                     InsertRestartStrip();
                     break;
@@ -209,12 +212,21 @@ class InstructionParser
                         // TODO
                         break;
                     }
+                case D3D10Opcode.EndLoop:
+                    //EndLoop();
+                    break;
                 case D3D10Opcode.Emit:
                     InsertAppend();
                     break;
                 case D3D10Opcode.LdStructured:
+                case D3D10Opcode.Ilt:
                     {
                         // TODO
+                        break;
+                    }
+                case D3D10Opcode.Loop:
+                    {
+                        InsertStatement(new LoopStatement(0, ActiveOutputs));
                         break;
                     }
                 case D3D10Opcode.StoreStructured:
@@ -778,6 +790,8 @@ class InstructionParser
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
             case D3D10Opcode.GE:
+            case D3D10Opcode.IAdd:
+            case D3D10Opcode.IToF:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mad:
             case D3D10Opcode.Max:
@@ -792,6 +806,7 @@ class InstructionParser
                     switch (instruction.Opcode)
                     {
                         case D3D10Opcode.Add:
+                        case D3D10Opcode.IAdd:
                             return new AddOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.DerivRtx:
                             return new PartialDerivativeXOperation(inputs[0]);
@@ -812,6 +827,7 @@ class InstructionParser
                         case D3D10Opcode.Min:
                             return new MinimumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Mov:
+                        case D3D10Opcode.IToF:
                             return new MoveOperation(inputs[0]);
                         case D3D10Opcode.MovC:
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
@@ -822,6 +838,9 @@ class InstructionParser
                         case D3D10Opcode.Sqrt:
                             return new SquareRootOperation(inputs[0]);
                         case D3D10Opcode.SinCos:
+                            return componentIndex == 0
+                                ? new SineOperation(inputs[0])
+                                : new CosineOperation(inputs[0]);
                         default:
                             throw new NotImplementedException();
                     }
@@ -1156,6 +1175,7 @@ class InstructionParser
             case D3D10Opcode.DerivRty:
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
+            case D3D10Opcode.IToF:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mov:
             case D3D10Opcode.Rsq:
@@ -1167,6 +1187,7 @@ class InstructionParser
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
             case D3D10Opcode.GE:
+            case D3D10Opcode.IAdd:
             case D3D10Opcode.Max:
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:

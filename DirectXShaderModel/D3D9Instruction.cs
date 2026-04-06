@@ -146,16 +146,6 @@ public class D3D9Instruction : Instruction
         return (SamplerTextureType)((Params[0] >> 27) & 0xF);
     }
 
-    public override int GetDestinationSemanticSize()
-    {
-        RegisterType registerType = GetParamRegisterType(GetDestinationParamIndex());
-        if (registerType == RegisterType.DepthOut)
-        {
-            return 1;
-        }
-        return 4;
-    }
-
     public override int GetDestinationParamIndex()
     {
         if (Opcode == Opcode.Dcl) return 1;

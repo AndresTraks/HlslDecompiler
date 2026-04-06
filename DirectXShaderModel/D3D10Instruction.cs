@@ -180,8 +180,7 @@ public class D3D10Instruction : Instruction
             else if (selectionMode == ComponentSelectionMode.Swizzle)
             {
                 int mask = 0;
-                int dimension = GetOperandIndexDimension(destinationParamIndex);
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     int swizzle = GetOperandComponentSwizzle(destinationParamIndex, i);
                     if (swizzle != i)
@@ -282,7 +281,7 @@ public class D3D10Instruction : Instruction
             else if (selectionMode == ComponentSelectionMode.Swizzle)
             {
                 Span<uint> span = OperandTokens.GetSpan(index);
-                int swizzle = (int)((span[0] >> 2) & 3);
+                int swizzle = (int)((span[0] >> 4) & 0xff);
                 return (swizzle >> (2 * component)) & 3;
             }
             else if (selectionMode == ComponentSelectionMode.Select1)
@@ -418,15 +417,6 @@ public class D3D10Instruction : Instruction
             name += declIndex;
         }
         return name;
-    }
-
-    public override int GetDestinationSemanticSize()
-    {
-        if (GetOperandType(GetDestinationParamIndex()) == OperandType.OutputDepth)
-        {
-            return 1;
-        }
-        return 4;
     }
 
     private byte[] GetOperandValueBytes(int index, int componentIndex)

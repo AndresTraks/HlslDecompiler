@@ -69,6 +69,4 @@ public abstract class Instruction
     public abstract string GetSourceSwizzleName(int srcIndex, int? destinationLength);
 
     public abstract string GetDeclSemantic();
-
-    public abstract int GetDestinationSemanticSize();
 }

@@ -27,19 +27,32 @@ public class AsmWriter
         asmWriter.WriteLine(format, args);
     }
 
-    private string GetDestinationName(Instruction instruction)
+    private string GetDestinationName(D3D9Instruction instruction)
     {
         int destIndex = instruction.GetDestinationParamIndex();
-        string registerName = (instruction is D3D9Instruction d3D9Instruction)
-            ? GetParamRegisterName(d3D9Instruction, destIndex)
-            : GetParamRegisterName(instruction as D3D10Instruction, destIndex);
-        if (instruction is D3D10Instruction d3D10Instruction && d3D10Instruction.Opcode == D3D10Opcode.DclConstantBuffer)
-        {
-            return registerName;
-        }
-        int destinationLength = instruction.GetDestinationSemanticSize();
+        string registerName = GetParamRegisterName(instruction, destIndex);
+        int destinationLength = GetDestinationSemanticSize(instruction);
         string writeMaskName = instruction.GetDestinationWriteMaskName(destinationLength);
         return $"{registerName}{writeMaskName}";
+    }
+
+    private static int GetDestinationSemanticSize(D3D9Instruction instruction)
+    {
+        RegisterType registerType = instruction.GetParamRegisterType(instruction.GetDestinationParamIndex());
+        if (registerType == RegisterType.DepthOut)
+        {
+            return 1;
+        }
+        return 4;
+    }
+
+    private static int GetDestinationSemanticSize(D3D10Instruction instruction)
+    {
+        if (instruction.GetOperandType(instruction.GetDestinationParamIndex()) == OperandType.OutputDepth)
+        {
+            return 1;
+        }
+        return 4;
     }
 
     private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
@@ -47,41 +60,6 @@ public class AsmWriter
         string sourceName = GetParamRegisterName(instruction, srcIndex);
         sourceName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
         sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
-        return sourceName;
-    }
-
-    private static string GetSourceName(D3D10Instruction instruction, int srcIndex)
-    {
-        var operandType = instruction.GetOperandType(srcIndex);
-        if (operandType == OperandType.Immediate32)
-        {
-            var componentSelection = instruction.GetOperandComponentSelection(srcIndex);
-            if (componentSelection == D3D10OperandNumComponents.Operand1Component)
-            {
-                string immediate;
-                if (instruction.Opcode == D3D10Opcode.Discard)
-                {
-                    immediate = instruction.GetParamInt(srcIndex).ToString();
-                }
-                else
-                {
-                    immediate = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex)[0]);
-                }
-                return $"l({immediate})";
-            }
-            else
-            {
-                string immediate0 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 0));
-                string immediate1 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 1));
-                string immediate2 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 2));
-                string immediate3 = ConstantFormatter.Format(instruction.GetParamSingle(srcIndex, 3));
-                return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
-            }
-        }
-
-        string sourceName = GetParamRegisterName(instruction, srcIndex);
-        sourceName += instruction.GetSourceSwizzleName(srcIndex);
-        sourceName = ApplyModifier(instruction.GetOperandModifier(srcIndex), sourceName);
         return sourceName;
     }
 
@@ -97,7 +75,7 @@ public class AsmWriter
             ShaderType.Compute => "cs",
             _ => throw new NotImplementedException(shader.Type.ToString()),
         };
-        WriteLine("{0}_{1}_{2}", shaderType, shader.MajorVersion, shader.MinorVersion);
+        WriteLine($"{shaderType}_{shader.MajorVersion}_{shader.MinorVersion}");
 
         foreach (Instruction instruction in shader.Instructions)
         {
@@ -360,17 +338,16 @@ public class AsmWriter
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
-                WriteLine("add {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "add", 3);
                 break;
             case D3D10Opcode.BreakC:
-                WriteLine("breakc_nz {0}", GetSourceName(instruction, 0));
+                WriteInstruction(instruction, "breakc_nz", 1);
                 break;
             case D3D10Opcode.Cut:
-                WriteLine("cut");
+                WriteInstruction(instruction, "cut", 0);
                 break;
             case D3D10Opcode.DclConstantBuffer:
-                WriteLine("dcl_constantbuffer {0}, {1}", GetDestinationName(instruction), "immediateIndexed"); // TODO: AccessPattern
+                WriteLine("dcl_constantbuffer {0}, {1}", FormatOperand(instruction, 0), "immediateIndexed"); // TODO: AccessPattern
                 break;
             case D3D10Opcode.DclGlobalFlags:
                 string globalFlags = "";
@@ -385,13 +362,13 @@ public class AsmWriter
                 WriteLine("dcl_globalFlags{0}", globalFlags);
                 break;
             case D3D10Opcode.DclInputPS:
-                WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
+                WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclInputPSSiv:
-                WriteLine("dcl_input_sv {0} {1}", instruction.GetInterpolationModeName(), GetDestinationName(instruction));
+                WriteLine("dcl_input_sv {0} {1}", instruction.GetInterpolationModeName(), FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclInput:
-                WriteLine("dcl_input {0}", GetDestinationName(instruction));
+                WriteLine("dcl_input {0}", FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclGSInputPrimitive:
                 WriteLine("dcl_inputprimitive {0}", instruction.GetPrimitive().ToHlslString());
@@ -400,7 +377,7 @@ public class AsmWriter
                 {
                     string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
                     name = name[0].ToString().ToLower() + name.Substring(1).ToString();
-                    WriteLine("dcl_input_siv {0}, {1}", GetDestinationName(instruction), name);
+                    WriteLine("dcl_input_siv {0}, {1}", FormatOperand(instruction, 0), name);
                     break;
                 }
             case D3D10Opcode.DclGSMaxOutputVertexCount:
@@ -410,7 +387,7 @@ public class AsmWriter
                 WriteLine("dcl_outputtopology {0}", instruction.GetPrimitiveTopology().ToString().ToLower());
                 break;
             case D3D10Opcode.DclOutput:
-                WriteLine("dcl_output {0}", GetDestinationName(instruction));
+                WriteInstruction(instruction, "dcl_output", 1);
                 break;
             case D3D10Opcode.DclOutputSiv:
                 {
@@ -428,17 +405,17 @@ public class AsmWriter
                         D3D10Name.SampleIndex => "sample_index",
                         _ => throw new NotImplementedException(((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString()),
                     };
-                    WriteLine("dcl_output_siv {0}, {1}", GetDestinationName(instruction), name);
+                    WriteLine("dcl_output_siv {0}, {1}", FormatOperand(instruction, 0), name);
                     break;
                 }
             case D3D10Opcode.DclResource:
-                WriteLine("dcl_resource_texture2d (float,float,float,float) {0}", GetDestinationName(instruction));
+                WriteInstruction(instruction, "dcl_resource_texture2d (float,float,float,float)", 1);
                 break;
             case D3D10Opcode.DclResourceStructured:
-                WriteLine("dcl_resource_structured {0}, {1}", GetDestinationName(instruction), instruction.GetParamIndexImmediate32(1, 0));
+                WriteLine("dcl_resource_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
             case D3D10Opcode.DclSampler:
-                WriteLine("dcl_sampler {0}, mode_default", GetDestinationName(instruction)); // TODO: mode
+                WriteLine("dcl_sampler {0}, mode_default", FormatOperand(instruction, 0)); // TODO: mode
                 break;
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
@@ -447,92 +424,79 @@ public class AsmWriter
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
                 break;
             case D3D10Opcode.DclUnorderedAccessViewStructured:
-                WriteLine("dcl_uav_structured {0}, {1}", GetDestinationName(instruction), instruction.GetParamIndexImmediate32(1, 0));
+                WriteLine("dcl_uav_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
             case D3D10Opcode.DerivRtx:
-                WriteLine("deriv_rtx {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "deriv_rtx", 2);
                 break;
             case D3D10Opcode.DerivRty:
-                WriteLine("deriv_rty {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "deriv_rty", 2);
                 break;
             case D3D10Opcode.Discard:
-                WriteLine("discard_nz {0}", GetSourceName(instruction, 0));
+                WriteInstruction(instruction, "discard_nz", 1);
                 break;
             case D3D10Opcode.Dp2:
-                WriteLine("dp2 {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "dp2", 3);
                 break;
             case D3D10Opcode.Dp3:
-                WriteLine("dp3 {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "dp3", 3);
                 break;
             case D3D10Opcode.Dp4:
-                WriteLine("dp4 {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "dp4", 3);
                 break;
             case D3D10Opcode.Emit:
-                WriteLine("emit");
+                WriteInstruction(instruction, "emit", 0);
                 break;
             case D3D10Opcode.EndLoop:
-                WriteLine("endloop");
+                WriteInstruction(instruction, "endloop", 0);
                 break;
             case D3D10Opcode.GE:
-                WriteLine("ge {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "ge", 3);
                 break;
             case D3D10Opcode.IAdd:
-                WriteLine("iadd {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "iadd", 3);
                 break;
             case D3D10Opcode.Ilt:
-                WriteLine("ilt {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "ilt", 2);
                 break;
             case D3D10Opcode.IToF:
-                WriteLine("itof {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "itof", 2);
                 break;
             case D3D10Opcode.LdStructured:
-                WriteLine("ld_structured {0}, {1}, {2}, {3}", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteInstruction(instruction, "ld_structured", 4);
                 break;
             case D3D10Opcode.Loop:
-                WriteLine("loop");
+                WriteInstruction(instruction, "loop", 0);
                 break;
             case D3D10Opcode.Mad:
-                WriteLine("mad {0}, {1}, {2}, {3}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteInstruction(instruction, "mad", 4);
                 break;
             case D3D10Opcode.Mov:
-                WriteLine("mov {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "mov", 2);
                 break;
             case D3D10Opcode.MovC:
-                WriteLine("movc {0}, {1}, {2}, {3}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteInstruction(instruction, "movc", 4);
                 break;
             case D3D10Opcode.Mul:
-                WriteLine("mul {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "mul", 3);
                 break;
             case D3D10Opcode.Ret:
-                WriteLine("ret");
+                WriteInstruction(instruction, "ret", 0);
                 break;
             case D3D10Opcode.Rsq:
-                WriteLine("rsq {0}, {1}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "rsq", 2);
                 break;
             case D3D10Opcode.Sample:
-                WriteLine("sample {0}, {1}, {2}, {3}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteInstruction(instruction, "sample", 4);
                 break;
             case D3D10Opcode.SinCos:
-                WriteLine("sincos {0}, {1}, {2}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteInstruction(instruction, "sincos", 3);
                 break;
             case D3D10Opcode.Sqrt:
-                WriteLine("sqrt {0}, {1}", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1));
+                WriteInstruction(instruction, "sqrt", 2);
                 break;
             case D3D10Opcode.StoreStructured:
-                WriteLine("store_structured {0}, {1}, {2}, {3}", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteInstruction(instruction, "store_structured", 4);
                 break;
             default:
                 WriteLine(instruction.Opcode.ToString());
@@ -540,6 +504,20 @@ public class AsmWriter
                 //throw new NotImplementedException();
                 break;
         }
+    }
+
+    private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)
+    {
+        string line = mnemonic;
+        for (int i = 0; i < operandCount; i++)
+        {
+            line += " " + FormatOperand(instruction, i);
+            if (i != operandCount - 1)
+            {
+                line += ",";
+            }
+        }
+        WriteLine(line);
     }
 
     private static string GetModifier(D3D9Instruction instruction)
@@ -580,39 +558,24 @@ public class AsmWriter
 
     static string ApplyModifier(SourceModifier modifier, string value)
     {
-        switch (modifier)
+        return modifier switch
         {
-            case SourceModifier.None:
-                return value;
-            case SourceModifier.Negate:
-                return $"-{value}";
-            case SourceModifier.Bias:
-                return $"{value}_bias";
-            case SourceModifier.BiasAndNegate:
-                return $"-{value}_bias";
-            case SourceModifier.Sign:
-                return $"{value}_bx2";
-            case SourceModifier.SignAndNegate:
-                return $"-{value}_bx2";
-            case SourceModifier.Complement:
-                throw new NotImplementedException();
-            case SourceModifier.X2:
-                return $"{value}_x2";
-            case SourceModifier.X2AndNegate:
-                return $"-{value}_x2";
-            case SourceModifier.DivideByZ:
-                return $"{value}_dz";
-            case SourceModifier.DivideByW:
-                return $"{value}_dw";
-            case SourceModifier.Abs:
-                return $"{value}_abs";
-            case SourceModifier.AbsAndNegate:
-                return $"-{value}_abs";
-            case SourceModifier.Not:
-                throw new NotImplementedException();
-            default:
-                throw new NotImplementedException();
-        }
+            SourceModifier.None => value,
+            SourceModifier.Negate => $"-{value}",
+            SourceModifier.Bias => $"{value}_bias",
+            SourceModifier.BiasAndNegate => $"-{value}_bias",
+            SourceModifier.Sign => $"{value}_bx2",
+            SourceModifier.SignAndNegate => $"-{value}_bx2",
+            SourceModifier.Complement => throw new NotImplementedException(),
+            SourceModifier.X2 => $"{value}_x2",
+            SourceModifier.X2AndNegate => $"-{value}_x2",
+            SourceModifier.DivideByZ => $"{value}_dz",
+            SourceModifier.DivideByW => $"{value}_dw",
+            SourceModifier.Abs => $"{value}_abs",
+            SourceModifier.AbsAndNegate => $"-{value}_abs",
+            SourceModifier.Not => throw new NotImplementedException(),
+            _ => throw new NotImplementedException(),
+        };
     }
 
     private string GetParamRegisterName(D3D9Instruction instruction, int index)
@@ -732,7 +695,7 @@ public class AsmWriter
         return registerTypeName + registerNumber;
     }
 
-    private static string GetParamRegisterName(D3D10Instruction instruction, int index)
+    private static string FormatOperand(D3D10Instruction instruction, int index)
     {
         var operandType = instruction.GetOperandType(index);
         string registerNumber;
@@ -744,10 +707,35 @@ public class AsmWriter
         {
             registerNumber = "";
         }
+        else if (operandType == OperandType.Immediate32)
+        {
+            var componentSelection = instruction.GetOperandComponentSelection(index);
+            if (componentSelection == D3D10OperandNumComponents.Operand1Component)
+            {
+                string immediate;
+                if (instruction.Opcode == D3D10Opcode.Discard)
+                {
+                    immediate = instruction.GetParamInt(index).ToString();
+                }
+                else
+                {
+                    immediate = ConstantFormatter.Format(instruction.GetParamSingle(index)[0]);
+                }
+                return $"l({immediate})";
+            }
+            else
+            {
+                string immediate0 = ConstantFormatter.Format(instruction.GetParamSingle(index, 0));
+                string immediate1 = ConstantFormatter.Format(instruction.GetParamSingle(index, 1));
+                string immediate2 = ConstantFormatter.Format(instruction.GetParamSingle(index, 2));
+                string immediate3 = ConstantFormatter.Format(instruction.GetParamSingle(index, 3));
+                return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
+            }
+        }
         else
         {
             D3D10OperandIndexRepresentation[] indexRepresentation = instruction.GetOperandIndexRepresentation(index);
-            if (!indexRepresentation.Any(i => i == D3D10OperandIndexRepresentation.Immediate32))
+            if (indexRepresentation.Length != 0 && !indexRepresentation.Any(i => i == D3D10OperandIndexRepresentation.Immediate32))
             {
                 throw new NotImplementedException();
             }
@@ -785,6 +773,12 @@ public class AsmWriter
             OperandType.UnorderedAccessView => "u",
             _ => throw new NotImplementedException(),
         };
-        return $"{registerTypeName}{registerNumber}";
+
+        string swizzle = index == instruction.GetDestinationParamIndex()
+            ? instruction.GetDestinationWriteMaskName(GetDestinationSemanticSize(instruction))
+            : instruction.GetSourceSwizzleName(index);
+
+        var modifier = instruction.GetOperandModifier(index);
+        return ApplyModifier(modifier, $"{registerTypeName}{registerNumber}{swizzle}");
     }
 }

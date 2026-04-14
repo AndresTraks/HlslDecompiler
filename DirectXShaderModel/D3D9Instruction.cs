@@ -265,7 +265,7 @@ public class D3D9Instruction : Instruction
         return BitConverter.GetBytes(Params[index]);
     }
 
-    public override RegisterKey GetParamRegisterKey(int index)
+    public override D3D9RegisterKey GetParamRegisterKey(int index)
     {
         return new D3D9RegisterKey(
             GetParamRegisterType(index),

@@ -177,7 +177,7 @@ class InstructionParser
                     }
                 case D3D10Opcode.DclResource:
                     {
-                        var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                        var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
                         var destinationKey = new RegisterComponentKey(registerKey, 0);
                         var resourceInput = new RegisterInputNode(destinationKey);
@@ -186,7 +186,7 @@ class InstructionParser
                     }
                 case D3D10Opcode.DclResourceStructured:
                     {
-                        var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                        var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareStructuredBuffer(registerKey, instruction.GetResourceStructuredBufferStride());
                         var destinationKey = new RegisterComponentKey(registerKey, 0);
                         var resourceInput = new RegisterInputNode(destinationKey);
@@ -195,7 +195,7 @@ class InstructionParser
                     }
                 case D3D10Opcode.DclSampler:
                     {
-                        var registerKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+                        var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegister(registerKey, 0xF);
                         var destinationKey = new RegisterComponentKey(registerKey, 0);
                         var resourceInput = new RegisterInputNode(destinationKey);
@@ -204,12 +204,19 @@ class InstructionParser
                     }
                 case D3D10Opcode.DclThreadGroup:
                     {
-                        // TODO
+                        _registerState.NumThreads = [
+                            (int)instruction.GetParamIndexImmediate32(0, 0),
+                            (int)instruction.GetParamIndexImmediate32(0, 1),
+                            (int)instruction.GetParamIndexImmediate32(0, 2)];
                         break;
                     }
                 case D3D10Opcode.DclUnorderedAccessViewStructured:
                     {
-                        // TODO
+                        var registerKey = instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareUnorderedAccessView(registerKey);
+                        var destinationKey = new RegisterComponentKey(registerKey, 0);
+                        var resourceInput = new RegisterInputNode(destinationKey);
+                        SetActiveOutput(destinationKey, resourceInput);
                         break;
                     }
                 case D3D10Opcode.EndLoop:

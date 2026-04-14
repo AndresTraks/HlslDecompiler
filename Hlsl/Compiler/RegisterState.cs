@@ -19,6 +19,7 @@ public sealed class RegisterState
     public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
     public int? MaxOutputVertexCount { get; set; }
+    public int[]? NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
 
@@ -37,7 +38,15 @@ public sealed class RegisterState
             return constant.TypeInfo.Columns;
         }
 
-        return RegisterDeclarations[registerKey].MaskedLength;
+        if (RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration registerDeclaration))
+        {
+            return RegisterDeclarations[registerKey].MaskedLength;
+        }
+        if (ResourceDefinitions.Any(r => r.BindPoint == registerKey.Number))
+        {
+            return 1;
+        }
+        throw new NotImplementedException();
     }
 
     public string GetRegisterName(RegisterKey registerKey)
@@ -120,9 +129,11 @@ public sealed class RegisterState
                         return $"i[{d3d10RegisterKey.GSVertex}].{decl.Name}";
                     }
                     return "i." + decl.Name;
+                case OperandType.InputThreadID:
+                    return RegisterDeclarations[registerKey].Name;
                 case OperandType.Resource:
                     return ResourceDefinitions
-                        .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                        .Where(d => d.ShaderInputType == D3DShaderInputType.Texture || d.ShaderInputType == D3DShaderInputType.Structured)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 case OperandType.Sampler:
@@ -132,6 +143,11 @@ public sealed class RegisterState
                         .Name;
                 case OperandType.Temp:
                     return "r" + registerKey.Number;
+                case OperandType.UnorderedAccessView:
+                    return ResourceDefinitions
+                        .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
+                        .First(d => d.BindPoint == registerKey.Number)
+                        .Name;
                 default:
                     throw new NotImplementedException();
             }
@@ -229,8 +245,24 @@ public sealed class RegisterState
 
     public void DeclareStructuredBuffer(D3D10RegisterKey registerKey, uint stride)
     {
-        //TODO
-        //throw new NotImplementedException();
+        ResourceDefinition definition = _shaderModel.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Structured)
+            .FirstOrDefault(d => d.BindPoint == registerKey.Number);
+        if (definition != null)
+        {
+            ResourceDefinitions.Add(definition);
+        }
+    }
+
+    public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey)
+    {
+        ResourceDefinition definition = _shaderModel.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
+            .FirstOrDefault(d => d.BindPoint == registerKey.Number);
+        if (definition != null)
+        {
+            ResourceDefinitions.Add(definition);
+        }
     }
 
     public void DeclareConstant(D3D9ConstantDeclaration constant)
@@ -267,9 +299,9 @@ public sealed class RegisterState
         if (instruction.Opcode == Opcode.Dcl)
         {
             int destIndex = instruction.GetDestinationParamIndex();
-            var registerKey = instruction.GetParamRegisterKey(destIndex) as D3D9RegisterKey;
+            var registerKey = instruction.GetParamRegisterKey(destIndex);
             int writeMask = instruction.GetDestinationWriteMask();
-            D3D9RegisterKey paramRegisterKey = (D3D9RegisterKey)instruction.GetParamRegisterKey(1);
+            D3D9RegisterKey paramRegisterKey = instruction.GetParamRegisterKey(1);
             if (paramRegisterKey.Type == RegisterType.MiscType && paramRegisterKey.Number == 1)
             {
                 writeMask = 1;
@@ -312,7 +344,7 @@ public sealed class RegisterState
         else
         {
             int destIndex = instruction.GetDestinationParamIndex();
-            var registerKey = instruction.GetParamRegisterKey(destIndex) as D3D9RegisterKey;
+            var registerKey = instruction.GetParamRegisterKey(destIndex);
 
             if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
             {
@@ -341,7 +373,7 @@ public sealed class RegisterState
             instruction.Opcode == D3D10Opcode.DclInputSiv ||
             instruction.Opcode == D3D10Opcode.DclOutput)
         {
-            var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex()) as D3D10RegisterKey;
+            var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex());
 
             if (registerKey.GSVertex.HasValue)
             {
@@ -375,6 +407,7 @@ public sealed class RegisterState
                     switch (registerKey.OperandType)
                     {
                         case OperandType.Input:
+                        case OperandType.InputThreadID:
                             MethodInputRegisters.Add(registerKey, registerDeclaration);
                             break;
                         case OperandType.Output:
@@ -387,7 +420,7 @@ public sealed class RegisterState
         else
         {
             int destIndex = instruction.GetDestinationParamIndex();
-            var registerKey = instruction.GetParamRegisterKey(destIndex) as D3D10RegisterKey;
+            var registerKey = instruction.GetParamRegisterKey(destIndex);
 
             if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
             {

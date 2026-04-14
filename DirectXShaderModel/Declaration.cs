@@ -88,7 +88,15 @@ public class RegisterDeclaration
         get
         {
             string centroid = ResultModifier.HasFlag(ResultModifier.Centroid) ? "centroid " : "";
-            string type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
+            string type;
+            if (RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.InputThreadID)
+            {
+                type = "uint";
+            }
+            else
+            {
+                type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
+            }
             string length = MaskedLength > 1 ? MaskedLength.ToString() : "";
             return centroid + type + length;
         }

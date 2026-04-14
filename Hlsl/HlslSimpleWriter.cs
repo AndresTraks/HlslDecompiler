@@ -386,6 +386,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.GE:
                 WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case D3D10Opcode.LdStructured:
+                // TODO: consider offset
+                WriteLine("{0} = {3}[{1}];", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
             case D3D10Opcode.Mad:
                 WriteLine("{0} = {1} * {2} + {3};", GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
@@ -413,14 +417,22 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Sqrt:
                 WriteLine("{0} = sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
                 break;
+            case D3D10Opcode.StoreStructured:
+                // TODO: consider offset
+                WriteLine("{0}[{1}] = {3};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
             case D3D10Opcode.DclConstantBuffer:
+            case D3D10Opcode.DclGlobalFlags:
             case D3D10Opcode.DclInput:
             case D3D10Opcode.DclInputPS:
             case D3D10Opcode.DclInputPSSiv:
             case D3D10Opcode.DclOutput:
             case D3D10Opcode.DclResource:
+            case D3D10Opcode.DclResourceStructured:
             case D3D10Opcode.DclSampler:
             case D3D10Opcode.DclTemps:
+            case D3D10Opcode.DclThreadGroup:
+            case D3D10Opcode.DclUnorderedAccessViewStructured:
             case D3D10Opcode.Ret:
                 break;
             default:
@@ -453,7 +465,7 @@ public class HlslSimpleWriter : HlslWriter
     {
         string sourceRegisterName;
 
-        var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D9RegisterKey;
+        var registerKey = instruction.GetParamRegisterKey(srcIndex);
         switch (registerKey.Type)
         {
             case RegisterType.Const:
@@ -506,7 +518,7 @@ public class HlslSimpleWriter : HlslWriter
     {
         string sourceRegisterName;
 
-        var registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
+        var registerKey = instruction.GetParamRegisterKey(srcIndex);
         switch (registerKey.OperandType)
         {
             case OperandType.Immediate32:
@@ -667,7 +679,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private static string GetSourceConstantValue(D3D10Instruction instruction, int srcIndex, int? destinationLength = null)
     {
-        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex) as D3D10RegisterKey;
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
 
         if (destinationLength == null)

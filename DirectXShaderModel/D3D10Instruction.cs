@@ -482,7 +482,7 @@ public class D3D10Instruction : Instruction
         return D3D10OperandModifier.None;
     }
 
-    public override RegisterKey GetParamRegisterKey(int index)
+    public override D3D10RegisterKey GetParamRegisterKey(int index)
     {
         OperandType operandType = GetOperandType(index);
         if (operandType == OperandType.ConstantBuffer)

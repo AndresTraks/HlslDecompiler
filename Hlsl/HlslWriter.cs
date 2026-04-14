@@ -76,6 +76,11 @@ public abstract class HlslWriter
             WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
         }
 
+        if (_registers.NumThreads != null)
+        {
+            WriteLine($"[numthreads({_registers.NumThreads[0]}, {_registers.NumThreads[1]}, {_registers.NumThreads[2]})]", _registers.MaxOutputVertexCount);
+        }
+
         string methodReturnType = GetMethodReturnType();
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
@@ -134,6 +139,14 @@ public abstract class HlslWriter
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
                     WriteLine($"SamplerState {resource.Name};");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.Structured)
+                {
+                    WriteLine($"StructuredBuffer<float> {resource.Name} : register(t{resource.BindPoint});");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.UavRWStructured)
+                {
+                    WriteLine($"RWStructuredBuffer<float> {resource.Name} : register(u{resource.BindPoint});");
                 }
                 else
                 {

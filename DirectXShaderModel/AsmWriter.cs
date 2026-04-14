@@ -541,19 +541,14 @@ public class AsmWriter
 
     private static string ApplyModifier(D3D10OperandModifier modifier, string value)
     {
-        switch (modifier)
+        return modifier switch
         {
-            case D3D10OperandModifier.None:
-                return value;
-            case D3D10OperandModifier.Neg:
-                return $"-{value}";
-            case D3D10OperandModifier.Abs:
-                return $"|{value}|";
-            case D3D10OperandModifier.Neg | D3D10OperandModifier.Abs:
-                return $"-|{value}|";
-            default:
-                throw new NotSupportedException("Not supported operand modifier " + modifier);
-        }
+            D3D10OperandModifier.None => value,
+            D3D10OperandModifier.Neg => $"-{value}",
+            D3D10OperandModifier.Abs => $"|{value}|",
+            D3D10OperandModifier.Neg | D3D10OperandModifier.Abs => $"-|{value}|",
+            _ => throw new NotSupportedException("Not supported operand modifier " + modifier),
+        };
     }
 
     static string ApplyModifier(SourceModifier modifier, string value)

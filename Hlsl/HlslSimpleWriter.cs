@@ -361,65 +361,60 @@ public class HlslSimpleWriter : HlslWriter
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
-                WriteLine("{0} = {1} + {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteLine("{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Cut:
                 WriteLine("stream.RestartStrip();");
                 break;
             case D3D10Opcode.DerivRtx:
-                WriteLine("{0} = ddx({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteLine("{0} = ddx({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.DerivRty:
-                WriteLine("{0} = ddy({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteLine("{0} = ddy({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Discard:
-                WriteLine("clip({0});", GetSourceName(instruction, 0));
+                WriteLine("clip({0});", GetOperandName(instruction, 0));
                 break;
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
-                WriteLine("{0} = dot({1}, {2});", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteLine("{0} = dot({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Emit:
                 WriteLine("stream.Append(o);");
                 break;
             case D3D10Opcode.GE:
-                WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.LdStructured:
                 // TODO: consider offset
-                WriteLine("{0} = {3}[{1}];", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteLine("{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mad:
-                WriteLine("{0} = {1} * {2} + {3};", GetDestinationName(instruction),
-                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteLine("{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mov:
-                WriteLine("{0} = {1};", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.MovC:
-                WriteLine("{0} = ({1} != 0) ? {2} : {3};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteLine("{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mul:
-                WriteLine("{0} = {1} * {2};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                WriteLine("{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Rsq:
-                WriteLine("{0} = 1 / sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteLine("{0} = 1 / sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Sample:
-                var samplerKey = instruction.GetParamRegisterKey(2);
-                int texCoordLength = _registers.ResourceDefinitions
-                    .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-                    .First(d => d.BindPoint == samplerKey.Number)
-                    .GetDimensionSize();
-                WriteLine("{0} = {2}.Sample({3}, {1});", GetDestinationName(instruction), GetSourceName(instruction, 1, texCoordLength), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteLine("{0} = {2}.Sample({3}, {1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Sqrt:
-                WriteLine("{0} = sqrt({1});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteLine("{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.StoreStructured:
                 // TODO: consider offset
-                WriteLine("{0}[{1}] = {3};", GetDestinationName(instruction), GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                WriteLine("{0}[{1}] = {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.DclConstantBuffer:
             case D3D10Opcode.DclGlobalFlags:
@@ -440,14 +435,13 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
-    private string GetDestinationName(Instruction instruction)
+    private string GetDestinationName(D3D9Instruction instruction)
     {
         int destIndex = instruction.GetDestinationParamIndex();
-        RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
+        D3D9RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
 
         string registerName;
-        if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Opcode == Opcode.MovA
-            && (registerKey as D3D9RegisterKey).Type == RegisterType.Addr)
+        if (instruction.Opcode == Opcode.MovA && registerKey.Type == RegisterType.Addr)
         {
             registerName = "a0";
         }
@@ -514,26 +508,9 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
     }
 
-    private string GetSourceName(D3D10Instruction instruction, int srcIndex, int? destinationLength = null)
+    private static string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)
     {
-        string sourceRegisterName;
-
-        var registerKey = instruction.GetParamRegisterKey(srcIndex);
-        switch (registerKey.OperandType)
-        {
-            case OperandType.Immediate32:
-                return GetSourceConstantValue(instruction, srcIndex, destinationLength);
-            default:
-                sourceRegisterName = _registers.GetRegisterName(registerKey);
-                break;
-        }
-        sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
-        return ApplyModifier(instruction.GetOperandModifier(srcIndex), sourceRegisterName);
-    }
-
-    private static string GetRelativeAddressingName(Instruction instruction, int srcIndex)
-    {
-        if (instruction is D3D9Instruction d3D9Instruction && d3D9Instruction.Params.HasRelativeAddressing(srcIndex))
+        if (instruction.Params.HasRelativeAddressing(srcIndex))
         {
             return "[a0]";
         }
@@ -562,8 +539,7 @@ public class HlslSimpleWriter : HlslWriter
             }
             else
             {
-                if (instruction is D3D9Instruction d3D9Instruction
-                    && (d3D9Instruction.Opcode == Opcode.If || d3D9Instruction.Opcode == Opcode.IfC))
+                if (instruction.Opcode == Opcode.If || instruction.Opcode == Opcode.IfC)
                 {
                     // TODO
                 }
@@ -677,29 +653,59 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
-    private static string GetSourceConstantValue(D3D10Instruction instruction, int srcIndex, int? destinationLength = null)
+    private string GetOperandName(D3D10Instruction instruction, int operandIndex)
+    {
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+
+        if (registerKey.OperandType == OperandType.Immediate32)
+        {
+            return GetSourceConstantValue(instruction, operandIndex);
+        }
+
+        D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
+        string registerName = _registers.GetRegisterName(registerKey);
+        string writeMaskName;
+        if (operandIndex == instruction.GetDestinationParamIndex())
+        {
+            writeMaskName = instruction.GetDestinationWriteMaskName(_registers.GetRegisterMaskedLength(registerKey));
+        }
+        else
+        {
+            int? maskedLength = null;
+            if (instruction.Opcode == D3D10Opcode.Sample && operandIndex == 1)
+            {
+                maskedLength = _registers.ResourceDefinitions
+                    .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                    .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
+                    .GetDimensionSize();
+            }
+            writeMaskName = instruction.GetSourceSwizzleName(operandIndex, maskedLength);
+        }
+
+        return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
+    }
+
+    private static string GetSourceConstantValue(D3D10Instruction instruction, int srcIndex)
     {
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
 
-        if (destinationLength == null)
+        int destinationLength;
+        if (instruction.HasDestination)
         {
-            if (instruction.HasDestination)
+            int writeMask = instruction.GetDestinationWriteMask();
+            destinationLength = 0;
+            for (int i = 0; i < 4; i++)
             {
-                int writeMask = instruction.GetDestinationWriteMask();
-                destinationLength = 0;
-                for (int i = 0; i < 4; i++)
+                if ((writeMask & (1 << i)) != 0)
                 {
-                    if ((writeMask & (1 << i)) != 0)
-                    {
-                        destinationLength++;
-                    }
+                    destinationLength++;
                 }
             }
-            else
-            {
-                destinationLength = 4;
-            }
+        }
+        else
+        {
+            destinationLength = 4;
         }
 
         if (registerKey.ImmediateSingle.Length == 1)
@@ -707,11 +713,11 @@ public class HlslSimpleWriter : HlslWriter
             return ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
         }
         string[] constant = swizzle
-                        .Take(destinationLength.Value)
+                        .Take(destinationLength)
                         .Select(s => registerKey.ImmediateSingle[s])
                         .Select(ConstantFormatter.Format)
                         .ToArray();
-        return $"float{destinationLength.Value}(" + string.Join(", ", constant) + ")";
+        return $"float{destinationLength}(" + string.Join(", ", constant) + ")";
     }
 
     private static string ApplyModifier(SourceModifier modifier, string value)

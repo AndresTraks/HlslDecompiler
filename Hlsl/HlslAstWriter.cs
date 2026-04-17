@@ -61,6 +61,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteAssignmentStatement(assignmentStatement);
         }
+        else if (statement is StoreStructuredStatement storeStructured)
+        {
+            WriteStoreStructuredStatement(storeStructured);
+        }
         else if (statement is ClipStatement clip)
         {
             WriteClipStatement(clip);
@@ -97,7 +101,6 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteAssignmentStatement(AssignmentStatement assignmentStatement)
     {
-
         IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = assignmentStatement.Outputs
                 .Where(o => {
                     if (!o.Key.RegisterKey.IsTempRegister)
@@ -126,6 +129,14 @@ public class HlslAstWriter : HlslWriter
             string compiled = _compiler.Compile(rootGroup.Value);
             WriteLine($"o.{outputRegister.Name} = {compiled};");
         }
+    }
+
+    private void WriteStoreStructuredStatement(StoreStructuredStatement storeStructured)
+    {
+        string compiledDestination = _compiler.Compile(Reduce(storeStructured.Destination));
+        string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
+        string compiledValue = _compiler.Compile(Reduce(storeStructured.Value));
+        WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
     }
 
     private void WriteClipStatement( ClipStatement clip)

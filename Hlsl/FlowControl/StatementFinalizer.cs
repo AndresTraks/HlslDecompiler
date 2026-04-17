@@ -230,7 +230,7 @@ public class StatementFinalizer
     private static void SetReturnStatement(IList<IStatement> statements)
     {
         IStatement lastStatement = statements.Last();
-        if (lastStatement is ReturnStatement || lastStatement is AppendStatement)
+        if (lastStatement is ReturnStatement || lastStatement is AppendStatement || lastStatement is StoreStructuredStatement)
         {
             return;
         }

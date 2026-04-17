@@ -122,6 +122,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.GE:
                 case D3D10Opcode.IAdd:
                 case D3D10Opcode.IToF:
+                case D3D10Opcode.LdStructured:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.MovC:
@@ -161,38 +162,42 @@ public class D3D10Instruction : Instruction
 
     public override int GetDestinationWriteMask()
     {
-        int destinationParamIndex = GetDestinationParamIndex();
+        return GetOperandWriteMask(GetDestinationParamIndex());
+    }
 
-        D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(destinationParamIndex);
+    public int GetOperandWriteMask(int operandIndex)
+    {
+        D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
             throw new NotImplementedException();
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
         {
-            ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(destinationParamIndex);
+            Span<uint> span = OperandTokens.GetSpan(operandIndex);
+
+            ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(operandIndex);
             if (selectionMode == ComponentSelectionMode.Mask)
             {
-                Span<uint> span = OperandTokens.GetSpan(destinationParamIndex);
                 int mask = (int)((span[0] >> 4) & 0xF);
                 return mask;
             }
             else if (selectionMode == ComponentSelectionMode.Swizzle)
             {
+                int swizzle = (int)((span[0] >> 4) & 0xff);
                 int mask = 0;
                 for (int i = 0; i < 4; i++)
                 {
-                    int swizzle = GetOperandComponentSwizzle(destinationParamIndex, i);
-                    if (swizzle != i)
+                    int componentSwizzle = (swizzle >> (2 * i)) & 3;
+                    if (componentSwizzle != i)
                     {
-                        mask |= 1 << swizzle;
+                        mask |= 1 << componentSwizzle;
                     }
                 }
                 return mask;
             }
             else if (selectionMode == ComponentSelectionMode.Select1)
             {
-                Span<uint> span = OperandTokens.GetSpan(destinationParamIndex);
                 int name = (int)((span[0] >> 4) & 0x2);
                 return 1 << name;
             }
@@ -263,33 +268,6 @@ public class D3D10Instruction : Instruction
     {
         Span<uint> span = OperandTokens.GetSpan(index);
         return (ComponentSelectionMode)((span[0] >> 2) & 3);
-    }
-
-    private int GetOperandComponentSwizzle(int index, int component)
-    {
-        D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(index);
-        if (componentSelection == D3D10OperandNumComponents.Operand4Component)
-        {
-            ComponentSelectionMode selectionMode = GetOperandComponentSelectionMode(index);
-            if (selectionMode == ComponentSelectionMode.Mask)
-            {
-                Span<uint> span = OperandTokens.GetSpan(index);
-                int mask = (int)((span[0] >> 4) & 0xF);
-                throw new NotImplementedException();
-                //return component;
-            }
-            else if (selectionMode == ComponentSelectionMode.Swizzle)
-            {
-                Span<uint> span = OperandTokens.GetSpan(index);
-                int swizzle = (int)((span[0] >> 4) & 0xff);
-                return (swizzle >> (2 * component)) & 3;
-            }
-            else if (selectionMode == ComponentSelectionMode.Select1)
-            {
-                throw new NotImplementedException();
-            }
-        }
-        throw new NotImplementedException();
     }
 
     public override int GetSourceSwizzle(int srcIndex)

@@ -12,7 +12,6 @@ public class HlslSimpleWriter : HlslWriter
 {
     private int _loopVariableIndex = -1;
     private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
-    private Dictionary<RegisterKey, int> _registerWriteMasks;
 
     public HlslSimpleWriter(ShaderModel shader)
         : base(shader)
@@ -34,7 +33,6 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine();
         }
 
-        _registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
         WriteTemporaryVariableDeclarations();
         foreach (Instruction instruction in _shader.Instructions)
         {
@@ -57,30 +55,18 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteTemporaryVariableDeclarations()
     {
-        foreach (var register in _registerWriteMasks)
+        Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
+        foreach (var register in registerWriteMasks)
         {
             int writeMask = register.Value;
-            string writeMaskName;
-            switch (writeMask)
+            string writeMaskName = writeMask switch
             {
-                case 0x1:
-                    writeMaskName = "float";
-                    break;
-                case 0x3:
-                    writeMaskName = "float2";
-                    break;
-                case 0x7:
-                    writeMaskName = "float3";
-                    break;
-                case 0xF:
-                    writeMaskName = "float4";
-                    break;
-                default:
-                    // TODO
-                    writeMaskName = "float4";
-                    break;
-                    //throw new NotImplementedException();
-            }
+                0x1 => "float",
+                0x3 => "float2",
+                0x7 => "float3",
+                0xF => "float4",
+                _ => "float4",// TODO
+            };
             WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
         }
     }
@@ -91,20 +77,7 @@ public class HlslSimpleWriter : HlslWriter
         foreach (Instruction instruction in instructions.Where(i => i.HasDestination))
         {
             int destIndex = instruction.GetDestinationParamIndex();
-            if (instruction is D3D9Instruction d3D9Instruction
-                && (d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Temp
-                || d3D9Instruction.GetParamRegisterType(destIndex) == RegisterType.Addr))
-            {
-                int writeMask = instruction.GetDestinationWriteMask();
-
-                var registerKey = instruction.GetParamRegisterKey(destIndex);
-                if (!tempRegisters.TryAdd(registerKey, writeMask))
-                {
-                    tempRegisters[registerKey] |= writeMask;
-                }
-            }
-            else if (instruction is D3D10Instruction d3D10Instruction
-                && d3D10Instruction.GetParamRegisterKey(destIndex).IsTempRegister)
+            if (IsDestinationTempRegister(instruction, destIndex))
             {
                 int writeMask = instruction.GetDestinationWriteMask();
 
@@ -116,6 +89,12 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         return tempRegisters;
+    }
+
+    private static bool IsDestinationTempRegister(Instruction instruction, int destIndex)
+    {
+        return (instruction is D3D9Instruction d3d9 && (d3d9.GetParamRegisterType(destIndex) == RegisterType.Temp || d3d9.GetParamRegisterType(destIndex) == RegisterType.Addr))
+            || (instruction is D3D10Instruction d3d10 && d3d10.GetParamRegisterKey(destIndex).IsTempRegister);
     }
 
     private static String GetTempRegisterName(RegisterKey registerKey)
@@ -659,7 +638,18 @@ public class HlslSimpleWriter : HlslWriter
 
         if (registerKey.OperandType == OperandType.Immediate32)
         {
-            return GetSourceConstantValue(instruction, operandIndex);
+            if (registerKey.ImmediateSingle.Length == 1)
+            {
+                return ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
+            }
+            int destinationLength = instruction.HasDestination ? instruction.GetDestinationMaskLength() : 4;
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            string[] constant = swizzle
+                            .Take(destinationLength)
+                            .Select(s => registerKey.ImmediateSingle[s])
+                            .Select(ConstantFormatter.Format)
+                            .ToArray();
+            return $"float{destinationLength}(" + string.Join(", ", constant) + ")";
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
@@ -683,41 +673,6 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
-    }
-
-    private static string GetSourceConstantValue(D3D10Instruction instruction, int srcIndex)
-    {
-        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(srcIndex);
-        byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
-
-        int destinationLength;
-        if (instruction.HasDestination)
-        {
-            int writeMask = instruction.GetDestinationWriteMask();
-            destinationLength = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                if ((writeMask & (1 << i)) != 0)
-                {
-                    destinationLength++;
-                }
-            }
-        }
-        else
-        {
-            destinationLength = 4;
-        }
-
-        if (registerKey.ImmediateSingle.Length == 1)
-        {
-            return ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
-        }
-        string[] constant = swizzle
-                        .Take(destinationLength)
-                        .Select(s => registerKey.ImmediateSingle[s])
-                        .Select(ConstantFormatter.Format)
-                        .ToArray();
-        return $"float{destinationLength}(" + string.Join(", ", constant) + ")";
     }
 
     private static string ApplyModifier(SourceModifier modifier, string value)

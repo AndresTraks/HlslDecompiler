@@ -254,6 +254,14 @@ public sealed class NodeCompiler
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     return $"length({value1})";
                 }
+            case LoadStructuredNode _:
+                {
+                    var address = Compile(components.Select(g => g.Inputs[0]));
+                    var byteOffset = Compile(components.Select(g => g.Inputs[1]), components.Count); // TODO
+                    var value = Compile(components.Select(g => g.Inputs[2]), components.Count);
+
+                    return $"{value}[{address}]";
+                }
             case MoveConditionalOperation _:
                 {
                     var value1 = Compile(components.Select(g => g.Inputs[0]));

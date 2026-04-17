@@ -45,7 +45,7 @@ class InstructionParser
     {
         _shaderModel = shader;
         _registerState = new RegisterState(shader);
-        _statements = new List<IStatement>();
+        _statements = [];
         _currentStatements = new Stack<IStatement>();
 
         int instructionPointer = 0;
@@ -225,7 +225,6 @@ class InstructionParser
                 case D3D10Opcode.Emit:
                     InsertAppend();
                     break;
-                case D3D10Opcode.LdStructured:
                 case D3D10Opcode.Ilt:
                     {
                         // TODO
@@ -238,7 +237,9 @@ class InstructionParser
                     }
                 case D3D10Opcode.StoreStructured:
                     {
-                        // TODO
+                        var output = new RegisterInputNode(GetDestinationKeys(instruction).First());
+                        var inputs = GetInputs(instruction, 3);
+                        InsertStatement(new StoreStructuredStatement(output, inputs[0], inputs[2], ActiveOutputs));
                         break;
                     }
                 case D3D10Opcode.DclGlobalFlags:
@@ -799,6 +800,7 @@ class InstructionParser
             case D3D10Opcode.GE:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IToF:
+            case D3D10Opcode.LdStructured:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mad:
             case D3D10Opcode.Max:
@@ -825,6 +827,8 @@ class InstructionParser
                             return new FractionalOperation(inputs[0]);
                         case D3D10Opcode.GE:
                             return new GreaterEqualOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.LdStructured:
+                            return new LoadStructuredNode(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.Log:
                             return new LogOperation(inputs[0]);
                         case D3D10Opcode.Mad:
@@ -1201,6 +1205,8 @@ class InstructionParser
                 return 2;
             case D3D10Opcode.Mad:
             case D3D10Opcode.MovC:
+            case D3D10Opcode.LdStructured:
+            case D3D10Opcode.StoreStructured:
                 return 3;
             default:
                 throw new NotImplementedException();

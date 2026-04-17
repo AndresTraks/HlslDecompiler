@@ -42,9 +42,20 @@ public sealed class RegisterState
         {
             return RegisterDeclarations[registerKey].MaskedLength;
         }
-        if (ResourceDefinitions.Any(r => r.BindPoint == registerKey.Number))
+        if (registerKey is D3D10RegisterKey d3D10RegisterKey)
         {
-            return 1;
+            if (d3D10RegisterKey.OperandType == OperandType.Resource
+                && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.Structured
+                && r.BindPoint == registerKey.Number))
+            {
+                return 1;
+            }
+            if (d3D10RegisterKey.OperandType == OperandType.UnorderedAccessView
+                && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.UavRWStructured
+                && r.BindPoint == registerKey.Number))
+            {
+                return 1;
+            }
         }
         throw new NotImplementedException();
     }

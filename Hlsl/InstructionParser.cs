@@ -972,21 +972,13 @@ class InstructionParser
     private HlslTreeNode CreateDotProductNode(D3D10Instruction instruction)
     {
         var addends = new List<HlslTreeNode>();
-        int numComponents;
-        switch (instruction.Opcode)
+        var numComponents = instruction.Opcode switch
         {
-            case D3D10Opcode.Dp2:
-                numComponents = 2;
-                break;
-            case D3D10Opcode.Dp3:
-                numComponents = 3;
-                break;
-            case D3D10Opcode.Dp4:
-                numComponents = 4;
-                break;
-            default:
-                throw new InvalidOperationException();
-        }
+            D3D10Opcode.Dp2 => 2,
+            D3D10Opcode.Dp3 => 3,
+            D3D10Opcode.Dp4 => 4,
+            _ => throw new InvalidOperationException(),
+        };
         for (int component = 0; component < numComponents; component++)
         {
             IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
@@ -1067,19 +1059,14 @@ class InstructionParser
 
     private static HlslTreeNode ApplyModifier(HlslTreeNode input, SourceModifier modifier)
     {
-        switch (modifier)
+        return modifier switch
         {
-            case SourceModifier.Abs:
-                return new AbsoluteOperation(input);
-            case SourceModifier.Negate:
-                return new NegateOperation(input);
-            case SourceModifier.AbsAndNegate:
-                return new NegateOperation(new AbsoluteOperation(input));
-            case SourceModifier.None:
-                return input;
-            default:
-                throw new NotImplementedException();
-        }
+            SourceModifier.Abs => new AbsoluteOperation(input),
+            SourceModifier.Negate => new NegateOperation(input),
+            SourceModifier.AbsAndNegate => new NegateOperation(new AbsoluteOperation(input)),
+            SourceModifier.None => input,
+            _ => throw new NotImplementedException(),
+        };
     }
 
     private HlslTreeNode ApplyModifier(HlslTreeNode input, ResultModifier modifier)

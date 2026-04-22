@@ -65,8 +65,14 @@ public class AsmWriter
 
     public void Write(string asmFilename)
     {
-        var asmFile = new FileStream(asmFilename, FileMode.Create, FileAccess.Write);
-        asmWriter = new StreamWriter(asmFile);
+        var stream = new FileStream(asmFilename, FileMode.Create, FileAccess.Write);
+        Write(stream);
+        stream.Dispose();
+    }
+
+    public void Write(Stream stream)
+    {
+        asmWriter = new StreamWriter(stream);
         string shaderType = shader.Type switch
         {
             ShaderType.Vertex => "vs",
@@ -90,7 +96,6 @@ public class AsmWriter
         }
 
         asmWriter.Dispose();
-        asmFile.Dispose();
     }
 
     private void WriteInstruction(D3D9Instruction instruction)
@@ -457,7 +462,7 @@ public class AsmWriter
                 WriteInstruction(instruction, "iadd", 3);
                 break;
             case D3D10Opcode.Ilt:
-                WriteInstruction(instruction, "ilt", 2);
+                WriteInstruction(instruction, "ilt", 3);
                 break;
             case D3D10Opcode.IToF:
                 WriteInstruction(instruction, "itof", 2);

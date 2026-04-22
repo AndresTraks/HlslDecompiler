@@ -340,7 +340,11 @@ public class HlslSimpleWriter : HlslWriter
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
+            case D3D10Opcode.IAdd:
                 WriteLine("{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.BreakC:
+                WriteLine("if ({0} != 0) break;", GetOperandName(instruction, 0));
                 break;
             case D3D10Opcode.Cut:
                 WriteLine("stream.RestartStrip();");
@@ -362,12 +366,26 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Emit:
                 WriteLine("stream.Append(o);");
                 break;
+            case D3D10Opcode.EndLoop:
+                indent = indent.Substring(0, indent.Length - 1);
+                WriteLine("}");
+                break;
             case D3D10Opcode.GE:
                 WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.Ilt:
+                WriteLine("{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.IToF:
+                WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LdStructured:
                 // TODO: consider offset
                 WriteLine("{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                break;
+            case D3D10Opcode.Loop:
+                WriteLine("while (true) {");
+                indent += "\t";
                 break;
             case D3D10Opcode.Mad:
                 WriteLine("{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
@@ -388,6 +406,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Sample:
                 WriteLine("{0} = {2}.Sample({3}, {1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
+            case D3D10Opcode.SinCos:
+                WriteLine("{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                WriteLine("{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
             case D3D10Opcode.Sqrt:
                 WriteLine("{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -397,10 +419,15 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.DclConstantBuffer:
             case D3D10Opcode.DclGlobalFlags:
+            case D3D10Opcode.DclGSInputPrimitive:
+            case D3D10Opcode.DclGSMaxOutputVertexCount:
             case D3D10Opcode.DclInput:
             case D3D10Opcode.DclInputPS:
             case D3D10Opcode.DclInputPSSiv:
+            case D3D10Opcode.DclInputSiv:
             case D3D10Opcode.DclOutput:
+            case D3D10Opcode.DclGSOutputPrimitiveTopology:
+            case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
             case D3D10Opcode.DclResourceStructured:
             case D3D10Opcode.DclSampler:

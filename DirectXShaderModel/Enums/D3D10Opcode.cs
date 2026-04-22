@@ -223,3 +223,27 @@ public enum D3D10Opcode
     UToD,
     D3d111Reserved0
 }
+
+public static class D3D10OpcodeExtensions
+{
+    public static bool IsInteger(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.IAdd:
+            case D3D10Opcode.Ieq:
+            case D3D10Opcode.Ige:
+            case D3D10Opcode.Ilt:
+            case D3D10Opcode.IMad:
+            case D3D10Opcode.IMin:
+            case D3D10Opcode.IMul:
+            case D3D10Opcode.Ine:
+            case D3D10Opcode.INeg:
+            case D3D10Opcode.IMax:
+            case D3D10Opcode.Discard:
+                return true;
+            default:
+                return false;
+        }
+    }
+}

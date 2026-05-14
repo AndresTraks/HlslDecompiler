@@ -309,7 +309,7 @@ public sealed class RegisterState
     {
         if (instruction.Opcode == Opcode.Dcl)
         {
-            int destIndex = instruction.GetDestinationParamIndex();
+            int destIndex = instruction.GetDestinationParamIndex().Value;
             var registerKey = instruction.GetParamRegisterKey(destIndex);
             int writeMask = instruction.GetDestinationWriteMask();
             D3D9RegisterKey paramRegisterKey = instruction.GetParamRegisterKey(1);
@@ -354,7 +354,7 @@ public sealed class RegisterState
         }
         else
         {
-            int destIndex = instruction.GetDestinationParamIndex();
+            int destIndex = instruction.GetDestinationParamIndex().Value;
             var registerKey = instruction.GetParamRegisterKey(destIndex);
 
             if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
@@ -384,7 +384,7 @@ public sealed class RegisterState
             instruction.Opcode == D3D10Opcode.DclInputSiv ||
             instruction.Opcode == D3D10Opcode.DclOutput)
         {
-            var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex());
+            var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex().Value);
 
             if (registerKey.GSVertex.HasValue)
             {
@@ -430,7 +430,7 @@ public sealed class RegisterState
         }
         else
         {
-            int destIndex = instruction.GetDestinationParamIndex();
+            int destIndex = instruction.GetDestinationParamIndex().Value;
             var registerKey = instruction.GetParamRegisterKey(destIndex);
 
             if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))

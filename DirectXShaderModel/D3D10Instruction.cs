@@ -136,6 +136,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SampleB:
                 case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
+                case D3D10Opcode.StoreStructured:
                     return true;
                 default:
                     return false;
@@ -155,18 +156,19 @@ public class D3D10Instruction : Instruction
         }
     }
 
-    public override int GetDestinationParamIndex()
+    public override int? GetDestinationParamIndex()
     {
+        if (!HasDestination)
+        {
+            return null;
+        }
         return 0;
     }
 
     public override int GetDestinationWriteMask()
     {
-        return GetOperandWriteMask(GetDestinationParamIndex());
-    }
+        int operandIndex = GetDestinationParamIndex().Value;
 
-    public int GetOperandWriteMask(int operandIndex)
-    {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
@@ -341,10 +343,15 @@ public class D3D10Instruction : Instruction
                     destinationMask = 15;
                     destinationLength = 4;
                 }
-                else
+                else if (HasDestination)
                 {
                     destinationMask = GetDestinationWriteMask();
                     destinationLength = GetDestinationMaskLength();
+                }
+                else
+                {
+                    destinationMask = 15;
+                    destinationLength = 4;
                 }
                 break;
         }
@@ -379,7 +386,7 @@ public class D3D10Instruction : Instruction
 
     public override string GetDeclSemantic()
     {
-        int destIndex = GetDestinationParamIndex();
+        int destIndex = GetDestinationParamIndex().Value;
         OperandType operandType = GetOperandType(destIndex);
         string name = operandType switch
         {
@@ -449,6 +456,11 @@ public class D3D10Instruction : Instruction
         return BitConverter.ToInt32(GetOperandValueBytes(index, 0), 0);
     }
 
+    public float GetParamInt(int index, int componentIndex)
+    {
+        return BitConverter.ToInt32(GetOperandValueBytes(index, componentIndex), 0);
+    }
+
     public D3D10OperandModifier GetOperandModifier(int index)
     {
         Span<uint> span = OperandTokens.GetSpan(index);
@@ -472,7 +484,7 @@ public class D3D10Instruction : Instruction
         }
         else if (operandType == OperandType.Immediate32)
         {
-            if (Opcode == D3D10Opcode.Discard)
+            if (Opcode.IsInteger())
             {
                 return new D3D10RegisterKey([ GetParamInt(index) ]);
             }

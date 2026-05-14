@@ -21,7 +21,6 @@ public class SwizzleTests
             new D3D10Instruction(D3D10Opcode.Mov, [..CreateOperand("o0.yz"), ..CreateOperand("v0.xy", "yz") ], false)
         ]);
         string result = WriteAsm(model);
-        string hlsl = WriteHlsl(model);
 
         Assert.That(result, Is.EqualTo("""
             ps_4_0

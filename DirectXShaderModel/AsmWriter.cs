@@ -29,7 +29,7 @@ public class AsmWriter
 
     private string GetDestinationName(D3D9Instruction instruction)
     {
-        int destIndex = instruction.GetDestinationParamIndex();
+        int destIndex = instruction.GetDestinationParamIndex().Value;
         string registerName = GetParamRegisterName(instruction, destIndex);
         int destinationLength = GetDestinationSemanticSize(instruction);
         string writeMaskName = instruction.GetDestinationWriteMaskName(destinationLength);
@@ -38,7 +38,7 @@ public class AsmWriter
 
     private static int GetDestinationSemanticSize(D3D9Instruction instruction)
     {
-        RegisterType registerType = instruction.GetParamRegisterType(instruction.GetDestinationParamIndex());
+        RegisterType registerType = instruction.GetParamRegisterType(instruction.GetDestinationParamIndex().Value);
         if (registerType == RegisterType.DepthOut)
         {
             return 1;
@@ -48,7 +48,7 @@ public class AsmWriter
 
     private static int GetDestinationSemanticSize(D3D10Instruction instruction)
     {
-        if (instruction.GetOperandType(instruction.GetDestinationParamIndex()) == OperandType.OutputDepth)
+        if (instruction.GetOperandType(instruction.GetDestinationParamIndex().Value) == OperandType.OutputDepth)
         {
             return 1;
         }
@@ -712,24 +712,33 @@ public class AsmWriter
             var componentSelection = instruction.GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand1Component)
             {
-                string immediate;
-                if (instruction.Opcode == D3D10Opcode.Discard)
+                if (instruction.Opcode.IsInteger())
                 {
-                    immediate = instruction.GetParamInt(index).ToString();
+                    return $"l({instruction.GetParamInt(index)})";
                 }
                 else
                 {
-                    immediate = ConstantFormatter.Format(instruction.GetParamSingle(index)[0]);
+                    return $"l({ConstantFormatter.Format(instruction.GetParamSingle(index)[0])})";
                 }
-                return $"l({immediate})";
             }
             else
             {
-                string immediate0 = ConstantFormatter.Format(instruction.GetParamSingle(index, 0));
-                string immediate1 = ConstantFormatter.Format(instruction.GetParamSingle(index, 1));
-                string immediate2 = ConstantFormatter.Format(instruction.GetParamSingle(index, 2));
-                string immediate3 = ConstantFormatter.Format(instruction.GetParamSingle(index, 3));
-                return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
+                if (instruction.Opcode.IsInteger())
+                {
+                    string immediate0 = instruction.GetParamInt(index, 0).ToString();
+                    string immediate1 = instruction.GetParamInt(index, 1).ToString();
+                    string immediate2 = instruction.GetParamInt(index, 2).ToString();
+                    string immediate3 = instruction.GetParamInt(index, 3).ToString();
+                    return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
+                }
+                else
+                {
+                    string immediate0 = ConstantFormatter.Format(instruction.GetParamSingle(index, 0));
+                    string immediate1 = ConstantFormatter.Format(instruction.GetParamSingle(index, 1));
+                    string immediate2 = ConstantFormatter.Format(instruction.GetParamSingle(index, 2));
+                    string immediate3 = ConstantFormatter.Format(instruction.GetParamSingle(index, 3));
+                    return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
+                }
             }
         }
         else

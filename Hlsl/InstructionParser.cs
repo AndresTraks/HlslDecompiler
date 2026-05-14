@@ -607,7 +607,7 @@ class InstructionParser
 
     private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
     {
-        int index = instruction.GetDestinationParamIndex();
+        int index = instruction.GetDestinationParamIndex().Value;
         int mask = instruction.GetDestinationWriteMask();
         return GetParameterRegisterKeys(instruction, index, mask);
     }

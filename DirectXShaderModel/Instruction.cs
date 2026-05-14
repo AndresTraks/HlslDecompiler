@@ -15,7 +15,7 @@ public abstract class Instruction
 
     public abstract int GetParamRegisterNumber(int index);
 
-    public abstract int GetDestinationParamIndex();
+    public abstract int? GetDestinationParamIndex();
 
     public abstract int GetDestinationWriteMask();
 

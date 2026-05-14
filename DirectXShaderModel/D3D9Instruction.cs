@@ -146,7 +146,7 @@ public class D3D9Instruction : Instruction
         return (SamplerTextureType)((Params[0] >> 27) & 0xF);
     }
 
-    public override int GetDestinationParamIndex()
+    public override int? GetDestinationParamIndex()
     {
         if (Opcode == Opcode.Dcl) return 1;
 
@@ -155,7 +155,7 @@ public class D3D9Instruction : Instruction
 
     public override int GetDestinationWriteMask()
     {
-        int destIndex = GetDestinationParamIndex();
+        int destIndex = GetDestinationParamIndex().Value;
         return (int)((Params[destIndex] >> 16) & 0xF);
     }
 
@@ -285,7 +285,7 @@ public class D3D9Instruction : Instruction
 
     public ResultModifier GetDestinationResultModifier()
     {
-        int destIndex = GetDestinationParamIndex();
+        int destIndex = GetDestinationParamIndex().Value;
         return (ResultModifier)((Params[destIndex] >> 20) & 0xF);
     }
 

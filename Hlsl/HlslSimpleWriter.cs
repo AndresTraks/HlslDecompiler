@@ -76,7 +76,7 @@ public class HlslSimpleWriter : HlslWriter
         var tempRegisters = new Dictionary<RegisterKey, int>();
         foreach (Instruction instruction in instructions.Where(i => i.HasDestination))
         {
-            int destIndex = instruction.GetDestinationParamIndex();
+            int destIndex = instruction.GetDestinationParamIndex().Value;
             if (IsDestinationTempRegister(instruction, destIndex))
             {
                 int writeMask = instruction.GetDestinationWriteMask();
@@ -443,7 +443,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private string GetDestinationName(D3D9Instruction instruction)
     {
-        int destIndex = instruction.GetDestinationParamIndex();
+        int destIndex = instruction.GetDestinationParamIndex().Value;
         D3D9RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
 
         string registerName;
@@ -685,6 +685,10 @@ public class HlslSimpleWriter : HlslWriter
         if (operandIndex == instruction.GetDestinationParamIndex())
         {
             writeMaskName = instruction.GetDestinationWriteMaskName(_registers.GetRegisterMaskedLength(registerKey));
+        }
+        else if (instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
+        {
+            writeMaskName = "";
         }
         else
         {

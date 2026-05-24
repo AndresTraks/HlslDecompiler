@@ -4,6 +4,7 @@ struct PS_OUT
 	float4 sv_target1 : SV_Target1;
 	float4 sv_target2 : SV_Target2;
 	float4 sv_target3 : SV_Target3;
+	float4 sv_target4 : SV_Target4;
 };
 
 PS_OUT main(float4 texcoord : TEXCOORD)
@@ -17,6 +18,8 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 	o.sv_target2.zw = float2(0, 0);
 	o.sv_target3.x = texcoord.x;
 	o.sv_target3.yzw = float3(0, 0, 1);
+	o.sv_target4.xyz = texcoord.www;
+	o.sv_target4.w = 3;
 
 	return o;
 }

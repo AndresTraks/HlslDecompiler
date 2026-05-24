@@ -96,7 +96,7 @@ public sealed class NodeCompiler
     {
         UngroupConstantGroups(componentGroups);
 
-        IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g));
+        IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
         return $"float{components.Count}({string.Join(", ", compiledConstructorParts)})";
     }
 

@@ -18,6 +18,7 @@ public class MatrixMultiplicationGrouper
     // float3(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v))
     // float4(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v), dot(m_row4, v))
     // float4(dot(m_row1.xyz, v.xyz), dot(m_row2.xyz, v.xyz), dot(m_row3.xyz, v.xyz), dot(m_row4.xyz, v.xyz)) + m_column4
+    // Note: mul(float2xM, floatN) is compiled as mul((float2xN)float2xM, floatN)
     public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> components)
     {
         const bool allowMatrix = true;
@@ -33,18 +34,18 @@ public class MatrixMultiplicationGrouper
                     .OfType<RegisterInputNode>()
                     .ToArray();
                 int wRowIndex = submatrixGroup.MatrixDeclaration.RegisterIndex + submatrixGroup.Vector.Length;
-                if (wColumnNodes.All(wColumnNode =>
+                if (wColumnNodes.Length == components.Count && wColumnNodes.All(wColumnNode =>
                 {
                     ConstantDeclaration matrixDeclaration = _registers.FindConstant(wColumnNode);
                     if (!submatrixGroup.MatrixDeclaration.Equals(matrixDeclaration))
                     {
                         return false;
                     }
-                    if (wColumnNode.RegisterComponentKey.RegisterKey is not D3D9RegisterKey d3d9RegisterKey)
+                    if (wColumnNode.RegisterComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey && d3d10RegisterKey.OperandType == OperandType.ConstantBuffer)
                     {
-                        return false;
+                        return d3d10RegisterKey.ConstantBufferOffset == wRowIndex;
                     }
-                    return d3d9RegisterKey.Number == wRowIndex || wColumnNode.RegisterComponentKey.ComponentIndex == wRowIndex;
+                    return wColumnNode.RegisterComponentKey.Number == wRowIndex || wColumnNode.RegisterComponentKey.ComponentIndex == wRowIndex;
                 }))
                 {
                     var extendedVector = submatrixGroup.Vector.ToList();
@@ -53,18 +54,55 @@ public class MatrixMultiplicationGrouper
                         extendedVector.ToArray(),
                         submatrixGroup.MatrixDeclaration,
                         submatrixGroup.IsMatrixByVector,
-                        submatrixGroup.MatrixRowCount);
+                        submatrixGroup.MatrixRowCount,
+                        extendedVector.Count);
+                }
+                else
+                {
+                    //throw new NotImplementedException();
+                }
+            }
+
+            submatrixNodes = components.Select(g => g.Inputs[1]).ToArray();
+            submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
+            if (submatrixGroup != null)
+            {
+                RegisterInputNode[] wColumnNodes = components
+                    .Select(g => g.Inputs[0])
+                    .OfType<RegisterInputNode>()
+                    .ToArray();
+                int wRowIndex = submatrixGroup.MatrixDeclaration.RegisterIndex + submatrixGroup.Vector.Length;
+                if (wColumnNodes.Length == components.Count && wColumnNodes.All(wColumnNode =>
+                {
+                    ConstantDeclaration matrixDeclaration = _registers.FindConstant(wColumnNode);
+                    if (!submatrixGroup.MatrixDeclaration.Equals(matrixDeclaration))
+                    {
+                        return false;
+                    }
+                    if (wColumnNode.RegisterComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey && d3d10RegisterKey.OperandType == OperandType.ConstantBuffer)
+                    {
+                        return d3d10RegisterKey.ConstantBufferOffset == wRowIndex;
+                    }
+                    return wColumnNode.RegisterComponentKey.Number == wRowIndex || wColumnNode.RegisterComponentKey.ComponentIndex == wRowIndex;
+                }))
+                {
+                    var extendedVector = submatrixGroup.Vector.ToList();
+                    extendedVector.Add(new ConstantNode(1));
+                    return new MatrixMultiplicationContext(
+                        extendedVector.ToArray(),
+                        submatrixGroup.MatrixDeclaration,
+                        submatrixGroup.IsMatrixByVector,
+                        submatrixGroup.MatrixRowCount,
+                        extendedVector.Count);
+                }
+                else
+                {
+                    //throw new NotImplementedException();
                 }
             }
         }
 
         if (components[0] is not DotProductOperation firstDot)
-        {
-            return null;
-        }
-
-        int dimension = firstDot.X.Length;
-        if (components.Count < dimension)
         {
             return null;
         }
@@ -124,7 +162,7 @@ public class MatrixMultiplicationGrouper
 
         vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
-        return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count);
+        return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count, firstMatrixRow.Count);
     }
 
     private static IList<HlslTreeNode> SwizzleVector(IList<HlslTreeNode> vector, IList<HlslTreeNode> firstMatrixRow, bool matrixByVector)
@@ -254,12 +292,14 @@ public class MatrixMultiplicationContext
         HlslTreeNode[] vector,
         ConstantDeclaration matrix,
         bool matrixByVector,
-        int matrixRowCount)
+        int matrixRowCount,
+        int matrixColumnCount)
     {
         Vector = vector;
         MatrixDeclaration = matrix;
         IsMatrixByVector = matrixByVector;
         MatrixRowCount = matrixRowCount;
+        MatrixColumnCount = matrixColumnCount;
     }
 
     public HlslTreeNode[] Vector { get; }
@@ -267,4 +307,5 @@ public class MatrixMultiplicationContext
     public ConstantDeclaration MatrixDeclaration { get; }
     public bool IsMatrixByVector { get; }
     public int MatrixRowCount { get; }
+    public int MatrixColumnCount { get; }
 }

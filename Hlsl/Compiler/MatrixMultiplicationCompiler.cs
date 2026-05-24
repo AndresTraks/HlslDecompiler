@@ -12,9 +12,9 @@ public sealed class MatrixMultiplicationCompiler
     public string Compile(MatrixMultiplicationContext context)
     {
         string matrixName = context.MatrixDeclaration.Name;
-        if (context.Vector.Length != context.MatrixRowCount)
+        if (context.MatrixDeclaration.TypeInfo.Columns != context.MatrixColumnCount)
         {
-            matrixName = $"(float{context.MatrixDeclaration.TypeInfo.Columns}x{context.Vector.Length}){matrixName}";
+            matrixName = $"(float{context.MatrixRowCount}x{context.MatrixColumnCount}){matrixName}";
         }
         string vector = nodeCompiler.Compile(context.Vector);
         return context.IsMatrixByVector

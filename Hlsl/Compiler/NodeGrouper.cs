@@ -46,9 +46,7 @@ public class NodeGrouper
         if (normalizeGroup != null)
         {
             int dimension = normalizeGroup.Length;
-            groups = new List<IList<HlslTreeNode>>(new[]
-                { nodes.Take(dimension).ToList()
-            });
+            groups = [nodes.Take(dimension).ToList()];
             if (dimension < nodes.Count)
             {
                 List<HlslTreeNode> rest = nodes.Skip(dimension).ToList();

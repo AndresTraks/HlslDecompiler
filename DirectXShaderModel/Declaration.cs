@@ -6,20 +6,13 @@ public class ConstantDeclaration
 {
     public string Name { get; }
     public short RegisterIndex { get; }
-    public short RegisterCount { get; }
     public ShaderTypeInfo TypeInfo { get; }
 
-    public ConstantDeclaration(string name, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
+    public ConstantDeclaration(string name, short registerIndex, ShaderTypeInfo typeInfo)
     {
         Name = name;
         RegisterIndex = registerIndex;
-        RegisterCount = registerCount;
         TypeInfo = typeInfo;
-    }
-
-    public bool ContainsIndex(int index)
-    {
-        return (index >= RegisterIndex) && (index < RegisterIndex + RegisterCount);
     }
 
     public int GetSamplerDimension()
@@ -42,22 +35,33 @@ public class ConstantDeclaration
 public class D3D9ConstantDeclaration : ConstantDeclaration
 {
     public RegisterSet RegisterSet { get; private set; }
+    public short RegisterCount { get; }
 
     public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
-        : base(name, registerIndex, registerCount, typeInfo)
+        : base(name, registerIndex, typeInfo)
     {
         RegisterSet = registerSet;
+        RegisterCount = registerCount;
+    }
+
+    public bool ContainsIndex(int index)
+    {
+        return (index >= RegisterIndex) && (index < RegisterIndex + RegisterCount);
     }
 }
 
 public class D3D10ConstantDeclaration : ConstantDeclaration
 {
     public int Offset { get; }
+    public int VariableSize { get; }
+    public int VariableOffset { get; }
 
-    public D3D10ConstantDeclaration(string name, short registerIndex, short registerCount, ShaderTypeInfo typeInfo, int offset)
-        : base(name, registerIndex, registerCount, typeInfo)
+    public D3D10ConstantDeclaration(string name, short registerIndex, int variableSize, int variableOffset, ShaderTypeInfo typeInfo, int offset)
+        : base(name, registerIndex, typeInfo)
     {
         Offset = offset;
+        VariableSize = variableSize;
+        VariableOffset = variableOffset;
     }
 }
 

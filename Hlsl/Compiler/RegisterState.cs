@@ -174,8 +174,11 @@ public sealed class RegisterState
     public ConstantDeclaration FindConstant(RegisterSet set, int index)
     {
         return ConstantDeclarations.FirstOrDefault(c =>
-            (c as D3D9ConstantDeclaration).RegisterSet == set &&
-            c.ContainsIndex(index));
+        {
+            D3D9ConstantDeclaration d3D9ConstantDeclaration = (c as D3D9ConstantDeclaration);
+            return d3D9ConstantDeclaration.RegisterSet == set &&
+                d3D9ConstantDeclaration.ContainsIndex(index);
+        });
     }
 
     public ConstantDeclaration FindConstant(RegisterKey registerKey)
@@ -184,11 +187,19 @@ public sealed class RegisterState
         {
             if (d3D10RegisterKey.OperandType == OperandType.ConstantBuffer)
             {
-                ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == d3D10RegisterKey.Number
-                    && (d as D3D10ConstantDeclaration).Offset == d3D10RegisterKey.ConstantBufferOffset);
+                int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * 4 * sizeof(float);
+                ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d =>
+                {
+                    if (d.RegisterIndex != d3D10RegisterKey.Number)
+                    {
+                        return false;
+                    }
+                    var constant = d as D3D10ConstantDeclaration;
+                    return constant.VariableOffset <= expectedOffset && expectedOffset < constant.VariableOffset + constant.VariableSize;
+                });
                 if (declaration == null)
                 {
-                    declaration = ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == d3D10RegisterKey.Number);
+                    throw new InvalidOperationException();
                 }
                 return declaration;
             }
@@ -201,7 +212,7 @@ public sealed class RegisterState
     {
         if (registerKey.Type == RegisterType.Const || registerKey.Type == RegisterType.Sampler)
         {
-            return ConstantDeclarations.FirstOrDefault(c => c.ContainsIndex(registerKey.Number));
+            return ConstantDeclarations.FirstOrDefault(c => (c as D3D9ConstantDeclaration).ContainsIndex(registerKey.Number));
         }
         return null;
     }

@@ -94,7 +94,7 @@ public class DxbcReader : BinaryReader
                         // TODO
                         short registerNumber = (short)i;
                         short elementOffset = (short)j;
-                        var description = new D3D10ConstantDeclaration(name, registerNumber, (short)variableSize, typeInfo, elementOffset);
+                        var description = new D3D10ConstantDeclaration(name, registerNumber, variableSize, variableOffset, typeInfo, elementOffset);
                         constantDeclarations.Add(description);
                     }
                 }

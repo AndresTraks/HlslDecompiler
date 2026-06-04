@@ -178,11 +178,17 @@ public class NodeGrouper
             return false;
         }
 
-        int constIndex2 = input2.RegisterComponentKey.Number;
-        var constantRegister = _registers.FindConstant(input1);
-        return constantRegister != null
-            && constantRegister.ContainsIndex(constIndex2)
-            && IsMatrixConstantRegister(constantRegister);
+        ConstantDeclaration constant = _registers.FindConstant(input1);
+        if (constant == null || !IsMatrixConstantRegister(constant))
+        {
+            return false;
+        }
+        if (constant is D3D9ConstantDeclaration d3d9Constant)
+        {
+            int constIndex2 = input2.RegisterComponentKey.Number;
+            return d3d9Constant.ContainsIndex(constIndex2);
+        }
+        return constant == _registers.FindConstant(input2);
     }
 
     public bool SharesMatrixRow(RegisterInputNode input1, RegisterInputNode input2)

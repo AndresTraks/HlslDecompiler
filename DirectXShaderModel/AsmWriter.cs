@@ -902,7 +902,12 @@ public class AsmWriter
             OperandType.Sampler => "s",
             OperandType.InputThreadID => "vThreadID",
             OperandType.UnorderedAccessView => "u",
-            _ => throw new NotImplementedException(),
+            // These carry no register number of their own.
+            OperandType.OutputDepth => "oDepth",
+            OperandType.OutputDepthGreaterEqual => "oDepthGE",
+            OperandType.OutputDepthLessEqual => "oDepthLE",
+            OperandType.Null => "null",
+            _ => throw new NotImplementedException(operandType.ToString()),
         };
 
         string swizzle = index == instruction.GetDestinationParamIndex()

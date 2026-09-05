@@ -608,6 +608,12 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclThreadGroup:
             case D3D10Opcode.DclUnorderedAccessViewStructured:
                 break;
+            case D3D10Opcode.RetC:
+                WriteLine("if ({0} != 0) return{1};", GetOperandName(instruction, 0),
+                    _registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
+                        ? " o"
+                        : "");
+                break;
             case D3D10Opcode.Ret:
                 // The last ret is the method returning, which is written after the
                 // body. Anywhere else it is an early return, and dropping it lost the

@@ -81,15 +81,7 @@ public class DxbcReader : BinaryReader
                         BaseStream.Position = chunkOffset + variableNameOffset + 8;
                         string name = ReadStringNullTerminated();
 
-                        BaseStream.Position = chunkOffset + variableTypeOffset + 8;
-                        ParameterClass variableClass = (ParameterClass)ReadInt16();
-                        ParameterType variableType = (ParameterType)ReadInt16();
-                        short rows = ReadInt16();
-                        short columns = ReadInt16();
-                        short numElements = ReadInt16();
-                        short numStructMembers = ReadInt16();
-                        int firstMemberOffset = ReadInt32();
-                        var typeInfo = new ShaderTypeInfo(variableClass, variableType, rows, columns, numElements, null);
+                        ShaderTypeInfo typeInfo = ReadShaderTypeInfo(chunkOffset, variableTypeOffset);
 
                         // TODO
                         short registerNumber = (short)i;
@@ -212,6 +204,42 @@ public class DxbcReader : BinaryReader
             instruction.InterpolationMode = (D3D10InterpolationMode)((opcodeToken >> 11) & 0xF);
         }
         return instruction;
+    }
+
+    // A variable type, and the members of a struct one. The member list was being
+    // discarded, so a struct in a constant buffer had no members to name.
+    private ShaderTypeInfo ReadShaderTypeInfo(int chunkOffset, int typeOffset)
+    {
+        BaseStream.Position = chunkOffset + typeOffset + 8;
+        ParameterClass variableClass = (ParameterClass)ReadInt16();
+        ParameterType variableType = (ParameterType)ReadInt16();
+        short rows = ReadInt16();
+        short columns = ReadInt16();
+        short numElements = ReadInt16();
+        short numStructMembers = ReadInt16();
+        int firstMemberOffset = ReadInt32();
+
+        List<ShaderStructMemberInfo> memberInfo = null;
+        if (numStructMembers > 0)
+        {
+            memberInfo = [];
+            for (int member = 0; member < numStructMembers; member++)
+            {
+                // Reading a member type moves the stream, so the position is set
+                // again for every one of them.
+                BaseStream.Position = chunkOffset + firstMemberOffset + member * 12 + 8;
+                int memberNameOffset = ReadInt32();
+                int memberTypeOffset = ReadInt32();
+
+                BaseStream.Position = chunkOffset + memberNameOffset + 8;
+                string memberName = ReadStringNullTerminated();
+                memberInfo.Add(new ShaderStructMemberInfo(
+                    memberName, ReadShaderTypeInfo(chunkOffset, memberTypeOffset)));
+            }
+        }
+
+        return new ShaderTypeInfo(
+            variableClass, variableType, rows, columns, numElements, memberInfo);
     }
 
     private string ReadStringNullTerminated()

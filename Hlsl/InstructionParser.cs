@@ -295,6 +295,12 @@ class InstructionParser
                 case D3D10Opcode.Ret:
                     InsertReturn();
                     break;
+                case D3D10Opcode.RetC:
+                    InsertStatement(new ReturnStatement(ActiveOutputs)
+                    {
+                        Comparison = GetConditionNode(instruction),
+                    });
+                    break;
                 case D3D10Opcode.DclGlobalFlags:
                     break;
                 default:

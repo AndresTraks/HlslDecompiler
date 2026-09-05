@@ -6,6 +6,9 @@ namespace HlslDecompiler.Hlsl.FlowControl;
 
 public class ReturnStatement : IStatement
 {
+    // retc_nz returns only when its condition holds, the way discard_nz drops the
+    // pixel only when its own does. Null for an unconditional return.
+    public HlslTreeNode Comparison { get; init; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

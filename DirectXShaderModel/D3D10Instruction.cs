@@ -212,7 +212,9 @@ public class D3D10Instruction : Instruction
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
-            throw new NotImplementedException();
+            // A one-component operand - oDepth, say - has the one component and no
+            // mask to spell it out with.
+            return 1;
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
         {
@@ -449,9 +451,16 @@ public class D3D10Instruction : Instruction
             OperandType.Input => "SV_Position",
             OperandType.Output => "SV_Target",
             OperandType.InputThreadID => "SV_DispatchThreadID",
-            _ => throw new NotImplementedException()
+            OperandType.OutputDepth => "SV_Depth",
+            OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
+            OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
+            _ => throw new NotImplementedException(operandType.ToString())
         };
-        if (operandType != OperandType.InputThreadID)
+        // These name no register, so there is no index to append.
+        if (operandType != OperandType.InputThreadID
+            && operandType != OperandType.OutputDepth
+            && operandType != OperandType.OutputDepthGreaterEqual
+            && operandType != OperandType.OutputDepthLessEqual)
         {
             int numberIndex = (_isGeometryShader && operandType == OperandType.Input) ? 2 : 1;
             int declIndex = (int) GetParamIndexImmediate32(destIndex, numberIndex);
@@ -569,6 +578,11 @@ public class D3D10Instruction : Instruction
 
     public override int GetParamRegisterNumber(int index)
     {
+        // oDepth and null name no register and carry no index to read.
+        if (OperandTokens.GetOperandIndices(index).Length == 0)
+        {
+            return 0;
+        }
         return (int) GetParamIndexImmediate32(index, 1);
     }
 

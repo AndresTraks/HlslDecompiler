@@ -143,6 +143,15 @@ public class HlslAstWriter : HlslWriter
     {
         WriteStatementTempAssignments(assignmentStatement);
 
+        // With one output register there is no struct to write into: every return
+        // compiles the live value, so writing `o.name = ...` first names something
+        // that was never declared. A geometry shader is the exception - it writes the
+        // struct and appends it rather than returning.
+        if (_shader.Type != ShaderType.Geometry && _registers.MethodOutputRegisters.Count <= 1)
+        {
+            return;
+        }
+
         // Skip output registers the statement merely carries forward unchanged, the
         // same way temps are filtered above. Without this every statement re-emits
         // every output, which shows up as duplicated writes after a stream append.
@@ -350,10 +359,22 @@ public class HlslAstWriter : HlslWriter
             GroupComponents(returnStatement.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
 
+        string condition = returnStatement.Comparison == null
+            ? null
+            : _compiler.Compile(Reduce(returnStatement.Comparison));
+
         if (outputs.Count == 1)
         {
             string compiled = _compiler.Compile(outputs.Single().Value);
-            WriteLine($"return {compiled};");
+            WriteLine(condition == null
+                ? $"return {compiled};"
+                : $"if ({condition}) return {compiled};");
+        }
+        else if (condition != null)
+        {
+            // The outputs were written by the statements before this one; a
+            // conditional return only chooses whether to leave with them.
+            WriteLine($"if ({condition}) return o;");
         }
         else
         {

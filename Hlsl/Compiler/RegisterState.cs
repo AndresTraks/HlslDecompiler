@@ -30,6 +30,24 @@ public sealed class RegisterState
         _shaderModel = shaderModel;
     }
 
+    // A struct member is as wide as the member, not as the register holding it, so
+    // reading float3 dir does not need a .xyz spelling it out.
+    public int GetRegisterMaskedLength(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey)
+        {
+            ConstantDeclaration declaration = FindConstant(
+                d3d10RegisterKey, registerComponentKey.ComponentIndex);
+            if (declaration != null && TryGetStructMember(
+                declaration, d3d10RegisterKey, registerComponentKey.ComponentIndex,
+                out _, out int memberWidth))
+            {
+                return memberWidth;
+            }
+        }
+        return GetRegisterMaskedLength(registerComponentKey.RegisterKey);
+    }
+
     public int GetRegisterMaskedLength(RegisterKey registerKey)
     {
         // A constant is as wide as it was declared, whichever set it lives in: an
@@ -110,6 +128,53 @@ public sealed class RegisterState
         return false;
     }
 
+    // Which member of a struct a register component falls in, and how wide that
+    // member is. An element of `struct1 lights[2]` spans two registers, so the
+    // register alone names neither the element nor the member.
+    private static bool TryGetStructMember(
+        ConstantDeclaration declaration,
+        D3D10RegisterKey registerKey,
+        int componentIndex,
+        out string element,
+        out int memberWidth)
+    {
+        element = null;
+        memberWidth = 4;
+        if (declaration.TypeInfo.MemberInfo == null
+            || declaration is not D3D10ConstantDeclaration d3d10Declaration
+            || registerKey.ConstantBufferOffset == null)
+        {
+            return false;
+        }
+
+        int elementCount = Math.Max(declaration.TypeInfo.NumElements, 1);
+        int registersPerElement = Math.Max(
+            d3d10Declaration.VariableSize / elementCount / ConstantRegisterSizeInBytes, 1);
+        int registerOffset = registerKey.ConstantBufferOffset.Value
+            - d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes;
+        int elementIndex = registerOffset / registersPerElement;
+        // Where the component sits inside the element, counted in floats.
+        int target = (registerOffset % registersPerElement) * 4 + componentIndex;
+
+        int offset = 0;
+        foreach (ShaderStructMemberInfo member in declaration.TypeInfo.MemberInfo)
+        {
+            int width = member.TypeInfo.Rows * member.TypeInfo.Columns
+                * Math.Max(member.TypeInfo.NumElements, 1);
+            if (target < offset + width)
+            {
+                string name = declaration.TypeInfo.NumElements > 1
+                    ? $"{declaration.Name}[{elementIndex}]"
+                    : declaration.Name;
+                element = $"{name}.{member.Name}";
+                memberWidth = width;
+                return true;
+            }
+            offset += width;
+        }
+        return false;
+    }
+
     // `float4 arr[4]` spans four registers under one declaration, so the element
     // has to be named or every one of them reads as `arr`.
     private static string GetConstantBufferName(
@@ -143,6 +208,12 @@ public sealed class RegisterState
         {
             ConstantDeclaration declaration = FindConstant(
                 d3d10RegisterKey, registerComponentKey.ComponentIndex);
+            if (declaration != null && TryGetStructMember(
+                declaration, d3d10RegisterKey, registerComponentKey.ComponentIndex,
+                out string member, out _))
+            {
+                return member;
+            }
             if (declaration != null && declaration.TypeInfo.Rows == 1)
             {
                 return GetConstantBufferName(declaration, d3d10RegisterKey);
@@ -643,6 +714,11 @@ public sealed class RegisterState
                             MethodInputRegisters.Add(registerKey, registerDeclaration);
                             break;
                         case OperandType.Output:
+                        // A depth output is written like any other, and naming no
+                        // register does not make it less of one.
+                        case OperandType.OutputDepth:
+                        case OperandType.OutputDepthGreaterEqual:
+                        case OperandType.OutputDepthLessEqual:
                             MethodOutputRegisters.Add(registerDeclaration);
                             break;
                     }
@@ -777,7 +853,11 @@ public sealed class RegisterState
             };
         }
 
-        int writeMask = 4;
+        // A depth output is one component; the 4 is a guess for everything else.
+        bool isDepth = registerKey.OperandType == OperandType.OutputDepth
+            || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
+            || registerKey.OperandType == OperandType.OutputDepthLessEqual;
+        int writeMask = isDepth ? 1 : 4;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask);
     }
 }

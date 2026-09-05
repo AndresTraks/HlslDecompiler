@@ -39,7 +39,13 @@ public class D3D10RegisterKey : RegisterKey
     public int? GSVertex { get; }
 
     public bool IsTempRegister => OperandType == OperandType.Temp;
-    public bool IsOutput => OperandType == OperandType.Output;
+    // oDepth is written like any other output; it just names no register. Leaving
+    // it out here dropped the depth write from the shader entirely.
+    public bool IsOutput =>
+        OperandType == OperandType.Output ||
+        OperandType == OperandType.OutputDepth ||
+        OperandType == OperandType.OutputDepthGreaterEqual ||
+        OperandType == OperandType.OutputDepthLessEqual;
     public bool IsConstant =>
         OperandType == OperandType.ConstantBuffer ||
         OperandType == OperandType.Immediate32 ||

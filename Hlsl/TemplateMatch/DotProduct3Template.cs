@@ -67,6 +67,17 @@ public class DotProduct3Template : IGroupTemplate
                 return new DotProductContext(new GroupNode(a, b, c), new GroupNode(x, y, z));
             }
         }
+        else if (allowMatrixColumn
+            && _templateMatcher.SharesMatrixColumnOrRow(dot.Y.Inputs[1], cz.Factor2))
+        {
+            // The matrix is on the other side, so this side may be arbitrary - one
+            // component built by an expression is still a component.
+            // DotProduct2Template allows the same thing, and without it here a dot
+            // product over such a vector stops after two components.
+            return new DotProductContext(
+                new GroupNode(dot.X.Inputs[0], b, c),
+                new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));
+        }
 
         return null;
     }

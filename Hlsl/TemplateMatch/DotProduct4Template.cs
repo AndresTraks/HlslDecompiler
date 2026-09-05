@@ -69,6 +69,15 @@ public class DotProduct4Template : IGroupTemplate
                 return new DotProductContext(new GroupNode(a, b, c, d), new GroupNode(x, y, z, w));
             }
         }
+        else if (allowMatrixColumn
+            && _templateMatcher.SharesMatrixColumnOrRow(dot.Y.Inputs[2], dw.Factor2))
+        {
+            // As in DotProduct3Template: the matrix is on the other side, so this one
+            // may be arbitrary.
+            return new DotProductContext(
+                new GroupNode(dot.X.Inputs[0], dot.X.Inputs[1], dot.X.Inputs[2], dw.Factor1),
+                new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], dot.Y.Inputs[2], dw.Factor2));
+        }
 
         return null;
     }

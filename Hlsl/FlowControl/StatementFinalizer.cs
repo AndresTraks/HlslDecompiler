@@ -286,7 +286,12 @@ public class StatementFinalizer
             }
             foreach (var output in body.Last().Outputs)
             {
-                if (output.Value is not TempAssignmentNode assignment)
+                // A branch either assigns the register itself, or hands out the
+                // variable a nested if already merged its own branches into.
+                var assignment = output.Value as TempAssignmentNode;
+                TempVariableNode branchVariable =
+                    assignment?.TempVariable ?? output.Value as TempVariableNode;
+                if (branchVariable == null)
                 {
                     continue;
                 }
@@ -294,7 +299,7 @@ public class StatementFinalizer
                 // entered with. It is assigned elsewhere, so it is not the
                 // branch's to declare or reassign.
                 if (ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entryValue)
-                    && ReferenceEquals(entryValue, assignment))
+                    && ReferenceEquals(entryValue, output.Value))
                 {
                     continue;
                 }
@@ -303,18 +308,24 @@ public class StatementFinalizer
                     // The branches can already share the variable: two ifs in a row
                     // assigning the same register hand the second one a phi over it,
                     // and both of its branches then reuse that one variable.
-                    if (!ReferenceEquals(assignment.TempVariable, variable))
+                    if (!ReferenceEquals(branchVariable, variable))
                     {
-                        assignment.TempVariable.Replace(variable);
-                        assignment.TempVariable = variable;
+                        branchVariable.Replace(variable);
+                        if (assignment != null)
+                        {
+                            assignment.TempVariable = variable;
+                        }
                     }
                 }
                 else
                 {
-                    variable = assignment.TempVariable;
+                    variable = branchVariable;
                     variableByRegister.Add(output.Key, variable);
                 }
-                assignment.IsReassignment = true;
+                if (assignment != null)
+                {
+                    assignment.IsReassignment = true;
+                }
                 ifStatement.Outputs[output.Key] = variable;
             }
         }

@@ -167,12 +167,22 @@ public sealed class NodeCompiler
                 }
 
             case ConsumerOperation _:
-            case SignGreaterOrEqualOperation _:
-            case SignLessOperation _:
                 {
                     string name = operation.HlslFunction;
                     string value = Compile(components.Select(g => g.Inputs[0]));
                     return $"{name}({value})";
+                }
+
+            case SignGreaterOrEqualOperation _:
+            case SignLessOperation _:
+                {
+                    // sge and slt compare two operands and yield 1 or 0. There is no
+                    // HLSL function of that name, and writing one operand as a call
+                    // dropped the other silently.
+                    string comparison = operation is SignLessOperation ? "<" : ">=";
+                    string value1 = CompileOperand(components.Select(g => g.Inputs[0]));
+                    string value2 = CompileOperand(components.Select(g => g.Inputs[1]));
+                    return $"({value1} {comparison} {value2}) ? 1 : 0";
                 }
 
             case AddOperation _:
@@ -307,6 +317,24 @@ public sealed class NodeCompiler
         }
     }
 
+    // The index into an array of matrices counts registers, so it is already the
+    // element index times the row count. Undo that multiplication where it is
+    // visible rather than emitting a division that only fxc would fold away.
+    private string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
+    {
+        if (index is MultiplyOperation multiply)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (multiply.Inputs[i] is ConstantNode constant && constant.Value == rows)
+                {
+                    return Compile(new[] { multiply.Inputs[1 - i] });
+                }
+            }
+        }
+        return $"{Compile(new[] { index })} / {rows}";
+    }
+
     private string CompileNodesWithComponents(List<HlslTreeNode> components, HlslTreeNode first, int promoteToVectorSize)
     {
         var componentsWithIndices = components.Cast<IHasComponentIndex>();
@@ -324,15 +352,33 @@ public sealed class NodeCompiler
                 _registers.GetRegisterMaskedLength(arrayKey.RegisterKey),
                 promoteToVectorSize);
             string index = Compile(new[] { relativeAddress.Index });
-            // The base register need not be the first of the array: `floats[i + 2]`
-            // reads c2[a0.x] when floats starts at c0.
+            // Named from the declaration rather than the register, which would carry
+            // an element index of its own. The base register need not be the first of
+            // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
+            string arrayName = _registers.GetRegisterName(arrayKey);
             if (arrayKey.RegisterKey is D3D9RegisterKey d3d9ArrayKey
-                && _registers.FindConstant(d3d9ArrayKey) is ConstantDeclaration array
-                && d3d9ArrayKey.Number != array.RegisterIndex)
+                && _registers.FindConstant(d3d9ArrayKey) is ConstantDeclaration array)
             {
-                index += $" + {d3d9ArrayKey.Number - array.RegisterIndex}";
+                arrayName = array.Name;
+                int registerOffset = d3d9ArrayKey.Number - array.RegisterIndex;
+                if (array.TypeInfo.Rows > 1)
+                {
+                    // An array of matrices takes two subscripts. The register index
+                    // counts rows across the whole array, so the element is that
+                    // index over the row count and the row is the constant left over.
+                    string element = CompileRegisterIndexAsElement(
+                        relativeAddress.Index, array.TypeInfo.Rows);
+                    string matrix = _registers.ColumnMajorOrder
+                        ? $"transpose({arrayName}[{element}])"
+                        : $"{arrayName}[{element}]";
+                    return $"{matrix}[{registerOffset}]{swizzle}";
+                }
+                if (registerOffset != 0)
+                {
+                    index += $" + {registerOffset}";
+                }
             }
-            return $"{_registers.GetRegisterName(arrayKey)}[{index}]{swizzle}";
+            return $"{arrayName}[{index}]{swizzle}";
         }
 
         if (first is RegisterInputNode shaderInput)

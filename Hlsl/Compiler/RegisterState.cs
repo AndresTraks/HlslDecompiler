@@ -148,6 +148,13 @@ public sealed class RegisterState
                     var constDecl = FindConstant(registerKey);
                     if (constDecl.TypeInfo.Rows == 1)
                     {
+                        // Each element of `float4 m[4]` gets its own register, so the
+                        // element has to be named - every one of them read as `m`.
+                        if (constDecl.TypeInfo.NumElements > 1)
+                        {
+                            int element = registerKey.Number - constDecl.RegisterIndex;
+                            return $"{constDecl.Name}[{element}]";
+                        }
                         return constDecl.Name;
                     }
                     if (ColumnMajorOrder)
@@ -185,13 +192,16 @@ public sealed class RegisterState
                     {
                         return declaration.Name;
                     }
-                    if (ColumnMajorOrder)
-                    {
-                        int column = d3d10RegisterKey.ConstantBufferOffset.Value - declaration.RegisterIndex;
-                        return $"transpose({declaration.Name})[{column}]";
-                    }
-                    string row = (registerKey.Number - declaration.RegisterIndex).ToString();
-                    return declaration.Name + $"[{row}]";
+                    // RegisterIndex is the cbuffer itself, b0, and is the same for
+                    // every variable in it. The row is the register's distance from
+                    // where this variable starts, which the reader records in bytes.
+                    int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
+                        ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
+                        : declaration.RegisterIndex;
+                    int rowIndex = d3d10RegisterKey.ConstantBufferOffset.Value - variableRegister;
+                    return ColumnMajorOrder
+                        ? $"transpose({declaration.Name})[{rowIndex}]"
+                        : $"{declaration.Name}[{rowIndex}]";
                 case OperandType.Immediate32:
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:

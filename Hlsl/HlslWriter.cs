@@ -121,9 +121,17 @@ public abstract class HlslWriter
                 WriteLine();
             }
 
+            // One variable can occupy a register in more than one set - an int used
+            // both as a loop bound and in float arithmetic lands in i# and c# alike -
+            // and the constant table lists it once per register. It is still one
+            // declaration.
+            var declaredNames = new HashSet<string>();
             foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
-                WriteLine(compiler.Compile(declaration));
+                if (declaredNames.Add(declaration.Name))
+                {
+                    WriteLine(compiler.Compile(declaration));
+                }
             }
             WriteLine();
         }

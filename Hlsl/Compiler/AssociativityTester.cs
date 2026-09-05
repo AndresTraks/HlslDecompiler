@@ -28,6 +28,9 @@ public static class AssociativityTester
             case CompareOperation _:
             case ComparisonNode _:
             case GreaterEqualOperation _:
+            // sge and slt also compile to a ternary.
+            case SignGreaterOrEqualOperation _:
+            case SignLessOperation _:
                 return true;
             default:
                 return false;

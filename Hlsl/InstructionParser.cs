@@ -884,7 +884,10 @@ class InstructionParser
 
     private void SwitchToElseBranch()
     {
-        IfStatement ifStatement = UnwindTo<IfStatement>();
+        // An else belongs to the nearest if that is still open. A nested if that
+        // has already been closed stays on the stack until the next statement
+        // displaces it, and taking that one would overwrite its own else branch.
+        IfStatement ifStatement = UnwindTo<IfStatement>(i => !i.IsParsed);
         ifStatement.IsTrueParsed = true;
         ifStatement.FalseBody = [];
     }

@@ -268,9 +268,15 @@ public class HlslSimpleWriter : HlslWriter
                     $"1 / {GetSourceName(instruction, 1)}");
                 break;
             case Opcode.Rep:
-                ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(0));
+                int repRegisterNumber = instruction.GetParamRegisterNumber(0);
+                ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(repRegisterNumber);
                 _loopVariableIndex++;
-                WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", loopRegister[0], "i" + _loopVariableIndex);
+                // As with loop, the trip count is a uniform when there is no defi.
+                object repCount = loopRegister != null
+                    ? loopRegister[0]
+                    : _registers.GetRegisterName(
+                        new D3D9RegisterKey(RegisterType.ConstInt, repRegisterNumber));
+                WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", repCount, "i" + _loopVariableIndex);
                 indent += "\t";
                 break;
             case Opcode.Rsq:

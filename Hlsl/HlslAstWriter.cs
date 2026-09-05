@@ -14,6 +14,7 @@ public class HlslAstWriter : HlslWriter
     private TemplateMatcher _templateMatcher;
     private TempAssignmentOrder _tempAssignmentOrder = new TempAssignmentOrder();
     private int _loopDepth;
+    private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
 
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
@@ -320,6 +321,12 @@ public class HlslAstWriter : HlslWriter
                 _compiler.Compile(group);
 
                 var variable = group.First() as TempVariableNode;
+                // An enclosing block may already declare it, when a nested if merged
+                // into the same variable. Declaring it again would shadow it.
+                if (!_declaredVariables.Add(variable))
+                {
+                    continue;
+                }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
                 WriteLine($"float{size} t{variable.DeclarationIndex};");
             }

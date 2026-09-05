@@ -457,11 +457,50 @@ public class AsmWriter
             case D3D10Opcode.EndLoop:
                 WriteInstruction(instruction, "endloop", 0);
                 break;
+            case D3D10Opcode.Div:
+                WriteInstruction(instruction, "div", 3);
+                break;
+            case D3D10Opcode.Eq:
+                WriteInstruction(instruction, "eq", 3);
+                break;
             case D3D10Opcode.GE:
                 WriteInstruction(instruction, "ge", 3);
                 break;
+            case D3D10Opcode.LT:
+                WriteInstruction(instruction, "lt", 3);
+                break;
+            case D3D10Opcode.Ne:
+                WriteInstruction(instruction, "ne", 3);
+                break;
             case D3D10Opcode.IAdd:
                 WriteInstruction(instruction, "iadd", 3);
+                break;
+            case D3D10Opcode.IMad:
+                WriteInstruction(instruction, "imad", 4);
+                break;
+            case D3D10Opcode.IMax:
+                WriteInstruction(instruction, "imax", 3);
+                break;
+            case D3D10Opcode.IMin:
+                WriteInstruction(instruction, "imin", 3);
+                break;
+            case D3D10Opcode.INeg:
+                WriteInstruction(instruction, "ineg", 2);
+                break;
+            case D3D10Opcode.Ine:
+                WriteInstruction(instruction, "ine", 3);
+                break;
+            case D3D10Opcode.RoundNe:
+                WriteInstruction(instruction, "round_ne", 2);
+                break;
+            case D3D10Opcode.RoundNi:
+                WriteInstruction(instruction, "round_ni", 2);
+                break;
+            case D3D10Opcode.RoundPi:
+                WriteInstruction(instruction, "round_pi", 2);
+                break;
+            case D3D10Opcode.RoundZ:
+                WriteInstruction(instruction, "round_z", 2);
                 break;
             case D3D10Opcode.Ieq:
                 WriteInstruction(instruction, "ieq", 3);

@@ -119,9 +119,22 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
+                case D3D10Opcode.Div:
+                case D3D10Opcode.Eq:
                 case D3D10Opcode.GE:
+                case D3D10Opcode.LT:
+                case D3D10Opcode.Ne:
                 case D3D10Opcode.Ftoi:
                 case D3D10Opcode.IAdd:
+                case D3D10Opcode.IMad:
+                case D3D10Opcode.IMax:
+                case D3D10Opcode.IMin:
+                case D3D10Opcode.INeg:
+                case D3D10Opcode.Ine:
+                case D3D10Opcode.RoundNe:
+                case D3D10Opcode.RoundNi:
+                case D3D10Opcode.RoundPi:
+                case D3D10Opcode.RoundZ:
                 case D3D10Opcode.Ieq:
                 case D3D10Opcode.Ige:
                 case D3D10Opcode.Ilt:

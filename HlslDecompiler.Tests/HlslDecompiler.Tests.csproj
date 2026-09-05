@@ -155,6 +155,78 @@
     <None Update="ShaderAssembly\ps_4_0\dxbc_switch.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="CompiledShaders\ps_3_0\tex2d_and_constant.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\tex2d_and_constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0_instruction\tex2d_and_constant.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_3_0\tex2d_and_constant.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\early_return.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\early_return.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\early_return.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\early_return.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\divide.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\divide.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\divide.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\divide.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\compare.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\compare.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\compare.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\compare.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\rounding.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\rounding.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\rounding.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\rounding.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\int_arithmetic.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\int_arithmetic.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\int_arithmetic.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\int_arithmetic.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="CompiledShaders\ps_3_0\loop.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

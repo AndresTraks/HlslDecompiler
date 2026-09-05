@@ -285,8 +285,10 @@ class InstructionParser
                         InsertStatement(new StoreStructuredStatement(output, inputs[0], inputs[2], ActiveOutputs));
                         break;
                     }
-                case D3D10Opcode.DclGlobalFlags:
                 case D3D10Opcode.Ret:
+                    InsertReturn();
+                    break;
+                case D3D10Opcode.DclGlobalFlags:
                     break;
                 default:
                     throw new NotImplementedException(instruction.Opcode.ToString());
@@ -649,7 +651,43 @@ class InstructionParser
         }
     }
 
-    private void InsertSwitchStatement(D3D10Instruction instruction)
+    /// <summary>
+    /// A <c>ret</c> inside a block returns early. The one at the end of the shader is
+    /// implicit - <see cref="StatementFinalizer"/> turns the final assignment into the
+    /// return - so emitting a statement for it as well would duplicate the value.
+    /// </summary>
+    private void InsertReturn()
+    {
+        // A closed block stays on the stack until the next statement displaces it, so
+        // it does not count: a ret after `endloop` is at the top level.
+        bool insideOpenBlock = _currentStatements.Any(s =>
+            (s is IfStatement || s is LoopStatement || s is SwitchStatement) && !IsClosed(s));
+        if (!insideOpenBlock)
+        {
+            return;
+        }
+
+        var returnStatement = new ReturnStatement(ActiveOutputs);
+
+        // An assignment immediately before the ret produced the value being returned,
+        // so it becomes the return rather than standing as its own statement.
+        if (ActiveStatement is AssignmentStatement assignment)
+        {
+            _currentStatements.Pop();
+            IList<IStatement> sequence = ActiveStatementSequence;
+            if (sequence.Count != 0 && ReferenceEquals(sequence[sequence.Count - 1], assignment))
+            {
+                sequence[sequence.Count - 1] = returnStatement;
+                _currentStatements.Push(returnStatement);
+                return;
+            }
+            _currentStatements.Push(assignment);
+        }
+
+        InsertStatement(returnStatement);
+    }
+
+    private void InsertSwitchStatement(D3D10Instruction instruction)
     {
         byte component = instruction.GetSourceSwizzleComponents(0)[0];
         RegisterKey registerKey = instruction.GetParamRegisterKey(0);
@@ -1083,10 +1121,23 @@ class InstructionParser
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
             case D3D10Opcode.Exp:
+            case D3D10Opcode.Div:
+            case D3D10Opcode.Eq:
             case D3D10Opcode.Frc:
             case D3D10Opcode.GE:
+            case D3D10Opcode.LT:
+            case D3D10Opcode.Ne:
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.IMad:
+            case D3D10Opcode.IMax:
+            case D3D10Opcode.IMin:
+            case D3D10Opcode.INeg:
+            case D3D10Opcode.Ine:
+            case D3D10Opcode.RoundNe:
+            case D3D10Opcode.RoundNi:
+            case D3D10Opcode.RoundPi:
+            case D3D10Opcode.RoundZ:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.Ilt:
@@ -1117,6 +1168,16 @@ class InstructionParser
                             return new FractionalOperation(inputs[0]);
                         case D3D10Opcode.GE:
                             return new GreaterEqualOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.Div:
+                            return new DivisionOperation(inputs[0], inputs[1]);
+                        // Float comparisons, like their integer counterparts, only
+                        // ever feed a branch or a movc, so they read as conditions.
+                        case D3D10Opcode.LT:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
+                        case D3D10Opcode.Eq:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
+                        case D3D10Opcode.Ne:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
                         case D3D10Opcode.Ilt:
                             // Only ever consumed by a branch, so model it as the condition itself.
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
@@ -1124,6 +1185,24 @@ class InstructionParser
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
                         case D3D10Opcode.Ieq:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
+                        case D3D10Opcode.Ine:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
+                        case D3D10Opcode.IMad:
+                            return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                        case D3D10Opcode.IMin:
+                            return new MinimumOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.IMax:
+                            return new MaximumOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.INeg:
+                            return new NegateOperation(inputs[0]);
+                        case D3D10Opcode.RoundNe:
+                            return new RoundOperation(inputs[0]);
+                        case D3D10Opcode.RoundNi:
+                            return new FloorOperation(inputs[0]);
+                        case D3D10Opcode.RoundPi:
+                            return new CeilingOperation(inputs[0]);
+                        case D3D10Opcode.RoundZ:
+                            return new TruncateOperation(inputs[0]);
                         case D3D10Opcode.LdStructured:
                             return new LoadStructuredNode(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.Log:
@@ -1472,6 +1551,11 @@ class InstructionParser
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
             case D3D10Opcode.Ftoi:
+            case D3D10Opcode.INeg:
+            case D3D10Opcode.RoundNe:
+            case D3D10Opcode.RoundNi:
+            case D3D10Opcode.RoundPi:
+            case D3D10Opcode.RoundZ:
             case D3D10Opcode.IToF:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mov:
@@ -1483,15 +1567,23 @@ class InstructionParser
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
+            case D3D10Opcode.Div:
+            case D3D10Opcode.Eq:
             case D3D10Opcode.GE:
+            case D3D10Opcode.LT:
+            case D3D10Opcode.Ne:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.Ilt:
+            case D3D10Opcode.IMax:
+            case D3D10Opcode.IMin:
+            case D3D10Opcode.Ine:
             case D3D10Opcode.Max:
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:
                 return 2;
+            case D3D10Opcode.IMad:
             case D3D10Opcode.Mad:
             case D3D10Opcode.MovC:
             case D3D10Opcode.LdStructured:

@@ -210,11 +210,23 @@ public sealed class RegisterState
 
     public ConstantDeclaration FindConstant(D3D9RegisterKey registerKey)
     {
-        if (registerKey.Type == RegisterType.Const || registerKey.Type == RegisterType.Sampler)
+        RegisterSet? registerSet = registerKey.Type switch
         {
-            return ConstantDeclarations.FirstOrDefault(c => (c as D3D9ConstantDeclaration).ContainsIndex(registerKey.Number));
+            RegisterType.Const => RegisterSet.Float4,
+            RegisterType.Sampler => RegisterSet.Sampler,
+            _ => null,
+        };
+        if (registerSet == null)
+        {
+            return null;
         }
-        return null;
+
+        // Register numbers are per set: sampler s0 and constant c0 are different
+        // registers that share an index, so the set has to match as well.
+        return ConstantDeclarations.FirstOrDefault(c =>
+            c is D3D9ConstantDeclaration declaration
+            && declaration.RegisterSet == registerSet
+            && declaration.ContainsIndex(registerKey.Number));
     }
 
     public ConstantIntRegister FindConstantIntRegister(int index)

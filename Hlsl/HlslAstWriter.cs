@@ -13,6 +13,7 @@ public class HlslAstWriter : HlslWriter
     private NodeGrouper _grouper;
     private TemplateMatcher _templateMatcher;
     private TempAssignmentOrder _tempAssignmentOrder = new TempAssignmentOrder();
+    private int _loopDepth;
 
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
@@ -43,7 +44,7 @@ public class HlslAstWriter : HlslWriter
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
-        StatementFinalizer.Finalize(ast.Statements);
+        StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void");
         WriteStatements(ast.Statements);
     }
 
@@ -85,9 +86,17 @@ public class HlslAstWriter : HlslWriter
         {
             WriteBreakStatement(breakStatement);
         }
+        else if (statement is ContinueStatement continueStatement)
+        {
+            WriteJumpStatement(continueStatement.Comparison, "continue");
+        }
         else if (statement is IfStatement ifStatement)
         {
             WriteIfStatement(ifStatement);
+        }
+        else if (statement is SwitchStatement switchStatement)
+        {
+            WriteSwitchStatement(switchStatement);
         }
         else if (statement is ReturnStatement returnStatement)
         {
@@ -120,8 +129,14 @@ public class HlslAstWriter : HlslWriter
             WriteLine(compiled);
         }
 
+        // Skip output registers the statement merely carries forward unchanged, the
+        // same way temps are filtered above. Without this every statement re-emits
+        // every output, which shows up as duplicated writes after a stream append.
         Dictionary<RegisterKey, HlslTreeNode[]> outputs =
-            GroupComponents(assignmentStatement.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
+            GroupComponents(assignmentStatement.Outputs
+                    .Where(o => o.Key.RegisterKey.IsOutput)
+                    .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
+                        && o.Value == inputNode)))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
         foreach (var rootGroup in outputs.OrderBy(o => o.Key.Number))
         {
@@ -147,27 +162,86 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
-        string variableName = "i";
-        WriteLine($"for (int {variableName} = 0; {variableName} < {loop.RepeatCount}; {variableName}++) {{");
+        if (loop.IsCountedLoop)
+        {
+            // The initializer and increment compile as statements; the for header
+            // wants them as clauses.
+            string initializer = _compiler.Compile(Reduce(loop.Initializer)).TrimEnd(';');
+            string condition = _compiler.Compile(Reduce(loop.ContinueCondition));
+            string increment = _compiler.Compile(Reduce(loop.Increment)).TrimEnd(';');
+            WriteLine($"for ({initializer}; {condition}; {increment}) {{");
+        }
+        else if (loop.RepeatCount is uint repeatCount)
+        {
+            string variableName = GetLoopVariableName(_loopDepth);
+            WriteLine($"for (int {variableName} = 0; {variableName} < {repeatCount}; {variableName}++) {{");
+        }
+        else
+        {
+            WriteLine("while (true) {");
+        }
         indent += "\t";
+        _loopDepth++;
         WriteStatements(loop.Body);
+        _loopDepth--;
+        indent = indent.Substring(0, indent.Length - 1);
+        WriteLine("}");
+    }
+
+    // Nested loops must not shadow the enclosing loop's counter.
+    private static string GetLoopVariableName(int depth)
+    {
+        return depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
+    }
+
+    private void WriteSwitchStatement(SwitchStatement switchStatement)
+    {
+        WriteBlockTempVariables(switchStatement.Outputs, switchStatement.Inputs);
+
+        string selector = _compiler.Compile(Reduce(switchStatement.Selector));
+        WriteLine($"switch ({selector}) {{");
+        indent += "	";
+        foreach (SwitchCase switchCase in switchStatement.Cases)
+        {
+            WriteLine(switchCase.IsDefault
+                ? "default:"
+                : $"case {_compiler.Compile(Reduce(switchCase.Label))}:");
+            indent += "	";
+            WriteStatements(switchCase.Body);
+            indent = indent.Substring(0, indent.Length - 1);
+        }
         indent = indent.Substring(0, indent.Length - 1);
         WriteLine("}");
     }
 
     private void WriteBreakStatement(BreakStatement breakStatement)
     {
-        bool? constantComparison = ConstantMatcher.TryEvaluateComparison(breakStatement.Comparison);
+        WriteJumpStatement(breakStatement.Comparison, "break");
+    }
+
+    /// <summary>
+    /// Writes a <c>break</c> or <c>continue</c>, guarded by its condition unless that
+    /// condition is absent or always true.
+    /// </summary>
+    private void WriteJumpStatement(HlslTreeNode comparisonNode, string keyword)
+    {
+        if (comparisonNode == null)
+        {
+            WriteLine($"{keyword};");
+            return;
+        }
+
+        bool? constantComparison = ConstantMatcher.TryEvaluateComparison(comparisonNode);
         if (constantComparison.HasValue && constantComparison.Value)
         {
-            WriteLine("break;");
+            WriteLine($"{keyword};");
         }
         else
         {
-            string comparison = _compiler.Compile(Reduce(breakStatement.Comparison));
+            string comparison = _compiler.Compile(Reduce(comparisonNode));
             WriteLine($"if ({comparison}) {{");
             indent += "\t";
-            WriteLine("break;");
+            WriteLine($"{keyword};");
             indent = indent.Substring(0, indent.Length - 1);
             WriteLine("}");
         }
@@ -198,9 +272,20 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteIfStatementTempVariables(IfStatement ifStatement)
     {
-        var newAssignments = ifStatement.Outputs
+        WriteBlockTempVariables(ifStatement.Outputs, ifStatement.Inputs);
+    }
+
+    /// <summary>
+    /// Declares the variables a block assigns, above the block. A variable declared
+    /// inside a branch or a case would go out of scope at its closing brace.
+    /// </summary>
+    private void WriteBlockTempVariables(
+        IDictionary<RegisterComponentKey, HlslTreeNode> outputs,
+        IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
+    {
+        var newAssignments = outputs
             .Where(o => o.Value is TempVariableNode)
-            .Where(o => !ifStatement.Inputs.ContainsKey(o.Key))
+            .Where(o => !inputs.ContainsKey(o.Key))
             .ToDictionary();
         if (newAssignments.Count > 0)
         {

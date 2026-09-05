@@ -230,6 +230,7 @@ public static class D3D10OpcodeExtensions
     {
         switch (opcode)
         {
+            case D3D10Opcode.Case:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:

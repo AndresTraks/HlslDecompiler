@@ -120,6 +120,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.GE:
+                case D3D10Opcode.Ftoi:
                 case D3D10Opcode.IAdd:
                 case D3D10Opcode.Ieq:
                 case D3D10Opcode.Ige:
@@ -170,8 +171,11 @@ public class D3D10Instruction : Instruction
 
     public override int GetDestinationWriteMask()
     {
-        int operandIndex = GetDestinationParamIndex().Value;
+        return GetWriteMask(GetDestinationParamIndex().Value);
+    }
 
+    public int GetWriteMask(int operandIndex)
+    {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
@@ -391,6 +395,18 @@ public class D3D10Instruction : Instruction
     {
         int destIndex = GetDestinationParamIndex().Value;
         OperandType operandType = GetOperandType(destIndex);
+
+        if (Opcode == D3D10Opcode.DclOutputSiv
+            || Opcode == D3D10Opcode.DclInputSiv
+            || Opcode == D3D10Opcode.DclInputPSSiv)
+        {
+            var systemValueName = (D3D10Name)GetParamIndexImmediate32(1, 0);
+            if (systemValueName == D3D10Name.Position)
+            {
+                return "SV_Position";
+            }
+        }
+
         string name = operandType switch
         {
             OperandType.Input => "SV_Position",

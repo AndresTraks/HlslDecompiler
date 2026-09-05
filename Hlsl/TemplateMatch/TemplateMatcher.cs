@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using HlslDecompiler.Hlsl.FlowControl;
+using System.Collections.Generic;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
@@ -49,7 +50,7 @@ public class TemplateMatcher
 
     public HlslTreeNode Reduce(HlslTreeNode node)
     {
-        return ReduceDepthFirst(node);
+        return ReduceDepthFirst(node, HlslTreeNode.NewNodeSet());
     }
 
     public bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b, bool allowMatrixColumn)
@@ -66,37 +67,49 @@ public class TemplateMatcher
         return false;
     }
 
-    private HlslTreeNode ReduceDepthFirst(HlslTreeNode node)
+    private HlslTreeNode ReduceDepthFirst(HlslTreeNode node, HashSet<HlslTreeNode> onPath)
     {
-        if (ConstantMatcher.IsConstant(node) || IsRegister(node))
+        // A phi is opaque: nothing may be folded across a loop backedge.
+        if (ConstantMatcher.IsConstant(node) || IsRegister(node) || node is PhiNode)
         {
             return node;
         }
-        for (int i = 0; i < node.Inputs.Count; i++)
+        if (!onPath.Add(node))
         {
-            HlslTreeNode input = node.Inputs[i];
-            node.Inputs[i] = ReduceDepthFirst(input);
+            return node;
         }
-        foreach (INodeTemplate template in _templates)
+        try
         {
-            if (template.Match(node))
+            for (int i = 0; i < node.Inputs.Count; i++)
             {
-                var replacement = template.Reduce(node);
-                Replace(node, replacement);
-                return ReduceDepthFirst(replacement);
+                HlslTreeNode input = node.Inputs[i];
+                node.Inputs[i] = ReduceDepthFirst(input, onPath);
             }
-        }
-        foreach (IGroupTemplate template in _groupTemplates)
-        {
-            IGroupContext groupContext = template.Match(node);
-            if (groupContext != null)
+            foreach (INodeTemplate template in _templates)
             {
-                var replacement = template.Reduce(node, groupContext);
-                Replace(node, replacement);
-                return ReduceDepthFirst(replacement);
+                if (template.Match(node))
+                {
+                    var replacement = template.Reduce(node);
+                    Replace(node, replacement);
+                    return ReduceDepthFirst(replacement, onPath);
+                }
             }
+            foreach (IGroupTemplate template in _groupTemplates)
+            {
+                IGroupContext groupContext = template.Match(node);
+                if (groupContext != null)
+                {
+                    var replacement = template.Reduce(node, groupContext);
+                    Replace(node, replacement);
+                    return ReduceDepthFirst(replacement, onPath);
+                }
+            }
+            return node;
         }
-        return node;
+        finally
+        {
+            onPath.Remove(node);
+        }
     }
 
     private static void Replace(HlslTreeNode node, HlslTreeNode with)

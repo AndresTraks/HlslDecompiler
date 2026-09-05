@@ -34,6 +34,13 @@ public class StatementVisitor
             {
                 Visit(loopStatement.Body, action);
             }
+            else if (statement is SwitchStatement switchStatement)
+            {
+                foreach (SwitchCase switchCase in switchStatement.Cases)
+                {
+                    Visit(switchCase.Body, action);
+                }
+            }
         }
     }
 }

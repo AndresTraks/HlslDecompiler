@@ -34,8 +34,13 @@ public class DecompileTests
     [TestCase("ps_3_0", "texcube")]
     [TestCase("ps_3_0", "clip")]
     [TestCase("ps_3_0", "if")]
+    [TestCase("ps_3_0", "if_no_else")]
     [TestCase("ps_3_0", "loop")]
     [TestCase("ps_3_0", "loop_nested")]
+    [TestCase("ps_3_0", "loop_accumulate")]
+    [TestCase("ps_3_0", "loop_two_vars")]
+    [TestCase("ps_3_0", "if_in_loop")]
+    [TestCase("ps_3_0", "if_else_in_loop")]
     [TestCase("ps_3_0", "struct")]
     [TestCase("ps_3_0", "temp_assignment")]
     [TestCase("vs_1_1", "constant")]
@@ -78,7 +83,7 @@ public class DecompileTests
 
         ShaderModel shader;
 
-        var inputStream = File.Open(Path.GetFullPath(compiledShaderFilename), FileMode.Open, FileAccess.Read);
+        using var inputStream = File.Open(Path.GetFullPath(compiledShaderFilename), FileMode.Open, FileAccess.Read, FileShare.Read);
         using (var input = new ShaderReader(inputStream, true))
         {
             shader = input.ReadShader();

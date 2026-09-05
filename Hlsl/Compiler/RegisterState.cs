@@ -393,7 +393,8 @@ public sealed class RegisterState
             instruction.Opcode == D3D10Opcode.DclInputPS ||
             instruction.Opcode == D3D10Opcode.DclInputPSSiv ||
             instruction.Opcode == D3D10Opcode.DclInputSiv ||
-            instruction.Opcode == D3D10Opcode.DclOutput)
+            instruction.Opcode == D3D10Opcode.DclOutput ||
+            instruction.Opcode == D3D10Opcode.DclOutputSiv)
         {
             var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex().Value);
 
@@ -442,22 +443,23 @@ public sealed class RegisterState
         else
         {
             int destIndex = instruction.GetDestinationParamIndex().Value;
-            var registerKey = instruction.GetParamRegisterKey(destIndex);
+            DeclareRegisterWrite(instruction.GetParamRegisterKey(destIndex), instruction.GetDestinationWriteMask());
+        }
+    }
 
-            if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
+    public void DeclareRegisterWrite(D3D10RegisterKey registerKey, int writeMask)
+    {
+        if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
+        {
+            existingDeclaration.WriteMask |= writeMask;
+        }
+        else
+        {
+            var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey, writeMask);
+            RegisterDeclarations.Add(registerKey, registerDeclaration);
+            if (registerKey.IsOutput)
             {
-                existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
-            }
-            else
-            {
-                var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(
-                    registerKey,
-                    instruction.GetDestinationWriteMask());
-                RegisterDeclarations.Add(registerKey, registerDeclaration);
-                if (registerKey.IsOutput)
-                {
-                    MethodOutputRegisters.Add(registerDeclaration);
-                }
+                MethodOutputRegisters.Add(registerDeclaration);
             }
         }
     }

@@ -8,10 +8,12 @@ namespace HlslDecompiler.Hlsl;
 
 class InstructionParser
 {
+    private ShaderModel _shaderModel;
     private RegisterState _registerState;
-    private IntegerOperandAnalysis _integerOperandAnalysis;
     private IList<IStatement> _statements;
     private Stack<IStatement> _currentStatements;
+    private int _instructionPointer;
+    private IntegerOperandAnalysis _integerOperandAnalysis;
 
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
@@ -31,6 +33,10 @@ class InstructionParser
             {
                 return loopStatement.Body;
             }
+            if (_currentStatements.Peek() is SwitchStatement switchStatement)
+            {
+                return switchStatement.CurrentCase.Body;
+            }
             throw new NotImplementedException();
         }
     }
@@ -43,26 +49,27 @@ class InstructionParser
 
     private HlslAst ParseToAst(ShaderModel shader)
     {
+        _shaderModel = shader;
         _integerOperandAnalysis = new IntegerOperandAnalysis(shader);
         _registerState = new RegisterState(shader);
         _statements = [];
         _currentStatements = new Stack<IStatement>();
 
-        int instructionPointer = 0;
+        _instructionPointer = 0;
         if (shader.Instructions[0] is D3D10Instruction)
         {
-            while (instructionPointer < shader.Instructions.Count)
+            while (_instructionPointer < shader.Instructions.Count)
             {
-                ParseInstruction(shader.Instructions[instructionPointer] as D3D10Instruction);
-                instructionPointer++;
+                ParseInstruction(shader.Instructions[_instructionPointer] as D3D10Instruction);
+                _instructionPointer++;
             }
         }
         else
         {
-            while (instructionPointer < shader.Instructions.Count)
+            while (_instructionPointer < shader.Instructions.Count)
             {
-                ParseInstruction(shader.Instructions[instructionPointer] as D3D9Instruction);
-                instructionPointer++;
+                ParseInstruction(shader.Instructions[_instructionPointer] as D3D9Instruction);
+                _instructionPointer++;
             }
         }
 
@@ -110,7 +117,12 @@ class InstructionParser
 
     private void ParseInstruction(D3D10Instruction instruction)
     {
-        if (instruction.HasDestination)
+        // StoreStructured names a destination operand but writes through a statement,
+        // and SinCos writes two destinations, so neither fits the single-destination
+        // assignment path.
+        if (instruction.HasDestination
+            && instruction.Opcode != D3D10Opcode.StoreStructured
+            && instruction.Opcode != D3D10Opcode.SinCos)
         {
             ParseAssignmentInstruction(instruction);
         }
@@ -118,8 +130,41 @@ class InstructionParser
         {
             switch (instruction.Opcode)
             {
+                case D3D10Opcode.Break:
+                    InsertStatement(new BreakStatement(null, ActiveOutputs));
+                    break;
                 case D3D10Opcode.BreakC:
-                    //InsertBreak();
+                    InsertBreak(instruction);
+                    break;
+                case D3D10Opcode.Continue:
+                    InsertStatement(new ContinueStatement(null, ActiveOutputs));
+                    break;
+                case D3D10Opcode.ContinueC:
+                    InsertStatement(new ContinueStatement(GetConditionNode(instruction), ActiveOutputs));
+                    break;
+                case D3D10Opcode.Swtich:
+                    InsertSwitchStatement(instruction);
+                    break;
+                case D3D10Opcode.Case:
+                    AddSwitchCase(new ConstantNode((int)instruction.GetParamInt(0)));
+                    break;
+                case D3D10Opcode.Default:
+                    AddSwitchCase(null);
+                    break;
+                case D3D10Opcode.EndSwitch:
+                    EndSwitch();
+                    break;
+                case D3D10Opcode.If:
+                    InsertIfStatement(instruction);
+                    break;
+                case D3D10Opcode.Else:
+                    SwitchToElseBranch();
+                    break;
+                case D3D10Opcode.EndIf:
+                    EndIf();
+                    break;
+                case D3D10Opcode.SinCos:
+                    ParseSinCosInstruction(instruction);
                     break;
                 case D3D10Opcode.Cut:
                     InsertRestartStrip();
@@ -137,9 +182,9 @@ class InstructionParser
                             var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
                             int writeMask = 1; // declare only first component here, expand later
                             _registerState.DeclareRegister(registerKey, writeMask);
-                            var destinationKey = new RegisterComponentKey(registerKey, 0);
-                            var tempInput = new RegisterInputNode(destinationKey);
-                            SetActiveOutput(destinationKey, tempInput);
+                            // No seed value: a temp has no meaning until it is written.
+                            // Seeding one made component 0 asymmetric with the rest and
+                            // leaked into the output as a bare register name.
                         }
                         break;
                     }
@@ -220,19 +265,17 @@ class InstructionParser
                         break;
                     }
                 case D3D10Opcode.EndLoop:
-                    //EndLoop();
+                    EndLoop();
                     break;
                 case D3D10Opcode.Emit:
                     InsertAppend();
                     break;
-                case D3D10Opcode.Ilt:
-                    {
-                        // TODO
-                        break;
-                    }
                 case D3D10Opcode.Loop:
                     {
-                        InsertStatement(new LoopStatement(0, ActiveOutputs));
+                        // DXBC loops carry no trip count; they exit through breakc.
+                        var loop = new LoopStatement(null, ActiveOutputs);
+                        SeedLoopHeaderPhis(loop);
+                        InsertStatement(loop);
                         break;
                     }
                 case D3D10Opcode.StoreStructured:
@@ -284,20 +327,27 @@ class InstructionParser
     {
         if (instruction.Opcode == Opcode.Loop)
         {
+            // loop aL, iN - the counter register is operand 0, the trip count is operand 1.
             D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
             _registerState.DeclareRegister(registerKey, 1);
+            InsertLoop(instruction, 1);
         }
         else if (instruction.Opcode == Opcode.Rep)
         {
-            InsertLoop(instruction);
+            // rep iN - the trip count is operand 0.
+            InsertLoop(instruction, 0);
         }
-        else if (instruction.Opcode == Opcode.EndRep)
+        else if (instruction.Opcode == Opcode.EndRep || instruction.Opcode == Opcode.EndLoop)
         {
             EndLoop();
         }
         else if (instruction.Opcode == Opcode.BreakC)
         {
             InsertBreak(instruction);
+        }
+        else if (instruction.Opcode == Opcode.Break)
+        {
+            InsertStatement(new BreakStatement(null, ActiveOutputs));
         }
         else if (instruction.Opcode == Opcode.If)
         {
@@ -317,6 +367,10 @@ class InstructionParser
         }
         else if (instruction.Opcode == Opcode.End)
         {
+        }
+        else
+        {
+            throw new NotImplementedException($"{instruction.Opcode}");
         }
     }
 
@@ -344,37 +398,47 @@ class InstructionParser
         }
     }
 
+    /// <summary>
+    /// Unwinds to the innermost enclosing block of the given kind. Statements parsed
+    /// inside a block sit on top of it and have to come off first.
+    /// </summary>
+    /// <param name="isOpen">
+    /// Extra condition the block must satisfy - used to skip a block that has already
+    /// been closed, so a nested one does not get closed twice.
+    /// </param>
+    private T UnwindTo<T>(Func<T, bool> isOpen = null) where T : class, IStatement
+    {
+        while (true)
+        {
+            if (_currentStatements.Peek() is T block && (isOpen == null || isOpen(block)))
+            {
+                return block;
+            }
+            _currentStatements.Pop();
+        }
+    }
+
     private void InsertStatement(IStatement statement)
     {
-        if (_currentStatements.Count == 0)
-        {
-            ActiveStatementSequence.Add(statement);
-            _currentStatements.Push(statement);
-        }
-        else if (_currentStatements.Peek() is IfStatement ifStatement)
-        {
-            if (ifStatement.IsParsed)
-            {
-                _currentStatements.Pop();
-            }
-            ActiveStatementSequence.Add(statement);
-            _currentStatements.Push(statement);
-        }
-        else if (_currentStatements.Peek() is LoopStatement loopStatement)
-        {
-            if (loopStatement.IsParsed)
-            {
-                _currentStatements.Pop();
-            }
-            ActiveStatementSequence.Add(statement);
-            _currentStatements.Push(statement);
-        }
-        else
+        // A block that has already been closed cannot take more statements, and nor
+        // can a statement that is not a block at all.
+        if (_currentStatements.Count != 0 && IsClosed(_currentStatements.Peek()))
         {
             _currentStatements.Pop();
-            ActiveStatementSequence.Add(statement);
-            _currentStatements.Push(statement);
         }
+        ActiveStatementSequence.Add(statement);
+        _currentStatements.Push(statement);
+    }
+
+    private static bool IsClosed(IStatement statement)
+    {
+        return statement switch
+        {
+            IfStatement ifStatement => ifStatement.IsParsed,
+            LoopStatement loopStatement => loopStatement.IsParsed,
+            SwitchStatement switchStatement => switchStatement.IsParsed,
+            _ => true,
+        };
     }
 
     private void InsertAssignment()
@@ -418,13 +482,241 @@ class InstructionParser
         InsertStatement(new RestartStripStatement(ActiveOutputs));
     }
 
-    private void InsertLoop(Instruction instruction)
+    /// <summary>
+    /// Binds every register the loop body writes to a phi at the loop header, so that
+    /// the body's expressions read the loop-carried value rather than the value from
+    /// before the loop. <see cref="EndLoop"/> closes each phi with its backedge.
+    /// </summary>
+    private void SeedLoopHeaderPhis(LoopStatement loop)
     {
-        int loopRegisterNumber = instruction.GetParamRegisterNumber(0);
-        uint repeatCount = _registerState.FindConstantIntRegister(loopRegisterNumber)[0];
+        foreach (RegisterComponentKey key in ScanLoopBodyDestinations())
+        {
+            if (loop.Outputs.TryGetValue(key, out HlslTreeNode preLoopValue) && preLoopValue is not PhiNode)
+            {
+                loop.Outputs[key] = new PhiNode(preLoopValue);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Registers written between the loop instruction at the current pointer and its
+    /// matching end. Read-only: it must not disturb parser state.
+    /// </summary>
+    private IEnumerable<RegisterComponentKey> ScanLoopBodyDestinations()
+    {
+        var destinations = new List<RegisterComponentKey>();
+        int depth = 0;
+
+        for (int i = _instructionPointer + 1; i < _shaderModel.Instructions.Count; i++)
+        {
+            Instruction instruction = _shaderModel.Instructions[i];
+
+            if (IsLoopStart(instruction))
+            {
+                depth++;
+                continue;
+            }
+            if (IsLoopEnd(instruction))
+            {
+                if (depth == 0)
+                {
+                    break;
+                }
+                depth--;
+                continue;
+            }
+            if (!instruction.HasDestination || IsStoreStructured(instruction))
+            {
+                continue;
+            }
+
+            foreach (RegisterComponentKey key in GetDestinationKeys(instruction))
+            {
+                if (key.RegisterKey.IsTempRegister || key.RegisterKey.IsOutput)
+                {
+                    destinations.Add(key);
+                }
+            }
+        }
+
+        return destinations.Distinct();
+    }
+
+    private static bool IsLoopStart(Instruction instruction)
+    {
+        return instruction switch
+        {
+            D3D9Instruction d3d9 => d3d9.Opcode == Opcode.Rep || d3d9.Opcode == Opcode.Loop,
+            D3D10Instruction d3d10 => d3d10.Opcode == D3D10Opcode.Loop,
+            _ => false,
+        };
+    }
+
+    private static bool IsLoopEnd(Instruction instruction)
+    {
+        return instruction switch
+        {
+            D3D9Instruction d3d9 => d3d9.Opcode == Opcode.EndRep || d3d9.Opcode == Opcode.EndLoop,
+            D3D10Instruction d3d10 => d3d10.Opcode == D3D10Opcode.EndLoop,
+            _ => false,
+        };
+    }
+
+    private static bool IsStoreStructured(Instruction instruction)
+    {
+        return instruction is D3D10Instruction d3d10 && d3d10.Opcode == D3D10Opcode.StoreStructured;
+    }
+
+    private void InsertLoop(Instruction instruction, int countParamIndex)
+    {
+        int loopRegisterNumber = instruction.GetParamRegisterNumber(countParamIndex);
+        ConstantIntRegister countRegister = _registerState.FindConstantIntRegister(loopRegisterNumber);
+        // A trip count defined outside the shader body leaves the loop unbounded.
+        uint? repeatCount = countRegister?[0];
         var loop = new LoopStatement(repeatCount, ActiveOutputs);
+        SeedLoopHeaderPhis(loop);
 
         InsertStatement(loop);
+    }
+
+    /// <summary>
+    /// The condition operand of a DXBC branch. Comparison instructions already
+    /// produce a condition; anything else is a register tested against zero.
+    /// </summary>
+    /// <remarks>
+    /// TODO: the _z form tests for zero instead; the test-boolean bit is not decoded yet.
+    /// </remarks>
+    private HlslTreeNode GetConditionNode(D3D10Instruction instruction)
+    {
+        byte component = instruction.GetSourceSwizzleComponents(0)[0];
+        RegisterKey registerKey = instruction.GetParamRegisterKey(0);
+        HlslTreeNode condition = GetActiveOutput(new RegisterComponentKey(registerKey, component));
+
+        if (condition is ComparisonNode)
+        {
+            return condition;
+        }
+        // A float comparison feeding a branch reads as the condition itself rather
+        // than as a value tested against zero.
+        if (condition is GreaterEqualOperation greaterEqual)
+        {
+            return new ComparisonNode(greaterEqual.Inputs[0], greaterEqual.Inputs[1], IfComparison.GE);
+        }
+        return new ComparisonNode(condition, new ConstantNode(0), IfComparison.NE);
+    }
+
+    /// <summary>
+    /// <c>sincos dstSin, dstCos, src</c> writes two registers from one source. Either
+    /// destination may be null when the shader only wants one of the two results.
+    /// </summary>
+    private void ParseSinCosInstruction(D3D10Instruction instruction)
+    {
+        const int sourceIndex = 2;
+        RegisterKey sourceKey = instruction.GetParamRegisterKey(sourceIndex);
+        byte[] sourceSwizzle = instruction.GetSourceSwizzleComponents(sourceIndex);
+
+        var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+
+        for (int destinationIndex = 0; destinationIndex <= 1; destinationIndex++)
+        {
+            if (instruction.GetOperandType(destinationIndex) == OperandType.Null)
+            {
+                continue;
+            }
+
+            var destinationKey = instruction.GetParamRegisterKey(destinationIndex);
+            int writeMask = instruction.GetWriteMask(destinationIndex);
+            _registerState.DeclareRegisterWrite(destinationKey, writeMask);
+
+            for (int component = 0; component < 4; component++)
+            {
+                if ((writeMask & (1 << component)) == 0)
+                {
+                    continue;
+                }
+
+                HlslTreeNode source = GetActiveOutput(
+                    new RegisterComponentKey(sourceKey, sourceSwizzle[component]));
+                newOutputs[new RegisterComponentKey(destinationKey, component)] = destinationIndex == 0
+                    ? new SineOperation(source)
+                    : new CosineOperation(source);
+            }
+        }
+
+        foreach (var output in newOutputs)
+        {
+            SetActiveOutput(output.Key, output.Value);
+        }
+    }
+
+    private void InsertSwitchStatement(D3D10Instruction instruction)
+    {
+        byte component = instruction.GetSourceSwizzleComponents(0)[0];
+        RegisterKey registerKey = instruction.GetParamRegisterKey(0);
+        HlslTreeNode selector = GetActiveOutput(new RegisterComponentKey(registerKey, component));
+
+        InsertStatement(new SwitchStatement(selector, ActiveOutputs));
+    }
+
+    /// <param name="label">The case value, or null for <c>default</c>.</param>
+    private void AddSwitchCase(HlslTreeNode label)
+    {
+        UnwindTo<SwitchStatement>().Cases.Add(new SwitchCase(label));
+    }
+
+    private void EndSwitch()
+    {
+        SwitchStatement switchStatement = UnwindTo<SwitchStatement>(s => !s.IsParsed);
+        switchStatement.IsParsed = true;
+
+        // A register assigned in any case leaves the switch as a join over every case
+        // that assigns it, plus the value that was live on entry. A register first
+        // written inside a case still has to be carried out, or later reads of it
+        // find nothing.
+        var caseValues = new Dictionary<RegisterComponentKey, List<HlslTreeNode>>();
+        foreach (SwitchCase switchCase in switchStatement.Cases)
+        {
+            if (switchCase.Body.Count == 0)
+            {
+                continue;
+            }
+            foreach (var caseOutput in switchCase.Body.Last().Outputs)
+            {
+                if (!caseValues.TryGetValue(caseOutput.Key, out var values))
+                {
+                    values = [];
+                    caseValues[caseOutput.Key] = values;
+                }
+                if (!values.Contains(caseOutput.Value))
+                {
+                    values.Add(caseOutput.Value);
+                }
+            }
+        }
+
+        foreach (var caseValue in caseValues)
+        {
+            List<HlslTreeNode> joined = caseValue.Value;
+            if (switchStatement.Outputs.TryGetValue(caseValue.Key, out var parentNode)
+                && !joined.Contains(parentNode))
+            {
+                joined = [.. joined, parentNode];
+            }
+
+            switchStatement.Outputs[caseValue.Key] = joined.Count == 1
+                ? joined[0]
+                : new PhiNode([.. joined]);
+        }
+    }
+
+    private void InsertIfStatement(D3D10Instruction instruction)
+    {
+        InsertStatement(new IfStatement([GetConditionNode(instruction)], ActiveOutputs));
+    }
+
+    private void InsertBreak(D3D10Instruction instruction)
+    {
+        InsertStatement(new BreakStatement(GetConditionNode(instruction), ActiveOutputs));
     }
 
     private void InsertBreak(D3D9Instruction instruction)
@@ -440,12 +732,7 @@ class InstructionParser
 
     private void EndLoop()
     {
-        LoopStatement loopStatement;
-
-        while ((loopStatement = _currentStatements.Peek() as LoopStatement) == null)
-        {
-            _currentStatements.Pop();
-        }
+        LoopStatement loopStatement = UnwindTo<LoopStatement>();
         loopStatement.IsParsed = true;
 
         foreach (var output in loopStatement.Body.Last().Outputs)
@@ -458,7 +745,16 @@ class InstructionParser
                 {
                     continue;
                 }
-                loopStatement.Outputs[registerComponent] = new PhiNode(node, parentNode);
+                if (parentNode is PhiNode headerPhi && !headerPhi.IsLoopHeader)
+                {
+                    // Close the phi seeded at the header. The loop's output stays the
+                    // phi, so code after the loop reads the loop-carried value.
+                    headerPhi.SetBackedgeValue(node);
+                }
+                else
+                {
+                    loopStatement.Outputs[registerComponent] = new PhiNode(node, parentNode);
+                }
             }
             else
             {
@@ -487,23 +783,14 @@ class InstructionParser
 
     private void SwitchToElseBranch()
     {
-        while (ActiveStatement is not IfStatement)
-        {
-            _currentStatements.Pop();
-        }
-
-        var ifStatement = ActiveStatement as IfStatement;
+        IfStatement ifStatement = UnwindTo<IfStatement>();
         ifStatement.IsTrueParsed = true;
         ifStatement.FalseBody = [];
     }
 
     private void EndIf()
     {
-        IfStatement ifStatement;
-        while ((ifStatement = _currentStatements.Peek() as IfStatement) == null || ifStatement.IsParsed)
-        {
-            _currentStatements.Pop();
-        }
+        IfStatement ifStatement = UnwindTo<IfStatement>(i => !i.IsParsed);
         ifStatement.IsTrueParsed = true;
         ifStatement.IsParsed = true;
 
@@ -798,6 +1085,7 @@ class InstructionParser
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
             case D3D10Opcode.GE:
+            case D3D10Opcode.Ftoi:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
@@ -811,7 +1099,6 @@ class InstructionParser
             case D3D10Opcode.MovC:
             case D3D10Opcode.Mul:
             case D3D10Opcode.Rsq:
-            case D3D10Opcode.SinCos:
             case D3D10Opcode.Sqrt:
                 {
                     HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
@@ -831,6 +1118,7 @@ class InstructionParser
                         case D3D10Opcode.GE:
                             return new GreaterEqualOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Ilt:
+                            // Only ever consumed by a branch, so model it as the condition itself.
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
                         case D3D10Opcode.Ige:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
@@ -848,6 +1136,8 @@ class InstructionParser
                             return new MinimumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Mov:
                         case D3D10Opcode.IToF:
+                        // TODO: emit an explicit cast rather than relying on implicit conversion.
+                        case D3D10Opcode.Ftoi:
                             return new MoveOperation(inputs[0]);
                         case D3D10Opcode.MovC:
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
@@ -857,10 +1147,6 @@ class InstructionParser
                             return new ReciprocalSquareRootOperation(inputs[0]);
                         case D3D10Opcode.Sqrt:
                             return new SquareRootOperation(inputs[0]);
-                        case D3D10Opcode.SinCos:
-                            return componentIndex == 0
-                                ? new SineOperation(inputs[0])
-                                : new CosineOperation(inputs[0]);
                         default:
                             throw new NotImplementedException();
                     }
@@ -1035,6 +1321,7 @@ class InstructionParser
             var operandType = instruction.GetOperandType(inputParameterIndex);
             if (operandType == OperandType.Immediate32)
             {
+                // An immediate's 32 bits are typed by the instruction consuming them.
                 inputs[i] = _integerOperandAnalysis.IsIntegerOperand(instruction)
                     ? new ConstantNode((int)instruction.GetParamInt(inputParameterIndex, componentIndex))
                     : new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));
@@ -1184,6 +1471,7 @@ class InstructionParser
             case D3D10Opcode.DerivRty:
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
+            case D3D10Opcode.Ftoi:
             case D3D10Opcode.IToF:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mov:

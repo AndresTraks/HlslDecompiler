@@ -27,6 +27,9 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "sample_2d_swizzle")]
     [TestCase("ps_4_0", "sample_2d_two_samplers")]
     [TestCase("ps_4_0", "clip")]
+    [TestCase("ps_4_0", "dxbc_loop")]
+    [TestCase("ps_4_0", "dxbc_continue")]
+    [TestCase("ps_4_0", "dxbc_switch")]
     [TestCase("vs_4_0", "constant")]
     [TestCase("vs_4_0", "constant_struct")]
     [TestCase("vs_4_0", "dot_product")]
@@ -57,7 +60,7 @@ public class DecompileDxbcTests
 
         ShaderModel shader;
 
-        var inputStream = File.Open(Path.GetFullPath(compiledShaderFilename), FileMode.Open, FileAccess.Read);
+        using var inputStream = File.Open(Path.GetFullPath(compiledShaderFilename), FileMode.Open, FileAccess.Read, FileShare.Read);
         using (var input = new DxbcReader(inputStream, true))
         {
             shader = input.ReadShader();

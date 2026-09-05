@@ -463,8 +463,17 @@ public class AsmWriter
             case D3D10Opcode.IAdd:
                 WriteInstruction(instruction, "iadd", 3);
                 break;
+            case D3D10Opcode.Ieq:
+                WriteInstruction(instruction, "ieq", 3);
+                break;
+            case D3D10Opcode.Ige:
+                WriteInstruction(instruction, "ige", 3);
+                break;
             case D3D10Opcode.Ilt:
                 WriteInstruction(instruction, "ilt", 3);
+                break;
+            case D3D10Opcode.Ftoi:
+                WriteInstruction(instruction, "ftoi", 2);
                 break;
             case D3D10Opcode.IToF:
                 WriteInstruction(instruction, "itof", 2);
@@ -474,6 +483,36 @@ public class AsmWriter
                 break;
             case D3D10Opcode.Loop:
                 WriteInstruction(instruction, "loop", 0);
+                break;
+            case D3D10Opcode.If:
+                WriteInstruction(instruction, "if_nz", 1);
+                break;
+            case D3D10Opcode.Else:
+                WriteInstruction(instruction, "else", 0);
+                break;
+            case D3D10Opcode.EndIf:
+                WriteInstruction(instruction, "endif", 0);
+                break;
+            case D3D10Opcode.Break:
+                WriteInstruction(instruction, "break", 0);
+                break;
+            case D3D10Opcode.Swtich:
+                WriteInstruction(instruction, "switch", 1);
+                break;
+            case D3D10Opcode.Case:
+                WriteInstruction(instruction, "case", 1);
+                break;
+            case D3D10Opcode.Default:
+                WriteInstruction(instruction, "default", 0);
+                break;
+            case D3D10Opcode.EndSwitch:
+                WriteInstruction(instruction, "endswitch", 0);
+                break;
+            case D3D10Opcode.Continue:
+                WriteInstruction(instruction, "continue", 0);
+                break;
+            case D3D10Opcode.ContinueC:
+                WriteInstruction(instruction, "continuec_nz", 1);
                 break;
             case D3D10Opcode.Mad:
                 WriteInstruction(instruction, "mad", 4);

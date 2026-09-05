@@ -8,15 +8,17 @@ namespace HlslDecompiler.Hlsl.FlowControl;
 public class StatementFinalizer
 {
     private IList<IStatement> _statements;
+    private bool _hasReturnValue;
 
-    private StatementFinalizer(IList<IStatement> statements)
+    private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue)
     {
         _statements = statements;
+        _hasReturnValue = hasReturnValue;
     }
 
-    public static void Finalize(IList<IStatement> statements)
+    public static void Finalize(IList<IStatement> statements, bool hasReturnValue)
     {
-        var finalizer = new StatementFinalizer(statements);
+        var finalizer = new StatementFinalizer(statements, hasReturnValue);
         finalizer.FinalizeStatements();
     }
 
@@ -25,6 +27,7 @@ public class StatementFinalizer
         RemoveUnusedAssignmentInputOutput();
         RemoveUnusedAssignments(_statements);
         InsertTempVariableAssignments(_statements);
+        LoopRecovery.Recover(_statements);
         SetReturnStatement(_statements);
     }
 
@@ -79,8 +82,10 @@ public class StatementFinalizer
             {
                 var assignmentNode = assignmentOutput.Value;
 
-                // Check if assignment output goes only into itself
-                if (assignmentNode.Outputs.All(v => v.IsInputOf(assignment.Outputs.Values)))
+                // Check if assignment output goes only into itself. A phi consumer
+                // means the value leaves the statement - to a branch join, or along a
+                // loop backedge into the next iteration - so it is still live.
+                if (assignmentNode.Outputs.All(v => v is not PhiNode && v.IsInputOf(assignment.Outputs.Values)))
                 {
                     RemoveAnyAssignment(assignmentNode);
                     continue;
@@ -124,6 +129,17 @@ public class StatementFinalizer
                 RemoveUnusedAssignments(ifStatement.FalseBody);
             }
         }
+        else if (statements[i] is LoopStatement loopStatement)
+        {
+            RemoveUnusedAssignments(loopStatement.Body);
+        }
+        else if (statements[i] is SwitchStatement switchStatement)
+        {
+            foreach (SwitchCase switchCase in switchStatement.Cases)
+            {
+                RemoveUnusedAssignments(switchCase.Body);
+            }
+        }
     }
 
     private void InsertTempVariableAssignments(IList<IStatement> statements)
@@ -161,7 +177,15 @@ public class StatementFinalizer
                         ? tempInputAssignment.TempVariable
                         : new TempVariableNode();
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
-                    if (tempUsages.All(u => u is PhiNode) || tempInputAssignment != null)
+                    // The value entering a loop header declares the variable; everything
+                    // else that feeds a phi - a branch join, or the loop backedge - is
+                    // assigning to a variable that already exists.
+                    bool declaresLoopVariable = tempUsages.Count != 0
+                        && tempUsages.All(u => u is PhiNode phi
+                            && phi.IsLoopHeader
+                            && ReferenceEquals(phi.PreLoopValue, tempValue));
+                    if ((tempUsages.All(u => u is PhiNode) && !declaresLoopVariable)
+                        || tempInputAssignment != null)
                     {
                         tempAssignment.IsReassignment = true;
                     }
@@ -210,30 +234,84 @@ public class StatementFinalizer
                 }
             }
         }
+        else if (statement is SwitchStatement switchStatement)
+        {
+            foreach (SwitchCase switchCase in switchStatement.Cases)
+            {
+                InsertTempVariableAssignments(switchCase.Body);
+            }
+            UnifyCaseVariables(switchStatement);
+        }
         else if (statement is LoopStatement loopStatement)
         {
             InsertTempVariableAssignments(loopStatement.Body);
 
-            foreach (var loopBodyAssignment in loopStatement.Body.Last().Outputs.Where(o => o.Value is TempAssignmentNode).ToList())
+            if (i >= 1 && statements[i - 1] is AssignmentStatement preLoopStatement)
             {
-                if (i >= 1 && statements[i - 1] is AssignmentStatement loopAssignmentStatement)
-                {
-                    var loopAssignment = loopAssignmentStatement.Outputs[loopBodyAssignment.Key] as TempAssignmentNode;
-                    TempAssignmentNode loopBodyAssignmentNode = loopBodyAssignment.Value as TempAssignmentNode;
-                    //loopBodyAssignmentNode.TempVariable.Replace(loopAssignment.TempVariable);
-                    loopBodyAssignmentNode.TempVariable = loopAssignment.TempVariable;
-                }
+                UseLoopVariablesInBody(loopStatement, preLoopStatement);
             }
         }
     }
 
-    private static void SetReturnStatement(IList<IStatement> statements)
+    /// <summary>
+    /// Every case that assigns a register must assign the same variable, the way the
+    /// two branches of an if/else do. The first case to assign it owns the variable;
+    /// the rest reassign it, and the switch carries it out.
+    /// </summary>
+    private static void UnifyCaseVariables(SwitchStatement switchStatement)
+    {
+        var variableByRegister = new Dictionary<RegisterComponentKey, TempVariableNode>();
+
+        foreach (SwitchCase switchCase in switchStatement.Cases)
+        {
+            if (switchCase.Body.Count == 0)
+            {
+                continue;
+            }
+            foreach (var caseOutput in switchCase.Body.Last().Outputs)
+            {
+                if (caseOutput.Value is not TempAssignmentNode caseAssignment)
+                {
+                    continue;
+                }
+                if (variableByRegister.TryGetValue(caseOutput.Key, out var sharedVariable))
+                {
+                    caseAssignment.TempVariable = sharedVariable;
+                }
+                else
+                {
+                    variableByRegister[caseOutput.Key] = caseAssignment.TempVariable;
+                }
+                // The declaration is hoisted above the switch, so every case reassigns.
+                caseAssignment.IsReassignment = true;
+            }
+        }
+
+        foreach (var entry in variableByRegister)
+        {
+            switchStatement.Outputs[entry.Key] = entry.Value;
+        }
+    }
+
+    private void SetReturnStatement(IList<IStatement> statements)
     {
         IStatement lastStatement = statements.Last();
-        if (lastStatement is ReturnStatement || lastStatement is AppendStatement || lastStatement is StoreStructuredStatement)
+
+        // These terminate the shader by side effect, so there is nothing to return.
+        if (lastStatement is ReturnStatement
+            || lastStatement is AppendStatement
+            || lastStatement is StoreStructuredStatement
+            || lastStatement is RestartStripStatement)
         {
             return;
         }
+
+        // Geometry and compute shaders return void.
+        if (!_hasReturnValue)
+        {
+            return;
+        }
+
         if (lastStatement is AssignmentStatement)
         {
             statements[statements.Count - 1] = new ReturnStatement(lastStatement.Outputs);
@@ -241,20 +319,108 @@ public class StatementFinalizer
         }
         if (lastStatement is IfStatement ifStatement)
         {
-            SetReturnStatement(ifStatement.TrueBody);
             if (ifStatement.FalseBody != null)
             {
+                SetReturnStatement(ifStatement.TrueBody);
                 SetReturnStatement(ifStatement.FalseBody);
+            }
+            else
+            {
+                // Without an else branch the fall-through path needs its own return.
+                statements.Add(new ReturnStatement(ifStatement.Outputs));
             }
             return;
         }
-        if (lastStatement is LoopStatement loopStatement)
+        if (lastStatement is LoopStatement || lastStatement is ClipStatement
+            || lastStatement is BreakStatement || lastStatement is ContinueStatement
+            || lastStatement is SwitchStatement)
         {
-            SetReturnStatement(loopStatement.Body);
-            statements[statements.Count - 1] = new ReturnStatement(lastStatement.Outputs);
+            // Return after the statement, not in place of it.
+            statements.Add(new ReturnStatement(lastStatement.Outputs));
             return;
         }
-        throw new NotImplementedException();
+        throw new NotImplementedException(lastStatement.GetType().Name);
+    }
+
+    /// <summary>
+    /// A register carried through a loop must reuse the variable declared before it,
+    /// wherever in the body it is assigned - not only in the body's last statement.
+    /// An assignment inside a branch, or before a <c>continue</c>, is just as much a
+    /// write to the loop-carried variable. A register written only inside the body
+    /// has no counterpart before the loop and keeps its own variable.
+    /// </summary>
+    private void UseLoopVariablesInBody(LoopStatement loopStatement, AssignmentStatement preLoopStatement)
+    {
+        new StatementVisitor(loopStatement.Body).Visit(bodyStatement =>
+        {
+            foreach (var bodyOutput in bodyStatement.Outputs.ToList())
+            {
+                if (!preLoopStatement.Outputs.TryGetValue(bodyOutput.Key, out var preLoopValue)
+                    || preLoopValue is not TempAssignmentNode loopAssignment)
+                {
+                    continue;
+                }
+
+                if (bodyOutput.Value is TempAssignmentNode bodyAssignment)
+                {
+                    bodyAssignment.TempVariable = loopAssignment.TempVariable;
+                }
+                else if (bodyOutput.Value is TempVariableNode joinVariable)
+                {
+                    // The value came from a branch join rather than a plain assignment.
+                    // The join allocated its own variable; it is the loop-carried one.
+                    ReplaceTempVariable(joinVariable, loopAssignment.TempVariable);
+                }
+                else if (bodyOutput.Value is PhiNode joinPhi && !joinPhi.IsLoopHeader)
+                {
+                    // Same case, but the statement still holds the unlowered join phi.
+                    // Lowering the branches rewrote its operands to the variable they
+                    // share, so the join variable is reachable through them.
+                    foreach (var branchVariable in joinPhi.Inputs.OfType<TempVariableNode>().ToList())
+                    {
+                        ReplaceTempVariable(branchVariable, loopAssignment.TempVariable);
+                    }
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Rewrites every reference to one temp variable so it uses another, across the
+    /// graph and across every statement. <see cref="TempAssignmentNode.TempVariable"/>
+    /// is a property rather than a graph input, so it needs its own pass.
+    /// </summary>
+    private void ReplaceTempVariable(TempVariableNode from, TempVariableNode to)
+    {
+        if (ReferenceEquals(from, to))
+        {
+            return;
+        }
+
+        from.Replace(to);
+
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var output in statement.Outputs.Where(o => ReferenceEquals(o.Value, from)).ToList())
+            {
+                statement.Outputs[output.Key] = to;
+            }
+            foreach (var input in statement.Inputs.Where(i => ReferenceEquals(i.Value, from)).ToList())
+            {
+                statement.Inputs[input.Key] = to;
+            }
+            foreach (var assignment in statement.Outputs.Values
+                .Concat(statement.Inputs.Values)
+                .OfType<TempAssignmentNode>())
+            {
+                if (ReferenceEquals(assignment.TempVariable, from))
+                {
+                    assignment.TempVariable = to;
+                    // The variable already exists; this is no longer a declaration.
+                    assignment.IsReassignment = true;
+                }
+            }
+        });
     }
 
     private void RemoveAnyAssignment(HlslTreeNode node)

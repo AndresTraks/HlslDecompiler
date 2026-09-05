@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.FlowControl;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -87,6 +88,13 @@ public sealed class NodeCompiler
         if (first is GroupNode group)
         {
             return Compile(group.Inputs);
+        }
+
+        if (first is PhiNode)
+        {
+            // Phis are an IR construct. StatementFinalizer lowers them to a temp
+            // variable plus its assignments; reaching here means that did not happen.
+            throw new InvalidOperationException("Phi node reached compilation without being lowered.");
         }
 
         throw new NotImplementedException("Unsupported node: " + first.GetType().Name);

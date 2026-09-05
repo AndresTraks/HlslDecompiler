@@ -138,10 +138,19 @@ public class RegisterDeclaration
 
     // Length of ".xy" = 2
     // Length of ".yw" = 4 (xyzw)
+    // A point size or a fog factor is one value however wide the register holding
+    // it is written: `dcl_psize o1` declares a full mask and `mov o1, c4.x` widens
+    // it again, but PSIZE has to be a scalar to compile.
+    private bool IsScalarSemantic => Semantic == "PSIZE" || Semantic == "FOG";
+
     public int MaskedLength
     {
         get
         {
+            if (IsScalarSemantic)
+            {
+                return 1;
+            }
             for (int i = 3; i >= 0; i--)
             {
                 if ((WriteMask & (1 << i)) != 0)

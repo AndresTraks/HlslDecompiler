@@ -48,8 +48,8 @@ public enum D3D10Opcode
     IMul,
     Ine,
     INeg,
-    ISHL,
-    ISHR,
+    IShl,
+    IShr,
     IToF,
     Label,
     LD,
@@ -249,8 +249,11 @@ public static class D3D10OpcodeExtensions
             // Its only immediate operand is the texel address, which is integer.
             case D3D10Opcode.LD:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.IShl:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
+            case D3D10Opcode.UGE:
+            case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMad:
             case D3D10Opcode.IMin:

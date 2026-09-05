@@ -41,7 +41,9 @@ public sealed class ConstantDeclarationCompiler
             return Compile(d3D9ConstantDeclaration);
         }
         string typeName = GetTypeName(declaration.TypeInfo);
-        return $"{typeName} {declaration.Name};";
+        int arrayCount = Math.Max(declaration.TypeInfo.NumElements, 1);
+        string arrayCountSpecifier = arrayCount > 1 ? $"[{arrayCount}]" : "";
+        return $"{typeName} {declaration.Name}{arrayCountSpecifier};";
     }
 
     public string Compile(D3D9ConstantDeclaration declaration)

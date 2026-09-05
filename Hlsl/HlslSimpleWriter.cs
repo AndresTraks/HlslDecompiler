@@ -366,6 +366,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.IAdd:
                 WriteLine("{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
+            case D3D10Opcode.IShl:
+                WriteLine("{0} = {1} << {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
             case D3D10Opcode.BreakC:
                 WriteLine("if ({0} != 0) break;", GetOperandName(instruction, 0));
                 break;
@@ -400,6 +403,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
                 WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LdStructured:

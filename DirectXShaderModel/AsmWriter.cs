@@ -475,6 +475,9 @@ public class AsmWriter
             case D3D10Opcode.IAdd:
                 WriteInstruction(instruction, "iadd", 3);
                 break;
+            case D3D10Opcode.IShl:
+                WriteInstruction(instruction, "ishl", 3);
+                break;
             case D3D10Opcode.IMad:
                 WriteInstruction(instruction, "imad", 4);
                 break;
@@ -508,6 +511,12 @@ public class AsmWriter
             case D3D10Opcode.Ige:
                 WriteInstruction(instruction, "ige", 3);
                 break;
+            case D3D10Opcode.UGE:
+                WriteInstruction(instruction, "uge", 3);
+                break;
+            case D3D10Opcode.ULT:
+                WriteInstruction(instruction, "ult", 3);
+                break;
             case D3D10Opcode.Ilt:
                 WriteInstruction(instruction, "ilt", 3);
                 break;
@@ -516,6 +525,9 @@ public class AsmWriter
                 break;
             case D3D10Opcode.IToF:
                 WriteInstruction(instruction, "itof", 2);
+                break;
+            case D3D10Opcode.UTof:
+                WriteInstruction(instruction, "utof", 2);
                 break;
             case D3D10Opcode.LD:
                 WriteInstruction(instruction, "ld", 3);

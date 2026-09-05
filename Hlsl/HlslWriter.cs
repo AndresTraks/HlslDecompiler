@@ -61,7 +61,10 @@ public abstract class HlslWriter
 
         WriteConstantDeclarations();
 
-        if (_registers.MethodInputRegisters.Count > 1)
+        // The geometry shader signature always names the input struct, so it has to
+        // be declared even when it holds a single register.
+        if (_registers.MethodInputRegisters.Count > 1
+            || _shader.Type == ShaderType.Geometry)
         {
             WriteInputStructureDeclaration();
         }
@@ -146,7 +149,12 @@ public abstract class HlslWriter
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
-                    WriteLine($"SamplerState {resource.Name};");
+                    // SampleCmp and SampleCmpLevelZero only take the comparison kind,
+                    // which the reflection data flags.
+                    string samplerType = resource.Flags.HasFlag(D3DShaderInputFlags.ComparisonSampler)
+                        ? "SamplerComparisonState"
+                        : "SamplerState";
+                    WriteLine($"{samplerType} {resource.Name};");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Structured)
                 {

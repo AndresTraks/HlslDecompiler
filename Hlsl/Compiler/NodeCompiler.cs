@@ -185,6 +185,27 @@ public sealed class NodeCompiler
                     return $"({value1} {comparison} {value2}) ? 1 : 0";
                 }
 
+            case ShiftLeftOperation _:
+                {
+                    // A shift wants integer operands, and a temp carries no type
+                    // here - `t1 << 2` on a float does not compile. fxc emits ishl
+                    // for a multiplication by a power of two, so write it back as
+                    // one: exact, and it types itself.
+                    var amount = components.Select(g => g.Inputs[1]).ToList();
+                    if (amount[0] is ConstantNode shift
+                        && amount.All(a => a is ConstantNode c && c.Value == shift.Value)
+                        && shift.Value >= 0 && shift.Value < 31
+                        && shift.Value == (int)shift.Value)
+                    {
+                        return string.Format("{0} * {1}",
+                            CompileOperand(components.Select(g => g.Inputs[0])),
+                            1 << (int)shift.Value);
+                    }
+                    return string.Format("{0} << {1}",
+                        CompileOperand(components.Select(g => g.Inputs[0])),
+                        CompileOperand(amount));
+                }
+
             case AddOperation _:
                 {
                     return string.Format("{0} + {1}",
@@ -428,7 +449,27 @@ public sealed class NodeCompiler
                     .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
                     .FirstOrDefault(d => d.BindPoint == textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs, textureDefinition.GetDimensionSize());
-                return $"{textureDefinition.Name}.Sample({samplerDefinition.Name}, {texcoords}){swizzle}";
+                // Writing every variant as Sample dropped the level, the gradients or
+                // the compared value, and still compiled.
+                string method = "Sample";
+                string extraArguments = "";
+                if (textureLoad.Controls.HasFlag(TextureLoadControls.Grad))
+                {
+                    method = "SampleGrad";
+                    extraArguments = $", {Compile(textureLoad.DerivativeX)}, {Compile(textureLoad.DerivativeY)}";
+                }
+                else if (textureLoad.ScalarArgument != null)
+                {
+                    method = textureLoad.Controls switch
+                    {
+                        TextureLoadControls.Lod => "SampleLevel",
+                        TextureLoadControls.Bias => "SampleBias",
+                        TextureLoadControls.Compare => "SampleCmp",
+                        _ => "SampleCmpLevelZero",
+                    };
+                    extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
+                }
+                return $"{textureDefinition.Name}.{method}({samplerDefinition.Name}, {texcoords}{extraArguments}){swizzle}";
             }
             else
             {

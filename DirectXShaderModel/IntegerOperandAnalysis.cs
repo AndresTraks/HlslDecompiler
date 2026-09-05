@@ -30,7 +30,9 @@ public sealed class IntegerOperandAnalysis
 
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
-            if (instruction.Opcode != D3D10Opcode.IToF && GetSourceCount(instruction.Opcode) != 0)
+            if (instruction.Opcode != D3D10Opcode.IToF
+                && instruction.Opcode != D3D10Opcode.UTof
+                && GetSourceCount(instruction.Opcode) != 0)
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
@@ -98,11 +100,15 @@ public sealed class IntegerOperandAnalysis
         {
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
             case D3D10Opcode.INeg:
                 return 1;
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.IShl:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
+            case D3D10Opcode.UGE:
+            case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMin:
             case D3D10Opcode.IMax:

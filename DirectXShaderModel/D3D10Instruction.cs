@@ -137,6 +137,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Max:
                 case D3D10Opcode.Min:
                 case D3D10Opcode.IAdd:
+                case D3D10Opcode.IShl:
                 case D3D10Opcode.IMad:
                 case D3D10Opcode.IMax:
                 case D3D10Opcode.IMin:
@@ -148,8 +149,11 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.RoundZ:
                 case D3D10Opcode.Ieq:
                 case D3D10Opcode.Ige:
+                case D3D10Opcode.UGE:
+                case D3D10Opcode.ULT:
                 case D3D10Opcode.Ilt:
                 case D3D10Opcode.IToF:
+                case D3D10Opcode.UTof:
                 case D3D10Opcode.LD:
                 case D3D10Opcode.LdStructured:
                 case D3D10Opcode.Mad:

@@ -56,13 +56,13 @@ public sealed class RegisterState
                 && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.Structured
                 && r.BindPoint == registerKey.Number))
             {
-                return 1;
+                return GetStructuredBufferComponents(registerKey);
             }
             if (d3D10RegisterKey.OperandType == OperandType.UnorderedAccessView
                 && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.UavRWStructured
                 && r.BindPoint == registerKey.Number))
             {
-                return 1;
+                return GetStructuredBufferComponents(registerKey);
             }
         }
         throw new NotImplementedException();
@@ -110,6 +110,21 @@ public sealed class RegisterState
         return false;
     }
 
+    // `float4 arr[4]` spans four registers under one declaration, so the element
+    // has to be named or every one of them reads as `arr`.
+    private static string GetConstantBufferName(
+        ConstantDeclaration declaration, D3D10RegisterKey registerKey)
+    {
+        if (declaration.TypeInfo.NumElements <= 1 || registerKey.ConstantBufferOffset == null)
+        {
+            return declaration.Name;
+        }
+        int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
+            ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
+            : declaration.RegisterIndex;
+        return $"{declaration.Name}[{registerKey.ConstantBufferOffset.Value - variableRegister}]";
+    }
+
     public string GetRegisterName(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey
@@ -119,7 +134,7 @@ public sealed class RegisterState
                 d3d10RegisterKey, registerComponentKey.ComponentIndex);
             if (declaration != null && declaration.TypeInfo.Rows == 1)
             {
-                return declaration.Name;
+                return GetConstantBufferName(declaration, d3d10RegisterKey);
             }
         }
         return GetRegisterName(registerComponentKey.RegisterKey);
@@ -190,7 +205,7 @@ public sealed class RegisterState
                     var declaration = FindConstant(registerKey);
                     if (declaration.TypeInfo.Rows == 1)
                     {
-                        return declaration.Name;
+                        return GetConstantBufferName(declaration, d3d10RegisterKey);
                     }
                     // RegisterIndex is the cbuffer itself, b0, and is the same for
                     // every variable in it. The row is the register's distance from
@@ -206,13 +221,16 @@ public sealed class RegisterState
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:
                     var decl = RegisterDeclarations[registerKey];
-                    if (MethodInputRegisters.Count == 1)
-                    {
-                        return decl.Name;
-                    }
+                    // A geometry shader reads through the vertex array however few
+                    // registers the input struct holds, so this comes before the
+                    // single-input shortcut rather than after it.
                     if (d3d10RegisterKey.GSVertex.HasValue)
                     {
                         return $"i[{d3d10RegisterKey.GSVertex}].{decl.Name}";
+                    }
+                    if (MethodInputRegisters.Count == 1)
+                    {
+                        return decl.Name;
                     }
                     return "i." + decl.Name;
                 case OperandType.InputThreadID:
@@ -384,8 +402,28 @@ public sealed class RegisterState
         }
     }
 
+    // How wide one element of a structured buffer is, in components. The
+    // declaration gives it in bytes, so a StructuredBuffer<float4> fills a register
+    // and a StructuredBuffer<float> is one component. Anything wider than a
+    // register cannot be addressed as one, so it is capped there.
+    private readonly Dictionary<RegisterKey, int> _structuredBufferComponents = [];
+
+    public int GetStructuredBufferComponents(RegisterKey registerKey)
+    {
+        return _structuredBufferComponents.TryGetValue(registerKey, out int components)
+            ? components
+            : 1;
+    }
+
+    private void DeclareStructuredStride(RegisterKey registerKey, uint stride)
+    {
+        _structuredBufferComponents[registerKey] =
+            Math.Clamp((int)stride / sizeof(float), 1, 4);
+    }
+
     public void DeclareStructuredBuffer(D3D10RegisterKey registerKey, uint stride)
     {
+        DeclareStructuredStride(registerKey, stride);
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => d.ShaderInputType == D3DShaderInputType.Structured)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);
@@ -395,8 +433,9 @@ public sealed class RegisterState
         }
     }
 
-    public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey)
+    public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey, uint stride)
     {
+        DeclareStructuredStride(registerKey, stride);
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);

@@ -7,6 +7,7 @@ namespace HlslDecompiler.Hlsl;
 public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
 {
     private int _numTextureCoordinates;
+    private bool _hasScalarArgument;
 
     private TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex, RegisterInputNode texture)
     {
@@ -75,6 +76,44 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
         return node;
     }
 
+    // The DXBC sample variants each take what plain sample does and then one thing
+    // more: a level, a bias, the value compared against, or a pair of gradients.
+    // Inputs stay in the order the accessors below expect - sampler, coordinates,
+    // gradients, texture - with any scalar argument last.
+    public static TextureLoadOutputNode CreateSample(
+        RegisterInputNode sampler,
+        HlslTreeNode[] textureCoords,
+        int componentIndex,
+        RegisterInputNode texture,
+        TextureLoadControls controls,
+        HlslTreeNode[] derivativeX,
+        HlslTreeNode[] derivativeY,
+        HlslTreeNode scalarArgument)
+    {
+        var node = new TextureLoadOutputNode(sampler, textureCoords, componentIndex, null)
+        {
+            Controls = controls
+        };
+        if (derivativeX != null)
+        {
+            foreach (HlslTreeNode component in derivativeX)
+            {
+                node.AddInput(component);
+            }
+            foreach (HlslTreeNode component in derivativeY)
+            {
+                node.AddInput(component);
+            }
+        }
+        node.AddInput(texture);
+        if (scalarArgument != null)
+        {
+            node.AddInput(scalarArgument);
+            node._hasScalarArgument = true;
+        }
+        return node;
+    }
+
     public RegisterInputNode Sampler => (RegisterInputNode)Inputs[0];
     public IEnumerable<HlslTreeNode> TextureCoordinateInputs => Inputs.Skip(1).Take(_numTextureCoordinates);
     public IEnumerable<HlslTreeNode> DerivativeX => Inputs
@@ -86,6 +125,8 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     public RegisterInputNode Texture => Inputs
         .Skip(1 + _numTextureCoordinates + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0))
         .FirstOrDefault() as RegisterInputNode;
+    // The level, bias or comparison value, whichever the controls call for.
+    public HlslTreeNode ScalarArgument => _hasScalarArgument ? Inputs[Inputs.Count - 1] : null;
     public int ComponentIndex { get; }
     public TextureLoadControls Controls { get; private set; }
 
@@ -104,5 +145,7 @@ public enum TextureLoadControls
     Bias = 1,
     Lod = 2,
     Grad = 4,
-    Project = 8
+    Project = 8,
+    Compare = 16,
+    LevelZero = 32
 }

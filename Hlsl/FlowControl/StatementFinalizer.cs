@@ -51,16 +51,16 @@ public class StatementFinalizer
                 statement.Outputs.Remove(output.Key);
             }
 
-            if (statement is AssignmentStatement assignment)
+            // A phi nobody reads keeps its inputs alive for nothing. It can be the
+            // output of any block, not just an assignment - an if whose branches all
+            // return still merges what they wrote.
+            outputsToRemove = statement.Outputs
+                .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
+                .ToList();
+            foreach (var output in outputsToRemove)
             {
-                outputsToRemove = statement.Outputs
-                    .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
-                    .ToList();
-                foreach (var output in outputsToRemove)
-                {
-                    statement.Outputs.Remove(output.Key);
-                    output.Value.Remove();
-                }
+                statement.Outputs.Remove(output.Key);
+                output.Value.Remove();
             }
         });
     }
@@ -105,17 +105,20 @@ public class StatementFinalizer
                     }
                     else if (nextStatement is IfStatement ifStatement)
                     {
-                        if (assignmentNode.IsInputOf(ifStatement.Comparison))
+                        // The condition inlines the value, so an assignment feeding
+                        // nothing but the comparison is dead. Keeping it wrote a
+                        // `t0 = a < b;` that nothing had declared, of a type that a
+                        // temp cannot hold anyway.
+                        if (assignmentNode.IsInputOf(ifStatement.Comparison)
+                            && assignmentNode.Outputs.All(o => o.IsInputOf(ifStatement.Comparison)))
                         {
-                            // TODO:
-                            /*
                             assignment.Outputs.Remove(assignmentOutput.Key);
                             ifStatement.Inputs.Remove(assignmentOutput.Key);
-                            if (ifStatement.Outputs.TryGetValue(assignmentOutput.Key, out var ifOutput) && ifOutput == assignmentNode)
+                            if (ifStatement.Outputs.TryGetValue(assignmentOutput.Key, out var ifOutput)
+                                && ifOutput == assignmentNode)
                             {
                                 ifStatement.Outputs.Remove(assignmentOutput.Key);
                             }
-                            */
                         }
                     }
                 }

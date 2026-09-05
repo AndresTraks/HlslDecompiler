@@ -233,9 +233,7 @@ class InstructionParser
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareStructuredBuffer(registerKey, instruction.GetResourceStructuredBufferStride());
-                        var destinationKey = new RegisterComponentKey(registerKey, 0);
-                        var resourceInput = new RegisterInputNode(destinationKey);
-                        SetActiveOutput(destinationKey, resourceInput);
+                        SeedResourceComponents(registerKey);
                         break;
                     }
                 case D3D10Opcode.DclSampler:
@@ -258,10 +256,9 @@ class InstructionParser
                 case D3D10Opcode.DclUnorderedAccessViewStructured:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
-                        _registerState.DeclareUnorderedAccessView(registerKey);
-                        var destinationKey = new RegisterComponentKey(registerKey, 0);
-                        var resourceInput = new RegisterInputNode(destinationKey);
-                        SetActiveOutput(destinationKey, resourceInput);
+                        _registerState.DeclareUnorderedAccessView(
+                            registerKey, instruction.GetResourceStructuredBufferStride());
+                        SeedResourceComponents(registerKey);
                         break;
                     }
                 case D3D10Opcode.EndLoop:
@@ -1201,6 +1198,7 @@ class InstructionParser
             case D3D10Opcode.Ne:
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.IShl:
             case D3D10Opcode.IMad:
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMin:
@@ -1212,8 +1210,11 @@ class InstructionParser
             case D3D10Opcode.RoundZ:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
+            case D3D10Opcode.UGE:
+            case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mad:
@@ -1230,6 +1231,8 @@ class InstructionParser
                         case D3D10Opcode.Add:
                         case D3D10Opcode.IAdd:
                             return new AddOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.IShl:
+                            return new ShiftLeftOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.DerivRtx:
                             return new PartialDerivativeXOperation(inputs[0]);
                         case D3D10Opcode.DerivRty:
@@ -1258,6 +1261,11 @@ class InstructionParser
                             // Only ever consumed by a branch, so model it as the condition itself.
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
                         case D3D10Opcode.Ige:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
+                        case D3D10Opcode.UGE:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
+                        case D3D10Opcode.ULT:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
                         case D3D10Opcode.Ieq:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
@@ -1291,6 +1299,7 @@ class InstructionParser
                             return new MinimumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Mov:
                         case D3D10Opcode.IToF:
+                        case D3D10Opcode.UTof:
                         // TODO: emit an explicit cast rather than relying on implicit conversion.
                         case D3D10Opcode.Ftoi:
                             return new MoveOperation(inputs[0]);
@@ -1412,9 +1421,35 @@ class InstructionParser
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
                 .FirstOrDefault(d => d.BindPoint == sampler.RegisterComponentKey.RegisterKey.Number);
 
-            HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, textureDefinition.GetDimensionSize());
+            int dimension = textureDefinition.GetDimensionSize();
+            HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, dimension);
 
-            return TextureLoadOutputNode.Create(sampler, texCoords, outputComponent, texture);
+            // Everything past the sampler is what distinguishes the variant.
+            const int ExtraParamIndex = 4;
+            TextureLoadControls controls = ((D3D10Instruction)instruction).Opcode switch
+            {
+                D3D10Opcode.SampleL => TextureLoadControls.Lod,
+                D3D10Opcode.SampleB => TextureLoadControls.Bias,
+                D3D10Opcode.SampleD => TextureLoadControls.Grad,
+                D3D10Opcode.SampleC => TextureLoadControls.Compare,
+                D3D10Opcode.SampleCLZ => TextureLoadControls.Compare | TextureLoadControls.LevelZero,
+                _ => TextureLoadControls.None,
+            };
+            HlslTreeNode[] derivativeX = null;
+            HlslTreeNode[] derivativeY = null;
+            HlslTreeNode scalarArgument = null;
+            if (controls.HasFlag(TextureLoadControls.Grad))
+            {
+                derivativeX = GetInputComponents(instruction, ExtraParamIndex, dimension);
+                derivativeY = GetInputComponents(instruction, ExtraParamIndex + 1, dimension);
+            }
+            else if (controls != TextureLoadControls.None)
+            {
+                scalarArgument = GetInputComponents(instruction, ExtraParamIndex, 1)[0];
+            }
+
+            return TextureLoadOutputNode.CreateSample(sampler, texCoords, outputComponent, texture,
+                controls, derivativeX, derivativeY, scalarArgument);
         }
     }
 
@@ -1498,6 +1533,22 @@ class InstructionParser
     // `c0[a0.x]` picks an array element at run time. Reading it as plain c0 would
     // silently decompile a different shader, so the index is modelled instead.
     private LoopCounterNode _loopCounter;
+
+    // Only a one-component element is modelled. A wider one loads and stores as a
+    // vector, which StoreStructuredStatement cannot express - it carries a single
+    // value, not one per component - and reading it as a scalar would decompile a
+    // different shader, so refuse instead.
+    private void SeedResourceComponents(D3D10RegisterKey registerKey)
+    {
+        int components = _registerState.GetStructuredBufferComponents(registerKey);
+        if (components != 1)
+        {
+            throw new NotImplementedException(
+                $"Structured buffer with a {components}-component element");
+        }
+        var destinationKey = new RegisterComponentKey(registerKey, 0);
+        SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
+    }
 
     private HlslTreeNode GetRelativeAddressInput(
         D3D9Instruction instruction, int parameterIndex, RegisterComponentKey inputKey)
@@ -1703,6 +1754,7 @@ class InstructionParser
             case D3D10Opcode.RoundPi:
             case D3D10Opcode.RoundZ:
             case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mov:
             case D3D10Opcode.Rsq:
@@ -1721,8 +1773,11 @@ class InstructionParser
             case D3D10Opcode.Ne:
             case D3D10Opcode.Or:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.IShl:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
+            case D3D10Opcode.UGE:
+            case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMin:

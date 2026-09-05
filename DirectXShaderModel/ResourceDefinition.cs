@@ -40,9 +40,15 @@ public class ResourceDefinition
         {
             ResourceDimension.Texture1D => 1,
             ResourceDimension.Texture2D => 2,
+            ResourceDimension.Texture2Dms => 2,
             ResourceDimension.Texture3D => 3,
             ResourceDimension.TextureCube => 3,
-            _ => throw new NotImplementedException(),
+            // An array slice is one coordinate on top of the dimension.
+            ResourceDimension.Texture1DArray => 2,
+            ResourceDimension.Texture2DArray => 3,
+            ResourceDimension.Texture2DmsArray => 3,
+            ResourceDimension.TextureCubeArray => 4,
+            _ => throw new NotImplementedException(Dimension.ToString()),
         };
     }
 

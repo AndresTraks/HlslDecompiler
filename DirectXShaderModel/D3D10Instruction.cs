@@ -121,6 +121,9 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.GE:
                 case D3D10Opcode.IAdd:
+                case D3D10Opcode.Ieq:
+                case D3D10Opcode.Ige:
+                case D3D10Opcode.Ilt:
                 case D3D10Opcode.IToF:
                 case D3D10Opcode.LdStructured:
                 case D3D10Opcode.Mad:
@@ -200,8 +203,8 @@ public class D3D10Instruction : Instruction
             }
             else if (selectionMode == ComponentSelectionMode.Select1)
             {
-                int name = (int)((span[0] >> 4) & 0x2);
-                return 1 << name;
+                int component = (int)((span[0] >> 4) & 0x3);
+                return 1 << component;
             }
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand0Component)

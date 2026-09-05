@@ -11,10 +11,12 @@ public class AsmWriter
     private ShaderModel shader;
     private StreamWriter asmWriter;
     private IDictionary<RegisterKey, int> _samplerDimensions = new Dictionary<RegisterKey, int>();
+    private readonly IntegerOperandAnalysis _integerOperandAnalysis;
 
     public AsmWriter(ShaderModel shader)
     {
         this.shader = shader;
+        _integerOperandAnalysis = new IntegerOperandAnalysis(shader);
     }
 
     void WriteLine(string value)
@@ -695,7 +697,7 @@ public class AsmWriter
         return registerTypeName + registerNumber;
     }
 
-    private static string FormatOperand(D3D10Instruction instruction, int index)
+    private string FormatOperand(D3D10Instruction instruction, int index)
     {
         var operandType = instruction.GetOperandType(index);
         string registerNumber;
@@ -709,10 +711,11 @@ public class AsmWriter
         }
         else if (operandType == OperandType.Immediate32)
         {
+            bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction);
             var componentSelection = instruction.GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand1Component)
             {
-                if (instruction.Opcode.IsInteger())
+                if (isInteger)
                 {
                     return $"l({instruction.GetParamInt(index)})";
                 }
@@ -723,7 +726,7 @@ public class AsmWriter
             }
             else
             {
-                if (instruction.Opcode.IsInteger())
+                if (isInteger)
                 {
                     string immediate0 = instruction.GetParamInt(index, 0).ToString();
                     string immediate1 = instruction.GetParamInt(index, 1).ToString();

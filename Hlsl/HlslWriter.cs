@@ -252,7 +252,8 @@ public abstract class HlslWriter
         if (_shader.Type == ShaderType.Geometry)
         {
             string primitive = _registers.InputPrimitive.Value.ToHlslString();
-            return $"{primitive} GS_IN i[3], inout TriangleStream<GS_OUT> stream";
+            int vertexCount = GetPrimitiveVertexCount(_registers.InputPrimitive.Value);
+            return $"{primitive} GS_IN i[{vertexCount}], inout TriangleStream<GS_OUT> stream";
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {
@@ -267,6 +268,19 @@ public abstract class HlslWriter
         return _shader.Type == ShaderType.Pixel
                 ? "PS_IN i"
                 : "VS_IN i";
+    }
+
+    private static int GetPrimitiveVertexCount(D3D10Primitive primitive)
+    {
+        return primitive switch
+        {
+            D3D10Primitive.Point => 1,
+            D3D10Primitive.Line => 2,
+            D3D10Primitive.Triangle => 3,
+            D3D10Primitive.LineAdj => 4,
+            D3D10Primitive.TriangleAdj => 6,
+            _ => throw new NotImplementedException(primitive.ToString()),
+        };
     }
 
     private static string CompileRegisterDeclaration(RegisterDeclaration input)

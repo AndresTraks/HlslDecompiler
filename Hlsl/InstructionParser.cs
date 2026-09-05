@@ -8,8 +8,8 @@ namespace HlslDecompiler.Hlsl;
 
 class InstructionParser
 {
-    private ShaderModel _shaderModel;
     private RegisterState _registerState;
+    private IntegerOperandAnalysis _integerOperandAnalysis;
     private IList<IStatement> _statements;
     private Stack<IStatement> _currentStatements;
 
@@ -43,7 +43,7 @@ class InstructionParser
 
     private HlslAst ParseToAst(ShaderModel shader)
     {
-        _shaderModel = shader;
+        _integerOperandAnalysis = new IntegerOperandAnalysis(shader);
         _registerState = new RegisterState(shader);
         _statements = [];
         _currentStatements = new Stack<IStatement>();
@@ -799,6 +799,9 @@ class InstructionParser
             case D3D10Opcode.Frc:
             case D3D10Opcode.GE:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.Ieq:
+            case D3D10Opcode.Ige:
+            case D3D10Opcode.Ilt:
             case D3D10Opcode.IToF:
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.Log:
@@ -827,6 +830,12 @@ class InstructionParser
                             return new FractionalOperation(inputs[0]);
                         case D3D10Opcode.GE:
                             return new GreaterEqualOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.Ilt:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
+                        case D3D10Opcode.Ige:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
+                        case D3D10Opcode.Ieq:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
                         case D3D10Opcode.LdStructured:
                             return new LoadStructuredNode(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.Log:
@@ -1026,7 +1035,9 @@ class InstructionParser
             var operandType = instruction.GetOperandType(inputParameterIndex);
             if (operandType == OperandType.Immediate32)
             {
-                inputs[i] = new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));
+                inputs[i] = _integerOperandAnalysis.IsIntegerOperand(instruction)
+                    ? new ConstantNode((int)instruction.GetParamInt(inputParameterIndex, componentIndex))
+                    : new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));
             }
             else
             {
@@ -1186,6 +1197,9 @@ class InstructionParser
             case D3D10Opcode.Dp4:
             case D3D10Opcode.GE:
             case D3D10Opcode.IAdd:
+            case D3D10Opcode.Ieq:
+            case D3D10Opcode.Ige:
+            case D3D10Opcode.Ilt:
             case D3D10Opcode.Max:
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:

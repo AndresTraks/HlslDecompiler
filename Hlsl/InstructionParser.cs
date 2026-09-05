@@ -687,7 +687,47 @@ class InstructionParser
         InsertStatement(returnStatement);
     }
 
-    private void InsertSwitchStatement(D3D10Instruction instruction)
+    // A comparison result. GE is still modelled as an operation rather than a
+    // ComparisonNode, unlike every other comparison, so it has to be named here.
+    private static bool IsCondition(HlslTreeNode node)
+    {
+        return node is ComparisonNode || node is GreaterEqualOperation;
+    }
+
+    /// <summary>
+    /// `and` and `or` combine comparison masks, which a shader may mean in two
+    /// different ways. Two conditions are a logical operator. A condition masked with
+    /// a constant is the `cond ? constant : 0` idiom that step() and friends compile
+    /// to, where the constant is the bit pattern of the wanted value.
+    /// </summary>
+    private static HlslTreeNode CreateLogicalOperation(D3D10Opcode opcode, HlslTreeNode[] inputs)
+    {
+        if (IsCondition(inputs[0]) && IsCondition(inputs[1]))
+        {
+            return opcode == D3D10Opcode.And
+                ? new LogicalAndOperation(inputs[0], inputs[1])
+                : new LogicalOrOperation(inputs[0], inputs[1]);
+        }
+
+        if (opcode == D3D10Opcode.And)
+        {
+            if (IsCondition(inputs[0]) && inputs[1] is ConstantNode)
+            {
+                return new MoveConditionalOperation(inputs[0], inputs[1], new ConstantNode(0));
+            }
+            if (IsCondition(inputs[1]) && inputs[0] is ConstantNode)
+            {
+                return new MoveConditionalOperation(inputs[1], inputs[0], new ConstantNode(0));
+            }
+        }
+
+        // Bitwise use on integers is a different thing again, and guessing between
+        // them would silently change what the shader computes.
+        throw new NotImplementedException(
+            $"{opcode} on {inputs[0].GetType().Name} and {inputs[1].GetType().Name}");
+    }
+
+    private void InsertSwitchStatement(D3D10Instruction instruction)
     {
         byte component = instruction.GetSourceSwizzleComponents(0)[0];
         RegisterKey registerKey = instruction.GetParamRegisterKey(0);
@@ -921,6 +961,10 @@ class InstructionParser
             {
                 continue;
             }
+            if (instruction.Saturate)
+            {
+                instructionTree = new SaturateOperation(instructionTree);
+            }
             newOutputs[destinationKey] = instructionTree;
         }
 
@@ -1121,8 +1165,10 @@ class InstructionParser
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
             case D3D10Opcode.Exp:
+            case D3D10Opcode.And:
             case D3D10Opcode.Div:
             case D3D10Opcode.Eq:
+            case D3D10Opcode.Or:
             case D3D10Opcode.Frc:
             case D3D10Opcode.GE:
             case D3D10Opcode.LT:
@@ -1170,6 +1216,10 @@ class InstructionParser
                             return new GreaterEqualOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Div:
                             return new DivisionOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.And:
+                            return CreateLogicalOperation(instruction.Opcode, inputs);
+                        case D3D10Opcode.Or:
+                            return CreateLogicalOperation(instruction.Opcode, inputs);
                         // Float comparisons, like their integer counterparts, only
                         // ever feed a branch or a movc, so they read as conditions.
                         case D3D10Opcode.LT:
@@ -1230,6 +1280,8 @@ class InstructionParser
                             throw new NotImplementedException();
                     }
                 }
+            case D3D10Opcode.LD:
+                return CreateResourceLoadNode(instruction, componentIndex);
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
@@ -1244,6 +1296,30 @@ class InstructionParser
             default:
                 throw new NotImplementedException($"{instruction.Opcode} not implemented");
         }
+    }
+
+    // ld dest, srcAddress, srcResource
+    private ResourceLoadNode CreateResourceLoadNode(D3D10Instruction instruction, int outputComponent)
+    {
+        const int AddressParamIndex = 1;
+        const int ResourceParamIndex = 2;
+
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
+        ResourceDefinition definition = _registerState.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .FirstOrDefault(d => d.BindPoint == resource.RegisterComponentKey.RegisterKey.Number);
+
+        // Load reads a texel directly, so it takes the mip level alongside the
+        // coordinates: a 2D texture is addressed by an int3.
+        int addressLength = (definition?.GetDimensionSize() ?? 2) + 1;
+        // The address is in texels, so an immediate operand holds integers rather
+        // than the floats those same bits would spell.
+        HlslTreeNode[] address = instruction.GetOperandType(AddressParamIndex) == OperandType.Immediate32
+            ? [.. Enumerable.Range(0, addressLength)
+                .Select(i => (HlslTreeNode)new ConstantNode((int)instruction.GetParamInt(AddressParamIndex, i)))]
+            : GetInputComponents(instruction, AddressParamIndex, addressLength);
+
+        return new ResourceLoadNode(resource, address, outputComponent);
     }
 
     private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -1567,11 +1643,13 @@ class InstructionParser
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
+            case D3D10Opcode.And:
             case D3D10Opcode.Div:
             case D3D10Opcode.Eq:
             case D3D10Opcode.GE:
             case D3D10Opcode.LT:
             case D3D10Opcode.Ne:
+            case D3D10Opcode.Or:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:

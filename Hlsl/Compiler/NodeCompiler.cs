@@ -100,6 +100,17 @@ public sealed class NodeCompiler
         throw new NotImplementedException("Unsupported node: " + first.GetType().Name);
     }
 
+    // Compiles a sub-expression, parenthesised when its operator binds more loosely
+    // than the one it is being nested into.
+    private string CompileOperand(IEnumerable<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
+    {
+        List<HlslTreeNode> list = components.ToList();
+        string compiled = Compile(list, promoteToVectorSize);
+        return AssociativityTester.NeedsParenthesesAsOperand(list[0])
+            ? $"({compiled})"
+            : compiled;
+    }
+
     private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)
     {
         UngroupConstantGroups(componentGroups);
@@ -163,15 +174,15 @@ public sealed class NodeCompiler
             case AddOperation _:
                 {
                     return string.Format("{0} + {1}",
-                        Compile(components.Select(g => g.Inputs[0])),
-                        Compile(components.Select(g => g.Inputs[1])));
+                        CompileOperand(components.Select(g => g.Inputs[0])),
+                        CompileOperand(components.Select(g => g.Inputs[1])));
                 }
 
             case SubtractOperation _:
                 {
                     return string.Format("{0} - {1}",
-                        Compile(components.Select(g => g.Inputs[0])),
-                        Compile(components.Select(g => g.Inputs[1])));
+                        CompileOperand(components.Select(g => g.Inputs[0])),
+                        CompileOperand(components.Select(g => g.Inputs[1])));
                 }
 
             case MultiplyOperation _:
@@ -270,6 +281,15 @@ public sealed class NodeCompiler
 
                     return $"{value}[{address}]";
                 }
+            case LogicalAndOperation _:
+            case LogicalOrOperation _:
+                {
+                    string op = operation is LogicalAndOperation ? "&&" : "||";
+                    return string.Format("{0} " + op + " {1}",
+                        Compile(components.Select(g => g.Inputs[0])),
+                        Compile(components.Select(g => g.Inputs[1])));
+                }
+
             case MoveConditionalOperation _:
                 {
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
@@ -300,8 +320,18 @@ public sealed class NodeCompiler
                     promoteToVectorSize);
             }
 
-            string name = _registers.GetRegisterName(registerKey);
+            string name = _registers.GetRegisterName(shaderInput.RegisterComponentKey);
             return $"{name}{swizzle}";
+        }
+
+        if (first is ResourceLoadNode resourceLoad)
+        {
+            string loadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            ResourceDefinition resourceDefinition = _registers.ResourceDefinitions
+                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
+            string address = Compile(resourceLoad.Address, resourceLoad.Address.Count());
+            return $"{resourceDefinition.Name}.Load({address}){loadSwizzle}";
         }
 
         if (first is TextureLoadOutputNode textureLoad)

@@ -227,6 +227,42 @@
     <None Update="ShaderAssembly\ps_4_0\int_arithmetic.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="CompiledShaders\ps_4_0\logical_and.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\logical_and.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\logical_and.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\logical_and.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\saturate_step.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\saturate_step.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\saturate_step.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\saturate_step.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\texture_load.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\texture_load.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\texture_load.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\texture_load.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="CompiledShaders\ps_3_0\loop.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

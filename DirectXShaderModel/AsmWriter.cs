@@ -517,6 +517,9 @@ public class AsmWriter
             case D3D10Opcode.IToF:
                 WriteInstruction(instruction, "itof", 2);
                 break;
+            case D3D10Opcode.LD:
+                WriteInstruction(instruction, "ld", 3);
+                break;
             case D3D10Opcode.LdStructured:
                 WriteInstruction(instruction, "ld_structured", 4);
                 break;
@@ -593,7 +596,7 @@ public class AsmWriter
 
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)
     {
-        string line = mnemonic;
+        string line = instruction.Saturate ? mnemonic + "_sat" : mnemonic;
         for (int i = 0; i < operandCount; i++)
         {
             line += " " + FormatOperand(instruction, i);

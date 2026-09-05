@@ -60,6 +60,24 @@ public sealed class RegisterState
         throw new NotImplementedException();
     }
 
+    // A DXBC constant buffer register holds 16 bytes, so several scalars can share
+    // one. Naming by register alone cannot tell `float a, b` apart - both live in
+    // cb0[0], at .x and .y - so the component decides which declaration is meant.
+    public string GetRegisterName(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey
+            && d3d10RegisterKey.OperandType == OperandType.ConstantBuffer)
+        {
+            ConstantDeclaration declaration = FindConstant(
+                d3d10RegisterKey, registerComponentKey.ComponentIndex);
+            if (declaration != null && declaration.TypeInfo.Rows == 1)
+            {
+                return declaration.Name;
+            }
+        }
+        return GetRegisterName(registerComponentKey.RegisterKey);
+    }
+
     public string GetRegisterName(RegisterKey registerKey)
     {
         if (registerKey.IsOutput)
@@ -208,6 +226,25 @@ public sealed class RegisterState
         return FindConstant(registerKey as D3D9RegisterKey);
     }
 
+    // Byte offset of a single component within the constant buffer, rather than of
+    // the whole register, so packed scalars resolve to the right declaration.
+    public ConstantDeclaration FindConstant(D3D10RegisterKey registerKey, int componentIndex)
+    {
+        if (registerKey.OperandType != OperandType.ConstantBuffer
+            || registerKey.ConstantBufferOffset == null)
+        {
+            return null;
+        }
+
+        int expectedOffset = registerKey.ConstantBufferOffset.Value * 4 * sizeof(float)
+            + componentIndex * sizeof(float);
+        return ConstantDeclarations.FirstOrDefault(d =>
+            d.RegisterIndex == registerKey.Number
+            && d is D3D10ConstantDeclaration constant
+            && constant.VariableOffset <= expectedOffset
+            && expectedOffset < constant.VariableOffset + constant.VariableSize);
+    }
+
     public ConstantDeclaration FindConstant(D3D9RegisterKey registerKey)
     {
         RegisterSet? registerSet = registerKey.Type switch
@@ -241,14 +278,25 @@ public sealed class RegisterState
     }
 
 
+    private const int ConstantRegisterSizeInBytes = 4 * sizeof(float);
+
     public void DeclareRegister(D3D10RegisterKey registerKey, int writeMask)
     {
         if (registerKey.IsConstant)
         {
-            var declaration = _shaderModel.ConstantDeclarations.FirstOrDefault(d => d.RegisterIndex == registerKey.Number && d.Offset == registerKey.ConstantBufferOffset);
-            if (declaration != null)
+            // Several variables can share one 16-byte register - `float a, b` both
+            // live in cb0[0], at .x and .y - so every declaration whose bytes fall in
+            // the slot matters, not just the first. Matching on the declaration's
+            // Offset does not work: the reader sets it to the variable's index within
+            // the buffer, not to a register slot.
+            foreach (D3D10ConstantDeclaration declaration in _shaderModel.ConstantDeclarations
+                .Where(d => d.RegisterIndex == registerKey.Number
+                    && d.VariableOffset / ConstantRegisterSizeInBytes == registerKey.ConstantBufferOffset))
             {
-                ConstantDeclarations.Add(declaration);
+                if (!ConstantDeclarations.Contains(declaration))
+                {
+                    ConstantDeclarations.Add(declaration);
+                }
             }
         }
         else if (registerKey.OperandType == OperandType.Sampler)

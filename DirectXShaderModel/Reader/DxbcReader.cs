@@ -204,6 +204,7 @@ public class DxbcReader : BinaryReader
         }
 
         var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
+        instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
         return instruction;
     }
 

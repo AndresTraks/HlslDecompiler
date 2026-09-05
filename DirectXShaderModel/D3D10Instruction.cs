@@ -44,6 +44,10 @@ public class D3D10Instruction : Instruction
     private bool _isGeometryShader;
 
     public D3D10Opcode Opcode { get; }
+
+    // Destination saturate modifier: the result is clamped to [0, 1]. Encoded in
+    // the opcode token rather than in an operand, so the reader sets it.
+    public bool Saturate { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
     public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool isGeometryShader)
@@ -119,7 +123,9 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
+                case D3D10Opcode.And:
                 case D3D10Opcode.Div:
+                case D3D10Opcode.Or:
                 case D3D10Opcode.Eq:
                 case D3D10Opcode.GE:
                 case D3D10Opcode.LT:
@@ -139,6 +145,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Ige:
                 case D3D10Opcode.Ilt:
                 case D3D10Opcode.IToF:
+                case D3D10Opcode.LD:
                 case D3D10Opcode.LdStructured:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Mov:

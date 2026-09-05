@@ -1,4 +1,8 @@
-﻿namespace HlslDecompiler.DirectXShaderModel;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HlslDecompiler.DirectXShaderModel;
 
 // D3D10_SB_OPCODE_TYPE
 public enum D3D10Opcode
@@ -226,11 +230,24 @@ public enum D3D10Opcode
 
 public static class D3D10OpcodeExtensions
 {
+    // Declaration tokens use bits 11 and up for their own fields - interpolation
+    // mode, primitive type and so on - so flags defined on instruction tokens, the
+    // saturate modifier in particular, must not be read out of them.
+    private static readonly HashSet<D3D10Opcode> Declarations =
+        [.. Enum.GetValues<D3D10Opcode>().Where(o => o.ToString().StartsWith("Dcl"))];
+
+    public static bool IsDeclaration(this D3D10Opcode opcode)
+    {
+        return Declarations.Contains(opcode);
+    }
+
     public static bool IsInteger(this D3D10Opcode opcode)
     {
         switch (opcode)
         {
             case D3D10Opcode.Case:
+            // Its only immediate operand is the texel address, which is integer.
+            case D3D10Opcode.LD:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:

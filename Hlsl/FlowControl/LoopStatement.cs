@@ -8,6 +8,14 @@ public class LoopStatement : IStatement
 {
     // Null if unbounded
     public uint? RepeatCount { get; }
+
+    // The trip count when it is only known at run time, as `loop aL, iN` has when
+    // iN is a uniform rather than a defi.
+    public HlslTreeNode RepeatCountNode { get; set; }
+
+    // `loop aL, iN` counts in aL, which the body can index constants by. `rep` and
+    // the DXBC loops have no such register.
+    public bool HasLoopCounter { get; set; }
     public IList<IStatement> Body { get; } = [];
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }

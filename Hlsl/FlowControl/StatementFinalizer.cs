@@ -300,8 +300,14 @@ public class StatementFinalizer
                 }
                 if (variableByRegister.TryGetValue(output.Key, out TempVariableNode variable))
                 {
-                    assignment.TempVariable.Replace(variable);
-                    assignment.TempVariable = variable;
+                    // The branches can already share the variable: two ifs in a row
+                    // assigning the same register hand the second one a phi over it,
+                    // and both of its branches then reuse that one variable.
+                    if (!ReferenceEquals(assignment.TempVariable, variable))
+                    {
+                        assignment.TempVariable.Replace(variable);
+                        assignment.TempVariable = variable;
+                    }
                 }
                 else
                 {
@@ -375,7 +381,8 @@ public class StatementFinalizer
 
         if (lastStatement is AssignmentStatement)
         {
-            statements[statements.Count - 1] = new ReturnStatement(lastStatement.Outputs);
+            statements[statements.Count - 1] =
+                new ReturnStatement(lastStatement.Inputs, lastStatement.Outputs);
             return;
         }
         if (lastStatement is IfStatement ifStatement)

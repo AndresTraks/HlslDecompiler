@@ -112,15 +112,16 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    private void WriteAssignmentStatement(AssignmentStatement assignmentStatement)
+    // Registers the statement assigns, skipping the ones it merely carries forward.
+    private void WriteStatementTempAssignments(IStatement statement)
     {
-        IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = assignmentStatement.Outputs
+        IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = statement.Outputs
                 .Where(o => {
                     if (!o.Key.RegisterKey.IsTempRegister)
                     {
                         return false;
                     }
-                    if (assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode) && o.Value == inputNode)
+                    if (statement.Inputs.TryGetValue(o.Key, out var inputNode) && o.Value == inputNode)
                     {
                         return false;
                     }
@@ -132,6 +133,11 @@ public class HlslAstWriter : HlslWriter
             string compiled = _compiler.Compile(temp);
             WriteLine(compiled);
         }
+    }
+
+    private void WriteAssignmentStatement(AssignmentStatement assignmentStatement)
+    {
+        WriteStatementTempAssignments(assignmentStatement);
 
         // Skip output registers the statement merely carries forward unchanged, the
         // same way temps are filtered above. Without this every statement re-emits
@@ -166,6 +172,7 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
+        string loopVariableName = null;
         if (loop.IsCountedLoop)
         {
             // The initializer and increment compile as statements; the for header
@@ -175,10 +182,18 @@ public class HlslAstWriter : HlslWriter
             string increment = _compiler.Compile(Reduce(loop.Increment)).TrimEnd(';');
             WriteLine($"for ({initializer}; {condition}; {increment}) {{");
         }
-        else if (loop.RepeatCount is uint repeatCount)
+        else if (loop.RepeatCount is uint || loop.RepeatCountNode != null)
         {
             string variableName = GetLoopVariableName(_loopDepth);
-            WriteLine($"for (int {variableName} = 0; {variableName} < {repeatCount}; {variableName}++) {{");
+            string count = loop.RepeatCount is uint repeatCount
+                ? repeatCount.ToString()
+                : _compiler.Compile(Reduce(loop.RepeatCountNode));
+            WriteLine($"for (int {variableName} = 0; {variableName} < {count}; {variableName}++) {{");
+            // In the `loop aL, iN` form, aL in the body is this variable.
+            if (loop.HasLoopCounter)
+            {
+                loopVariableName = variableName;
+            }
         }
         else
         {
@@ -186,7 +201,13 @@ public class HlslAstWriter : HlslWriter
         }
         indent += "\t";
         _loopDepth++;
+        string enclosingLoopVariable = _compiler.LoopVariableName;
+        if (loopVariableName != null)
+        {
+            _compiler.LoopVariableName = loopVariableName;
+        }
         WriteStatements(loop.Body);
+        _compiler.LoopVariableName = enclosingLoopVariable;
         _loopDepth--;
         indent = indent.Substring(0, indent.Length - 1);
         WriteLine("}");
@@ -307,6 +328,10 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteReturnStatement(ReturnStatement returnStatement)
     {
+        // A return can replace an assignment statement, and the returned expression
+        // reads what that statement assigned.
+        WriteStatementTempAssignments(returnStatement);
+
         Dictionary<RegisterKey, HlslTreeNode[]> outputs =
             GroupComponents(returnStatement.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());

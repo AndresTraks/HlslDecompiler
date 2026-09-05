@@ -11,6 +11,13 @@ public class HlslTreeNode
 
     public void Replace(HlslTreeNode with)
     {
+        // Replacing a node with itself would drop its own back-references and then
+        // append to the very list being enumerated.
+        if (ReferenceEquals(this, with))
+        {
+            return;
+        }
+
         foreach (var input in Inputs)
         {
             input.Outputs.Remove(this);

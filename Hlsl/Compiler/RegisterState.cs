@@ -32,10 +32,18 @@ public sealed class RegisterState
 
     public int GetRegisterMaskedLength(RegisterKey registerKey)
     {
-        if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Const)
+        // A constant is as wide as it was declared, whichever set it lives in: an
+        // `int count` fills a whole i# register but is still one component.
+        if (registerKey is D3D9RegisterKey d3D9RegisterKey
+            && (d3D9RegisterKey.Type == RegisterType.Const
+                || d3D9RegisterKey.Type == RegisterType.ConstInt
+                || d3D9RegisterKey.Type == RegisterType.ConstBool))
         {
             var constant = FindConstant(registerKey);
-            return constant.TypeInfo.Columns;
+            if (constant != null)
+            {
+                return constant.TypeInfo.Columns;
+            }
         }
 
         if (RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration registerDeclaration))
@@ -289,6 +297,8 @@ public sealed class RegisterState
         RegisterSet? registerSet = registerKey.Type switch
         {
             RegisterType.Const => RegisterSet.Float4,
+            RegisterType.ConstInt => RegisterSet.Int4,
+            RegisterType.ConstBool => RegisterSet.Bool,
             RegisterType.Sampler => RegisterSet.Sampler,
             _ => null,
         };
@@ -403,7 +413,7 @@ public sealed class RegisterState
             {
                 RegisterSet.Bool => RegisterType.ConstBool,
                 RegisterSet.Float4 => RegisterType.Const,
-                RegisterSet.Int4 => RegisterType.Input,
+                RegisterSet.Int4 => RegisterType.ConstInt,
                 _ => throw new InvalidOperationException(),
             };
             for (int r = 0; r < constant.RegisterCount; r++)

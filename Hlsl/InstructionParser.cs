@@ -332,7 +332,7 @@ class InstructionParser
             // loop aL, iN - the counter register is operand 0, the trip count is operand 1.
             D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
             _registerState.DeclareRegister(registerKey, 1);
-            InsertLoop(instruction, 1);
+            InsertLoop(instruction, 1, hasLoopCounter: true);
         }
         else if (instruction.Opcode == Opcode.Rep)
         {
@@ -586,13 +586,19 @@ class InstructionParser
         return instruction is D3D10Instruction d3d10 && d3d10.Opcode == D3D10Opcode.StoreStructured;
     }
 
-    private void InsertLoop(Instruction instruction, int countParamIndex)
+    private void InsertLoop(Instruction instruction, int countParamIndex, bool hasLoopCounter = false)
     {
         int loopRegisterNumber = instruction.GetParamRegisterNumber(countParamIndex);
         ConstantIntRegister countRegister = _registerState.FindConstantIntRegister(loopRegisterNumber);
-        // A trip count defined outside the shader body leaves the loop unbounded.
+        // A defi gives the count outright. Otherwise iN is a uniform, and the count
+        // is its x component - still a bounded loop, just not a constant one.
         uint? repeatCount = countRegister?[0];
-        var loop = new LoopStatement(repeatCount, ActiveOutputs);
+        var loop = new LoopStatement(repeatCount, ActiveOutputs) { HasLoopCounter = hasLoopCounter };
+        if (repeatCount == null)
+        {
+            loop.RepeatCountNode = new RegisterInputNode(
+                new RegisterComponentKey(RegisterType.ConstInt, loopRegisterNumber, 0));
+        }
         SeedLoopHeaderPhis(loop);
 
         InsertStatement(loop);
@@ -1488,13 +1494,21 @@ class InstructionParser
 
     // `c0[a0.x]` picks an array element at run time. Reading it as plain c0 would
     // silently decompile a different shader, so the index is modelled instead.
+    private LoopCounterNode _loopCounter;
+
     private HlslTreeNode GetRelativeAddressInput(
         D3D9Instruction instruction, int parameterIndex, RegisterComponentKey inputKey)
     {
         RegisterType relativeType = instruction.GetRelativeParamRegisterType(parameterIndex);
+        if (relativeType == RegisterType.Loop)
+        {
+            // aL counts the enclosing loop. One shared node stands for the register,
+            // so that the components of c0[aL] group into a single expression.
+            _loopCounter ??= new LoopCounterNode();
+            return new RelativeAddressNode(inputKey, _loopCounter);
+        }
         if (relativeType != RegisterType.Addr)
         {
-            // aL indexes by the loop counter, which is not a value in the tree.
             throw new NotImplementedException(
                 $"Relative addressing through {relativeType} in {instruction.Opcode}");
         }

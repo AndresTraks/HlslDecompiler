@@ -16,6 +16,10 @@ public sealed class NodeCompiler
 
     public const int PromoteToAnyVectorSize = -1;
 
+    // The variable of the innermost counted loop, which aL refers to. The writer
+    // generates that name from the nesting depth, so it has to be handed in.
+    public string LoopVariableName { get; set; }
+
     public NodeCompiler(RegisterState registers)
     {
         _registers = registers;
@@ -306,6 +310,12 @@ public sealed class NodeCompiler
     private string CompileNodesWithComponents(List<HlslTreeNode> components, HlslTreeNode first, int promoteToVectorSize)
     {
         var componentsWithIndices = components.Cast<IHasComponentIndex>();
+
+        if (first is LoopCounterNode)
+        {
+            return LoopVariableName
+                ?? throw new InvalidOperationException("aL used outside a counted loop");
+        }
 
         if (first is RelativeAddressNode relativeAddress)
         {

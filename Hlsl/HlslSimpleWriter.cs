@@ -206,19 +206,26 @@ public class HlslSimpleWriter : HlslWriter
                     $"log2({GetSourceName(instruction, 1)})");
                 break;
             case Opcode.Loop:
-                ConstantIntRegister intRegister = _registers.FindConstantIntRegister(instruction.GetParamRegisterNumber(1));
-                uint end = intRegister.Value[0];
-                uint start = intRegister.Value[1];
-                uint stride = intRegister.Value[2];
+                int loopRegisterNumber = instruction.GetParamRegisterNumber(1);
+                ConstantIntRegister intRegister = _registers.FindConstantIntRegister(loopRegisterNumber);
                 _loopVariableIndex++;
                 string loopVariable = "i" + _loopVariableIndex;
-                if (stride == 1)
+                if (intRegister == null)
                 {
-                    WriteLine("for (int {2} = {0}; {2} < {1}; {2}++) {{", start, end, loopVariable);
+                    // The trip count is a uniform, declared rather than defined by a defi.
+                    string count = _registers.GetRegisterName(
+                        new D3D9RegisterKey(RegisterType.ConstInt, loopRegisterNumber));
+                    WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", count, loopVariable);
+                }
+                else if (intRegister.Value[2] == 1)
+                {
+                    WriteLine("for (int {2} = {0}; {2} < {1}; {2}++) {{",
+                        intRegister.Value[1], intRegister.Value[0], loopVariable);
                 }
                 else
                 {
-                    WriteLine("for (int {3} = {0}; {3} < {1}; {3} += {2}) {{", start, end, stride, loopVariable);
+                    WriteLine("for (int {3} = {0}; {3} < {1}; {3} += {2}) {{",
+                        intRegister.Value[1], intRegister.Value[0], intRegister.Value[2], loopVariable);
                 }
                 indent += "\t";
                 break;
@@ -524,10 +531,15 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
     }
 
-    private static string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)
+    private string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)
     {
         if (instruction.Params.HasRelativeAddressing(srcIndex))
         {
+            // aL counts the enclosing loop; a0 is the address register.
+            if (instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop)
+            {
+                return $"[i{_loopVariableIndex}]";
+            }
             return $"[a{instruction.GetRelativeParamRegisterNumber(srcIndex)}]";
         }
         return string.Empty;

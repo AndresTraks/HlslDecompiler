@@ -601,6 +601,13 @@ public class AsmWriter
             case D3D10Opcode.Rsq:
                 WriteInstruction(instruction, "rsq", 2);
                 break;
+            case D3D10Opcode.Gather4:
+                WriteInstruction(instruction, "gather4", 4);
+                break;
+            case D3D10Opcode.Sample when instruction.SampleOffsets != null:
+                WriteInstruction(instruction,
+                    $"sample_aoffimmi({string.Join(",", instruction.SampleOffsets)})", 4);
+                break;
             case D3D10Opcode.Sample:
                 WriteInstruction(instruction, "sample", 4);
                 break;

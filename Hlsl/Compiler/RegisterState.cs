@@ -156,23 +156,61 @@ public sealed class RegisterState
         // Where the component sits inside the element, counted in floats.
         int target = (registerOffset % registersPerElement) * 4 + componentIndex;
 
-        int offset = 0;
-        foreach (ShaderStructMemberInfo member in declaration.TypeInfo.MemberInfo)
+        string variable = declaration.TypeInfo.NumElements > 1
+            ? $"{declaration.Name}[{elementIndex}]"
+            : declaration.Name;
+        return TryGetMemberAtOffset(declaration.TypeInfo, variable, target, out element, out memberWidth);
+    }
+
+    // The member covering a float offset within a struct, descending into a member
+    // that is a struct itself so that Outer.a.v does not stop at Outer.a.
+    private static bool TryGetMemberAtOffset(
+        ShaderTypeInfo typeInfo, string name, int target, out string element, out int memberWidth)
+    {
+        element = null;
+        memberWidth = 4;
+        if (typeInfo.MemberInfo == null)
         {
-            int width = member.TypeInfo.Rows * member.TypeInfo.Columns
-                * Math.Max(member.TypeInfo.NumElements, 1);
+            return false;
+        }
+
+        int offset = 0;
+        foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+        {
+            int width = GetTypeWidth(member.TypeInfo);
             if (target < offset + width)
             {
-                string name = declaration.TypeInfo.NumElements > 1
-                    ? $"{declaration.Name}[{elementIndex}]"
-                    : declaration.Name;
-                element = $"{name}.{member.Name}";
+                string memberName = $"{name}.{member.Name}";
+                if (member.TypeInfo.MemberInfo != null)
+                {
+                    return TryGetMemberAtOffset(
+                        member.TypeInfo, memberName, target - offset, out element, out memberWidth);
+                }
+                element = memberName;
                 memberWidth = width;
                 return true;
             }
             offset += width;
         }
         return false;
+    }
+
+    // How many floats a type occupies. A struct is the sum of its members, rounded
+    // up to a register, which is where a following member starts.
+    private static int GetTypeWidth(ShaderTypeInfo typeInfo)
+    {
+        int elements = Math.Max(typeInfo.NumElements, 1);
+        if (typeInfo.MemberInfo == null)
+        {
+            return typeInfo.Rows * typeInfo.Columns * elements;
+        }
+
+        int size = 0;
+        foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+        {
+            size += GetTypeWidth(member.TypeInfo);
+        }
+        return (size + 3) / 4 * 4 * elements;
     }
 
     // `float4 arr[4]` spans four registers under one declaration, so the element

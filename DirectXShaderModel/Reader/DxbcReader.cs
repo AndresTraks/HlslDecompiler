@@ -159,10 +159,25 @@ public class DxbcReader : BinaryReader
 
         int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
 
-        bool isExtended = (opcodeToken & 0x80000000) != 0;
-        if (isExtended)
+        // An extended opcode token carries the texel offsets of sample_aoffimmi,
+        // among other things, and counts towards the instruction length. Dropping it
+        // would sample the wrong texels without saying so.
+        int[] sampleOffsets = null;
+        uint extendedToken = opcodeToken;
+        while ((extendedToken & 0x80000000) != 0)
         {
-            throw new NotImplementedException();
+            extendedToken = ReadUInt32();
+            operandDwordCount--;
+            const int SampleControls = 1;
+            if ((extendedToken & 0x3F) == SampleControls)
+            {
+                sampleOffsets =
+                [
+                    SignExtend4((extendedToken >> 9) & 0xF),
+                    SignExtend4((extendedToken >> 13) & 0xF),
+                    SignExtend4((extendedToken >> 17) & 0xF),
+                ];
+            }
         }
 
         if (opcode == D3D10Opcode.DclGlobalFlags)
@@ -197,6 +212,7 @@ public class DxbcReader : BinaryReader
 
         var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
         instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
+        instruction.SampleOffsets = sampleOffsets;
         if (opcode == D3D10Opcode.DclInputPS
             || opcode == D3D10Opcode.DclInputPSSgv
             || opcode == D3D10Opcode.DclInputPSSiv)
@@ -240,6 +256,12 @@ public class DxbcReader : BinaryReader
 
         return new ShaderTypeInfo(
             variableClass, variableType, rows, columns, numElements, memberInfo);
+    }
+
+    // A texel offset is four bits, signed.
+    private static int SignExtend4(uint value)
+    {
+        return (int)((value ^ 8) - 8);
     }
 
     private string ReadStringNullTerminated()

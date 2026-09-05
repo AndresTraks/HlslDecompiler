@@ -18,13 +18,25 @@ public sealed class ConstantDeclarationCompiler
 
     public void SetStructOrder(ConstantDeclaration declaration)
     {
-        if (declaration.TypeInfo.MemberInfo != null)
+        SetStructOrder(declaration.TypeInfo);
+    }
+
+    // A member can be a struct too, and it has to be declared before the struct
+    // holding it, so members are ordered first.
+    private void SetStructOrder(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.MemberInfo == null)
         {
-            if (!_structIndices.ContainsKey(declaration.TypeInfo))
-            {
-                _structIndices.Add(declaration.TypeInfo, _structIndex);
-                _structIndex++;
-            }
+            return;
+        }
+        foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+        {
+            SetStructOrder(member.TypeInfo);
+        }
+        if (!_structIndices.ContainsKey(typeInfo))
+        {
+            _structIndices.Add(typeInfo, _structIndex);
+            _structIndex++;
         }
     }
 

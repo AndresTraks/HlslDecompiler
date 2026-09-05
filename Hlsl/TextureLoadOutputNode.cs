@@ -9,6 +9,10 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     private int _numTextureCoordinates;
     private bool _hasScalarArgument;
 
+    // The texel offsets of sample_aoffimmi, which shift the sample by whole texels
+    // and are part of what it computes.
+    public int[] SampleOffsets { get; set; }
+
     private TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex, RegisterInputNode texture)
     {
         AddInput(sampler);
@@ -147,5 +151,6 @@ public enum TextureLoadControls
     Grad = 4,
     Project = 8,
     Compare = 16,
-    LevelZero = 32
+    LevelZero = 32,
+    Gather = 64
 }

@@ -1391,6 +1391,7 @@ class InstructionParser
                 }
             case D3D10Opcode.LD:
                 return CreateResourceLoadNode(instruction, componentIndex);
+            case D3D10Opcode.Gather4:
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
@@ -1507,6 +1508,7 @@ class InstructionParser
                 D3D10Opcode.SampleD => TextureLoadControls.Grad,
                 D3D10Opcode.SampleC => TextureLoadControls.Compare,
                 D3D10Opcode.SampleCLZ => TextureLoadControls.Compare | TextureLoadControls.LevelZero,
+                D3D10Opcode.Gather4 => TextureLoadControls.Gather,
                 _ => TextureLoadControls.None,
             };
             HlslTreeNode[] derivativeX = null;
@@ -1517,13 +1519,20 @@ class InstructionParser
                 derivativeX = GetInputComponents(instruction, ExtraParamIndex, dimension);
                 derivativeY = GetInputComponents(instruction, ExtraParamIndex + 1, dimension);
             }
-            else if (controls != TextureLoadControls.None)
+            else if (controls.HasFlag(TextureLoadControls.Lod)
+                || controls.HasFlag(TextureLoadControls.Bias)
+                || controls.HasFlag(TextureLoadControls.Compare))
             {
+                // Only these carry one more operand. gather4 takes the same operands
+                // as sample, so reading a fifth would run off the end.
                 scalarArgument = GetInputComponents(instruction, ExtraParamIndex, 1)[0];
             }
 
-            return TextureLoadOutputNode.CreateSample(sampler, texCoords, outputComponent, texture,
+            TextureLoadOutputNode node = TextureLoadOutputNode.CreateSample(
+                sampler, texCoords, outputComponent, texture,
                 controls, derivativeX, derivativeY, scalarArgument);
+            node.SampleOffsets = ((D3D10Instruction)instruction).SampleOffsets;
+            return node;
         }
     }
 

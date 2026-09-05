@@ -48,6 +48,9 @@ public class D3D10Instruction : Instruction
     // Destination saturate modifier: the result is clamped to [0, 1]. Encoded in
     // the opcode token rather than in an operand, so the reader sets it.
     public bool Saturate { get; set; }
+
+    // The texel offsets of sample_aoffimmi, or null when the sample has none.
+    public int[] SampleOffsets { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
     public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool isGeometryShader)
@@ -162,6 +165,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.MovC:
                 case D3D10Opcode.Mul:
                 case D3D10Opcode.Rsq:
+                case D3D10Opcode.Gather4:
                 case D3D10Opcode.Sample:
                 case D3D10Opcode.SampleC:
                 case D3D10Opcode.SampleCLZ:

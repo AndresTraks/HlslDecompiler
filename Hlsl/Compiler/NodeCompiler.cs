@@ -504,7 +504,11 @@ public sealed class NodeCompiler
                 // the compared value, and still compiled.
                 string method = "Sample";
                 string extraArguments = "";
-                if (textureLoad.Controls.HasFlag(TextureLoadControls.Grad))
+                if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
+                {
+                    method = "Gather";
+                }
+                else if (textureLoad.Controls.HasFlag(TextureLoadControls.Grad))
                 {
                     method = "SampleGrad";
                     extraArguments = $", {Compile(textureLoad.DerivativeX)}, {Compile(textureLoad.DerivativeY)}";
@@ -519,6 +523,16 @@ public sealed class NodeCompiler
                         _ => "SampleCmpLevelZero",
                     };
                     extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
+                }
+                // An offset shifts the sample by whole texels, so it belongs in the
+                // call rather than being dropped.
+                if (textureLoad.SampleOffsets != null)
+                {
+                    int dimension = textureDefinition.GetDimensionSize();
+                    string offsets = string.Join(", ", textureLoad.SampleOffsets.Take(dimension));
+                    extraArguments += dimension > 1
+                        ? $", int{dimension}({offsets})"
+                        : $", {offsets}";
                 }
                 return $"{textureDefinition.Name}.{method}({samplerDefinition.Name}, {texcoords}{extraArguments}){swizzle}";
             }

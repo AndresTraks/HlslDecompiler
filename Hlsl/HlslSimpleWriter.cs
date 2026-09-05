@@ -488,6 +488,8 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
+            case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
                 WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LdStructured:
@@ -525,6 +527,11 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.RoundNe:
                 WriteLine("{0} = round({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.Gather4:
+                WriteLine("{0} = {2}.Gather({3}, {1});", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2),
+                    GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.SampleL:
                 WriteLine("{0} = {2}.SampleLevel({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));

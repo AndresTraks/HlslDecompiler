@@ -478,6 +478,9 @@ public class AsmWriter
             case D3D10Opcode.And:
                 WriteInstruction(instruction, "and", 3);
                 break;
+            case D3D10Opcode.Udiv:
+                WriteInstruction(instruction, "udiv", 4);
+                break;
             case D3D10Opcode.Or:
                 WriteInstruction(instruction, "or", 3);
                 break;
@@ -799,6 +802,31 @@ public class AsmWriter
         return registerTypeName + registerNumber;
     }
 
+    // An index is a literal, a register read at run time, or a register plus a
+    // literal: cb0[2], cb0[r0.x], cb0[r0.x + 2].
+    private static string FormatOperandIndex(
+        D3D10Instruction instruction, int operandIndex, int index,
+        D3D10OperandTokenCollection.OperandIndex operand)
+    {
+        if (!operand.IsRelative)
+        {
+            return operand.Immediate.ToString();
+        }
+
+        (OperandType type, int number, byte component) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, index);
+        string register = type switch
+        {
+            OperandType.Temp => "r" + number,
+            OperandType.Input => "v" + number,
+            _ => throw new NotImplementedException(type.ToString()),
+        };
+        register += "." + "xyzw"[component];
+        return operand.Representation == D3D10OperandIndexRepresentation.Relative
+            ? register
+            : $"{register} + {operand.Immediate}";
+    }
+
     private string FormatOperand(D3D10Instruction instruction, int index)
     {
         var operandType = instruction.GetOperandType(index);
@@ -848,29 +876,18 @@ public class AsmWriter
         }
         else
         {
-            D3D10OperandIndexRepresentation[] indexRepresentation = instruction.GetOperandIndexRepresentation(index);
-            if (indexRepresentation.Length != 0 && !indexRepresentation.Any(i => i == D3D10OperandIndexRepresentation.Immediate32))
-            {
-                throw new NotImplementedException();
-            }
-            if (indexRepresentation.Length == 1)
+            D3D10OperandTokenCollection.OperandIndex[] indices =
+                instruction.OperandTokens.GetOperandIndices(index);
+            if (indices.Length == 1 && !indices[0].IsRelative)
             {
                 registerNumber = instruction.GetParamRegisterNumber(index).ToString();
             }
             else
             {
                 registerNumber = "";
-                for (int i = 0; i < indexRepresentation.Length; i++)
+                for (int i = 0; i < indices.Length; i++)
                 {
-                    D3D10OperandIndexRepresentation representation = indexRepresentation[i];
-                    if (representation == D3D10OperandIndexRepresentation.Immediate32)
-                    {
-                        registerNumber += "[" + instruction.GetParamIndexImmediate32(index, i + 1) + "]";
-                    }
-                    else
-                    {
-                        throw new NotImplementedException(representation.ToString());
-                    }
+                    registerNumber += "[" + FormatOperandIndex(instruction, index, i, indices[i]) + "]";
                 }
             }
         }

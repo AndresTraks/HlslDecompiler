@@ -447,7 +447,18 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("{0} = exp2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Max:
+            case D3D10Opcode.IMax:
                 WriteLine("{0} = max({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.IMin:
+                WriteLine("{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.INeg:
+                WriteLine("{0} = -{1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.IMul:
+                // Two destinations, high and low halves; only the low one is modelled.
+                WriteLine("{0} = {1} * {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.IMad:
                 WriteLine("{0} = {1} * {2} + {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
@@ -547,6 +558,17 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.And:
                 WriteLine("{0} = {1} & {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.Udiv:
+                // Quotient and remainder, either of which may be null.
+                if (instruction.GetOperandType(0) != OperandType.Null)
+                {
+                    WriteLine("{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                }
+                if (instruction.GetOperandType(1) != OperandType.Null)
+                {
+                    WriteLine("{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                }
                 break;
             case D3D10Opcode.Or:
                 WriteLine("{0} = {1} | {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
@@ -675,6 +697,39 @@ public class HlslSimpleWriter : HlslWriter
         sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
         sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
         return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+    }
+
+    private string GetDynamicOperandName(
+        D3D10Instruction instruction,
+        int operandIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        int relativeIndex = Array.FindIndex(operandIndices, i => i.IsRelative);
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, relativeIndex);
+        if (indexType != OperandType.Temp)
+        {
+            throw new NotImplementedException(indexType.ToString());
+        }
+        string index = $"r{indexNumber}.{"xyzw"[indexComponent]}";
+
+        OperandType operandType = instruction.GetOperandType(operandIndex);
+        if (operandType == OperandType.Input)
+        {
+            // The vertex is the dynamic part; the second index names the register.
+            var vertexKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
+            return $"i[{index}].{_registers.RegisterDeclarations[vertexKey].Name}";
+        }
+
+        var registerKey = new D3D10RegisterKey(
+            OperandType.ConstantBuffer,
+            (int)operandIndices[0].Immediate,
+            (int)operandIndices[1].Immediate);
+        ConstantDeclaration declaration = _registers.FindConstant(registerKey, 0);
+        int elementOffset = _registers.GetConstantBufferElementOffset(registerKey, declaration);
+        return elementOffset == 0
+            ? $"{declaration.Name}[{index}]"
+            : $"{declaration.Name}[{index} + {elementOffset}]";
     }
 
     private string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)
@@ -853,7 +908,31 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
-        string registerName = _registers.GetRegisterName(registerKey);
+        // A relatively addressed operand decodes to a meaningless register number,
+        // so its element has to be named from the index register instead.
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices =
+            instruction.OperandTokens.GetOperandIndices(operandIndex);
+        string registerName;
+        bool isPackedScalar = false;
+        if (operandIndices.Any(i => i.IsRelative))
+        {
+            registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices);
+        }
+        else if (registerKey.OperandType == OperandType.ConstantBuffer)
+        {
+            // Several variables can share one register, so which is being read
+            // depends on the component: cb0[0].y is `n`, not `mode.y`.
+            byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            registerName = _registers.GetRegisterName(new RegisterComponentKey(registerKey, component));
+            ConstantDeclaration packed = _registers.FindConstant(registerKey, component);
+            isPackedScalar = packed != null
+                && packed.TypeInfo.Rows == 1
+                && packed.TypeInfo.Columns == 1;
+        }
+        else
+        {
+            registerName = _registers.GetRegisterName(registerKey);
+        }
         string writeMaskName;
         if (operandIndex == instruction.GetDestinationParamIndex())
         {
@@ -873,7 +952,11 @@ public class HlslSimpleWriter : HlslWriter
                     .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
                     .GetDimensionSize();
             }
-            writeMaskName = instruction.GetSourceSwizzleName(operandIndex, maskedLength);
+            // A scalar variable sharing a register has no component of its own to
+            // name once the variable itself is named.
+            writeMaskName = isPackedScalar
+                ? ""
+                : instruction.GetSourceSwizzleName(operandIndex, maskedLength);
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));

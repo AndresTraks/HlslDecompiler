@@ -118,11 +118,12 @@ class InstructionParser
     private void ParseInstruction(D3D10Instruction instruction)
     {
         // StoreStructured names a destination operand but writes through a statement,
-        // and SinCos writes two destinations, so neither fits the single-destination
-        // assignment path.
+        // and SinCos and Udiv each write two destinations, so none of them fits the
+        // single-destination assignment path.
         if (instruction.HasDestination
             && instruction.Opcode != D3D10Opcode.StoreStructured
-            && instruction.Opcode != D3D10Opcode.SinCos)
+            && instruction.Opcode != D3D10Opcode.SinCos
+            && instruction.Opcode != D3D10Opcode.Udiv)
         {
             ParseAssignmentInstruction(instruction);
         }
@@ -165,6 +166,9 @@ class InstructionParser
                     break;
                 case D3D10Opcode.SinCos:
                     ParseSinCosInstruction(instruction);
+                    break;
+                case D3D10Opcode.Udiv:
+                    ParseIntegerDivideInstruction(instruction);
                     break;
                 case D3D10Opcode.Cut:
                     InsertRestartStrip();
@@ -637,6 +641,57 @@ class InstructionParser
     /// <c>sincos dstSin, dstCos, src</c> writes two registers from one source. Either
     /// destination may be null when the shader only wants one of the two results.
     /// </summary>
+    // udiv writes the quotient to its first destination and the remainder to its
+    // second, either of which may be null when only one is wanted.
+    private void ParseIntegerDivideInstruction(D3D10Instruction instruction)
+    {
+        const int DividendIndex = 2;
+        const int DivisorIndex = 3;
+        var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+
+        for (int destinationIndex = 0; destinationIndex <= 1; destinationIndex++)
+        {
+            if (instruction.GetOperandType(destinationIndex) == OperandType.Null)
+            {
+                continue;
+            }
+
+            var destinationKey = instruction.GetParamRegisterKey(destinationIndex);
+            int writeMask = instruction.GetWriteMask(destinationIndex);
+            _registerState.DeclareRegisterWrite(destinationKey, writeMask);
+
+            for (int component = 0; component < 4; component++)
+            {
+                if ((writeMask & (1 << component)) == 0)
+                {
+                    continue;
+                }
+
+                HlslTreeNode dividend = GetInputComponent(instruction, DividendIndex, component);
+                HlslTreeNode divisor = GetInputComponent(instruction, DivisorIndex, component);
+                newOutputs[new RegisterComponentKey(destinationKey, component)] = destinationIndex == 0
+                    ? new DivisionOperation(dividend, divisor)
+                    : new ModuloOperation(dividend, divisor);
+            }
+        }
+
+        foreach (var output in newOutputs)
+        {
+            SetActiveOutput(output.Key, output.Value);
+        }
+    }
+
+    private HlslTreeNode GetInputComponent(D3D10Instruction instruction, int operandIndex, int component)
+    {
+        if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
+        {
+            return new ConstantNode((int)instruction.GetParamInt(operandIndex, component));
+        }
+        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return GetActiveOutput(new RegisterComponentKey(registerKey, swizzle[component]));
+    }
+
     private void ParseSinCosInstruction(D3D10Instruction instruction)
     {
         const int sourceIndex = 2;
@@ -1543,6 +1598,51 @@ class InstructionParser
         return inputs;
     }
 
+    // cb0[r0.x + 1] reads an array element chosen at run time. The immediate is the
+    // register that element zero of the read would sit at, and the array may start
+    // further back in the buffer, so the difference is added to the index.
+    private HlslTreeNode GetDynamicConstantBufferInput(
+        D3D10Instruction instruction,
+        int operandIndex,
+        int componentIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        const int ElementIndex = 1;
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, ElementIndex);
+        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+
+        var registerKey = new D3D10RegisterKey(
+            OperandType.ConstantBuffer,
+            (int)operandIndices[0].Immediate,
+            (int)operandIndices[ElementIndex].Immediate);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return new RelativeAddressNode(
+            new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
+    }
+
+    // v[r0.x][0] reads a vertex of a geometry shader input chosen at run time. The
+    // second index names the register, so it is the vertex that is dynamic.
+    private HlslTreeNode GetDynamicVertexInput(
+        D3D10Instruction instruction,
+        int operandIndex,
+        int componentIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        const int VertexIndex = 0;
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, VertexIndex);
+        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+
+        // Any vertex will do to find the declaration; they share one.
+        var registerKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return new RelativeAddressNode(
+            new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
+    }
+
     // `c0[a0.x]` picks an array element at run time. Reading it as plain c0 would
     // silently decompile a different shader, so the index is modelled instead.
     private LoopCounterNode _loopCounter;
@@ -1586,24 +1686,28 @@ class InstructionParser
     private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
     {
         int numInputs = GetNumInputs(instruction.Opcode);
-        for (int input = 1; input <= numInputs; input++)
-        {
-            // cb0[r0.x] selects an element at run time. Reading it as cb0[0] would
-            // silently decompile a different shader, so refuse instead.
-            if (instruction.GetOperandType(input) == OperandType.ConstantBuffer
-                && instruction.IsRelativelyAddressed(input, 1))
-            {
-                throw new NotImplementedException(
-                    "Dynamically indexed constant buffer in " + instruction.Opcode);
-            }
-        }
-
-
         var inputs = new HlslTreeNode[numInputs];
         for (int i = 0; i < numInputs; i++)
         {
             int inputParameterIndex = i + 1;
             var operandType = instruction.GetOperandType(inputParameterIndex);
+            D3D10OperandTokenCollection.OperandIndex[] operandIndices =
+                instruction.OperandTokens.GetOperandIndices(inputParameterIndex);
+            if (operandIndices.Any(index => index.IsRelative))
+            {
+                // The register number decoded from a relative operand is meaningless,
+                // so the element has to be modelled rather than read.
+                inputs[i] = operandType switch
+                {
+                    OperandType.ConstantBuffer => GetDynamicConstantBufferInput(
+                        instruction, inputParameterIndex, componentIndex, operandIndices),
+                    OperandType.Input => GetDynamicVertexInput(
+                        instruction, inputParameterIndex, componentIndex, operandIndices),
+                    _ => throw new NotImplementedException(
+                        $"Dynamically indexed {operandType} in {instruction.Opcode}"),
+                };
+                continue;
+            }
             if (operandType == OperandType.Immediate32)
             {
                 // An immediate's 32 bits are typed by the instruction consuming them.

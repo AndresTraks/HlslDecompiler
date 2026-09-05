@@ -32,6 +32,103 @@ public class D3D10OperandTokenCollection
         return new Span<uint>(Tokens, 0, 1);
     }
 
+    // One index of an operand: cb0[2] carries an immediate, cb0[r0.x] a nested
+    // operand, and cb0[r0.x + 2] both.
+    public readonly struct OperandIndex
+    {
+        public D3D10OperandIndexRepresentation Representation { get; init; }
+        public uint Immediate { get; init; }
+        public int RelativeStart { get; init; }
+        public int RelativeLength { get; init; }
+
+        public bool IsRelative => RelativeLength != 0;
+    }
+
+    // Walks an operand index by index. GetParamIndexImmediate32 assumes every
+    // preceding index is one token, which a nested operand is not.
+    public OperandIndex[] GetOperandIndices(int operandIndex)
+    {
+        int start = GetOperandStart(operandIndex);
+        uint token = Tokens[start];
+        int i = start + 1;
+        if ((token & 0x80000000) != 0)
+        {
+            i++;
+        }
+
+        int indexDimension = (int)((token >> 20) & 3);
+        var indices = new OperandIndex[indexDimension];
+        for (int r = 0; r < indexDimension; r++)
+        {
+            var representation = (D3D10OperandIndexRepresentation)((token >> (22 + r * 3)) & 7);
+            uint immediate = 0;
+            int relativeStart = 0;
+            switch (representation)
+            {
+                case D3D10OperandIndexRepresentation.Immediate32:
+                    immediate = Tokens[i];
+                    i++;
+                    break;
+                case D3D10OperandIndexRepresentation.Immediate64:
+                    immediate = Tokens[i + 1];
+                    i += 2;
+                    break;
+                case D3D10OperandIndexRepresentation.Relative:
+                    relativeStart = i;
+                    i = SkipOperand(i);
+                    break;
+                case D3D10OperandIndexRepresentation.Immediate32PlusRelative:
+                    immediate = Tokens[i];
+                    relativeStart = i + 1;
+                    i = SkipOperand(i + 1);
+                    break;
+                case D3D10OperandIndexRepresentation.Immediate64PlusRelative:
+                    immediate = Tokens[i + 1];
+                    relativeStart = i + 2;
+                    i = SkipOperand(i + 2);
+                    break;
+                default:
+                    throw new NotImplementedException(representation.ToString());
+            }
+            indices[r] = new OperandIndex
+            {
+                Representation = representation,
+                Immediate = immediate,
+                RelativeStart = relativeStart,
+                RelativeLength = relativeStart == 0 ? 0 : i - relativeStart,
+            };
+        }
+        return indices;
+    }
+
+    // The register a relative index reads, and which of its components.
+    public (OperandType Type, int Number, byte Component) GetRelativeIndexOperand(
+        int operandIndex, int index)
+    {
+        OperandIndex operand = GetOperandIndices(operandIndex)[index];
+        uint token = Tokens[operand.RelativeStart];
+        return (
+            (OperandType)((token >> 12) & 0xFF),
+            (int)Tokens[operand.RelativeStart + 1],
+            (byte)((token >> 4) & 3));
+    }
+
+    private int GetOperandStart(int index)
+    {
+        int operandCount = 0;
+        for (int i = 0; i < Tokens.Length;)
+        {
+            int spanStart = i;
+            i = SkipOperand(i);
+            if (operandCount == index)
+            {
+                return spanStart;
+            }
+            operandCount++;
+        }
+        return 0;
+    }
+
     // Returns the index just past the operand starting at i. Operands are variable
     // length: an immediate carries its values inline, and a relatively addressed one
     // - cb0[r0.x + 2] - encodes its index as a nested operand, hence the recursion.

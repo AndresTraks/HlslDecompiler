@@ -259,6 +259,11 @@ public sealed class NodeCompiler
                         Compile(multiplicand2, promoteToVectorSize));
                 }
 
+            case ModuloOperation _:
+                return string.Format("{0} % {1}",
+                    CompileOperand(components.Select(g => g.Inputs[0])),
+                    CompileOperand(components.Select(g => g.Inputs[1])));
+
             case DivisionOperation _:
                 {
                     var dividend = components.Select(g => g.Inputs[0]);
@@ -399,6 +404,30 @@ public sealed class NodeCompiler
             // an element index of its own. The base register need not be the first of
             // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
             string arrayName = _registers.GetRegisterName(arrayKey);
+            if (arrayKey.RegisterKey is D3D10RegisterKey vertexKey
+                && vertexKey.OperandType == OperandType.Input
+                && vertexKey.GSVertex.HasValue
+                && _registers.RegisterDeclarations.TryGetValue(vertexKey, out RegisterDeclaration vertex))
+            {
+                // The vertex array is the subscript and the semantic the member, the
+                // other way round from a constant buffer array.
+                return $"i[{index}].{vertex.Name}{swizzle}";
+            }
+            if (arrayKey.RegisterKey is D3D10RegisterKey d3d10ArrayKey
+                && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)
+                    is ConstantDeclaration constantBufferArray)
+            {
+                // Named from the declaration, which carries no element index of its
+                // own, unlike the register.
+                arrayName = constantBufferArray.Name;
+                int elementOffset = _registers.GetConstantBufferElementOffset(
+                    d3d10ArrayKey, constantBufferArray);
+                if (elementOffset != 0)
+                {
+                    index += $" + {elementOffset}";
+                }
+                return $"{arrayName}[{index}]{swizzle}";
+            }
             if (arrayKey.RegisterKey is D3D9RegisterKey d3d9ArrayKey
                 && _registers.FindConstant(d3d9ArrayKey) is ConstantDeclaration array)
             {

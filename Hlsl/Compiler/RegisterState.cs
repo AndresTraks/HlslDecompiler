@@ -125,6 +125,17 @@ public sealed class RegisterState
         return $"{declaration.Name}[{registerKey.ConstantBufferOffset.Value - variableRegister}]";
     }
 
+    // How far a register sits past the start of the variable occupying it, in
+    // elements. cb0[r0.x + 1] against an array starting at register 1 is arr[r0.x].
+    public int GetConstantBufferElementOffset(
+        D3D10RegisterKey registerKey, ConstantDeclaration declaration)
+    {
+        int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
+            ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
+            : declaration.RegisterIndex;
+        return (registerKey.ConstantBufferOffset ?? 0) - variableRegister;
+    }
+
     public string GetRegisterName(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey
@@ -213,10 +224,21 @@ public sealed class RegisterState
                     int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
                         ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
                         : declaration.RegisterIndex;
-                    int rowIndex = d3d10RegisterKey.ConstantBufferOffset.Value - variableRegister;
+                    int registerOffset = d3d10RegisterKey.ConstantBufferOffset.Value - variableRegister;
+                    // An array of matrices gives every row a register of its own, so
+                    // the element and the row have to be separated: row 0 of bones[1]
+                    // is register 4, not row 4 of something.
+                    string matrixName = declaration.Name;
+                    int rowIndex = registerOffset;
+                    if (declaration.TypeInfo.NumElements > 1)
+                    {
+                        int rowsPerElement = declaration.TypeInfo.Rows;
+                        matrixName += $"[{registerOffset / rowsPerElement}]";
+                        rowIndex = registerOffset % rowsPerElement;
+                    }
                     return ColumnMajorOrder
-                        ? $"transpose({declaration.Name})[{rowIndex}]"
-                        : $"{declaration.Name}[{rowIndex}]";
+                        ? $"transpose({matrixName})[{rowIndex}]"
+                        : $"{matrixName}[{rowIndex}]";
                 case OperandType.Immediate32:
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:

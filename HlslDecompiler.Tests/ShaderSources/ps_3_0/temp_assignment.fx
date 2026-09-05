@@ -2,24 +2,20 @@ sampler2D sampler0;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-	float4 t0;
-	float2 t1 = texcoord.yz + 5;
+	float2 t0 = 5 + texcoord.yz;
+	float4 t1;
+	float2 t2;
 	if (texcoord.y > 0) {
-		t0 = tex2Dlod(sampler0, texcoord);
-		t1 = t0.xy + t1;
+		t1 = tex2Dlod(sampler0, texcoord);
+		t2 = t0 + t1.xy;
 	} else {
-		t0 = tex2Dlod(sampler0, 2 * texcoord);
-		t1 = t1 - t0.xy;
+		t1 = tex2Dlod(sampler0, 2 * texcoord);
+		t2 = t0 - t1.xy;
 	}
 	if (texcoord.y >= 0) {
-		t1 = t1 + tex2Dlod(sampler0, texcoord + 1).xy;
+		t2 = t2 + tex2Dlod(sampler0, 1 + texcoord).xy;
 	} else {
-		t0 = float4(1, 0, 3, 4);
+		t1 = float4(1, 0, 3, 4);
 	}
-	if (texcoord.x <= 0) {
-		t1 = t1 + t0.xy;
-		return t0 + tex2D(sampler0, t1.xy);
-	} else {
-		return float4(t0.x + 1, t0.y, t0.zw + float2(3, 4));
-	}
+	return float4(-texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).x + t1.x : t1.x + 1, -texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).y + t1.y : t1.y, -texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).zw + t1.zw : t1.zw + float2(3, 4));
 }

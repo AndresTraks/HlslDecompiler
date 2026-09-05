@@ -27,10 +27,6 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
-        ["ps_3_0/struct"] =
-            "Struct members decompile to .x/.y instead of member names",
-        ["ps_3_0/temp_assignment"] =
-            "Temp register assignments are not reconstructed correctly",
     };
 
     private static readonly Lazy<string> Fxc = new(FindFxc);

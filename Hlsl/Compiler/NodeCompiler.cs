@@ -166,7 +166,7 @@ public sealed class NodeCompiler
             case SignGreaterOrEqualOperation _:
             case SignLessOperation _:
                 {
-                    string name = operation.Mnemonic;
+                    string name = operation.HlslFunction;
                     string value = Compile(components.Select(g => g.Inputs[0]));
                     return $"{name}({value})";
                 }
@@ -231,7 +231,7 @@ public sealed class NodeCompiler
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     var value2 = Compile(components.Select(g => g.Inputs[1]));
 
-                    var name = operation.Mnemonic;
+                    var name = operation.HlslFunction;
 
                     return $"{name}({value1}, {value2})";
                 }
@@ -307,6 +307,24 @@ public sealed class NodeCompiler
     {
         var componentsWithIndices = components.Cast<IHasComponentIndex>();
 
+        if (first is RelativeAddressNode relativeAddress)
+        {
+            RegisterComponentKey arrayKey = relativeAddress.RegisterComponentKey;
+            string swizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                _registers.GetRegisterMaskedLength(arrayKey.RegisterKey),
+                promoteToVectorSize);
+            string index = Compile(new[] { relativeAddress.Index });
+            // The base register need not be the first of the array: `floats[i + 2]`
+            // reads c2[a0.x] when floats starts at c0.
+            if (arrayKey.RegisterKey is D3D9RegisterKey d3d9ArrayKey
+                && _registers.FindConstant(d3d9ArrayKey) is ConstantDeclaration array
+                && d3d9ArrayKey.Number != array.RegisterIndex)
+            {
+                index += $" + {d3d9ArrayKey.Number - array.RegisterIndex}";
+            }
+            return $"{_registers.GetRegisterName(arrayKey)}[{index}]{swizzle}";
+        }
+
         if (first is RegisterInputNode shaderInput)
         {
             var registerKey = shaderInput.RegisterComponentKey.RegisterKey;
@@ -318,6 +336,13 @@ public sealed class NodeCompiler
                 swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                     _registers.GetRegisterMaskedLength(registerKey),
                     promoteToVectorSize);
+            }
+
+            // A named struct member already identifies the component, so it takes no
+            // swizzle of its own.
+            if (_registers.TryGetConstantMemberName(shaderInput.RegisterComponentKey, out string memberName))
+            {
+                return memberName;
             }
 
             string name = _registers.GetRegisterName(shaderInput.RegisterComponentKey);

@@ -17,7 +17,7 @@ loop
 ilt r1.y, l(17), r1.x
 breakc_nz r1.y
 itof r1.y, r1.x
-mul r1.y, r1.y, l(0.392699)
+mul r1.y, r1.y, l(0.392699093)
 sincos r2.x, r0.x, r1.y
 mov r0.y, r2.x
 mad r2, r0, l(0.5, 0.5, 0, 0), v[0][0]

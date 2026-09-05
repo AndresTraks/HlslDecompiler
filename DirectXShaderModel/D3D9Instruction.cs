@@ -278,6 +278,18 @@ public class D3D9Instruction : Instruction
         return (RegisterType)(((p >> 28) & 0x7) | ((p >> 8) & 0x18));
     }
 
+    public int GetRelativeParamRegisterNumber(int index)
+    {
+        return (int)(Params.GetRelativeToken(index) & 0x7FF);
+    }
+
+    // The relative operand carries a swizzle like any source; `c0[a0.x]` selects
+    // one component of the address register.
+    public int GetRelativeParamComponent(int index)
+    {
+        return (int)((Params.GetRelativeToken(index) >> 16) & 0x3);
+    }
+
     public override int GetParamRegisterNumber(int index)
     {
         return (int)(Params[index] & 0x7FF);

@@ -169,13 +169,14 @@ public class StatementFinalizer
                 bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values));
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
+                TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
                 if (doesOutputExitStatement || tempInputAssignment != null)
                 {
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
                     tempValue.Outputs.Clear();
-                    TempVariableNode tempVariable = tempInputAssignment != null
-                        ? tempInputAssignment.TempVariable
-                        : new TempVariableNode();
+                    TempVariableNode tempVariable = tempInputAssignment?.TempVariable
+                        ?? tempInputVariable
+                        ?? new TempVariableNode();
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
                     // else that feeds a phi - a branch join, or the loop backedge - is
@@ -185,7 +186,8 @@ public class StatementFinalizer
                             && phi.IsLoopHeader
                             && ReferenceEquals(phi.PreLoopValue, tempValue));
                     if ((tempUsages.All(u => u is PhiNode) && !declaresLoopVariable)
-                        || tempInputAssignment != null)
+                        || tempInputAssignment != null
+                        || tempInputVariable != null)
                     {
                         tempAssignment.IsReassignment = true;
                     }
@@ -205,6 +207,10 @@ public class StatementFinalizer
                                 tempVariable.Outputs.Add(output);
                             }
                         }
+                        // Keep the back-reference, so that rewiring the variable later -
+                        // unifying the branches of an if onto one variable, say - can find
+                        // the uses, the merging phi among them.
+                        tempVariable.Outputs.Add(tempUsage);
                         int index = tempUsage.Inputs.IndexOf(tempValue);
                         tempUsage.Inputs[index] = tempVariable;
                     }
@@ -218,21 +224,8 @@ public class StatementFinalizer
             if (ifStatement.FalseBody != null)
             {
                 InsertTempVariableAssignments(ifStatement.FalseBody);
-
-                foreach (var trueTempAssignment in ifStatement.TrueBody.Last().Outputs.Where(o => o.Value is TempAssignmentNode))
-                {
-                    if (ifStatement.FalseBody.Last().Outputs.TryGetValue(trueTempAssignment.Key, out var falseAssignment))
-                    {
-                        if (falseAssignment is TempAssignmentNode falseTempAssignment)
-                        {
-                            TempAssignmentNode trueValue = trueTempAssignment.Value as TempAssignmentNode;
-                            //falseTempAssignment.TempVariable.Replace(trueValue.TempVariable);
-                            falseTempAssignment.TempVariable = trueValue.TempVariable;
-                            ifStatement.Outputs[trueTempAssignment.Key] = trueValue.TempVariable;
-                        }
-                    }
-                }
             }
+            UnifyBranchVariables(ifStatement);
         }
         else if (statement is SwitchStatement switchStatement)
         {
@@ -249,6 +242,74 @@ public class StatementFinalizer
             if (i >= 1 && statements[i - 1] is AssignmentStatement preLoopStatement)
             {
                 UseLoopVariablesInBody(loopStatement, preLoopStatement);
+            }
+        }
+    }
+
+    // An if hands out the single variable its branches assigned, either directly or
+    // through the phi that merges them. A register arriving that way already has a
+    // variable, so assigning it again must not declare a second one.
+    private static TempVariableNode GetExistingVariable(HlslTreeNode inputAssignment)
+    {
+        if (inputAssignment is TempVariableNode variable)
+        {
+            return variable;
+        }
+        // A loop header phi is left alone: its variable is declared before the loop,
+        // which the backedge handling below already accounts for.
+        if (inputAssignment is PhiNode phi
+            && !phi.IsLoopHeader
+            && phi.Inputs.Count != 0
+            && phi.Inputs[0] is TempVariableNode merged
+            && phi.Inputs.All(i => ReferenceEquals(i, merged)))
+        {
+            return merged;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Both branches of an if assign a register through one variable, declared above
+    /// the if - a declaration inside a branch would go out of scope at its closing
+    /// brace. The first branch to assign a register owns the variable, the others are
+    /// rewired onto it, and every branch assignment is therefore a reassignment.
+    /// </summary>
+    private static void UnifyBranchVariables(IfStatement ifStatement)
+    {
+        var variableByRegister = new Dictionary<RegisterComponentKey, TempVariableNode>();
+
+        foreach (IList<IStatement> body in new[] { ifStatement.TrueBody, ifStatement.FalseBody })
+        {
+            if (body == null || body.Count == 0)
+            {
+                continue;
+            }
+            foreach (var output in body.Last().Outputs)
+            {
+                if (output.Value is not TempAssignmentNode assignment)
+                {
+                    continue;
+                }
+                // A register the branch only carries through keeps the node it
+                // entered with. It is assigned elsewhere, so it is not the
+                // branch's to declare or reassign.
+                if (ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entryValue)
+                    && ReferenceEquals(entryValue, assignment))
+                {
+                    continue;
+                }
+                if (variableByRegister.TryGetValue(output.Key, out TempVariableNode variable))
+                {
+                    assignment.TempVariable.Replace(variable);
+                    assignment.TempVariable = variable;
+                }
+                else
+                {
+                    variable = assignment.TempVariable;
+                    variableByRegister.Add(output.Key, variable);
+                }
+                assignment.IsReassignment = true;
+                ifStatement.Outputs[output.Key] = variable;
             }
         }
     }
@@ -332,6 +393,7 @@ public class StatementFinalizer
             return;
         }
         if (lastStatement is LoopStatement || lastStatement is ClipStatement
+            || lastStatement is DiscardStatement
             || lastStatement is BreakStatement || lastStatement is ContinueStatement
             || lastStatement is SwitchStatement)
         {

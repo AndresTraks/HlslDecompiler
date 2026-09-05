@@ -758,18 +758,12 @@ public class AsmWriter
             RegisterType relativeType = instruction.GetRelativeParamRegisterType(index);
             switch (relativeType)
             {
+                // fxc writes the base register outside the brackets, `c0[a0.x]`,
+                // and always names it - even for c0.
                 case RegisterType.Loop:
-                    if (registerNumber != 0)
-                    {
-                        return $"{registerTypeName}[{registerNumber} + aL]";
-                    }
-                    return $"{registerTypeName}[aL]";
+                    return $"{registerTypeName}{registerNumber}[aL]";
                 case RegisterType.Addr:
-                    if (registerNumber != 0)
-                    {
-                        return $"{registerTypeName}[{registerNumber} + a0.x]";
-                    }
-                    return $"{registerTypeName}[a0.x]";
+                    return $"{registerTypeName}{registerNumber}[a0.x]";
                 default:
                     throw new NotSupportedException(relativeType.ToString());
             }

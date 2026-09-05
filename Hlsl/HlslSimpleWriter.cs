@@ -59,7 +59,11 @@ public class HlslSimpleWriter : HlslWriter
         foreach (var register in registerWriteMasks)
         {
             int writeMask = register.Value;
-            string writeMaskName = writeMask switch
+            // An array subscript has to be an integer, and the address register is
+            // only ever used as one.
+            bool isAddressRegister = register.Key is D3D9RegisterKey addressKey
+                && addressKey.Type == RegisterType.Addr;
+            string writeMaskName = isAddressRegister ? "int" : writeMask switch
             {
                 0x1 => "float",
                 0x3 => "float2",
@@ -102,6 +106,12 @@ public class HlslSimpleWriter : HlslWriter
         if (registerKey.IsTempRegister)
         {
             return "r" + registerKey.Number;
+        }
+        // `mova` writes the address register like a temp, so it is collected as
+        // one and needs a name and a declaration for the same reason.
+        if (registerKey is D3D9RegisterKey d3d9RegisterKey && d3d9RegisterKey.Type == RegisterType.Addr)
+        {
+            return "a" + registerKey.Number;
         }
         throw new NotImplementedException();
     }
@@ -518,7 +528,7 @@ public class HlslSimpleWriter : HlslWriter
     {
         if (instruction.Params.HasRelativeAddressing(srcIndex))
         {
-            return "[a0]";
+            return $"[a{instruction.GetRelativeParamRegisterNumber(srcIndex)}]";
         }
         return string.Empty;
     }

@@ -86,6 +86,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteBreakStatement(breakStatement);
         }
+        else if (statement is DiscardStatement discardStatement)
+        {
+            WriteJumpStatement(discardStatement.Comparison, "discard");
+        }
         else if (statement is ContinueStatement continueStatement)
         {
             WriteJumpStatement(continueStatement.Comparison, "continue");

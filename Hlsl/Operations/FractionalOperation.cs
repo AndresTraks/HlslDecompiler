@@ -8,4 +8,7 @@ public class FractionalOperation : ConsumerOperation
     }
 
     public override string Mnemonic => "frc";
+
+    // HLSL spells the bytecode mnemonic frc as frac.
+    public override string HlslFunction => "frac";
 }

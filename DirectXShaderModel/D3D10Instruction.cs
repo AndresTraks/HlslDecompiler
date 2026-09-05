@@ -130,7 +130,12 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.GE:
                 case D3D10Opcode.LT:
                 case D3D10Opcode.Ne:
+                case D3D10Opcode.Exp:
+                case D3D10Opcode.Frc:
                 case D3D10Opcode.Ftoi:
+                case D3D10Opcode.Log:
+                case D3D10Opcode.Max:
+                case D3D10Opcode.Min:
                 case D3D10Opcode.IAdd:
                 case D3D10Opcode.IMad:
                 case D3D10Opcode.IMax:
@@ -188,6 +193,9 @@ public class D3D10Instruction : Instruction
         }
         return 0;
     }
+
+    // A constant buffer operand is indexed twice: by buffer, then by element.
+    private const int ConstantBufferElementIndex = 1;
 
     public override int GetDestinationWriteMask()
     {
@@ -555,9 +563,30 @@ public class D3D10Instruction : Instruction
         return (int) GetParamIndexImmediate32(index, 1);
     }
 
+    // The element index of a constant buffer operand. Zero when the operand is
+    // addressed relatively - cb0[r0.x] carries no constant part - so callers that
+    // care must ask GetIndexRepresentation as well.
     public int GetParamConstantBufferOffset(int index)
     {
-        return (int) GetParamIndexImmediate32(index, 2);
+        return IsRelativelyAddressed(index, ConstantBufferElementIndex)
+            ? 0
+            : (int)GetParamIndexImmediate32(index, 2);
+    }
+
+    // How an operand encodes one of its indices. A relative index is a nested
+    // operand - cb0[r0.x] - rather than a literal number.
+    public D3D10OperandIndexRepresentation GetIndexRepresentation(int operandIndex, int index)
+    {
+        Span<uint> span = OperandTokens.GetSpan(operandIndex);
+        return (D3D10OperandIndexRepresentation)((span[0] >> (22 + index * 3)) & 7);
+    }
+
+    public bool IsRelativelyAddressed(int operandIndex, int index)
+    {
+        D3D10OperandIndexRepresentation representation = GetIndexRepresentation(operandIndex, index);
+        return representation == D3D10OperandIndexRepresentation.Relative
+            || representation == D3D10OperandIndexRepresentation.Immediate32PlusRelative
+            || representation == D3D10OperandIndexRepresentation.Immediate64PlusRelative;
     }
 
     public int GetResourceReturnTypeToken()

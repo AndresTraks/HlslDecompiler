@@ -6,6 +6,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float r0;
 	r0 = InputBuffer[sv_dispatchthreadid.x];
-	r0 = r0 + r0;
-	OutputBuffer[sv_dispatchthreadid.x] = r0;
+	r0 = r0.x + r0.x;
+	OutputBuffer[sv_dispatchthreadid.x] = r0.x;
 }

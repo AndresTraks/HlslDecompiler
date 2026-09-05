@@ -458,11 +458,10 @@ class InstructionParser
     private void InsertClip(Instruction instruction)
     {
         HlslTreeNode[] values;
-        if (instruction is D3D10Instruction)
+        if (instruction is D3D10Instruction d3d10Instruction)
         {
-            values = GetParameterRegisterKeys(instruction, 0, 15)
-                .Select(GetActiveOutput)
-                .ToArray();
+            InsertDiscard(d3d10Instruction);
+            return;
         }
         else
         {
@@ -472,6 +471,24 @@ class InstructionParser
         }
         var clip = new ClipStatement(values, ActiveOutputs);
         InsertStatement(clip);
+    }
+
+    // discard_nz drops the pixel when its condition holds. Written as clip() when
+    // the condition is the "value is negative" test clip() actually means, and as a
+    // guarded discard otherwise.
+    private void InsertDiscard(D3D10Instruction instruction)
+    {
+        HlslTreeNode condition = GetConditionNode(instruction);
+        if (condition is ComparisonNode comparison
+            && comparison.Comparison == IfComparison.LT
+            && comparison.Right is ConstantNode zero
+            && zero.Value == 0)
+        {
+            InsertStatement(new ClipStatement([comparison.Left], ActiveOutputs));
+            return;
+        }
+
+        InsertStatement(new DiscardStatement(condition, ActiveOutputs));
     }
 
     private void InsertAppend()
@@ -1460,15 +1477,51 @@ class InstructionParser
         {
             RegisterComponentKey inputKey = GetParamRegisterComponentKey(instruction, parameterIndex, componentIndex);
             SourceModifier modifier = instruction.GetSourceModifier(parameterIndex);
-            inputs[i] = ApplyModifier(GetActiveOutput(inputKey), modifier);
+            HlslTreeNode input = instruction.Params.HasRelativeAddressing(parameterIndex)
+                ? GetRelativeAddressInput(instruction, parameterIndex, inputKey)
+                : GetActiveOutput(inputKey);
+            inputs[i] = ApplyModifier(input, modifier);
             parameterIndex++;
         }
         return inputs;
     }
 
+    // `c0[a0.x]` picks an array element at run time. Reading it as plain c0 would
+    // silently decompile a different shader, so the index is modelled instead.
+    private HlslTreeNode GetRelativeAddressInput(
+        D3D9Instruction instruction, int parameterIndex, RegisterComponentKey inputKey)
+    {
+        RegisterType relativeType = instruction.GetRelativeParamRegisterType(parameterIndex);
+        if (relativeType != RegisterType.Addr)
+        {
+            // aL indexes by the loop counter, which is not a value in the tree.
+            throw new NotImplementedException(
+                $"Relative addressing through {relativeType} in {instruction.Opcode}");
+        }
+
+        var addressKey = new RegisterComponentKey(
+            relativeType,
+            instruction.GetRelativeParamRegisterNumber(parameterIndex),
+            instruction.GetRelativeParamComponent(parameterIndex));
+        return new RelativeAddressNode(inputKey, GetActiveOutput(addressKey));
+    }
+
     private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
     {
         int numInputs = GetNumInputs(instruction.Opcode);
+        for (int input = 1; input <= numInputs; input++)
+        {
+            // cb0[r0.x] selects an element at run time. Reading it as cb0[0] would
+            // silently decompile a different shader, so refuse instead.
+            if (instruction.GetOperandType(input) == OperandType.ConstantBuffer
+                && instruction.IsRelativelyAddressed(input, 1))
+            {
+                throw new NotImplementedException(
+                    "Dynamically indexed constant buffer in " + instruction.Opcode);
+            }
+        }
+
+
         var inputs = new HlslTreeNode[numInputs];
         for (int i = 0; i < numInputs; i++)
         {

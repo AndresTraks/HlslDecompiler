@@ -8,4 +8,7 @@ public class LogOperation : ConsumerOperation
     }
 
     public override string Mnemonic => "log";
+
+    // Bytecode log is base 2; HLSL log is natural.
+    public override string HlslFunction => "log2";
 }

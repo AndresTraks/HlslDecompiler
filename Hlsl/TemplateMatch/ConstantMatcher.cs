@@ -69,6 +69,10 @@ public static class ConstantMatcher
 
     public static int? TryEvaluateValue(HlslTreeNode node)
     {
+        if (IsZero(node))
+        {
+            return 0;
+        }
         if (IsOne(node))
         {
             return 1;

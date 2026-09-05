@@ -58,7 +58,11 @@ public sealed class ConstantDeclarationCompiler
             char type = "btcs"[registerSet];
             registerSpecifier = $" : register({type}{declaration.RegisterIndex})";
         }
-        int arrayCount = declaration.RegisterCount / (declaration.TypeInfo.Rows * declaration.TypeInfo.Columns);
+        // Elements is the array length straight from the constant table, and a
+        // non-array reports 0 or 1. RegisterCount cannot stand in for it: `float4
+        // floats[8]` takes 8 registers but each element is one register, not four
+        // components, so dividing by the component count gave [2].
+        int arrayCount = Math.Max(declaration.TypeInfo.NumElements, 1);
         string arrayCountSpecifier = arrayCount > 1 ? $"[{arrayCount}]" : "";
         return $"{typeName} {declaration.Name}{arrayCountSpecifier}{registerSpecifier};";
     }

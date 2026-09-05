@@ -11,14 +11,15 @@ struct GS_OUT
 };
 
 [maxvertexcount(17)]
-void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream) {
+void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
+{
 	GS_OUT o;
 
 	o.sv_position = i[0].sv_position;
 	o.color = i[0].color;
 	stream.Append(o);
-	for(int j = 1; j <= 17; j++) {
-		o.sv_position = i[0].sv_position + 0.5 * float4(cos(j * 0.392699093), sin(j * 0.392699093), 0, 0);
+	for (float t0 = 1; t0 <= 17; t0 = t0 + 1) {
+		o.sv_position = float4(0.5 * cos(0.392699093 * t0) + i[0].sv_position.x, 0.5 * sin(0.392699093 * t0) + i[0].sv_position.y, i[0].sv_position.zw);
 		o.color = i[0].color;
 		stream.Append(o);
 	}

@@ -63,6 +63,45 @@ public sealed class RegisterState
     // A DXBC constant buffer register holds 16 bytes, so several scalars can share
     // one. Naming by register alone cannot tell `float a, b` apart - both live in
     // cb0[0], at .x and .y - so the component decides which declaration is meant.
+    // A struct constant occupies components of a register, so `s1.a` arrives as
+    // c0.x. Names the member that component belongs to, rather than letting it be
+    // written as a swizzle. Only scalar members are handled: naming a vector member
+    // would need the swizzle rebased onto it, which the caller cannot express yet.
+    public bool TryGetConstantMemberName(RegisterComponentKey registerComponentKey, out string name)
+    {
+        name = null;
+        if (registerComponentKey.RegisterKey is not D3D9RegisterKey d3d9RegisterKey
+            || d3d9RegisterKey.Type != RegisterType.Const)
+        {
+            return false;
+        }
+
+        ConstantDeclaration declaration = FindConstant(d3d9RegisterKey);
+        if (declaration?.TypeInfo.MemberInfo == null)
+        {
+            return false;
+        }
+
+        int component = registerComponentKey.ComponentIndex
+            + (d3d9RegisterKey.Number - declaration.RegisterIndex) * 4;
+        int offset = 0;
+        foreach (ShaderStructMemberInfo member in declaration.TypeInfo.MemberInfo)
+        {
+            int size = member.TypeInfo.Rows * member.TypeInfo.Columns;
+            if (component < offset + size)
+            {
+                if (size != 1)
+                {
+                    return false;
+                }
+                name = declaration.Name + "." + member.Name;
+                return true;
+            }
+            offset += size;
+        }
+        return false;
+    }
+
     public string GetRegisterName(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey

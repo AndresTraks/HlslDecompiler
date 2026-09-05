@@ -45,7 +45,10 @@ public class HlslAstWriter : HlslWriter
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
-        StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void");
+        StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
+            _shader.Instructions.Count != 0 && _shader.Instructions[0] is D3D10Instruction
+                ? new IntegerOperandAnalysis(_shader)
+                : null);
         WriteStatements(ast.Statements);
     }
 
@@ -159,9 +162,12 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteStoreStructuredStatement(StoreStructuredStatement storeStructured)
     {
-        string compiledDestination = _compiler.Compile(Reduce(storeStructured.Destination));
+        // The buffer is named without a swizzle - the subscript selects the element,
+        // and any component selection belongs after it, not on the buffer.
+        string compiledDestination = _registers.GetRegisterName(
+            ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey);
         string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
-        string compiledValue = _compiler.Compile(Reduce(storeStructured.Value));
+        string compiledValue = _compiler.Compile(storeStructured.Values.Select(Reduce));
         WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
     }
 
@@ -328,7 +334,8 @@ public class HlslAstWriter : HlslWriter
                     continue;
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
-                WriteLine($"float{size} t{variable.DeclarationIndex};");
+                string type = variable.IsInteger ? "int" : "float";
+                WriteLine($"{type}{size} t{variable.DeclarationIndex};");
             }
         }
     }

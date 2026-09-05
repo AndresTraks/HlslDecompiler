@@ -32,6 +32,8 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "sample_2d_two_samplers")]
     [TestCase("ps_4_0", "clip")]
     [TestCase("ps_4_0", "clip_alpha")]
+    [TestCase("ps_4_0", "clip_loop")]
+    [TestCase("ps_4_0", "interpolation")]
     [TestCase("ps_4_0", "cbuffer_array")]
     [TestCase("ps_4_0", "uint_loop")]
     [TestCase("ps_4_0", "if_deep_nest")]
@@ -60,6 +62,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "matrix44_vector4_multiply")]
     [TestCase("vs_4_0", "matrix_pair")]
     [TestCase("vs_4_0", "vertex_id")]
+    [TestCase("vs_4_0", "bitwise")]
     [TestCase("vs_4_0", "normalize")]
     [TestCase("vs_4_0", "submatrix43_vector3_multiply")]
     [TestCase("vs_4_0", "vector2_matrix22_multiply")]
@@ -70,6 +73,8 @@ public class DecompileDxbcTests
     [TestCase("gs_4_1", "circle")]
     [TestCase("gs_4_1", "point_expand")]
     [TestCase("cs_4_1", "compute")]
+    [TestCase("cs_4_1", "compute_vector")]
+    [TestCase("cs_4_1", "compute_loop")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

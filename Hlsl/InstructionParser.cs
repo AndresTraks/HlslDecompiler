@@ -277,9 +277,15 @@ class InstructionParser
                     }
                 case D3D10Opcode.StoreStructured:
                     {
-                        var output = new RegisterInputNode(GetDestinationKeys(instruction).First());
-                        var inputs = GetInputs(instruction, 3);
-                        InsertStatement(new StoreStructuredStatement(output, inputs[0], inputs[2], ActiveOutputs));
+                        RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+                        var output = new RegisterInputNode(destinationKeys[0]);
+                        // Address and offset are the same for every component of the
+                        // element; the value stored is not.
+                        HlslTreeNode address = GetInputs(instruction, destinationKeys[0].ComponentIndex)[0];
+                        HlslTreeNode[] values = destinationKeys
+                            .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
+                            .ToArray();
+                        InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs));
                         break;
                     }
                 case D3D10Opcode.Ret:
@@ -741,10 +747,15 @@ class InstructionParser
             }
         }
 
-        // Bitwise use on integers is a different thing again, and guessing between
-        // them would silently change what the shader computes.
-        throw new NotImplementedException(
-            $"{opcode} on {inputs[0].GetType().Name} and {inputs[1].GetType().Name}");
+        // Neither operand is a condition, so this is the bitwise use of the opcode
+        // rather than the logical one. The registers involved are typed as integers,
+        // which is what makes the operator legal in the output.
+        return opcode switch
+        {
+            D3D10Opcode.And => new BitwiseAndOperation(inputs[0], inputs[1]),
+            D3D10Opcode.Or => new BitwiseOrOperation(inputs[0], inputs[1]),
+            _ => new BitwiseXorOperation(inputs[0], inputs[1]),
+        };
     }
 
     private void InsertSwitchStatement(D3D10Instruction instruction)
@@ -1189,6 +1200,7 @@ class InstructionParser
             case D3D10Opcode.DerivRty:
             case D3D10Opcode.Exp:
             case D3D10Opcode.And:
+            case D3D10Opcode.Xor:
             case D3D10Opcode.Div:
             case D3D10Opcode.Eq:
             case D3D10Opcode.Or:
@@ -1248,6 +1260,7 @@ class InstructionParser
                         case D3D10Opcode.And:
                             return CreateLogicalOperation(instruction.Opcode, inputs);
                         case D3D10Opcode.Or:
+                        case D3D10Opcode.Xor:
                             return CreateLogicalOperation(instruction.Opcode, inputs);
                         // Float comparisons, like their integer counterparts, only
                         // ever feed a branch or a movc, so they read as conditions.
@@ -1534,20 +1547,16 @@ class InstructionParser
     // silently decompile a different shader, so the index is modelled instead.
     private LoopCounterNode _loopCounter;
 
-    // Only a one-component element is modelled. A wider one loads and stores as a
-    // vector, which StoreStructuredStatement cannot express - it carries a single
-    // value, not one per component - and reading it as a scalar would decompile a
-    // different shader, so refuse instead.
+    // A structured buffer element can be wider than one component, and any of them
+    // can be read, so each needs a value before the first load.
     private void SeedResourceComponents(D3D10RegisterKey registerKey)
     {
         int components = _registerState.GetStructuredBufferComponents(registerKey);
-        if (components != 1)
+        for (int component = 0; component < components; component++)
         {
-            throw new NotImplementedException(
-                $"Structured buffer with a {components}-component element");
+            var destinationKey = new RegisterComponentKey(registerKey, component);
+            SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
         }
-        var destinationKey = new RegisterComponentKey(registerKey, 0);
-        SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
     }
 
     private HlslTreeNode GetRelativeAddressInput(
@@ -1766,6 +1775,7 @@ class InstructionParser
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
             case D3D10Opcode.And:
+            case D3D10Opcode.Xor:
             case D3D10Opcode.Div:
             case D3D10Opcode.Eq:
             case D3D10Opcode.GE:

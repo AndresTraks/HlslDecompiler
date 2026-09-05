@@ -28,8 +28,12 @@ public static class AssociativityTester
             case CompareOperation _:
             case ComparisonNode _:
             case GreaterEqualOperation _:
-            // Shift binds more loosely than the arithmetic around it.
+            // Shift and the bitwise operators bind more loosely than the arithmetic
+            // around them.
             case ShiftLeftOperation _:
+            case BitwiseAndOperation _:
+            case BitwiseOrOperation _:
+            case BitwiseXorOperation _:
             // sge and slt also compile to a ternary.
             case SignGreaterOrEqualOperation _:
             case SignLessOperation _:

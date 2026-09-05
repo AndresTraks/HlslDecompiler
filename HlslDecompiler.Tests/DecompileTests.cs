@@ -8,6 +8,8 @@ namespace HlslDecompiler.Tests;
 [TestFixture]
 public class DecompileTests
 {
+    [TestCase("ps_2_0", "tex2d")]
+    [TestCase("ps_2_0", "lerp")]
     [TestCase("ps_3_0", "conditional")]
     [TestCase("ps_3_0", "constant")]
     [TestCase("ps_3_0", "constant_struct")]

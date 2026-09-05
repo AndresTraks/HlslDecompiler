@@ -77,7 +77,7 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
-    private static Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
+    private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
     {
         var tempRegisters = new Dictionary<RegisterKey, int>();
         foreach (Instruction instruction in instructions.Where(i => i.HasDestination))
@@ -97,10 +97,18 @@ public class HlslSimpleWriter : HlslWriter
         return tempRegisters;
     }
 
-    private static bool IsDestinationTempRegister(Instruction instruction, int destIndex)
+    private bool IsDestinationTempRegister(Instruction instruction, int destIndex)
     {
-        return (instruction is D3D9Instruction d3d9 && (d3d9.GetParamRegisterType(destIndex) == RegisterType.Temp || d3d9.GetParamRegisterType(destIndex) == RegisterType.Addr))
-            || (instruction is D3D10Instruction d3d10 && d3d10.GetParamRegisterKey(destIndex).IsTempRegister);
+        if (instruction is D3D9Instruction d3d9)
+        {
+            RegisterType type = d3d9.GetParamRegisterType(destIndex);
+            // Addr and Texture are one register type number. In a vertex shader it is
+            // the address register, which needs declaring like a temp; in a pixel
+            // shader it is a texture coordinate input, which does not.
+            return type == RegisterType.Temp
+                || (type == RegisterType.Addr && _shader.Type != ShaderType.Pixel);
+        }
+        return instruction is D3D10Instruction d3d10 && d3d10.GetParamRegisterKey(destIndex).IsTempRegister;
     }
 
     private static String GetTempRegisterName(RegisterKey registerKey)
@@ -539,6 +547,12 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.And:
                 WriteLine("{0} = {1} & {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.Or:
+                WriteLine("{0} = {1} | {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.Xor:
+                WriteLine("{0} = {1} ^ {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.SinCos:
                 WriteLine("{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));

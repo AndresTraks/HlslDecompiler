@@ -206,6 +206,21 @@ public sealed class NodeCompiler
                         CompileOperand(amount));
                 }
 
+            case BitwiseAndOperation _:
+            case BitwiseOrOperation _:
+            case BitwiseXorOperation _:
+                {
+                    string bitwise = operation switch
+                    {
+                        BitwiseAndOperation _ => "&",
+                        BitwiseOrOperation _ => "|",
+                        _ => "^",
+                    };
+                    return string.Format("{0} " + bitwise + " {1}",
+                        CompileOperand(components.Select(g => g.Inputs[0])),
+                        CompileOperand(components.Select(g => g.Inputs[1])));
+                }
+
             case AddOperation _:
                 {
                     return string.Format("{0} + {1}",
@@ -310,11 +325,18 @@ public sealed class NodeCompiler
                 }
             case LoadStructuredNode _:
                 {
+                    // TODO: consider the byte offset in Inputs[1].
                     var address = Compile(components.Select(g => g.Inputs[0]));
-                    var byteOffset = Compile(components.Select(g => g.Inputs[1]), components.Count); // TODO
-                    var value = Compile(components.Select(g => g.Inputs[2]), components.Count);
-
-                    return $"{value}[{address}]";
+                    var resource = (RegisterInputNode)components[0].Inputs[2];
+                    RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
+                    // The subscript picks the element, so a component selection goes
+                    // after it. Naming the buffer with a swizzle gave `In.w[i]`.
+                    // The load carries no component index of its own; the resource
+                    // operand it reads does.
+                    string swizzle = GetAstSourceSwizzleName(
+                        components.Select(g => (IHasComponentIndex)g.Inputs[2]),
+                        _registers.GetRegisterMaskedLength(resourceKey));
+                    return $"{_registers.GetRegisterName(resourceKey)}[{address}]{swizzle}";
                 }
             case LogicalAndOperation _:
             case LogicalOrOperation _:
@@ -510,7 +532,7 @@ public sealed class NodeCompiler
             }
             else
             {
-                type = "float";
+                type = tempAssignment.TempVariable.IsInteger ? "int" : "float";
                 if (tempAssignment.TempVariable.VariableSize > 1)
                 {
                     type += tempAssignment.TempVariable.VariableSize;

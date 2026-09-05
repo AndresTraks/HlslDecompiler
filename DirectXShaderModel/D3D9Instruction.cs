@@ -72,6 +72,11 @@ public class D3D9Instruction : Instruction
     {
         switch (GetParamRegisterType(1))
         {
+            // A ps_2_0 texture register is a texture coordinate, numbered by the
+            // register itself.
+            case RegisterType.Texture:
+                int textureIndex = GetParamRegisterNumber(1);
+                return textureIndex == 0 ? "TEXCOORD" : "TEXCOORD" + textureIndex;
             case RegisterType.Input:
             case RegisterType.Output:
                 string name;

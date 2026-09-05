@@ -122,7 +122,10 @@ public class AsmWriter
                 break;
             case Opcode.Dcl:
                 string dclInstruction = "dcl";
-                if (instruction.GetParamRegisterType(1) != RegisterType.MiscType)
+                // ps_2_0 declares its texture coordinates as `dcl t0.xy`, with the
+                // semantic implied by the register rather than spelled out.
+                if (instruction.GetParamRegisterType(1) != RegisterType.MiscType
+                    && instruction.GetParamRegisterType(1) != RegisterType.Texture)
                 {
                     dclInstruction += "_" + instruction.GetDeclSemantic().ToLower();
                 }
@@ -472,6 +475,15 @@ public class AsmWriter
             case D3D10Opcode.Ne:
                 WriteInstruction(instruction, "ne", 3);
                 break;
+            case D3D10Opcode.And:
+                WriteInstruction(instruction, "and", 3);
+                break;
+            case D3D10Opcode.Or:
+                WriteInstruction(instruction, "or", 3);
+                break;
+            case D3D10Opcode.Xor:
+                WriteInstruction(instruction, "xor", 3);
+                break;
             case D3D10Opcode.IAdd:
                 WriteInstruction(instruction, "iadd", 3);
                 break;
@@ -682,7 +694,10 @@ public class AsmWriter
         switch (registerType)
         {
             case RegisterType.Addr:
-                registerTypeName = "a";
+                // Addr and Texture are the same register type number. A vertex
+                // shader means the address register, a pixel shader the texture
+                // coordinate registers that ps_2_0 and earlier read from.
+                registerTypeName = shader.Type == ShaderType.Pixel ? "t" : "a";
                 break;
             case RegisterType.AttrOut:
                 registerTypeName = "oD";

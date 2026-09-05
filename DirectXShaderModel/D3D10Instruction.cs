@@ -124,6 +124,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.And:
+                case D3D10Opcode.Xor:
                 case D3D10Opcode.Div:
                 case D3D10Opcode.Or:
                 case D3D10Opcode.Eq:
@@ -261,24 +262,28 @@ public class D3D10Instruction : Instruction
             case D3D10InterpolationMode.Linear:
                 return "linear";
             case D3D10InterpolationMode.LinearCentroid:
-                return "linearCentroid";
+                return "linear centroid";
             case D3D10InterpolationMode.LinearNoPerspective:
-                return "linearNoPerspective";
+                return "linear noperspective";
             case D3D10InterpolationMode.LinearNoPerspectiveCentroid:
-                return "linearNoPerspectiveCentroid";
+                return "linear noperspective centroid";
             case D3D10InterpolationMode.LinearSample:
-                return "linearSample";
+                return "linear sample";
             case D3D10InterpolationMode.LinearNoPerspectiveSample:
-                return "linearNoPerspectiveSample";
+                return "linear noperspective sample";
             default:
                 throw new NotImplementedException();
         }
     }
 
-    private D3D10InterpolationMode GetInterpolationMode()
+    // The mode lives in the opcode token, not the operand token this used to read,
+    // so every input declared as linear whatever it really was. The reader keeps it,
+    // the way it keeps the saturate bit.
+    public D3D10InterpolationMode InterpolationMode { get; set; }
+
+    public D3D10InterpolationMode GetInterpolationMode()
     {
-        Span<uint> span = OperandTokens.GetSpan(0);
-        return (D3D10InterpolationMode)((span[0] >> 11) & 0xF);
+        return InterpolationMode;
     }
 
     public D3D10OperandIndexRepresentation[] GetOperandIndexRepresentation(int index)

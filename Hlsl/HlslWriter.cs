@@ -158,11 +158,11 @@ public abstract class HlslWriter
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Structured)
                 {
-                    WriteLine($"StructuredBuffer<float> {resource.Name} : register(t{resource.BindPoint});");
+                    WriteLine($"StructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(t{resource.BindPoint});");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.UavRWStructured)
                 {
-                    WriteLine($"RWStructuredBuffer<float> {resource.Name} : register(u{resource.BindPoint});");
+                    WriteLine($"RWStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
                 }
                 else
                 {
@@ -171,6 +171,15 @@ public abstract class HlslWriter
             }
             WriteLine();
         }
+    }
+
+    // The element width comes from the declaration stride, so a
+    // StructuredBuffer<float4> is no longer declared as one of float.
+    private string GetStructuredElementType(ResourceDefinition resource)
+    {
+        int components = _registers.GetStructuredBufferComponents(
+            resource.ShaderInputType, resource.BindPoint);
+        return components > 1 ? "float" + components : "float";
     }
 
     private void WriteInputStructureDeclaration()

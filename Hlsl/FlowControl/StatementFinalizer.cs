@@ -9,16 +9,20 @@ public class StatementFinalizer
 {
     private IList<IStatement> _statements;
     private bool _hasReturnValue;
+    private readonly IntegerOperandAnalysis _integerOperandAnalysis;
 
-    private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue)
+    private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue,
+        IntegerOperandAnalysis integerOperandAnalysis)
     {
         _statements = statements;
         _hasReturnValue = hasReturnValue;
+        _integerOperandAnalysis = integerOperandAnalysis;
     }
 
-    public static void Finalize(IList<IStatement> statements, bool hasReturnValue)
+    public static void Finalize(IList<IStatement> statements, bool hasReturnValue,
+        IntegerOperandAnalysis integerOperandAnalysis = null)
     {
-        var finalizer = new StatementFinalizer(statements, hasReturnValue);
+        var finalizer = new StatementFinalizer(statements, hasReturnValue, integerOperandAnalysis);
         finalizer.FinalizeStatements();
     }
 
@@ -179,7 +183,10 @@ public class StatementFinalizer
                     tempValue.Outputs.Clear();
                     TempVariableNode tempVariable = tempInputAssignment?.TempVariable
                         ?? tempInputVariable
-                        ?? new TempVariableNode();
+                        ?? new TempVariableNode
+                        {
+                            IsInteger = _integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true,
+                        };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
                     // else that feeds a phi - a branch join, or the loop backedge - is
@@ -209,6 +216,7 @@ public class StatementFinalizer
                                 }
                                 tempVariable.Outputs.Add(output);
                             }
+                            ReplaceInStatementNodes(tempUsage, tempVariable);
                         }
                         // Keep the back-reference, so that rewiring the variable later -
                         // unifying the branches of an if onto one variable, say - can find
@@ -501,6 +509,41 @@ public class StatementFinalizer
                     assignment.TempVariable = to;
                     // The variable already exists; this is no longer a declaration.
                     assignment.IsReassignment = true;
+                }
+            }
+        });
+    }
+
+    // A statement can hold nodes outside its input and output maps - the address and
+    // values of a store, the values of a clip. Those are not consumers in the graph,
+    // so rewiring by output list never reaches them, and a phi left behind there
+    // reaches compilation unlowered.
+    private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)
+    {
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is StoreStructuredStatement store)
+            {
+                for (int i = 0; i < store.Values.Length; i++)
+                {
+                    if (store.Values[i] == node)
+                    {
+                        store.Values[i] = replacement;
+                    }
+                }
+                if (store.Address == node)
+                {
+                    store.Address = replacement;
+                }
+            }
+            else if (statement is ClipStatement clip)
+            {
+                for (int i = 0; i < clip.Values.Length; i++)
+                {
+                    if (clip.Values[i] == node)
+                    {
+                        clip.Values[i] = replacement;
+                    }
                 }
             }
         });

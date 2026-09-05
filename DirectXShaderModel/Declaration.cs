@@ -86,6 +86,21 @@ public class RegisterDeclaration
     // float, so the type is taken from the signature rather than assumed.
     public int ComponentType { get; init; }
 
+    // How the rasteriser interpolates the input. Dropping it changed what the
+    // shader does: nointerpolation recompiled as a linear interpolant.
+    public D3D10InterpolationMode InterpolationMode { get; init; }
+
+    private string InterpolationModifier => InterpolationMode switch
+    {
+        D3D10InterpolationMode.Constant => "nointerpolation ",
+        D3D10InterpolationMode.LinearCentroid => "centroid ",
+        D3D10InterpolationMode.LinearNoPerspective => "noperspective ",
+        D3D10InterpolationMode.LinearNoPerspectiveCentroid => "noperspective centroid ",
+        D3D10InterpolationMode.LinearSample => "sample ",
+        D3D10InterpolationMode.LinearNoPerspectiveSample => "noperspective sample ",
+        _ => "",
+    };
+
     public RegisterKey RegisterKey { get; }
     public string Semantic { get; }
     public ResultModifier ResultModifier { get; }
@@ -115,7 +130,7 @@ public class RegisterDeclaration
                 type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
             }
             string length = MaskedLength > 1 ? MaskedLength.ToString() : "";
-            return centroid + type + length;
+            return InterpolationModifier + centroid + type + length;
         }
     }
 

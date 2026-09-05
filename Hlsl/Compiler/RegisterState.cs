@@ -408,6 +408,24 @@ public sealed class RegisterState
     // register cannot be addressed as one, so it is capped there.
     private readonly Dictionary<RegisterKey, int> _structuredBufferComponents = [];
 
+    // The declaration writer has a ResourceDefinition rather than a register key.
+    public int GetStructuredBufferComponents(D3DShaderInputType shaderInputType, int bindPoint)
+    {
+        OperandType operandType = shaderInputType == D3DShaderInputType.UavRWStructured
+            ? OperandType.UnorderedAccessView
+            : OperandType.Resource;
+        foreach (var entry in _structuredBufferComponents)
+        {
+            if (entry.Key is D3D10RegisterKey key
+                && key.OperandType == operandType
+                && key.Number == bindPoint)
+            {
+                return entry.Value;
+            }
+        }
+        return 1;
+    }
+
     public int GetStructuredBufferComponents(RegisterKey registerKey)
     {
         return _structuredBufferComponents.TryGetValue(registerKey, out int components)
@@ -493,7 +511,11 @@ public sealed class RegisterState
                 instruction.GetDestinationResultModifier());
             RegisterDeclarations.Add(registerKey, registerDeclaration);
 
-            if (registerKey.Type == RegisterType.Input || registerKey.Type == RegisterType.MiscType)
+            // A ps_2_0 texture register is an input like any other; it just carries
+            // its semantic in the register number.
+            if (registerKey.Type == RegisterType.Input
+                || registerKey.Type == RegisterType.MiscType
+                || registerKey.Type == RegisterType.Texture)
             {
                 MethodInputRegisters.Add(registerKey, registerDeclaration);
             }
@@ -729,6 +751,7 @@ public sealed class RegisterState
             return new RegisterDeclaration(registerKey, semantic, signature.Mask)
             {
                 ComponentType = signature.ComponentType,
+                InterpolationMode = instruction.GetInterpolationMode(),
             };
         }
 

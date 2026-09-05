@@ -1,4 +1,4 @@
-float4 main(float4 sv_position : SV_Position) : SV_Target
+float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 {
 	float4 o;
 

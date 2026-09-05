@@ -81,6 +81,11 @@ public class RegisterDeclaration
     {
     }
 
+    // D3D_REGISTER_COMPONENT_TYPE, from the signature: 1 uint32, 2 sint32,
+    // 3 float32. SV_VertexID and its like are integral and will not compile as
+    // float, so the type is taken from the signature rather than assumed.
+    public int ComponentType { get; init; }
+
     public RegisterKey RegisterKey { get; }
     public string Semantic { get; }
     public ResultModifier ResultModifier { get; }
@@ -96,6 +101,14 @@ public class RegisterDeclaration
             if (RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.InputThreadID)
             {
                 type = "uint";
+            }
+            else if (ComponentType == 1)
+            {
+                type = "uint";
+            }
+            else if (ComponentType == 2)
+            {
+                type = "int";
             }
             else
             {

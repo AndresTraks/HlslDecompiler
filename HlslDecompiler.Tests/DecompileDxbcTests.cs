@@ -59,6 +59,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "matrix34_vector4_multiply")]
     [TestCase("vs_4_0", "matrix44_vector4_multiply")]
     [TestCase("vs_4_0", "matrix_pair")]
+    [TestCase("vs_4_0", "vertex_id")]
     [TestCase("vs_4_0", "normalize")]
     [TestCase("vs_4_0", "submatrix43_vector3_multiply")]
     [TestCase("vs_4_0", "vector2_matrix22_multiply")]

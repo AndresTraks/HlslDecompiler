@@ -10,6 +10,9 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r1.x = 0;
 	while (true) {
 		r1.y = (r1.x >= count.x) ? -1 : 0;
+		if (r1.y != 0) {
+			break;
+		}
 		r0 = r0 + texcoord;
 		r1.x = r1.x + 1;
 	}

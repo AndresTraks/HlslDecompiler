@@ -547,11 +547,18 @@ public sealed class RegisterState
 
     public void DeclareDestinationRegister(D3D10Instruction instruction)
     {
+        // The _sgv forms declare system-generated values - vertex_id, instance_id,
+        // is_front_face. Leaving them out meant they never reached the input
+        // registers, so they went unnamed, undeclared and missing from the
+        // signature, and fell back on the SV_Target default.
         if (instruction.Opcode == D3D10Opcode.DclInput ||
             instruction.Opcode == D3D10Opcode.DclInputPS ||
+            instruction.Opcode == D3D10Opcode.DclInputPSSgv ||
             instruction.Opcode == D3D10Opcode.DclInputPSSiv ||
+            instruction.Opcode == D3D10Opcode.DclInputSgv ||
             instruction.Opcode == D3D10Opcode.DclInputSiv ||
             instruction.Opcode == D3D10Opcode.DclOutput ||
+            instruction.Opcode == D3D10Opcode.DclOutputSgv ||
             instruction.Opcode == D3D10Opcode.DclOutputSiv)
         {
             var registerKey = instruction.GetParamRegisterKey(instruction.GetDestinationParamIndex().Value);
@@ -719,7 +726,10 @@ public sealed class RegisterState
             {
                 semantic += signature.Index;
             }
-            return new RegisterDeclaration(registerKey, semantic, signature.Mask);
+            return new RegisterDeclaration(registerKey, semantic, signature.Mask)
+            {
+                ComponentType = signature.ComponentType,
+            };
         }
 
         int writeMask = 4;

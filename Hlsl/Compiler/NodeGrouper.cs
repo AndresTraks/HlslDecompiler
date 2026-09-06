@@ -81,6 +81,14 @@ public class NodeGrouper
     // n = a + b
     public bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2, bool allowMatrixColumn = false)
     {
+        // Two components reading the one node hold the one value, so they combine
+        // into a broadcast whatever the node is. Worth answering before the checks
+        // below, which reject whole node kinds rather than compare them.
+        if (ReferenceEquals(node1, node2))
+        {
+            return true;
+        }
+
         if (node1.GetType() != node2.GetType())
         {
             return false;

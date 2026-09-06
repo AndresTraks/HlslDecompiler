@@ -10,6 +10,8 @@ public sealed class RegisterState
     public readonly bool ColumnMajorOrder = true;
 
     public ICollection<ConstantRegister> ConstantDefinitions = [];
+    private readonly HashSet<int> _indexedConstants = [];
+    private List<ConstantArray> _constantArrays;
     public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];
     public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = [];
     public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
@@ -61,6 +63,13 @@ public sealed class RegisterState
             if (constant != null)
             {
                 return constant.TypeInfo.Columns;
+            }
+
+            // An indexed def has no declaration to be as wide as. Every def is a
+            // full float4, which is the width the subscript reads.
+            if (FindConstantArray(registerKey) != null)
+            {
+                return 4;
             }
         }
 
@@ -472,6 +481,69 @@ public sealed class RegisterState
             c is D3D9ConstantDeclaration declaration
             && declaration.RegisterSet == registerSet
             && declaration.ContainsIndex(registerKey.Number));
+    }
+
+    // Remembers that a def is read through a0 or aL, which is the only thing that
+    // distinguishes an array of literals from constants the parser folds in place.
+    public void MarkIndexedConstant(RegisterKey registerKey)
+    {
+        if (registerKey is D3D9RegisterKey d3D9RegisterKey
+            && d3D9RegisterKey.Type == RegisterType.Const)
+        {
+            _indexedConstants.Add(d3D9RegisterKey.Number);
+            _constantArrays = null;
+        }
+    }
+
+    public ConstantArray FindConstantArray(RegisterKey registerKey)
+    {
+        if (registerKey is not D3D9RegisterKey d3D9RegisterKey
+            || d3D9RegisterKey.Type != RegisterType.Const)
+        {
+            return null;
+        }
+        return ConstantArrays.FirstOrDefault(a => a.Contains(d3D9RegisterKey.Number));
+    }
+
+    public IReadOnlyList<ConstantArray> ConstantArrays => _constantArrays ??= BuildConstantArrays();
+
+    private List<ConstantArray> BuildConstantArrays()
+    {
+        var byIndex = new Dictionary<int, ConstantRegister>();
+        foreach (ConstantRegister definition in ConstantDefinitions)
+        {
+            byIndex[definition.RegisterIndex] = definition;
+        }
+
+        // The subscripted register is element zero of the array as far as the
+        // bytecode shows, but a constant offset folded into the index would put it
+        // mid-array, so the run is walked backwards as well as forwards.
+        var starts = new SortedSet<int>();
+        foreach (int indexed in _indexedConstants)
+        {
+            if (!byIndex.ContainsKey(indexed))
+            {
+                continue;
+            }
+            int start = indexed;
+            while (byIndex.ContainsKey(start - 1))
+            {
+                start--;
+            }
+            starts.Add(start);
+        }
+
+        var arrays = new List<ConstantArray>();
+        foreach (int start in starts)
+        {
+            var registers = new List<ConstantRegister>();
+            for (int i = start; byIndex.TryGetValue(i, out ConstantRegister register); i++)
+            {
+                registers.Add(register);
+            }
+            arrays.Add(new ConstantArray(start, registers));
+        }
+        return arrays;
     }
 
     public ConstantIntRegister FindConstantIntRegister(int index)

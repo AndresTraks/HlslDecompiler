@@ -186,6 +186,13 @@ public class D3D9Instruction : Instruction
             return "";
         }
 
+        // A bool register holds a single value, so `if b0` carries no swizzle even
+        // though the token has a swizzle field like any other source.
+        if (GetParamRegisterType(srcIndex) == RegisterType.ConstBool)
+        {
+            return "";
+        }
+
         int destinationMask;
         switch (destinationLength)
         {

@@ -400,6 +400,19 @@ public sealed class NodeCompiler
                 _registers.GetRegisterMaskedLength(arrayKey.RegisterKey),
                 promoteToVectorSize);
             string index = Compile(new[] { relativeAddress.Index });
+
+            // A def-defined array has no declaration to be named from, so it takes
+            // the name of the register its run starts at and is declared alongside
+            // the uniforms.
+            if (_registers.FindConstantArray(arrayKey.RegisterKey) is ConstantArray literals)
+            {
+                int literalOffset = arrayKey.RegisterKey.Number - literals.BaseRegisterIndex;
+                if (literalOffset != 0)
+                {
+                    index += $" + {literalOffset}";
+                }
+                return $"{literals.Name}[{index}]{swizzle}";
+            }
             // Named from the declaration rather than the register, which would carry
             // an element index of its own. The base register need not be the first of
             // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.

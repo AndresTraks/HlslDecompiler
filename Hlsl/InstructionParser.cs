@@ -1678,6 +1678,7 @@ class InstructionParser
         D3D9Instruction instruction, int parameterIndex, RegisterComponentKey inputKey)
     {
         RegisterType relativeType = instruction.GetRelativeParamRegisterType(parameterIndex);
+        _registerState.MarkIndexedConstant(inputKey.RegisterKey);
         if (relativeType == RegisterType.Loop)
         {
             // aL counts the enclosing loop. One shared node stands for the register,

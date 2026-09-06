@@ -672,10 +672,21 @@ public class HlslSimpleWriter : HlslWriter
             case RegisterType.Const4:
             case RegisterType.ConstBool:
             case RegisterType.ConstInt:
-                string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength);
-                if (constantValue != null)
+                // A relatively addressed def is the base of an array, not the value
+                // being read - substituting its literal drops the subscript.
+                if (!instruction.Params.HasRelativeAddressing(srcIndex))
                 {
-                    return constantValue;
+                    string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength);
+                    if (constantValue != null)
+                    {
+                        return constantValue;
+                    }
+                }
+
+                if (_registers.FindConstantArray(registerKey) is ConstantArray literals)
+                {
+                    sourceRegisterName = literals.Name;
+                    break;
                 }
 
                 ConstantDeclaration decl = _registers.FindConstant(registerKey);
@@ -750,11 +761,18 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction.Params.HasRelativeAddressing(srcIndex))
         {
             // aL counts the enclosing loop; a0 is the address register.
-            if (instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop)
+            string index = instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop
+                ? $"i{_loopVariableIndex}"
+                : $"a{instruction.GetRelativeParamRegisterNumber(srcIndex)}";
+
+            // The subscripted register need not be the first of a def-defined run.
+            var registerKey = instruction.GetParamRegisterKey(srcIndex);
+            if (_registers.FindConstantArray(registerKey) is ConstantArray literals
+                && registerKey.Number != literals.BaseRegisterIndex)
             {
-                return $"[i{_loopVariableIndex}]";
+                index += $" + {registerKey.Number - literals.BaseRegisterIndex}";
             }
-            return $"[a{instruction.GetRelativeParamRegisterNumber(srcIndex)}]";
+            return $"[{index}]";
         }
         return string.Empty;
     }
@@ -781,10 +799,6 @@ public class HlslSimpleWriter : HlslWriter
             }
             else
             {
-                if (instruction.Opcode == Opcode.If || instruction.Opcode == Opcode.IfC)
-                {
-                    // TODO
-                }
                 destinationLength = 4;
             }
         }
@@ -792,7 +806,9 @@ public class HlslSimpleWriter : HlslWriter
         switch (registerType)
         {
             case RegisterType.ConstBool:
-                throw new NotImplementedException();
+                // Only defb gives a bool register a literal value, and nothing in the
+                // codebase emits one. Otherwise the register names a uniform, which
+                // the caller resolves through the constant table.
                 return null;
             case RegisterType.ConstInt:
                 {

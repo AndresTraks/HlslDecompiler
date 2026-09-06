@@ -3,6 +3,7 @@ using HlslDecompiler.Hlsl;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 
 namespace HlslDecompiler;
@@ -136,6 +137,24 @@ public abstract class HlslWriter
                     WriteLine(compiler.Compile(declaration));
                 }
             }
+            WriteLine();
+        }
+
+        // Emitted after the uniforms so that a subscript reading one is already in
+        // scope, though nothing in a literal array can reference anything anyway.
+        foreach (ConstantArray constantArray in _registers.ConstantArrays)
+        {
+            WriteLine("static const float4 {0}[{1}] =", constantArray.Name, constantArray.Registers.Count);
+            WriteLine("{");
+            indent = "	";
+            foreach (ConstantRegister register in constantArray.Registers)
+            {
+                string components = string.Join(", ", register.Value.Select(
+                    v => v.ToString(CultureInfo.InvariantCulture)));
+                WriteLine($"float4({components}),");
+            }
+            indent = "";
+            WriteLine("};");
             WriteLine();
         }
 

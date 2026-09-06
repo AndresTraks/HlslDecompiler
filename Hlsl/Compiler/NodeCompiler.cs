@@ -569,6 +569,17 @@ public sealed class NodeCompiler
             }
         }
 
+        if (first is LitOutputNode lit)
+        {
+            // Every component reads the same three inputs, so they are compiled from
+            // this node rather than gathered across the group.
+            string nDotL = Compile(new[] { lit.NDotL });
+            string nDotH = Compile(new[] { lit.NDotH });
+            string specularPower = Compile(new[] { lit.SpecularPower });
+            string litSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            return $"lit({nDotL}, {nDotH}, {specularPower}){litSwizzle}";
+        }
+
         if (first is NormalizeOutputNode)
         {
             string input = Compile(first.Inputs);

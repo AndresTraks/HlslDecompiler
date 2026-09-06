@@ -211,6 +211,15 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 indent += "\t";
                 break;
+            case Opcode.Lit:
+                {
+                    // n.l, n.h and the specular power come from x, y and w of the one
+                    // source, so it is named at full width and indexed three times.
+                    string source = GetSourceName(instruction, 1, 4);
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"lit({source}.x, {source}.y, {source}.w)");
+                    break;
+                }
             case Opcode.Log:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"log2({GetSourceName(instruction, 1)})");

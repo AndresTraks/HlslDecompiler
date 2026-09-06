@@ -1231,6 +1231,8 @@ class InstructionParser
                 return CreateDotProductNode(instruction);
             case Opcode.Nrm:
                 return CreateNormalizeOutputNode(instruction, componentIndex);
+            case Opcode.Lit:
+                return CreateLitOutputNode(instruction, componentIndex);
             default:
                 throw new NotImplementedException($"{instruction.Opcode} not implemented");
         }
@@ -1581,6 +1583,18 @@ class InstructionParser
         }
 
         return addends.Aggregate((addition, addend) => new AddOperation(addition, addend));
+    }
+
+    // `lit src` reads n.l from x, n.h from y and the specular power from w, whatever
+    // component is being written, so the source is read three times over rather than
+    // once per destination component.
+    private HlslTreeNode CreateLitOutputNode(D3D9Instruction instruction, int outputComponent)
+    {
+        return new LitOutputNode(
+            GetInputs(instruction, 0)[0],
+            GetInputs(instruction, 1)[0],
+            GetInputs(instruction, 3)[0],
+            outputComponent);
     }
 
     private HlslTreeNode CreateNormalizeOutputNode(D3D9Instruction instruction, int outputComponent)

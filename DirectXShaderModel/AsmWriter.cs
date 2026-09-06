@@ -248,6 +248,10 @@ public class AsmWriter
             case Opcode.Nop:
                 WriteLine("nop");
                 break;
+            case Opcode.Lit:
+                WriteLine("lit{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
             case Opcode.Nrm:
                 WriteLine("nrm{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1));

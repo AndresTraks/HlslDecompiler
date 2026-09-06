@@ -9,6 +9,7 @@ namespace HlslDecompiler.Tests;
 public class DecompileTests
 {
     [TestCase("ps_2_0", "tex2d")]
+    [TestCase("ps_2_0", "texcoord_struct")]
     [TestCase("ps_2_0", "lerp")]
     [TestCase("ps_3_0", "conditional")]
     [TestCase("ps_3_0", "constant")]

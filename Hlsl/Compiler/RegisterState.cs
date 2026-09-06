@@ -281,8 +281,10 @@ public sealed class RegisterState
             var decl = RegisterDeclarations[registerKey];
             switch (d3D9RegisterKey.Type)
             {
+                // A ps_2_0 texture register is an input like any other and is
+                // registered as one, so it is named through the input struct on the
+                // same terms rather than bare.
                 case RegisterType.Texture:
-                    return decl.Name;
                 case RegisterType.Input:
                 case RegisterType.MiscType:
                     return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);

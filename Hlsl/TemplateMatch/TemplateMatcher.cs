@@ -36,6 +36,7 @@ public class TemplateMatcher
             new CompareConstantTemplate(),
             new CompareNegativeWithZeroTemplate(),
             new ComparePositiveAndNegativeTemplate(),
+            new CompareCompareTemplate(),
             new MaxOfPositiveAndNegativeTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>

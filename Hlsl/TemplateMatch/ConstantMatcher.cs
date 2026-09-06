@@ -30,6 +30,25 @@ public static class ConstantMatcher
         return node is ConstantNode constant && constant.Value < 0;
     }
 
+    public static bool IsAnyEqual(HlslTreeNode left, params HlslTreeNode[] right)
+    {
+        return right.Any(r => IsEqual(left, r));
+    }
+
+    public static bool IsEqual(HlslTreeNode left, HlslTreeNode right)
+    {
+        var leftValue = TryEvaluateValue(left);
+        if (leftValue.HasValue)
+        {
+            var rightValue = TryEvaluateValue(right);
+            if (leftValue == rightValue)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static bool? TryEvaluateComparison(HlslTreeNode node)
     {
         if (node is GroupNode group)

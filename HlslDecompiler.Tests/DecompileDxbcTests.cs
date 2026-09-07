@@ -35,6 +35,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "clip_loop")]
     [TestCase("ps_4_0", "interpolation")]
     [TestCase("ps_4_0", "int_divide")]
+    [TestCase("ps_4_0", "uint_convert")]
     [TestCase("ps_4_0", "depth_output")]
     [TestCase("ps_4_0", "conditional_return")]
     [TestCase("ps_4_0", "struct_cbuffer")]

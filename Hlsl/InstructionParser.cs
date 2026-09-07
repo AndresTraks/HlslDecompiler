@@ -967,11 +967,17 @@ class InstructionParser
         ifStatement.IsTrueParsed = true;
         ifStatement.IsParsed = true;
 
-        foreach (var trueOutput in ifStatement.TrueBody.Last().Outputs)
+        // fxc writes a continue as an if with nothing in its true branch. A branch
+        // that assigns nothing carries no outputs of its own, and every register
+        // keeps whatever reached the if.
+        var trueOutputs = BranchOutputs(ifStatement.TrueBody);
+        var falseOutputs = BranchOutputs(ifStatement.FalseBody);
+
+        foreach (var trueOutput in trueOutputs)
         {
             RegisterComponentKey registerComponent = trueOutput.Key;
             HlslTreeNode trueNode = trueOutput.Value;
-            if (ifStatement.FalseBody != null && ifStatement.FalseBody.Last().Outputs.TryGetValue(registerComponent, out var falseNode))
+            if (ifStatement.FalseBody != null && falseOutputs.TryGetValue(registerComponent, out var falseNode))
             {
                 if (trueNode == falseNode)
                 {
@@ -995,11 +1001,11 @@ class InstructionParser
 
         if (ifStatement.FalseBody != null)
         {
-            foreach (var falseOutput in ifStatement.FalseBody.Last().Outputs)
+            foreach (var falseOutput in falseOutputs)
             {
                 RegisterComponentKey registerComponent = falseOutput.Key;
                 HlslTreeNode falseNode = falseOutput.Value;
-                if (ifStatement.TrueBody.Last().Outputs.ContainsKey(registerComponent))
+                if (trueOutputs.ContainsKey(registerComponent))
                 {
                     // Phi node was already created
                 }
@@ -1017,6 +1023,14 @@ class InstructionParser
                 }
             }
         }
+    }
+
+    private static IDictionary<RegisterComponentKey, HlslTreeNode> BranchOutputs(
+        IList<IStatement> body)
+    {
+        return body == null || body.Count == 0
+            ? new Dictionary<RegisterComponentKey, HlslTreeNode>()
+            : body.Last().Outputs;
     }
 
     private HlslTreeNode GetActiveOutput(RegisterComponentKey registerComponent)
@@ -1272,6 +1286,7 @@ class InstructionParser
             case D3D10Opcode.LT:
             case D3D10Opcode.Ne:
             case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
             case D3D10Opcode.IMad:
@@ -1378,6 +1393,7 @@ class InstructionParser
                         case D3D10Opcode.UTof:
                         // TODO: emit an explicit cast rather than relying on implicit conversion.
                         case D3D10Opcode.Ftoi:
+                        case D3D10Opcode.Ftou:
                             return new MoveOperation(inputs[0]);
                         case D3D10Opcode.MovC:
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
@@ -1891,6 +1907,7 @@ class InstructionParser
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
             case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
             case D3D10Opcode.INeg:
             case D3D10Opcode.RoundNe:
             case D3D10Opcode.RoundNi:

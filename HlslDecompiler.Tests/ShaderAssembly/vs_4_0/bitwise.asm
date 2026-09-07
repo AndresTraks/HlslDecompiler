@@ -1,6 +1,6 @@
 vs_4_0
 dcl_constantbuffer cb0[1], immediateIndexed
-DclInputSgv
+dcl_input_sgv v0.x, vertex_id
 dcl_output_siv o0, position
 dcl_temps 1
 and r0.x, v0.x, l(7)

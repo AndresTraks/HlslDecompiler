@@ -340,10 +340,10 @@ public class AsmWriter
             case Opcode.End:
                 break;
             default:
-                WriteLine(instruction.Opcode.ToString());
-                Console.WriteLine(instruction.Opcode);
-                //throw new NotImplementedException();
-                break;
+                // Not a diagnostic to fall back to the opcode name: it writes assembly
+                // with no operands that looks plausible enough to be recorded as a
+                // fixture, which is how `lit oPos, c0.xyzz` became `Lit`.
+                throw new NotImplementedException(instruction.Opcode.ToString());
         }
     }
 
@@ -542,6 +542,9 @@ public class AsmWriter
             case D3D10Opcode.Ftoi:
                 WriteInstruction(instruction, "ftoi", 2);
                 break;
+            case D3D10Opcode.Ftou:
+                WriteInstruction(instruction, "ftou", 2);
+                break;
             case D3D10Opcode.IToF:
                 WriteInstruction(instruction, "itof", 2);
                 break;
@@ -556,6 +559,46 @@ public class AsmWriter
                 break;
             case D3D10Opcode.Loop:
                 WriteInstruction(instruction, "loop", 0);
+                break;
+            case D3D10Opcode.Min:
+                WriteInstruction(instruction, "min", 3);
+                break;
+            case D3D10Opcode.Max:
+                WriteInstruction(instruction, "max", 3);
+                break;
+            case D3D10Opcode.Log:
+                WriteInstruction(instruction, "log", 2);
+                break;
+            case D3D10Opcode.Exp:
+                WriteInstruction(instruction, "exp", 2);
+                break;
+            case D3D10Opcode.Frc:
+                WriteInstruction(instruction, "frc", 2);
+                break;
+            case D3D10Opcode.SampleL:
+                WriteInstruction(instruction, "sample_l", 5);
+                break;
+            case D3D10Opcode.SampleB:
+                WriteInstruction(instruction, "sample_b", 5);
+                break;
+            case D3D10Opcode.SampleD:
+                WriteInstruction(instruction, "sample_d", 6);
+                break;
+            case D3D10Opcode.SampleCLZ:
+                WriteInstruction(instruction, "sample_c_lz", 5);
+                break;
+            // The test-boolean bit is not decoded, so the nz form is assumed, as it
+            // already is for if and discard.
+            case D3D10Opcode.RetC:
+                WriteInstruction(instruction, "retc_nz", 1);
+                break;
+            case D3D10Opcode.DclInputSgv:
+                WriteLine("dcl_input_sgv {0}, {1}", FormatOperand(instruction, 0),
+                    GetSystemValueName(instruction));
+                break;
+            case D3D10Opcode.DclInputPSSgv:
+                WriteLine("dcl_input_ps_sgv {0} {1}, {2}", instruction.GetInterpolationModeName(),
+                    FormatOperand(instruction, 0), GetSystemValueName(instruction));
                 break;
             case D3D10Opcode.If:
                 WriteInstruction(instruction, "if_nz", 1);
@@ -625,11 +668,29 @@ public class AsmWriter
                 WriteInstruction(instruction, "store_structured", 4);
                 break;
             default:
-                WriteLine(instruction.Opcode.ToString());
-                Console.WriteLine(instruction.Opcode);
-                //throw new NotImplementedException();
-                break;
+                throw new NotImplementedException(instruction.Opcode.ToString());
         }
+    }
+
+    // fxc spells these with underscores - is_front_face, vertex_id - and the enum
+    // in camel case with the acronym left whole, so a capital only starts a word
+    // where it follows a lower case letter or begins one.
+    private static string GetSystemValueName(D3D10Instruction instruction)
+    {
+        string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
+        var builder = new System.Text.StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            bool startsWord = i > 0 && char.IsUpper(name[i])
+                && (char.IsLower(name[i - 1])
+                    || (i + 1 < name.Length && char.IsLower(name[i + 1])));
+            if (startsWord)
+            {
+                builder.Append('_');
+            }
+            builder.Append(char.ToLowerInvariant(name[i]));
+        }
+        return builder.ToString();
     }
 
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)

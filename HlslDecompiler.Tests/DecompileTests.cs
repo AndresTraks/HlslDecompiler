@@ -37,6 +37,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "tex3d")]
     [TestCase("ps_3_0", "texcube")]
     [TestCase("ps_3_0", "clip")]
+    [TestCase("ps_3_0", "continue_loop")]
     [TestCase("ps_3_0", "if")]
     [TestCase("ps_3_0", "if_bool")]
     [TestCase("ps_3_0", "if_no_else")]

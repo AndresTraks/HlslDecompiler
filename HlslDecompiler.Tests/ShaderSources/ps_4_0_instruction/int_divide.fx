@@ -5,7 +5,7 @@ float4 main() : SV_Target
 {
 	float4 o;
 
-	float3 r0;
+	int3 r0;
 	r0.x = b ^ a;
 	r0.x = r0.x & -2.1474836E+09;
 	r0.yz = max(a, -(a));

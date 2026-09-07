@@ -137,6 +137,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Exp:
                 case D3D10Opcode.Frc:
                 case D3D10Opcode.Ftoi:
+                case D3D10Opcode.Ftou:
                 case D3D10Opcode.Log:
                 case D3D10Opcode.Max:
                 case D3D10Opcode.Min:

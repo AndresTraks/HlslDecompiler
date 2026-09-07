@@ -65,16 +65,42 @@ public class HlslSimpleWriter : HlslWriter
             // only ever used as one.
             bool isAddressRegister = register.Key is D3D9RegisterKey addressKey
                 && addressKey.Type == RegisterType.Addr;
+            // A register holding only integers has to be declared as one: a shift or a
+            // bitwise operator will not take a float, however the bits got there.
+            string scalarType = isAddressRegister || IsIntegerTempRegister(register.Key, writeMask)
+                ? "int"
+                : "float";
             string writeMaskName = isAddressRegister ? "int" : writeMask switch
             {
-                0x1 => "float",
-                0x3 => "float2",
-                0x7 => "float3",
-                0xF => "float4",
-                _ => "float4",// TODO
+                0x1 => scalarType,
+                0x3 => scalarType + "2",
+                0x7 => scalarType + "3",
+                0xF => scalarType + "4",
+                _ => scalarType + "4",// TODO
             };
             WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
         }
+    }
+
+    // Only when every written component is one the analysis never saw a float in.
+    // A register that carries both has to stay a float, which is the state of things
+    // before this and no worse.
+    private bool IsIntegerTempRegister(RegisterKey registerKey, int writeMask)
+    {
+        if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
+        {
+            return false;
+        }
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0
+                && !_integerOperandAnalysis.IsIntegerRegister(
+                    new RegisterComponentKey(registerKey, component)))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)

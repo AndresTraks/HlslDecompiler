@@ -27,11 +27,43 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
+        ["ps_3_0/component_chain"] =
+            "Writes to components of one register inside a loop, each reading what the "
+            + "previous wrote, so one component is assigned more than once in a block. "
+            + "AssignmentStatement.Outputs is keyed by register component and holds only "
+            + "the last of them, while the temp variables the earlier ones defined stay "
+            + "wired into the expressions that read them. They come out as t1 and t2, "
+            + "declared nowhere, and the surviving assignment redeclares its own "
+            + "variable. Correct without the loop - inside one, the incoming value is "
+            + "already a temp assignment, which is what makes every write to the "
+            + "component another one. Correct from the instruction writer either way. "
+            + "Fixing it means letting a statement carry more than one assignment per "
+            + "component, in order, rather than a dictionary.",
     };
 
     private static readonly Lazy<string> Fxc = new(FindFxc);
 
+    public static IEnumerable<TestCaseData> InstructionShaders()
+    {
+        // Its own names: sharing Shaders() gave both tests the same one, so a failure
+        // pointed at whichever you assumed it was.
+        foreach ((string profile, string baseFilename) in ShaderNames())
+        {
+            yield return new TestCaseData(profile, baseFilename)
+                .SetName($"RecompileInstructions({profile},{baseFilename})");
+        }
+    }
+
     public static IEnumerable<TestCaseData> Shaders()
+    {
+        foreach ((string profile, string baseFilename) in ShaderNames())
+        {
+            yield return new TestCaseData(profile, baseFilename)
+                .SetName($"Recompile({profile},{baseFilename})");
+        }
+    }
+
+    private static IEnumerable<(string Profile, string BaseFilename)> ShaderNames()
     {
         const string root = "CompiledShaders";
         if (!Directory.Exists(root))
@@ -44,9 +76,7 @@ public class RecompileTests
             string profile = Path.GetFileName(profileDirectory);
             foreach (string shader in Directory.EnumerateFiles(profileDirectory, "*.fxc").OrderBy(f => f))
             {
-                string baseFilename = Path.GetFileNameWithoutExtension(shader);
-                yield return new TestCaseData(profile, baseFilename)
-                    .SetName($"Recompile({profile},{baseFilename})");
+                yield return (profile, Path.GetFileNameWithoutExtension(shader));
             }
         }
     }
@@ -62,7 +92,7 @@ public class RecompileTests
         string compiledShaderFilename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
         string hlslOutputFilename = Path.Combine("Recompile", profile, baseFilename + ".fx");
 
-        string failure = Decompile(compiledShaderFilename, hlslOutputFilename)
+        string failure = Decompile(compiledShaderFilename, hlslOutputFilename, s => new HlslAstWriter(s))
             ?? Recompile(profile, hlslOutputFilename);
 
         string key = $"{profile}/{baseFilename}";
@@ -77,14 +107,77 @@ public class RecompileTests
             $"Decompiled output at {hlslOutputFilename} does not compile:{Environment.NewLine}{failure}");
     }
 
+    /// <summary>
+    /// Shaders whose instruction writer output does not compile yet, and why. Kept
+    /// apart from <see cref="KnownFailures"/>: the two writers fail on different
+    /// things, and a shader can round trip through one and not the other.
+    /// </summary>
+    private static readonly Dictionary<string, string> KnownInstructionFailures = new()
+    {
+        ["ps_3_0/struct"] = "Subscripts a struct member as though it were a vector.",
+        ["ps_4_0/nested_struct"] = "Subscripts a struct member as though it were a vector.",
+        ["ps_4_0/sample_cmp"] = "Swizzles the scalar a comparison sample returns.",
+        ["ps_4_1/gather"] = "Swizzles the scalar a comparison sample returns.",
+        ["ps_4_0/logical_and"] =
+            "A bitwise operator applied to a float register. The register holds the "
+            + "mask a float comparison writes, which IntegerOperandAnalysis does not "
+            + "count as integer-producing. Marking comparisons as such types the "
+            + "register correctly and breaks saturate_step, below.",
+        ["ps_4_0/saturate_step"] =
+            "The same bitwise operator on a float register, and the reason the "
+            + "obvious fix does not work: the mask is anded with 0x3f800000, the bits "
+            + "of 1.0f. Type the register as integer and that immediate reads as the "
+            + "integer 1065353216, which is worse - it compiles and is wrong. The "
+            + "register is genuinely neither, and the analysis has no way to say so.",
+        ["ps_4_0/int_divide"] =
+            "An integer immediate prints as a float, and r1 and r2 - the second "
+            + "destination of udiv - are used but never declared.",
+        ["vs_3_0/loop_nested_uniform"] = "Passes something that is not a value to a loop bound.",
+        ["vs_3_0/matrix_array"] = "Calls transpose on a single row rather than the matrix.",
+    };
+
+    /// <summary>
+    /// The same check for HlslSimpleWriter. It had none, which is how four shaders
+    /// came to be emitting output fxc rejects without anyone noticing.
+    /// </summary>
+    [TestCaseSource(nameof(InstructionShaders))]
+    [Category("Recompile")]
+    public void InstructionOutputCompiles(string profile, string baseFilename)
+    {
+        if (Fxc.Value == null)
+        {
+            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+        }
+
+        string compiledShaderFilename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
+        string hlslOutputFilename = Path.Combine("Recompile", profile + "_instruction", baseFilename + ".fx");
+
+        string failure = Decompile(compiledShaderFilename, hlslOutputFilename, s => new HlslSimpleWriter(s))
+            ?? Recompile(profile, hlslOutputFilename);
+
+        string key = $"{profile}/{baseFilename}";
+        if (KnownInstructionFailures.TryGetValue(key, out string reason))
+        {
+            Assert.That(failure, Is.Not.Null,
+                $"{key} now recompiles. Remove it from {nameof(KnownInstructionFailures)}.");
+            Assert.Ignore($"Known failure: {reason}");
+        }
+
+        Assert.That(failure, Is.Null,
+            $"Instruction writer output at {hlslOutputFilename} does not compile:{Environment.NewLine}{failure}");
+    }
+
     /// <returns>An error description, or null on success.</returns>
-    private static string Decompile(string compiledShaderFilename, string hlslOutputFilename)
+    private static string Decompile(
+        string compiledShaderFilename,
+        string hlslOutputFilename,
+        Func<ShaderModel, HlslWriter> createWriter)
     {
         try
         {
             ShaderModel shader = ReadShader(compiledShaderFilename);
             FileUtil.MakeFolder(hlslOutputFilename);
-            new HlslAstWriter(shader).Write(hlslOutputFilename);
+            createWriter(shader).Write(hlslOutputFilename);
             return null;
         }
         catch (Exception e)

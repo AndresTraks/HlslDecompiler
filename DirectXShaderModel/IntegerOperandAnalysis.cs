@@ -44,7 +44,11 @@ public sealed class IntegerOperandAnalysis
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
-            if (instruction.Opcode != D3D10Opcode.Ftoi && GetSourceCount(instruction.Opcode) != 0)
+            // ftoi and ftou read floats and write integers, so the destination is
+            // an integer component but the source is not.
+            if (instruction.Opcode != D3D10Opcode.Ftoi
+                && instruction.Opcode != D3D10Opcode.Ftou
+                && GetSourceCount(instruction.Opcode) != 0)
             {
                 AddSourceComponents(instruction, integerRegisters);
             }
@@ -205,6 +209,7 @@ public sealed class IntegerOperandAnalysis
         switch (opcode)
         {
             case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
             case D3D10Opcode.INeg:

@@ -6,7 +6,7 @@ float4 main() : SV_Position
 	float4 o;
 
 	float4 r0;
-	float2 r1;
+	int2 r1;
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
 	while (true) {

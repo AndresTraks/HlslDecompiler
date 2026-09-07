@@ -15,7 +15,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 {
 	GS_OUT o;
 
-	float2 r0;
+	int2 r0;
 	r0.x = 0;
 	while (true) {
 		r0.y = (r0.x >= 3) ? -1 : 0;

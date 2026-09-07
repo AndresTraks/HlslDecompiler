@@ -5,7 +5,7 @@ dcl_output o0
 dcl_temps 1
 lt r0.x, cb0[3].x, v0.x
 mov o0, cb0[0]
-RetC
+retc_nz r0.x
 lt r0.x, cb0[3].x, v0.y
 if_nz r0.x
 mov o0, cb0[1]

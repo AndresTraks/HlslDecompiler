@@ -15,7 +15,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	GS_OUT o;
 
 	float4 r0;
-	float2 r1;
+	int2 r1;
 	float4 r2;
 	r0.zw = float2(0, 0);
 	r1.x = 0;

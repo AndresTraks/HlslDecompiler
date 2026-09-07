@@ -16,7 +16,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	GS_OUT o;
 
 	float4 r0;
-	float2 r1;
+	int2 r1;
 	float4 r2;
 	o.sv_position = i[0].sv_position;
 	o.color = i[0].color;

@@ -564,10 +564,21 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("{0} = round({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Gather4:
-                WriteLine("{0} = {2}.Gather({3}, {1});", GetOperandName(instruction, 0),
-                    GetOperandName(instruction, 1), GetOperandName(instruction, 2),
-                    GetOperandName(instruction, 3));
-                break;
+                {
+                    // The swizzle on the sampler picks the channel gathered. Red is what
+                    // Gather returns; the other three have methods of their own.
+                    string method = instruction.GetSourceSwizzleComponents(3)[0] switch
+                    {
+                        1 => "GatherGreen",
+                        2 => "GatherBlue",
+                        3 => "GatherAlpha",
+                        _ => "Gather",
+                    };
+                    WriteLine("{0} = {2}.{4}({3}, {1});", GetOperandName(instruction, 0),
+                        GetOperandName(instruction, 1), GetOperandName(instruction, 2),
+                        GetOperandName(instruction, 3), method);
+                    break;
+                }
             case D3D10Opcode.SampleL:
                 WriteLine("{0} = {2}.SampleLevel({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));
                 break;
@@ -1008,8 +1019,21 @@ public class HlslSimpleWriter : HlslWriter
         }
         else
         {
+            // A texture or a sampler is named, never swizzled. The swizzle a sampling
+            // instruction carries on its resource operand selects components of the
+            // result, and on the sampler of a gather it selects the channel; neither
+            // belongs on the object itself.
+            if (registerKey.OperandType == OperandType.Resource
+                || registerKey.OperandType == OperandType.Sampler)
+            {
+                return ApplyModifier(modifier, registerName);
+            }
+
             int? maskedLength = null;
-            if (instruction.Opcode == D3D10Opcode.Sample && operandIndex == 1)
+            // The coordinate is as wide as the texture, not as wide as whatever the
+            // sample is being written into: a comparison sample writes one component
+            // and still reads a two component coordinate.
+            if (operandIndex == 1 && IsSamplingOpcode(instruction.Opcode))
             {
                 maskedLength = _registers.ResourceDefinitions
                     .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
@@ -1024,6 +1048,24 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
+    }
+
+    // Those that take a texture coordinate at operand 1 and the resource at 2. ld is
+    // not one: its address carries a mip level rather than a coordinate.
+    private static bool IsSamplingOpcode(D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.Sample:
+            case D3D10Opcode.SampleL:
+            case D3D10Opcode.SampleB:
+            case D3D10Opcode.SampleD:
+            case D3D10Opcode.SampleCLZ:
+            case D3D10Opcode.Gather4:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static string ApplyModifier(SourceModifier modifier, string value)

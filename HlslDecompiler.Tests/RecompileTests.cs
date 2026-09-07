@@ -116,8 +116,6 @@ public class RecompileTests
     {
         ["ps_3_0/struct"] = "Subscripts a struct member as though it were a vector.",
         ["ps_4_0/nested_struct"] = "Subscripts a struct member as though it were a vector.",
-        ["ps_4_0/sample_cmp"] = "Swizzles the scalar a comparison sample returns.",
-        ["ps_4_1/gather"] = "Swizzles the scalar a comparison sample returns.",
         ["ps_4_0/logical_and"] =
             "A bitwise operator applied to a float register. The register holds the "
             + "mask a float comparison writes, which IntegerOperandAnalysis does not "

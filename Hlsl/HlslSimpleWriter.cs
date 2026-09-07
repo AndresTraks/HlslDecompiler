@@ -191,7 +191,9 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.DP2Add:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)}) + {GetSourceName(instruction, 3)}");
+                    // The two vectors are two components wide whatever is written; the
+                    // addend is a scalar and must not take that width too.
+                    $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)}) + {GetSourceName(instruction, 3, 1)}");
                 break;
             case Opcode.Dp3:
             case Opcode.Dp4:

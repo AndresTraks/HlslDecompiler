@@ -15,6 +15,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "constant")]
     [TestCase("ps_3_0", "constant_struct")]
     [TestCase("ps_3_0", "dot_product2_add")]
+    [TestCase("ps_3_0", "dot_product2_add_scalar")]
     [TestCase("ps_3_0", "derivative")]
     [TestCase("ps_3_0", "texcoord")]
     [TestCase("ps_3_0", "texcoord_modifier")]

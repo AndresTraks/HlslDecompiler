@@ -91,7 +91,7 @@ public sealed class NodeCompiler
 
         if (first is GroupNode group)
         {
-            return Compile(group.Inputs);
+            return Compile(group.Inputs, promoteToVectorSize);
         }
 
         if (first is PhiNode)
@@ -319,8 +319,14 @@ public sealed class NodeCompiler
                 }
             case DotProductOperation _:
                 {
-                    var x = Compile(components.Select(g => g.Inputs[0]));
-                    var y = Compile(components.Select(g => g.Inputs[1]));
+                    // A dot takes its width from the vector, so a repeated component has to
+                    // stay written out. dot(r0.ww, r1.xx) is a dp2add; dot(r0.w, r1.x) is
+                    // a multiply, and recompiles as one.
+                    int vectorSize = components[0].Inputs[0] is GroupNode vector
+                        ? vector.Inputs.Count
+                        : PromoteToAnyVectorSize;
+                    var x = Compile(components.Select(g => g.Inputs[0]), vectorSize);
+                    var y = Compile(components.Select(g => g.Inputs[1]), vectorSize);
                     return $"dot({x}, {y})";
                 }
             case LengthOperation _:

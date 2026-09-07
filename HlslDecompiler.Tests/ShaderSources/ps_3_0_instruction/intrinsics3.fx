@@ -24,7 +24,7 @@ float4 main(PS_IN i) : COLOR
 	r0.z = dot(r1.xyz, r1.xyz);
 	r0.z = 1 / sqrt(r0.z);
 	r0.z = 1 / r0.z;
-	o.w = dot(r0.xy, b.xy) + r0.zz;
+	o.w = dot(r0.xy, b.xy) + r0.z;
 
 	return o;
 }

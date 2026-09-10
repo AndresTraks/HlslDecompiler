@@ -12,7 +12,6 @@ public class HlslAstWriter : HlslWriter
     private NodeCompiler _compiler;
     private NodeGrouper _grouper;
     private TemplateMatcher _templateMatcher;
-    private TempAssignmentOrder _tempAssignmentOrder = new TempAssignmentOrder();
     private int _loopDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
 
@@ -382,7 +381,8 @@ public class HlslAstWriter : HlslWriter
         }
         else
         {
-            foreach (var rootGroup in outputs.OrderBy(t => t.Value, _tempAssignmentOrder).ThenBy(o => o.Key.Number))
+            foreach (var rootGroup in TempAssignmentOrder.Sort(
+                outputs.OrderBy(o => o.Key.Number), o => o.Value))
             {
                 RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
                 string compiled = _compiler.Compile(rootGroup.Value);
@@ -396,7 +396,7 @@ public class HlslAstWriter : HlslWriter
     private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)
     {
         List<TempAssignmentNode> assignments = HoistSharedSubexpressions(roots).ToList();
-        assignments.Sort(_tempAssignmentOrder);
+        assignments = TempAssignmentOrder.SortNodes(assignments);
         foreach (TempAssignmentNode assignment in assignments)
         {
             WriteLine(_compiler.Compile([assignment]));
@@ -420,8 +420,8 @@ public class HlslAstWriter : HlslWriter
             .OrderBy(o => o.Key.ComponentIndex)
             .GroupBy(o => o.Key.RegisterKey)
             .Select(o => o.Select(c => Reduce(c.Value)).ToArray())
-            .Order(_tempAssignmentOrder)
             .ToList();
+        registerGroups = TempAssignmentOrder.Sort(registerGroups);
 
         // After reducing, not before: naming a subexpression hides it from the
         // templates, and a node feeding four components would be named rather than
@@ -439,8 +439,7 @@ public class HlslAstWriter : HlslWriter
                 groups.Add(componentGroup.ToArray());
             }
         }
-        groups.Sort(_tempAssignmentOrder);
-        return groups;
+        return TempAssignmentOrder.Sort(groups);
     }
 
     /// <summary>

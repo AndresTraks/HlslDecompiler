@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace HlslDecompiler.Hlsl;
 
-class InstructionParser
+public class InstructionParser
 {
     private ShaderModel _shaderModel;
     private RegisterState _registerState;

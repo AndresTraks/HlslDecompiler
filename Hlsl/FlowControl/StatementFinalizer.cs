@@ -216,6 +216,12 @@ public class StatementFinalizer
                                 }
                                 tempVariable.Outputs.Add(output);
                             }
+                            // Nothing reads the phi through those edges any more. Leaving
+                            // them means a second pass over the same phi - the statement is
+                            // reached both at the top level and through the if it belongs
+                            // to - rewires consumers that have already moved and registers
+                            // them against a second variable.
+                            tempUsage.Outputs.Clear();
                             ReplaceInStatementNodes(tempUsage, tempVariable);
                         }
                         // Keep the back-reference, so that rewiring the variable later -

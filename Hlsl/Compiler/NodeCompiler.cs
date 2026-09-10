@@ -14,6 +14,22 @@ public sealed class NodeCompiler
     private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
     private int _tempAssignmentindexCounter = 0;
 
+    /// <summary>
+    /// A variable standing for one shared subexpression rather than for a register.
+    /// It is numbered here because the counter lives here, and it is given its size
+    /// and component up front: the lazy path below numbers a whole register's worth of
+    /// components at once, and would make this one the fourth of four.
+    /// </summary>
+    public TempVariableNode CreateScalarTempVariable()
+    {
+        return new TempVariableNode
+        {
+            DeclarationIndex = _tempAssignmentindexCounter++,
+            ComponentIndex = 0,
+            VariableSize = 1,
+        };
+    }
+
     public const int PromoteToAnyVectorSize = -1;
 
     // The variable of the innermost counted loop, which aL refers to. The writer

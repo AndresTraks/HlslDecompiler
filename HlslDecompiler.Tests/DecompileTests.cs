@@ -54,6 +54,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "if_in_loop")]
     [TestCase("ps_3_0", "if_else_in_loop")]
     [TestCase("ps_3_0", "struct")]
+    [TestCase("ps_3_0", "shared_subexpression")]
     [TestCase("ps_3_0", "temp_assignment")]
     [TestCase("vs_1_1", "constant")]
     [TestCase("vs_1_1", "constant_struct")]

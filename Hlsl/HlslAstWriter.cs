@@ -359,6 +359,10 @@ public class HlslAstWriter : HlslWriter
             GroupComponents(returnStatement.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
 
+        // The returned expression is compiled straight from here rather than through
+        // GroupAssignments, so the hoist has to happen here too.
+        WriteSharedSubexpressions(outputs.Values.ToList());
+
         string condition = returnStatement.Comparison == null
             ? null
             : _compiler.Compile(Reduce(returnStatement.Comparison));
@@ -389,6 +393,16 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
+    private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)
+    {
+        List<TempAssignmentNode> assignments = HoistSharedSubexpressions(roots).ToList();
+        assignments.Sort(_tempAssignmentOrder);
+        foreach (TempAssignmentNode assignment in assignments)
+        {
+            WriteLine(_compiler.Compile([assignment]));
+        }
+    }
+
     private HlslTreeNode Reduce(HlslTreeNode node)
     {
         node = _templateMatcher.Reduce(node);
@@ -401,12 +415,23 @@ public class HlslAstWriter : HlslWriter
         var nodeGrouper = new NodeGrouper(_registers);
 
         var groups = new List<HlslTreeNode[]>();
-        foreach (var registerGroup in outputs
+        var registerGroups = outputs
             .Where(o => o.Key.RegisterKey.IsTempRegister || o.Key.RegisterKey.IsOutput)
             .OrderBy(o => o.Key.ComponentIndex)
             .GroupBy(o => o.Key.RegisterKey)
             .Select(o => o.Select(c => Reduce(c.Value)).ToArray())
-            .Order(_tempAssignmentOrder))
+            .Order(_tempAssignmentOrder)
+            .ToList();
+
+        // After reducing, not before: naming a subexpression hides it from the
+        // templates, and a node feeding four components would be named rather than
+        // broadcast.
+        foreach (TempAssignmentNode hoisted in HoistSharedSubexpressions(registerGroups))
+        {
+            groups.Add([hoisted]);
+        }
+
+        foreach (var registerGroup in registerGroups)
         {
             var registerNodes = registerGroup.ToList();
             _compiler.Compile(registerNodes);
@@ -416,6 +441,156 @@ public class HlslAstWriter : HlslWriter
         }
         groups.Sort(_tempAssignmentOrder);
         return groups;
+    }
+
+    /// <summary>
+    /// An expression read in more than one place is written out at each of them, so a
+    /// value built on top of a value built on top of a value doubles the output at
+    /// every level. Ten instructions of that reach sixty thousand characters.
+    ///
+    /// Naming one costs a line, so only the ones big enough to be worth it are named:
+    /// below the threshold the output stays as it was, which is the whole of every
+    /// shader here.
+    /// </summary>
+    private const int SharedSubexpressionThreshold = 8;
+
+    /// <summary>
+    /// How large the expression has to get, written out in full, before any of it is
+    /// worth naming. Naming costs a line and hides the expression from the grouping
+    /// that turns four dot products back into a matrix multiply, so it is only done
+    /// where the alternative is unreadable anyway.
+    /// </summary>
+    private const int InlinedSizeBudget = 500;
+
+    private IEnumerable<TempAssignmentNode> HoistSharedSubexpressions(
+        IList<HlslTreeNode[]> registerGroups)
+    {
+        var roots = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode[] group in registerGroups)
+        {
+            foreach (HlslTreeNode root in group)
+            {
+                roots.Add(root);
+            }
+        }
+
+        var consumers = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
+        var order = new List<HlslTreeNode>();
+        var seen = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>(roots);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            order.Add(node);
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                consumers.TryGetValue(input, out int count);
+                consumers[input] = count + 1;
+                stack.Push(input);
+            }
+        }
+
+        // Sharing alone is not a reason to name something - almost every expression
+        // shares a register read. Only an expression that explodes when written out is.
+        var inlinedSize = new Dictionary<HlslTreeNode, long>(ReferenceEqualityComparer.Instance);
+        long total = 0;
+        foreach (HlslTreeNode root in roots)
+        {
+            total += InlinedSize(root, order, inlinedSize);
+        }
+        if (total <= InlinedSizeBudget)
+        {
+            return [];
+        }
+
+        var assignments = new List<TempAssignmentNode>();
+        // Deepest first, so that a shared node inside another one is named before the
+        // node containing it stops being reachable from here.
+        for (int i = order.Count - 1; i >= 0; i--)
+        {
+            HlslTreeNode node = order[i];
+            if (roots.Contains(node) || node is not Operation)
+            {
+                continue;
+            }
+            if (!consumers.TryGetValue(node, out int count) || count < 2)
+            {
+                continue;
+            }
+            if (CountReachable(node) <= SharedSubexpressionThreshold)
+            {
+                continue;
+            }
+            assignments.Add(NameSubexpression(node, _compiler.CreateScalarTempVariable()));
+        }
+        return assignments;
+    }
+
+    // The node count of the expression as it would be written out, where a node read
+    // twice counts twice. Memoised over the shared graph, so measuring the explosion
+    // does not take exponential time itself.
+    private static long InlinedSize(
+        HlslTreeNode root, IList<HlslTreeNode> order, Dictionary<HlslTreeNode, long> sizes)
+    {
+        for (int i = order.Count - 1; i >= 0; i--)
+        {
+            HlslTreeNode node = order[i];
+            long size = 1;
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                size += sizes.TryGetValue(input, out long inputSize) ? inputSize : 1;
+                if (size > int.MaxValue)
+                {
+                    size = int.MaxValue;
+                }
+            }
+            sizes[node] = size;
+        }
+        return sizes.TryGetValue(root, out long rootSize) ? rootSize : 1;
+    }
+
+    private static int CountReachable(HlslTreeNode node)
+    {
+        var seen = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>();
+        stack.Push(node);
+        int count = 0;
+        while (stack.Count != 0)
+        {
+            HlslTreeNode current = stack.Pop();
+            if (!seen.Add(current))
+            {
+                continue;
+            }
+            count++;
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(current))
+            {
+                stack.Push(input);
+            }
+        }
+        return count;
+    }
+
+    private static TempAssignmentNode NameSubexpression(HlslTreeNode node, TempVariableNode variable)
+    {
+        HlslTreeNode[] readers = node.Outputs.ToArray();
+        foreach (HlslTreeNode reader in readers)
+        {
+            for (int i = 0; i < reader.Inputs.Count; i++)
+            {
+                if (ReferenceEquals(reader.Inputs[i], node))
+                {
+                    reader.Inputs[i] = variable;
+                    variable.Outputs.Add(reader);
+                }
+            }
+        }
+        node.Outputs.Clear();
+        return new TempAssignmentNode(variable, node);
     }
 
     private static Dictionary<RegisterKey, HlslTreeNode[]> GroupComponents(IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)

@@ -6,7 +6,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float4 o;
 
 	float3 r0;
-	r0.xy = float2(0, 0);
+	r0.xy = int2(0, 0);
 	while (true) {
 		r0.z = (r0.y >= n) ? -1 : 0;
 		if (r0.z != 0) break;

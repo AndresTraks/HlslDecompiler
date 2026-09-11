@@ -21,11 +21,15 @@ public sealed class ConstantCompiler
         }
 
         string components = string.Join(", ", group.Select(CompileConstant));
-        return $"float{count}({components})";
+        // A vector of integers is an int vector. `t0 >> float2(8, 16)` does not
+        // compile, and the shift amounts were integers all along.
+        string type = group.All(c => c.IntegerValue != null) ? "int" : "float";
+        return $"{type}{count}({components})";
     }
 
     private string CompileConstant(ConstantNode firstConstant)
     {
-        return ConstantFormatter.Format(firstConstant.Value);
+        return firstConstant.IntegerValue?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ?? ConstantFormatter.Format(firstConstant.Value);
     }
 }

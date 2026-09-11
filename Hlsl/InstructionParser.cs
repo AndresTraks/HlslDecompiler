@@ -1289,6 +1289,8 @@ public class InstructionParser
             case D3D10Opcode.Ftou:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
+            case D3D10Opcode.IShr:
+            case D3D10Opcode.UShr:
             case D3D10Opcode.IMad:
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMin:
@@ -1323,6 +1325,9 @@ public class InstructionParser
                             return new AddOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.IShl:
                             return new ShiftLeftOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.IShr:
+                        case D3D10Opcode.UShr:
+                            return new ShiftRightOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.DerivRtx:
                             return new PartialDerivativeXOperation(inputs[0]);
                         case D3D10Opcode.DerivRty:
@@ -1935,6 +1940,8 @@ public class InstructionParser
             case D3D10Opcode.Or:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
+            case D3D10Opcode.IShr:
+            case D3D10Opcode.UShr:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:

@@ -31,6 +31,7 @@ public static class AssociativityTester
             // Shift and the bitwise operators bind more loosely than the arithmetic
             // around them.
             case ShiftLeftOperation _:
+            case ShiftRightOperation _:
             case BitwiseAndOperation _:
             case BitwiseOrOperation _:
             case BitwiseXorOperation _:

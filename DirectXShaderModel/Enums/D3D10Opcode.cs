@@ -250,6 +250,8 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.LD:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
+            case D3D10Opcode.IShr:
+            case D3D10Opcode.UShr:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:

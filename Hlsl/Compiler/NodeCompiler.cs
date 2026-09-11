@@ -222,6 +222,11 @@ public sealed class NodeCompiler
                         CompileOperand(amount));
                 }
 
+            case ShiftRightOperation _:
+                return string.Format("{0} >> {1}",
+                    CompileOperand(components.Select(g => g.Inputs[0])),
+                    CompileOperand(components.Select(g => g.Inputs[1])));
+
             case BitwiseAndOperation _:
             case BitwiseOrOperation _:
             case BitwiseXorOperation _:

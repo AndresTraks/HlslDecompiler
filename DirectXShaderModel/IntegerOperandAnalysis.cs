@@ -216,6 +216,8 @@ public sealed class IntegerOperandAnalysis
                 return 1;
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
+            case D3D10Opcode.IShr:
+            case D3D10Opcode.UShr:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:

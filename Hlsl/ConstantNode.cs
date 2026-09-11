@@ -6,9 +6,22 @@ public class ConstantNode : HlslTreeNode
 {
     public float Value { get; }
 
+    /// <summary>
+    /// Set when the 32 bits were an integer. A float cannot hold every one of them -
+    /// 1013904223 comes back as 1013904192 - and a shift amount written as a float
+    /// does not compile.
+    /// </summary>
+    public int? IntegerValue { get; }
+
     public ConstantNode(float value)
     {
         Value = value;
+    }
+
+    public ConstantNode(int value)
+    {
+        Value = value;
+        IntegerValue = value;
     }
 
     public override bool Equals(object obj)
@@ -33,6 +46,7 @@ public class ConstantNode : HlslTreeNode
 
     public override string ToString()
     {
-        return Value.ToString(CultureInfo.InvariantCulture);
+        return (IntegerValue?.ToString(CultureInfo.InvariantCulture))
+            ?? Value.ToString(CultureInfo.InvariantCulture);
     }
 }

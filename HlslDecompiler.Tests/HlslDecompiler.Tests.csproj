@@ -419,6 +419,9 @@
     <None Update="CompiledShaders\ps_4_0\int_divide.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="CompiledShaders\ps_4_0\integer_hash.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="CompiledShaders\ps_4_0\packed_scalar.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -468,6 +471,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0\int_divide.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\integer_hash.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0\packed_scalar.fx">
@@ -521,6 +527,9 @@
     <None Update="ShaderSources\ps_4_0_instruction\int_divide.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderSources\ps_4_0_instruction\integer_hash.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderSources\ps_4_0_instruction\packed_scalar.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -570,6 +579,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderAssembly\ps_4_0\int_divide.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\integer_hash.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderAssembly\ps_4_0\packed_scalar.asm">

@@ -444,6 +444,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.IShl:
                 WriteLine("{0} = {1} << {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
+            case D3D10Opcode.IShr:
+            case D3D10Opcode.UShr:
+                WriteLine("{0} = {1} >> {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
             case D3D10Opcode.BreakC:
                 WriteLine("if ({0} != 0) break;", GetOperandName(instruction, 0));
                 break;
@@ -1070,12 +1074,17 @@ public class HlslSimpleWriter : HlslWriter
             }
             int destinationLength = instruction.HasDestination ? instruction.GetDestinationMaskLength() : 4;
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            // Typed the same way as the single component above: a vector immediate
+            // feeding an integer instruction is a vector of integers, and
+            // `& float2(0.000000, 0.000000)` is the mask 255 read as float bits.
             string[] constant = swizzle
                             .Take(destinationLength)
-                            .Select(s => registerKey.ImmediateSingle[s])
-                            .Select(ConstantFormatter.Format)
+                            .Select(s => isInteger
+                                ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
+                                : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))
                             .ToArray();
-            return $"float{destinationLength}(" + string.Join(", ", constant) + ")";
+            string immediateType = isInteger ? "int" : "float";
+            return $"{immediateType}{destinationLength}(" + string.Join(", ", constant) + ")";
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);

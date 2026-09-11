@@ -497,6 +497,12 @@ public class AsmWriter
             case D3D10Opcode.IShl:
                 WriteInstruction(instruction, "ishl", 3);
                 break;
+            case D3D10Opcode.IShr:
+                WriteInstruction(instruction, "ishr", 3);
+                break;
+            case D3D10Opcode.UShr:
+                WriteInstruction(instruction, "ushr", 3);
+                break;
             case D3D10Opcode.IMad:
                 WriteInstruction(instruction, "imad", 4);
                 break;

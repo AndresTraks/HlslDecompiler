@@ -75,8 +75,14 @@ public class RoundTripCostTests
             "Naming the shared subexpression is what stops the output exploding, and it "
             + "also stops fxc folding it back. That is the trade, not a defect."),
         ["ps_4_0/int_divide"] = (17,
-            "The conversions around udiv are moves rather than casts - the TODO in "
-            + "InstructionParser about relying on implicit conversion."),
+            "Was blamed on the conversions around udiv being moves rather than casts. "
+            + "They are casts now and the count did not move, so that was wrong. A "
+            + "signed % and / each compile to udiv over the absolute values plus a "
+            + "sign fixup, and the decompiler recovers that fixup as source: "
+            + "`a & -2147483648 ? -abs(a) % abs(b) : abs(a) % abs(b)`. fxc then "
+            + "applies its own fixup around the % and / in that expression, so the "
+            + "correction happens twice. Recognising the whole pattern and writing "
+            + "`a % b` would round trip to the original twelve."),
 
 
         ["ps_4_0/reflect_cube"] = (15,

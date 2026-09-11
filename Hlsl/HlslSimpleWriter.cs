@@ -306,8 +306,11 @@ public class HlslSimpleWriter : HlslWriter
                 indent += "\t";
                 break;
             case Opcode.Lrp:
+                // lrp is dst = src2 + src0 * (src1 - src2), so src2 is what it
+                // blends from and src1 what it blends to. Naming them in bytecode
+                // order blended the wrong way round.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"lerp({GetSourceName(instruction, 2)}, {GetSourceName(instruction, 3)}, {GetSourceName(instruction, 1)})");
+                    $"lerp({GetSourceName(instruction, 3)}, {GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1)})");
                 break;
             case Opcode.Mad:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),

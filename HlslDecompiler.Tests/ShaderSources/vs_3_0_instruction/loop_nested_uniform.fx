@@ -11,10 +11,10 @@ float4 main() : POSITION
 	r0.x = 0;
 	r0.x = (r0.x < n.x) ? 1 : 0;
 	r0.y = (r0.x < n.x) ? 1 : 0;
-	r1.x = lerp(2, r0.x, r0.y);
+	r1.x = lerp(r0.x, 2, r0.y);
 	r0.z = (r1.x < n.x) ? 1 : 0;
 	r0.z = r0.z * r0.y;
-	r2.x = lerp(3, r1.x, r0.z);
+	r2.x = lerp(r1.x, 3, r0.z);
 	r0.w = (r2.x < n.x) ? 1 : 0;
 	r0.w = r0.w * r0.z;
 	r1 = 0;

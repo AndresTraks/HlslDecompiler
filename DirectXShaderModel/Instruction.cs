@@ -9,7 +9,10 @@ public abstract class Instruction
 
     public abstract float[] GetParamSingle(int index);
     
-    public abstract float GetParamInt(int index);
+    // An integer immediate is an integer. Returning it as a float printed the
+    // sign mask as -2.1474836E+09, and in whatever the machine's decimal separator
+    // happened to be.
+    public abstract int GetParamInt(int index);
 
     public abstract RegisterKey GetParamRegisterKey(int index);
 

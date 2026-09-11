@@ -12,8 +12,8 @@ float4 main() : COLOR
 	float4 o;
 
 	float r0;
-	r0 = s1.x;
-	o = r0.x + s2.x;
+	r0 = s1.a;
+	o = r0.x + s2.a;
 
 	return o;
 }

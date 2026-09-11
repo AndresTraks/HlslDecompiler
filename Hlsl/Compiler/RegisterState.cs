@@ -269,12 +269,47 @@ public sealed class RegisterState
         return GetRegisterName(registerComponentKey.RegisterKey);
     }
 
+    private string _outputVariableName;
+
+    /// <summary>
+    /// What the output struct is called. Normally "o", unless the shader already has
+    /// something by that name - a constant buffer called o shadowed it, and every
+    /// read of one of its members stopped compiling.
+    /// </summary>
+    public string OutputVariableName => _outputVariableName ??= UnusedName("o");
+
+    private string _inputVariableName;
+
+    /// <summary>What the input struct is called, on the same terms.</summary>
+    public string InputVariableName => _inputVariableName ??= UnusedName("i");
+
+    private string UnusedName(string preferred)
+    {
+        var taken = new HashSet<string>();
+        foreach (ConstantDeclaration declaration in ConstantDeclarations)
+        {
+            taken.Add(declaration.Name);
+        }
+        foreach (ResourceDefinition resource in ResourceDefinitions)
+        {
+            taken.Add(resource.Name);
+        }
+        string name = preferred;
+        while (taken.Contains(name))
+        {
+            name += "_";
+        }
+        return name;
+    }
+
     public string GetRegisterName(RegisterKey registerKey)
     {
         if (registerKey.IsOutput)
         {
             var decl = RegisterDeclarations[registerKey];
-            return (MethodOutputRegisters.Count == 1) ? "o" : ("o." + decl.Name);
+            return (MethodOutputRegisters.Count == 1)
+                ? OutputVariableName
+                : (OutputVariableName + "." + decl.Name);
         }
         if (registerKey is D3D9RegisterKey d3D9RegisterKey)
         {
@@ -287,7 +322,9 @@ public sealed class RegisterState
                 case RegisterType.Texture:
                 case RegisterType.Input:
                 case RegisterType.MiscType:
-                    return (MethodInputRegisters.Count == 1) ? decl.Name : ("i." + decl.Name);
+                    return (MethodInputRegisters.Count == 1)
+                        ? decl.Name
+                        : (InputVariableName + "." + decl.Name);
                 case RegisterType.Const:
                 case RegisterType.ConstInt:
                 case RegisterType.ConstBool:

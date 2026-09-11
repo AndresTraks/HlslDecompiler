@@ -26,11 +26,11 @@ public class HlslSimpleWriter : HlslWriter
         {
             if (_shader.Type == ShaderType.Geometry)
             {
-                WriteLine("GS_OUT o;");
+                WriteLine("GS_OUT {0};", _registers.OutputVariableName);
             }
             else
             {
-                WriteLine("{0} o;", GetMethodReturnType());
+                WriteLine("{0} {1};", GetMethodReturnType(), _registers.OutputVariableName);
             }
             WriteLine();
         }
@@ -51,7 +51,7 @@ public class HlslSimpleWriter : HlslWriter
         if (_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry)
         {
             WriteLine();
-            WriteLine("return o;");
+            WriteLine("return {0};", _registers.OutputVariableName);
         }
     }
 
@@ -106,12 +106,17 @@ public class HlslSimpleWriter : HlslWriter
     private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
     {
         var tempRegisters = new Dictionary<RegisterKey, int>();
-        foreach (Instruction instruction in instructions.Where(i => i.HasDestination))
+        foreach (Instruction instruction in instructions)
         {
-            int destIndex = instruction.GetDestinationParamIndex().Value;
-            if (IsDestinationTempRegister(instruction, destIndex))
+            foreach (int destIndex in GetDestinationParamIndices(instruction))
             {
-                int writeMask = instruction.GetDestinationWriteMask();
+                if (!IsDestinationTempRegister(instruction, destIndex))
+                {
+                    continue;
+                }
+                int writeMask = instruction is D3D10Instruction d3d10Instruction
+                    ? d3d10Instruction.GetWriteMask(destIndex)
+                    : instruction.GetDestinationWriteMask();
 
                 var registerKey = instruction.GetParamRegisterKey(destIndex);
                 if (!tempRegisters.TryAdd(registerKey, writeMask))
@@ -121,6 +126,29 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         return tempRegisters;
+    }
+
+    // udiv and sincos write two registers, and HasDestination does not describe them
+    // - it answers for the one destination the rest of the model assumes. Either of
+    // the two may be null where the shader wants only one of the results.
+    private static IEnumerable<int> GetDestinationParamIndices(Instruction instruction)
+    {
+        if (instruction is D3D10Instruction d3d10
+            && (d3d10.Opcode == D3D10Opcode.Udiv || d3d10.Opcode == D3D10Opcode.SinCos))
+        {
+            for (int index = 0; index < 2; index++)
+            {
+                if (d3d10.GetOperandType(index) != OperandType.Null)
+                {
+                    yield return index;
+                }
+            }
+            yield break;
+        }
+        if (instruction.HasDestination)
+        {
+            yield return instruction.GetDestinationParamIndex().Value;
+        }
     }
 
     private bool IsDestinationTempRegister(Instruction instruction, int destIndex)
@@ -676,7 +704,7 @@ public class HlslSimpleWriter : HlslWriter
                 if (!ReferenceEquals(instruction, _shader.Instructions[_shader.Instructions.Count - 1]))
                 {
                     WriteLine(_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
-                        ? "return o;"
+                        ? $"return {_registers.OutputVariableName};"
                         : "return;");
                 }
                 break;
@@ -737,11 +765,39 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
 
+                // A struct member has a name of its own, and the component it sits in
+                // is not a swizzle of the struct.
+                if (_registers.TryGetConstantMemberName(
+                        new RegisterComponentKey(
+                            registerKey, instruction.GetSourceSwizzleComponents(srcIndex)[0]),
+                        out string memberName))
+                {
+                    return ApplyModifier(instruction.GetSourceModifier(srcIndex), memberName);
+                }
+
                 ConstantDeclaration decl = _registers.FindConstant(registerKey);
                 if (decl == null)
                 {
                     // Constant register not found in def statements nor the constant table
                     throw new NotImplementedException();
+                }
+
+                // An array of matrices takes two subscripts, and its register offset
+                // counts rows across the whole array: the element is that offset over
+                // the row count and the row is what is left.
+                if (decl.TypeInfo.Rows > 1 && decl.TypeInfo.NumElements > 1)
+                {
+                    int offset = registerKey.Number - decl.RegisterIndex;
+                    int rows = decl.TypeInfo.Rows;
+                    string element = instruction.Params.HasRelativeAddressing(srcIndex)
+                        ? $"{GetRelativeAddressIndex(instruction, srcIndex)} / {rows}"
+                        : (offset / rows).ToString(_culture);
+                    string matrix = _registers.ColumnMajorOrder
+                        ? $"transpose({decl.Name}[{element}])"
+                        : $"{decl.Name}[{element}]";
+                    return ApplyModifier(instruction.GetSourceModifier(srcIndex),
+                        $"{matrix}[{offset % rows}]"
+                            + instruction.GetSourceSwizzleName(srcIndex, destinationLength));
                 }
 
                 if ((decl.TypeInfo.ParameterClass == ParameterClass.MatrixRows && _registers.ColumnMajorOrder) ||
@@ -755,6 +811,15 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     int column = registerKey.Number - decl.RegisterIndex;
                     sourceRegisterName = $"transpose({decl.Name})[{column}]";
+                }
+                else if (decl.TypeInfo.NumElements > 1)
+                {
+                    // Each element of `float4 m[4]` has a register of its own, and every
+                    // one of them reads as m without the subscript. When the subscript
+                    // is the address register the offset folds into it instead.
+                    sourceRegisterName = instruction.Params.HasRelativeAddressing(srcIndex)
+                        ? decl.Name
+                        : $"{decl.Name}[{registerKey.Number - decl.RegisterIndex}]";
                 }
                 else
                 {
@@ -804,21 +869,40 @@ public class HlslSimpleWriter : HlslWriter
             : $"{declaration.Name}[{index} + {elementOffset}]";
     }
 
+    // aL counts the enclosing loop; a0 is the address register.
+    private string GetRelativeAddressIndex(D3D9Instruction instruction, int srcIndex)
+    {
+        return instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop
+            ? $"i{_loopVariableIndex}"
+            : $"a{instruction.GetRelativeParamRegisterNumber(srcIndex)}";
+    }
+
     private string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)
     {
         if (instruction.Params.HasRelativeAddressing(srcIndex))
         {
-            // aL counts the enclosing loop; a0 is the address register.
-            string index = instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop
-                ? $"i{_loopVariableIndex}"
-                : $"a{instruction.GetRelativeParamRegisterNumber(srcIndex)}";
+            string index = GetRelativeAddressIndex(instruction, srcIndex);
 
-            // The subscripted register need not be the first of a def-defined run.
+            // The subscripted register need not be the first of the array, whether the
+            // array is a run of defs or a declared one: `floats[i + 2]` reads c2[a0.x]
+            // when floats starts at c0.
             var registerKey = instruction.GetParamRegisterKey(srcIndex);
-            if (_registers.FindConstantArray(registerKey) is ConstantArray literals
-                && registerKey.Number != literals.BaseRegisterIndex)
+            int elementOffset = 0;
+            if (_registers.FindConstantArray(registerKey) is ConstantArray literals)
             {
-                index += $" + {registerKey.Number - literals.BaseRegisterIndex}";
+                elementOffset = registerKey.Number - literals.BaseRegisterIndex;
+            }
+            // A matrix array is not this case: its register offset counts rows, and
+            // the row has already been taken off it by the time we get here.
+            else if (_registers.FindConstant(registerKey) is ConstantDeclaration declared
+                && declared.TypeInfo.NumElements > 1
+                && declared.TypeInfo.Rows == 1)
+            {
+                elementOffset = registerKey.Number - declared.RegisterIndex;
+            }
+            if (elementOffset != 0)
+            {
+                index += $" + {elementOffset}";
             }
             return $"[{index}]";
         }
@@ -1001,10 +1085,10 @@ public class HlslSimpleWriter : HlslWriter
             // depends on the component: cb0[0].y is `n`, not `mode.y`.
             byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
             registerName = _registers.GetRegisterName(new RegisterComponentKey(registerKey, component));
-            ConstantDeclaration packed = _registers.FindConstant(registerKey, component);
-            isPackedScalar = packed != null
-                && packed.TypeInfo.Rows == 1
-                && packed.TypeInfo.Columns == 1;
+            // Width of what was actually named, which for a struct is the member and
+            // not the struct: `o.a.s` is a float, however wide struct2 is.
+            isPackedScalar = _registers.GetRegisterMaskedLength(
+                new RegisterComponentKey(registerKey, component)) == 1;
         }
         else
         {

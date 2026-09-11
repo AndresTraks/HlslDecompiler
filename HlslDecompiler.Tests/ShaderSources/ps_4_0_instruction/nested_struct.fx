@@ -14,11 +14,11 @@ struct2 o;
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {
-	float4 o;
+	float4 o_;
 
 	float r0;
 	r0 = dot(normal.xyz, o.a.v.xyz);
-	o = o.b * r0.x + o.a.s.w;
+	o_ = o.b * r0.x + o.a.s;
 
-	return o;
+	return o_;
 }

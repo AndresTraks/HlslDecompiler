@@ -17,20 +17,21 @@ public class NodeVisitor
         Visit(_nodes, action, HlslTreeNode.NewNodeSet());
     }
 
-    // Tracks the nodes on the current path rather than every node seen, so shared
-    // subexpressions are still visited once per path as before. Only a genuine
-    // cycle is cut.
-    private static void Visit(IEnumerable<HlslTreeNode> nodes, Action<HlslTreeNode> action, HashSet<HlslTreeNode> onPath)
+    // Once per node, not once per path. The only visitor swaps a constant onto the
+    // right hand side, which stops applying the moment it has, so seeing a node again
+    // through another path changes nothing - and a subexpression read in two places
+    // is reached twice as often at every level above it. Sixteen instructions built
+    // on each other came to twenty-five million visits.
+    private static void Visit(IEnumerable<HlslTreeNode> nodes, Action<HlslTreeNode> action, HashSet<HlslTreeNode> seen)
     {
         foreach (var node in nodes)
         {
-            if (!onPath.Add(node))
+            if (!seen.Add(node))
             {
                 continue;
             }
             action(node);
-            Visit(HlslTreeNode.TraversableInputs(node), action, onPath);
-            onPath.Remove(node);
+            Visit(HlslTreeNode.TraversableInputs(node), action, seen);
         }
     }
 }

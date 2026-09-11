@@ -31,7 +31,7 @@ public class HlslAstWriter : HlslWriter
                 ShaderType.Geometry => "GS_OUT",
                 _ => throw new NotImplementedException(),
             };
-            WriteLine($"{outputStructType} o;");
+            WriteLine($"{outputStructType} {_registers.OutputVariableName};");
             WriteLine();
         }
 
@@ -228,10 +228,24 @@ public class HlslAstWriter : HlslWriter
         WriteLine("}");
     }
 
-    // Nested loops must not shadow the enclosing loop's counter.
-    private static string GetLoopVariableName(int depth)
+    // Nested loops must not shadow the enclosing loop's counter, and the first one
+    // must not shadow the input struct, which is also called i. The counter is what
+    // moves: renaming the struct would change every shader that reads it.
+    private string GetLoopVariableName(int depth)
     {
-        return depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
+        // Only where those names are in scope: with a single input register the
+        // parameter is named after its semantic and there is no struct called i.
+        bool inputInScope = _registers.MethodInputRegisters.Count > 1
+            || _shader.Type == ShaderType.Geometry;
+        bool outputInScope = _registers.MethodOutputRegisters.Count > 1;
+
+        string name = depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
+        while ((inputInScope && name == _registers.InputVariableName)
+            || (outputInScope && name == _registers.OutputVariableName))
+        {
+            name += "_";
+        }
+        return name;
     }
 
     private void WriteSwitchStatement(SwitchStatement switchStatement)
@@ -377,7 +391,7 @@ public class HlslAstWriter : HlslWriter
         {
             // The outputs were written by the statements before this one; a
             // conditional return only chooses whether to leave with them.
-            WriteLine($"if ({condition}) return o;");
+            WriteLine($"if ({condition}) return {_registers.OutputVariableName};");
         }
         else
         {
@@ -386,10 +400,10 @@ public class HlslAstWriter : HlslWriter
             {
                 RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
                 string compiled = _compiler.Compile(rootGroup.Value);
-                WriteLine($"o.{outputRegister.Name} = {compiled};");
+                WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
             }
             WriteLine();
-            WriteLine($"return o;");
+            WriteLine($"return {_registers.OutputVariableName};");
         }
     }
 
@@ -433,7 +447,11 @@ public class HlslAstWriter : HlslWriter
 
         foreach (var registerGroup in registerGroups)
         {
-            var registerNodes = registerGroup.ToList();
+            // In dependency order before grouping, not after. GroupComponents merges
+            // consecutive runs, so two assignments that need a third between them must
+            // not be handed to it as neighbours. The sort is stable, so components
+            // that do not depend on each other stay in component order.
+            var registerNodes = TempAssignmentOrder.SortNodes(registerGroup);
             _compiler.Compile(registerNodes);
             foreach (var componentGroup in nodeGrouper.GroupComponents(registerNodes)) {
                 groups.Add(componentGroup.ToArray());

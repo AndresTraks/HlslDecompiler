@@ -460,7 +460,10 @@ public class StatementFinalizer
 
                 if (bodyOutput.Value is TempAssignmentNode bodyAssignment)
                 {
-                    bodyAssignment.TempVariable = loopAssignment.TempVariable;
+                    // Not just the property: whatever the body already rewired to read
+                    // the old variable goes on reading it, and comes out as a name
+                    // nothing ever assigns.
+                    ReplaceTempVariable(bodyAssignment.TempVariable, loopAssignment.TempVariable);
                 }
                 else if (bodyOutput.Value is TempVariableNode joinVariable)
                 {

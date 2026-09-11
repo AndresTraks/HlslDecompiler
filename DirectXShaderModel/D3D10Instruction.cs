@@ -521,12 +521,12 @@ public class D3D10Instruction : Instruction
         return BitConverter.ToSingle(GetOperandValueBytes(index, componentIndex), 0);
     }
 
-    public override float GetParamInt(int index)
+    public override int GetParamInt(int index)
     {
         return BitConverter.ToInt32(GetOperandValueBytes(index, 0), 0);
     }
 
-    public float GetParamInt(int index, int componentIndex)
+    public int GetParamInt(int index, int componentIndex)
     {
         return BitConverter.ToInt32(GetOperandValueBytes(index, componentIndex), 0);
     }

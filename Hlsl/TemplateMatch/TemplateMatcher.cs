@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.Hlsl.FlowControl;
+using System;
 using System.Collections.Generic;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch;
@@ -49,9 +50,26 @@ public class TemplateMatcher
         _nodeGrouper = nodeGrouper;
     }
 
-    public HlslTreeNode Reduce(HlslTreeNode node)
+    /// <summary>
+    /// Nothing makes a template reduce anything. Two that undo each other would match
+    /// forever - each match builds a fresh node, so the path set cannot see it coming
+    /// round again - and the recursion would take the stack with it. A shader that
+    /// reaches this is a template pair that does not terminate, not a large shader:
+    /// the limit is far above what any real expression needs. Every shader here stays
+    /// under fifty, the largest expression included - memoising means a node reduces
+    /// once, so the count is bounded by how many nodes there are.
+    /// </summary>
+    private const int ReductionLimit = 100000;
+
+    private int _reductionsLeft;
+
+    public HlslTreeNode Reduce(HlslTreeNode node)
     {
-        return ReduceDepthFirst(node, HlslTreeNode.NewNodeSet());
+        // The memo is per call: the graph is rewritten as it reduces, so what a node
+        // reduces to only holds for this pass over it.
+        _reductionsLeft = ReductionLimit;
+        return ReduceDepthFirst(node, HlslTreeNode.NewNodeSet(),
+            new Dictionary<HlslTreeNode, HlslTreeNode>(ReferenceEqualityComparer.Instance));
     }
 
     public bool CanGroupComponents(HlslTreeNode a, HlslTreeNode b, bool allowMatrixColumn)
@@ -68,13 +86,24 @@ public class TemplateMatcher
         return false;
     }
 
-    private HlslTreeNode ReduceDepthFirst(HlslTreeNode node, HashSet<HlslTreeNode> onPath)
+    // onPath cuts cycles and has to stay a path set to do it. Reducing is what gets
+    // remembered instead: without that, a subexpression read in two places is reduced
+    // once per path that reaches it, and the work triples with every instruction that
+    // builds on the one before.
+    private HlslTreeNode ReduceDepthFirst(HlslTreeNode node, HashSet<HlslTreeNode> onPath,
+        Dictionary<HlslTreeNode, HlslTreeNode> reduced)
     {
         // A phi is opaque: nothing may be folded across a loop backedge.
         if (ConstantMatcher.IsConstant(node) || IsRegister(node) || node is PhiNode)
         {
             return node;
         }
+        if (reduced.TryGetValue(node, out HlslTreeNode already))
+        {
+            return already;
+        }
+        // Not remembered: a node cut here is only unreduced because of where the walk
+        // reached it from.
         if (!onPath.Add(node))
         {
             return node;
@@ -84,15 +113,18 @@ public class TemplateMatcher
             for (int i = 0; i < node.Inputs.Count; i++)
             {
                 HlslTreeNode input = node.Inputs[i];
-                node.Inputs[i] = ReduceDepthFirst(input, onPath);
+                node.Inputs[i] = ReduceDepthFirst(input, onPath, reduced);
             }
             foreach (INodeTemplate template in _templates)
             {
                 if (template.Match(node))
                 {
+                    CountReduction(template.GetType().Name);
                     var replacement = template.Reduce(node);
                     Replace(node, replacement);
-                    return ReduceDepthFirst(replacement, onPath);
+                    HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
+                    reduced[node] = result;
+                    return result;
                 }
             }
             foreach (IGroupTemplate template in _groupTemplates)
@@ -100,11 +132,15 @@ public class TemplateMatcher
                 IGroupContext groupContext = template.Match(node);
                 if (groupContext != null)
                 {
+                    CountReduction(template.GetType().Name);
                     var replacement = template.Reduce(node, groupContext);
                     Replace(node, replacement);
-                    return ReduceDepthFirst(replacement, onPath);
+                    HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
+                    reduced[node] = result;
+                    return result;
                 }
             }
+            reduced[node] = node;
             return node;
         }
         finally
@@ -134,6 +170,17 @@ public class TemplateMatcher
             }
             with.Outputs.Add(output);
         }
+    }
+
+    private void CountReduction(string templateName)
+    {
+        if (--_reductionsLeft >= 0)
+        {
+            return;
+        }
+        throw new InvalidOperationException(
+            $"Reducing one expression took more than {ReductionLimit} steps, last by "
+            + $"{templateName}. Two templates that undo each other look like this.");
     }
 
     private static bool IsRegister(HlslTreeNode node)

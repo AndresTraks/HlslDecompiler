@@ -27,21 +27,12 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
-        ["ps_3_0/component_chain"] =
-            "Writes to components of one register inside a loop, each reading what the "
-            + "previous wrote, so one component is assigned more than once in a block. "
-            + "AssignmentStatement.Outputs is keyed by register component and holds only "
-            + "the last of them, while the temp variables the earlier ones defined stay "
-            + "wired into the expressions that read them. They come out as t1 and t2, "
-            + "declared nowhere, and the surviving assignment redeclares its own "
-            + "variable. Correct without the loop - inside one, the incoming value is "
-            + "already a temp assignment, which is what makes every write to the "
-            + "component another one. Correct from the instruction writer either way. "
-            + "Fixing it means letting a statement carry more than one assignment per "
-            + "component, in order, rather than a dictionary.",
     };
 
     private static readonly Lazy<string> Fxc = new(FindFxc);
+
+    /// <summary>Shared with the other tests that need to run fxc.</summary>
+    public static string FxcPath => Fxc.Value;
 
     public static IEnumerable<TestCaseData> InstructionShaders()
     {
@@ -114,8 +105,6 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownInstructionFailures = new()
     {
-        ["ps_3_0/struct"] = "Subscripts a struct member as though it were a vector.",
-        ["ps_4_0/nested_struct"] = "Subscripts a struct member as though it were a vector.",
         ["ps_4_0/logical_and"] =
             "A bitwise operator applied to a float register. The register holds the "
             + "mask a float comparison writes, which IntegerOperandAnalysis does not "
@@ -127,11 +116,6 @@ public class RecompileTests
             + "of 1.0f. Type the register as integer and that immediate reads as the "
             + "integer 1065353216, which is worse - it compiles and is wrong. The "
             + "register is genuinely neither, and the analysis has no way to say so.",
-        ["ps_4_0/int_divide"] =
-            "An integer immediate prints as a float, and r1 and r2 - the second "
-            + "destination of udiv - are used but never declared.",
-        ["vs_3_0/loop_nested_uniform"] = "Passes something that is not a value to a loop bound.",
-        ["vs_3_0/matrix_array"] = "Calls transpose on a single row rather than the matrix.",
     };
 
     /// <summary>
@@ -185,7 +169,18 @@ public class RecompileTests
     }
 
     /// <returns>The fxc diagnostics, or null on success.</returns>
+    public static string RunFxc(string profile, string hlslFilename, string outputFilename)
+    {
+        return Recompile(profile, hlslFilename, outputFilename);
+    }
+
+    /// <returns>The fxc diagnostics, or null on success.</returns>
     private static string Recompile(string profile, string hlslOutputFilename)
+    {
+        return Recompile(profile, hlslOutputFilename, Path.ChangeExtension(hlslOutputFilename, ".fxo"));
+    }
+
+    private static string Recompile(string profile, string hlslOutputFilename, string objectFilename)
     {
         var startInfo = new ProcessStartInfo(Fxc.Value)
         {
@@ -200,13 +195,18 @@ public class RecompileTests
         startInfo.ArgumentList.Add("main");
         startInfo.ArgumentList.Add(hlslOutputFilename);
         startInfo.ArgumentList.Add("/Fo");
-        startInfo.ArgumentList.Add(Path.ChangeExtension(hlslOutputFilename, ".fxo"));
+        startInfo.ArgumentList.Add(objectFilename);
 
         using var process = Process.Start(startInfo);
         string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
         process.WaitForExit();
 
         return process.ExitCode == 0 ? null : output.Trim();
+    }
+
+    public static ShaderModel ReadShaderModel(string compiledShaderFilename)
+    {
+        return ReadShader(compiledShaderFilename);
     }
 
     private static ShaderModel ReadShader(string compiledShaderFilename)

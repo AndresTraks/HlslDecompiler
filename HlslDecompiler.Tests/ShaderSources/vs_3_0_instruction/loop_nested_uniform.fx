@@ -19,10 +19,10 @@ float4 main() : POSITION
 	r0.w = r0.w * r0.z;
 	r1 = 0;
 	for (int i0 = 0; i0 < n; i0++) {
-		r2 = r0.x * m + r1;
-		r2 = r0.y * m + r2;
-		r2 = r0.z * m + r2;
-		r1 = r0.w * m + r2;
+		r2 = r0.x * m[0] + r1;
+		r2 = r0.y * m[1] + r2;
+		r2 = r0.z * m[2] + r2;
+		r1 = r0.w * m[3] + r2;
 	}
 	o = r1;
 

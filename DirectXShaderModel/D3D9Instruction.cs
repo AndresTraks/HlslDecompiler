@@ -267,7 +267,7 @@ public class D3D9Instruction : Instruction
         return [ BitConverter.ToSingle(GetParamBytes(index), 0) ];
     }
 
-    public override float GetParamInt(int index)
+    public override int GetParamInt(int index)
     {
         return BitConverter.ToInt32(GetParamBytes(index), 0);
     }

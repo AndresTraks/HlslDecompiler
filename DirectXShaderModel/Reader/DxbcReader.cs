@@ -234,6 +234,10 @@ public class DxbcReader : BinaryReader
         {
             instruction.InterpolationMode = (D3D10InterpolationMode)((opcodeToken >> 11) & 0xF);
         }
+        if (opcode == D3D10Opcode.DclSampler)
+        {
+            instruction.SamplerMode = (D3D10SamplerMode)((opcodeToken >> 11) & 0xF);
+        }
         return instruction;
     }
 

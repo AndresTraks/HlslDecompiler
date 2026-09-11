@@ -134,7 +134,8 @@ public class HlslSimpleWriter : HlslWriter
     private static IEnumerable<int> GetDestinationParamIndices(Instruction instruction)
     {
         if (instruction is D3D10Instruction d3d10
-            && (d3d10.Opcode == D3D10Opcode.Udiv || d3d10.Opcode == D3D10Opcode.SinCos))
+            && (d3d10.Opcode == D3D10Opcode.Udiv || d3d10.Opcode == D3D10Opcode.SinCos
+                || d3d10.Opcode == D3D10Opcode.IMul))
         {
             for (int index = 0; index < 2; index++)
             {
@@ -586,7 +587,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("{0} = 1 / sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Sample:
-                WriteLine("{0} = {2}.Sample({3}, {1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteLine("{0} = {2}.Sample({3}, {1}{4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.RoundZ:
                 WriteLine("{0} = trunc({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -608,28 +609,28 @@ public class HlslSimpleWriter : HlslWriter
                         3 => "GatherAlpha",
                         _ => "Gather",
                     };
-                    WriteLine("{0} = {2}.{4}({3}, {1});", GetOperandName(instruction, 0),
+                    WriteLine("{0} = {2}.{4}({3}, {1}{5});", GetOperandName(instruction, 0),
                         GetOperandName(instruction, 1), GetOperandName(instruction, 2),
-                        GetOperandName(instruction, 3), method);
+                        GetOperandName(instruction, 3), method, GetSampleOffset(instruction));
                     break;
                 }
             case D3D10Opcode.SampleL:
-                WriteLine("{0} = {2}.SampleLevel({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));
+                WriteLine("{0} = {2}.SampleLevel({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleB:
-                WriteLine("{0} = {2}.SampleBias({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));
+                WriteLine("{0} = {2}.SampleBias({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleC:
-                WriteLine("{0} = {2}.SampleCmp({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));
+                WriteLine("{0} = {2}.SampleCmp({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleCLZ:
-                WriteLine("{0} = {2}.SampleCmpLevelZero({3}, {1}, {4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4));
+                WriteLine("{0} = {2}.SampleCmpLevelZero({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleD:
-                WriteLine("{0} = {2}.SampleGrad({3}, {1}, {4}, {5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5));
+                WriteLine("{0} = {2}.SampleGrad({3}, {1}, {4}, {5}{6});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.LD:
-                WriteLine("{0} = {2}.Load({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteLine("{0} = {2}.Load({1}{3});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.Log:
                 WriteLine("{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -937,24 +938,27 @@ public class HlslSimpleWriter : HlslWriter
         int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
 
-        if (destinationLength == null)
+        // Which entries of the swizzle are read depends on which components are
+        // written, not on how many: `mad oC0.zw, v0.z, c0.xyxy, c0.xyyx` reads
+        // entries 2 and 3, so the second addend is (y, x) and not (x, y). Taking
+        // the first two made the mad add 1 to z and 0 to w, both wrong. This is
+        // how GetSourceSwizzleName has always selected them. A caller naming a
+        // length instead means the low components, as it does there.
+        int[] components;
+        if (destinationLength != null)
         {
-            if (instruction.HasDestination)
-            {
-                int writeMask = instruction.GetDestinationWriteMask();
-                destinationLength = 0;
-                for (int i = 0; i < 4; i++)
-                {
-                    if ((writeMask & (1 << i)) != 0)
-                    {
-                        destinationLength++;
-                    }
-                }
-            }
-            else
-            {
-                destinationLength = 4;
-            }
+            components = [.. swizzle.Take(destinationLength.Value).Select(c => (int)c)];
+        }
+        else if (instruction.HasDestination)
+        {
+            int writeMask = instruction.GetDestinationWriteMask();
+            components = [.. Enumerable.Range(0, 4)
+                .Where(i => (writeMask & (1 << i)) != 0)
+                .Select(i => (int)swizzle[i])];
+        }
+        else
+        {
+            components = [.. swizzle.Select(c => (int)c)];
         }
 
         switch (registerType)
@@ -972,8 +976,7 @@ public class HlslSimpleWriter : HlslWriter
                         return null;
                     }
 
-                    uint[] constant = swizzle
-                        .Take(destinationLength.Value)
+                    uint[] constant = components
                         .Select(s => constantInt[s]).ToArray();
 
                     switch (instruction.GetSourceModifier(srcIndex))
@@ -1023,8 +1026,7 @@ public class HlslSimpleWriter : HlslWriter
                         return null;
                     }
 
-                    float[] constant = swizzle
-                        .Take(destinationLength.Value)
+                    float[] constant = components
                         .Select(s => constantRegister[s]).ToArray();
 
                     switch (instruction.GetSourceModifier(srcIndex))
@@ -1080,7 +1082,8 @@ public class HlslSimpleWriter : HlslWriter
                     ? instruction.GetParamInt(operandIndex, 0).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
             }
-            int destinationLength = instruction.HasDestination ? instruction.GetDestinationMaskLength() : 4;
+            int destinationLength = GetSourceLength(instruction, operandIndex)
+                ?? (instruction.HasDestination ? instruction.GetDestinationMaskLength() : 4);
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             // Typed the same way as the single component above: a vector immediate
             // feeding an integer instruction is a vector of integers, and
@@ -1142,17 +1145,7 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier, registerName);
             }
 
-            int? maskedLength = null;
-            // The coordinate is as wide as the texture, not as wide as whatever the
-            // sample is being written into: a comparison sample writes one component
-            // and still reads a two component coordinate.
-            if (operandIndex == 1 && IsSamplingOpcode(instruction.Opcode))
-            {
-                maskedLength = _registers.ResourceDefinitions
-                    .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-                    .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
-                    .GetDimensionSize();
-            }
+            int? maskedLength = GetSourceLength(instruction, operandIndex);
             // A scalar variable sharing a register has no component of its own to
             // name once the variable itself is named.
             writeMaskName = isPackedScalar
@@ -1161,6 +1154,52 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
+    }
+
+    // An offset shifts the sample by whole texels. Leaving it out compiles and
+    // reads the wrong ones, so it belongs in the call.
+    private string GetSampleOffset(D3D10Instruction instruction)
+    {
+        if (instruction.SampleOffsets == null)
+        {
+            return "";
+        }
+
+        int dimension = GetTextureDimension(instruction);
+        string offsets = string.Join(", ", instruction.SampleOffsets.Take(dimension));
+        return dimension > 1
+            ? $", int{dimension}({offsets})"
+            : $", {offsets}";
+    }
+
+    private int GetTextureDimension(D3D10Instruction instruction)
+    {
+        return _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
+            .GetDimensionSize();
+    }
+
+    // The coordinate is as wide as the texture, not as wide as whatever the sample
+    // is being written into: a comparison sample writes one component and still
+    // reads a two component coordinate. ld addresses a texel of a particular mip,
+    // so its address is one wider still - Load on a Texture2D takes an int3.
+    private int? GetSourceLength(D3D10Instruction instruction, int operandIndex)
+    {
+        if (operandIndex != 1)
+        {
+            return null;
+        }
+
+        if (IsSamplingOpcode(instruction.Opcode))
+        {
+            return GetTextureDimension(instruction);
+        }
+        if (instruction.Opcode == D3D10Opcode.LD)
+        {
+            return GetTextureDimension(instruction) + 1;
+        }
+        return null;
     }
 
     // Those that take a texture coordinate at operand 1 and the resource at 2. ld is

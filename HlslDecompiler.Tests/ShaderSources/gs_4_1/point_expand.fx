@@ -15,8 +15,8 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	GS_OUT o;
 
 	for (int t0 = 0; t0 < 4; t0 = t0 + 1) {
-		o.sv_position = float4(t0 + i[0].sv_position.xy, i[0].sv_position.zw);
-		o.texcoord = t0;
+		o.sv_position = float4((float2)t0 + i[0].sv_position.xy, i[0].sv_position.zw);
+		o.texcoord = (float2)t0;
 		stream.Append(o);
 	}
 	stream.RestartStrip();

@@ -304,6 +304,10 @@ public class D3D10Instruction : Instruction
     // the way it keeps the saturate bit.
     public D3D10InterpolationMode InterpolationMode { get; set; }
 
+    // How dcl_sampler declares the sampler. In the opcode token rather than in an
+    // operand, so the reader sets it.
+    public D3D10SamplerMode SamplerMode { get; set; }
+
     public D3D10InterpolationMode GetInterpolationMode()
     {
         return InterpolationMode;
@@ -572,7 +576,16 @@ public class D3D10Instruction : Instruction
         {
             if (Opcode.IsInteger())
             {
-                return new D3D10RegisterKey([ GetParamInt(index) ]);
+                // As wide as the operand, the same as the float case below: taking
+                // only the first component read l(1, 2, 0, 0) - a texel address - as 1.
+                return GetOperandComponentSelection(index) == D3D10OperandNumComponents.Operand1Component
+                    ? new D3D10RegisterKey([ GetParamInt(index) ])
+                    : new D3D10RegisterKey([
+                        GetParamInt(index, 0),
+                        GetParamInt(index, 1),
+                        GetParamInt(index, 2),
+                        GetParamInt(index, 3)
+                        ]);
             }
             return new D3D10RegisterKey(GetParamSingle(index));
         }

@@ -6,5 +6,5 @@ struct PS_IN
 
 half4 main(PS_IN i) : COLOR
 {
-	return half4(half4(saturate(i.texcoord)) + i.texcoord2);
+	return (half4)((half4)saturate(i.texcoord) + i.texcoord2);
 }

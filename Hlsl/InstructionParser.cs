@@ -118,11 +118,12 @@ public class InstructionParser
     private void ParseInstruction(D3D10Instruction instruction)
     {
         // StoreStructured names a destination operand but writes through a statement,
-        // and SinCos and Udiv each write two destinations, so none of them fits the
-        // single-destination assignment path.
+        // and SinCos, Udiv and IMul each write two destinations, so none of them fits
+        // the single-destination assignment path.
         if (instruction.HasDestination
             && instruction.Opcode != D3D10Opcode.StoreStructured
             && instruction.Opcode != D3D10Opcode.SinCos
+            && instruction.Opcode != D3D10Opcode.IMul
             && instruction.Opcode != D3D10Opcode.Udiv)
         {
             ParseAssignmentInstruction(instruction);
@@ -169,6 +170,9 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.Udiv:
                     ParseIntegerDivideInstruction(instruction);
+                    break;
+                case D3D10Opcode.IMul:
+                    ParseIntegerMultiplyInstruction(instruction);
                     break;
                 case D3D10Opcode.Cut:
                     InsertRestartStrip();
@@ -671,6 +675,48 @@ public class InstructionParser
     /// </summary>
     // udiv writes the quotient to its first destination and the remainder to its
     // second, either of which may be null when only one is wanted.
+    // imul writes the high half of the product to its first destination and the low
+    // half to its second. fxc leaves the high one null for an ordinary 32 bit
+    // multiply, which is the only form HLSL has a way of saying.
+    private void ParseIntegerMultiplyInstruction(D3D10Instruction instruction)
+    {
+        const int HighDestinationIndex = 0;
+        const int LowDestinationIndex = 1;
+        const int Factor1Index = 2;
+        const int Factor2Index = 3;
+
+        if (instruction.GetOperandType(HighDestinationIndex) != OperandType.Null)
+        {
+            throw new NotImplementedException("imul writing the high half of the product");
+        }
+        if (instruction.GetOperandType(LowDestinationIndex) == OperandType.Null)
+        {
+            return;
+        }
+
+        var destinationKey = instruction.GetParamRegisterKey(LowDestinationIndex);
+        int writeMask = instruction.GetWriteMask(LowDestinationIndex);
+        _registerState.DeclareRegisterWrite(destinationKey, writeMask);
+
+        var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            newOutputs[new RegisterComponentKey(destinationKey, component)] =
+                new MultiplyOperation(
+                    GetInputComponent(instruction, Factor1Index, component),
+                    GetInputComponent(instruction, Factor2Index, component));
+        }
+
+        foreach (var output in newOutputs)
+        {
+            SetActiveOutput(output.Key, output.Value);
+        }
+    }
+
     private void ParseIntegerDivideInstruction(D3D10Instruction instruction)
     {
         const int DividendIndex = 2;
@@ -1416,12 +1462,14 @@ public class InstructionParser
                         case D3D10Opcode.Min:
                             return new MinimumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.Mov:
+                            return new MoveOperation(inputs[0]);
                         case D3D10Opcode.IToF:
                         case D3D10Opcode.UTof:
-                        // TODO: emit an explicit cast rather than relying on implicit conversion.
+                            return new ConvertOperation(inputs[0], "float");
                         case D3D10Opcode.Ftoi:
+                            return new ConvertOperation(inputs[0], "int");
                         case D3D10Opcode.Ftou:
-                            return new MoveOperation(inputs[0]);
+                            return new ConvertOperation(inputs[0], "uint");
                         case D3D10Opcode.MovC:
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.Mul:
@@ -1474,7 +1522,10 @@ public class InstructionParser
                 .Select(i => (HlslTreeNode)new ConstantNode((int)instruction.GetParamInt(AddressParamIndex, i)))]
             : GetInputComponents(instruction, AddressParamIndex, addressLength);
 
-        return new ResourceLoadNode(resource, address, outputComponent);
+        return new ResourceLoadNode(resource, address, outputComponent)
+        {
+            SampleOffsets = instruction.SampleOffsets,
+        };
     }
 
     private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -1870,8 +1921,9 @@ public class InstructionParser
                 && declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision);
             if (!inputHasPartialPrecision)
             {
-                // TODO: determine vector size
-                result = new CastOperation(result, "half4");
+                // ConvertOperation sizes the cast to what it is converting;
+                // a fixed half4 over a two component result is X3014.
+                result = new ConvertOperation(result, "half");
             }
         }
         return result;

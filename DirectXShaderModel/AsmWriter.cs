@@ -429,7 +429,8 @@ public class AsmWriter
                 WriteLine("dcl_resource_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
             case D3D10Opcode.DclSampler:
-                WriteLine("dcl_sampler {0}, mode_default", FormatOperand(instruction, 0)); // TODO: mode
+                WriteLine("dcl_sampler {0}, mode_{1}", FormatOperand(instruction, 0),
+                    instruction.SamplerMode.ToString().ToLowerInvariant());
                 break;
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
@@ -502,6 +503,9 @@ public class AsmWriter
                 break;
             case D3D10Opcode.UShr:
                 WriteInstruction(instruction, "ushr", 3);
+                break;
+            case D3D10Opcode.IMul:
+                WriteInstruction(instruction, "imul", 4);
                 break;
             case D3D10Opcode.IMad:
                 WriteInstruction(instruction, "imad", 4);
@@ -676,10 +680,6 @@ public class AsmWriter
             case D3D10Opcode.Gather4:
                 WriteInstruction(instruction, "gather4", 4);
                 break;
-            case D3D10Opcode.Sample when instruction.SampleOffsets != null:
-                WriteInstruction(instruction,
-                    $"sample_aoffimmi({string.Join(",", instruction.SampleOffsets)})", 4);
-                break;
             case D3D10Opcode.Sample:
                 WriteInstruction(instruction, "sample", 4);
                 break;
@@ -720,6 +720,12 @@ public class AsmWriter
 
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)
     {
+        // Texel offsets ride on the mnemonic, and not only on sample: ld, gather4
+        // and every other form of sample can carry them too.
+        if (instruction.SampleOffsets != null)
+        {
+            mnemonic += $"_aoffimmi({string.Join(",", instruction.SampleOffsets)})";
+        }
         string line = instruction.Saturate ? mnemonic + "_sat" : mnemonic;
         for (int i = 0; i < operandCount; i++)
         {

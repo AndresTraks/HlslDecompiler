@@ -25,6 +25,9 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
     public IEnumerable<HlslTreeNode> Address => Inputs.Skip(1).Take(_addressLength);
     public int ComponentIndex { get; }
 
+    // The texel offsets of ld_aoffimmi, or null when the load has none.
+    public int[] SampleOffsets { get; set; }
+
     public override string ToString()
     {
         return $"load({Resource}, {string.Join(", ", Address.Select(a => a.ToString()))})";

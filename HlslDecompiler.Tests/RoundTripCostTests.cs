@@ -94,9 +94,18 @@ public class RoundTripCostTests
             + "it as one expression."),
 
         ["ps_4_0/resource_swizzle"] = (31,
-            "Correct now that the resource return swizzle is honoured, and eight "
-            + "over. Not looked into: the reciprocal length is written out at each "
-            + "use rather than once."),
+            "Correct now that the resource return swizzle is honoured. The eight over "
+            + "are a matrix multiply that cannot reform: the original does "
+            + "mul(clip, invViewProj) and then divides by w, so the w component is "
+            + "wanted on its own and takes a temp of its own, and the other three each "
+            + "fold the divide into themselves. The four dot products end up in four "
+            + "statements and never meet as components of one thing. Naming the vector "
+            + "would fix it, but the vector is not a node - each dot has one consumer, "
+            + "so there is no shared subexpression to name."),
+
+        ["cs_4_1/integer_multiply"] = (11,
+            "The index is written out twice, once for the bound test and once for the "
+            + "store."),
 
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,

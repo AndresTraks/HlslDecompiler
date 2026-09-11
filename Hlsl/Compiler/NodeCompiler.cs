@@ -131,12 +131,20 @@ public sealed class NodeCompiler
             : compiled;
     }
 
+    /// <summary>
+    /// Set while compiling the value of an assignment to an integer variable. A
+    /// vector constructor has no idea what it is being assigned to, and
+    /// `int2 t0 = float2(a, b)` sends both components through a float on the way.
+    /// </summary>
+    private bool _assigningToInteger;
+
     private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)
     {
         UngroupConstantGroups(componentGroups);
 
+        string type = _assigningToInteger ? "int" : "float";
         IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
-        return $"float{components.Count}({string.Join(", ", compiledConstructorParts)})";
+        return $"{type}{components.Count}({string.Join(", ", compiledConstructorParts)})";
     }
 
     private static void UngroupConstantGroups(IList<IList<HlslTreeNode>> componentGroups)
@@ -316,15 +324,40 @@ public sealed class NodeCompiler
                     return $"{name}({value1}, {value2})";
                 }
 
+            case ConvertOperation convert:
+                {
+                    // A cast binds tighter than the arithmetic around it, so anything
+                    // that is not already a single term needs brackets of its own:
+                    // `(int)a + b` would convert only a.
+                    var value = components.Select(g => g.Inputs[0]).ToList();
+                    string compiledValue = Compile(value);
+                    bool isSingleTerm = value[0] is RegisterInputNode
+                        || value[0] is ConstantNode
+                        || value[0] is TempVariableNode
+                        || value[0] is ConvertOperation
+                        // A call brings its own brackets. Negation is one of these
+                        // and needs none either: a cast over it still applies last.
+                        || value[0] is ConsumerOperation;
+                    // As wide as what is being converted: `(float)` on a two
+                    // component value asks for a constructor with one argument.
+                    string castType = components.Count > 1
+                        ? convert.TargetType + components.Count
+                        : convert.TargetType;
+                    return isSingleTerm
+                        ? $"({castType}){compiledValue}"
+                        : $"({castType})({compiledValue})";
+                }
+
             case LinearInterpolateOperation _:
                 {
-                    var value1 = Compile(components.Select(g => g.Inputs[0]));
-                    var value2 = Compile(components.Select(g => g.Inputs[1]));
-                    var value3 = Compile(components.Select(g => g.Inputs[2]));
+                    // `lrp dst, s, y, x` is x + s * (y - x), and lerp takes the amount
+                    // last: lerp(x, y, s). Passing them straight through made the
+                    // amount the first endpoint and the second endpoint the amount.
+                    var amount = Compile(components.Select(g => g.Inputs[0]));
+                    var to = Compile(components.Select(g => g.Inputs[1]));
+                    var from = Compile(components.Select(g => g.Inputs[2]));
 
-                    var name = "lerp";
-
-                    return $"{name}({value1}, {value2}, {value3})";
+                    return $"lerp({from}, {to}, {amount})";
                 }
 
             case CompareOperation _:
@@ -420,6 +453,22 @@ public sealed class NodeCompiler
             }
         }
         return $"{Compile(new[] { index })} / {rows}";
+    }
+
+    // An offset shifts the read by whole texels. Leaving it out compiles and
+    // reads the wrong ones, so it belongs in the call.
+    private static string CompileSampleOffsets(int[] sampleOffsets, ResourceDefinition texture)
+    {
+        if (sampleOffsets == null)
+        {
+            return "";
+        }
+
+        int dimension = texture.GetDimensionSize();
+        string offsets = string.Join(", ", sampleOffsets.Take(dimension));
+        return dimension > 1
+            ? $", int{dimension}({offsets})"
+            : $", {offsets}";
     }
 
     private string CompileNodesWithComponents(List<HlslTreeNode> components, HlslTreeNode first, int promoteToVectorSize)
@@ -558,7 +607,8 @@ public sealed class NodeCompiler
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
             string address = Compile(resourceLoad.Address, resourceLoad.Address.Count());
-            return $"{resourceDefinition.Name}.Load({address}){loadSwizzle}";
+            string loadOffsets = CompileSampleOffsets(resourceLoad.SampleOffsets, resourceDefinition);
+            return $"{resourceDefinition.Name}.Load({address}{loadOffsets}){loadSwizzle}";
         }
 
         if (first is TextureLoadOutputNode textureLoad)
@@ -604,16 +654,7 @@ public sealed class NodeCompiler
                     };
                     extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
                 }
-                // An offset shifts the sample by whole texels, so it belongs in the
-                // call rather than being dropped.
-                if (textureLoad.SampleOffsets != null)
-                {
-                    int dimension = textureDefinition.GetDimensionSize();
-                    string offsets = string.Join(", ", textureLoad.SampleOffsets.Take(dimension));
-                    extraArguments += dimension > 1
-                        ? $", int{dimension}({offsets})"
-                        : $", {offsets}";
-                }
+                extraArguments += CompileSampleOffsets(textureLoad.SampleOffsets, textureDefinition);
                 return $"{textureDefinition.Name}.{method}({samplerDefinition.Name}, {texcoords}{extraArguments}){swizzle}";
             }
             else
@@ -674,7 +715,17 @@ public sealed class NodeCompiler
                 type += " ";
                 variableCompiled = $"t{tempAssignment.TempVariable.DeclarationIndex}";
             }
-            string compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
+            bool wasAssigningToInteger = _assigningToInteger;
+            _assigningToInteger = tempAssignment.TempVariable.IsInteger;
+            string compiled;
+            try
+            {
+                compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
+            }
+            finally
+            {
+                _assigningToInteger = wasAssigningToInteger;
+            }
             return $"{type}{variableCompiled} = {compiled};";
         }
 

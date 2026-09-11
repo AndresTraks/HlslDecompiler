@@ -48,6 +48,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "nested_struct")]
     [TestCase("ps_4_0", "front_face")]
     [TestCase("ps_4_1", "gather")]
+    [TestCase("ps_4_1", "sample_offsets")]
     [TestCase("ps_4_0", "cbuffer_array")]
     [TestCase("ps_4_0", "uint_loop")]
     [TestCase("ps_4_0", "if_deep_nest")]
@@ -95,6 +96,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "compute")]
     [TestCase("cs_4_1", "compute_vector")]
     [TestCase("cs_4_1", "compute_loop")]
+    [TestCase("cs_4_1", "integer_multiply")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

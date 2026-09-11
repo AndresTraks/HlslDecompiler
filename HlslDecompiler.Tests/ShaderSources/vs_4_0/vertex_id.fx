@@ -8,5 +8,5 @@ struct VS_IN
 
 float4 main(VS_IN i) : SV_Position
 {
-	return arr[0] * i.sv_vertexid + i.sv_instanceid * arr[1];
+	return arr[0] * (float4)i.sv_vertexid + (float4)i.sv_instanceid * arr[1];
 }

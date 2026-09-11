@@ -93,6 +93,11 @@ public class RoundTripCostTests
             + "help either. Correct, and the four instructions are the cost of saying "
             + "it as one expression."),
 
+        ["ps_4_0/resource_swizzle"] = (31,
+            "Correct now that the resource return swizzle is honoured, and eight "
+            + "over. Not looked into: the reciprocal length is written out at each "
+            + "use rather than once."),
+
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,
             "fxc unrolls the eight iteration loop the decompiled source spells out."),

@@ -157,6 +157,21 @@ public class DxbcReader : BinaryReader
         uint opcodeToken = ReadUInt32();
         D3D10Opcode opcode = (D3D10Opcode)(opcodeToken & 0x7FF);
 
+        // customdata does not carry its length where every other instruction does.
+        // Its payload - an immediate constant buffer, say - is longer than the seven
+        // bits in the opcode token, so the dword after it holds the length instead,
+        // counting both. Reading it the usual way asks for an array of -1 dwords.
+        if (opcode == D3D10Opcode.CustomData)
+        {
+            uint customDwordCount = ReadUInt32();
+            var customData = new uint[customDwordCount < 2 ? 0 : customDwordCount - 2];
+            for (int i = 0; i < customData.Length; i++)
+            {
+                customData[i] = ReadUInt32();
+            }
+            return new D3D10Instruction(opcode, customData, _isGeometryShader);
+        }
+
         int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
 
         // An extended opcode token carries the texel offsets of sample_aoffimmi,

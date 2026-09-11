@@ -228,9 +228,14 @@ public class InstructionParser
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
-                        var destinationKey = new RegisterComponentKey(registerKey, 0);
-                        var resourceInput = new RegisterInputNode(destinationKey);
-                        SetActiveOutput(destinationKey, resourceInput);
+                        // Every component, not just the first: a sample names the
+                        // resource with the swizzle that picks its result, and reading
+                        // t2.xyzw wants all four of them to exist.
+                        for (int component = 0; component < 4; component++)
+                        {
+                            var destinationKey = new RegisterComponentKey(registerKey, component);
+                            SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
+                        }
                         break;
                     }
                 case D3D10Opcode.DclResourceStructured:
@@ -1510,7 +1515,12 @@ public class InstructionParser
             const int TextureParamIndex = 2;
             const int SamplerParamIndex = 3;
 
-            var texture = GetInputComponents(instruction, TextureParamIndex, 1)[0] as RegisterInputNode;
+            // The resource operand carries the swizzle that says which channel each
+            // component of the result comes from - `t2.yzxw` puts the red channel in
+            // z. Keeping only the first component threw that away and read the
+            // channel the destination happened to be written to.
+            var textureComponents = GetInputComponents(instruction, TextureParamIndex, 4);
+            var texture = textureComponents[outputComponent] as RegisterInputNode;
             var textureDefinition = _registerState.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
                 .FirstOrDefault(d => d.BindPoint == texture.RegisterComponentKey.RegisterKey.Number);

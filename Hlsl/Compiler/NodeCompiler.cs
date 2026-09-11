@@ -555,7 +555,13 @@ public sealed class NodeCompiler
 
         if (first is TextureLoadOutputNode textureLoad)
         {
-            string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            // From the resource operand, not from the load: the load is named after
+            // the component it writes, and the resource says which channel that
+            // component came from. The same as LoadStructuredNode above.
+            string swizzle = textureLoad.Texture != null
+                ? GetAstSourceSwizzleName(
+                    components.Select(c => (IHasComponentIndex)((TextureLoadOutputNode)c).Texture), 4)
+                : GetAstSourceSwizzleName(componentsWithIndices, 4);
 
             var textureDefinition = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)

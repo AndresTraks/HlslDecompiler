@@ -104,7 +104,12 @@ public class NodeGrouper
         {
             if (input1.RegisterComponentKey.RegisterKey.TypeEquals(input2.RegisterComponentKey.RegisterKey))
             {
-                if (input1.RegisterComponentKey.Number == input2.RegisterComponentKey.Number)
+                // The whole key, not just the number: for a constant buffer the number
+                // is the buffer and the element is the offset, so cb0[4] and cb0[5]
+                // share a number. Two different constants then grouped as one register
+                // and `right.x * c.x + up.x * c.y` came out as dot(right.xx, c).
+                if (input1.RegisterComponentKey.RegisterKey.Equals(
+                    input2.RegisterComponentKey.RegisterKey))
                 {
                     return true;
                 }

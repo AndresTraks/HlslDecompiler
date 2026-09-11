@@ -285,10 +285,14 @@ public sealed class NodeCompiler
                     var dividend = components.Select(g => g.Inputs[0]);
                     var divisor = components.Select(g => g.Inputs[1]);
 
+                    // The dividend needs them as much as the divisor does: an add or a
+                    // subtract binds more loosely than the division, so `(a - b) / c`
+                    // written without them is `a - b / c`, which is a different number.
+                    bool dividendIsAssociative = AssociativityTester.TestForMultiplication(dividend.First());
                     bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor.First());
-                    string format = divisorIsAssociative
-                        ? "{0} / {1}"
-                        : "{0} / ({1})";
+                    string format = (dividendIsAssociative ? "{0}" : "({0})")
+                        + " / "
+                        + (divisorIsAssociative ? "{1}" : "({1})");
 
                     return string.Format(format,
                         Compile(dividend),
@@ -392,6 +396,14 @@ public sealed class NodeCompiler
     // visible rather than emitting a division that only fxc would fold away.
     private string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
     {
+        // DXBC shifts where D3D9 multiplies: `ishl r0.x, v1.x, l(2)` is the element
+        // times four.
+        if (index is ShiftLeftOperation shift
+            && shift.Inputs[1] is ConstantNode shiftAmount
+            && rows == 1 << (int)shiftAmount.Value)
+        {
+            return Compile(new[] { shift.Inputs[0] });
+        }
         if (index is MultiplyOperation multiply)
         {
             for (int i = 0; i < 2; i++)
@@ -457,6 +469,20 @@ public sealed class NodeCompiler
                 arrayName = constantBufferArray.Name;
                 int elementOffset = _registers.GetConstantBufferElementOffset(
                     d3d10ArrayKey, constantBufferArray);
+                if (constantBufferArray.TypeInfo.Rows > 1)
+                {
+                    // An array of matrices takes two subscripts, the same as the D3D9
+                    // case below: the register index counts rows across the array, so
+                    // the element is that index over the row count and the row is what
+                    // is left. Indexing it as though each register were an element
+                    // gives dot(float4, float4x4).
+                    string matrixElement = CompileRegisterIndexAsElement(
+                        relativeAddress.Index, constantBufferArray.TypeInfo.Rows);
+                    string matrixName = _registers.ColumnMajorOrder
+                        ? $"transpose({arrayName}[{matrixElement}])"
+                        : $"{arrayName}[{matrixElement}]";
+                    return $"{matrixName}[{elementOffset}]{swizzle}";
+                }
                 if (elementOffset != 0)
                 {
                     index += $" + {elementOffset}";

@@ -54,7 +54,14 @@ public class RoundTripCostTests
             + "gives both the same variable."),
         ["vs_4_0/skinning"] = (21,
             "The per bone blend does not group. Each component is a weighted sum of two "
-            + "dots and the weights are applied before the components could be."),
+            + "dots and the weights are applied before the components could be, so the "
+            + "matrix multiply is nested inside something the grouper stops at: "
+            + "CanGroupComponents refuses two dot products outright, under a FIXME about "
+            + "unrelated matrix rows. Letting two group when their operands group gives "
+            + "`dot(dot(transpose(bones[0])[0], i.position), i.blendweight.xy)`, which is "
+            + "not an expression at all - the two bone matrices merge as though they "
+            + "were rows of one. The guard is doing real work and wants replacing with "
+            + "something that knows a matrix from a row, not loosening."),
         ["ps_3_0/temp_assignment"] = (27,
             "The final cmp writes r1 + (1, 0, 3, 4). AddZeroTemplate folds the zero out "
             + "of the y component, so y is t1.y where its siblings are t1.x + 1, and the "
@@ -70,6 +77,26 @@ public class RoundTripCostTests
         ["ps_4_0/int_divide"] = (17,
             "The conversions around udiv are moves rather than casts - the TODO in "
             + "InstructionParser about relying on implicit conversion."),
+
+        ["vs_4_0/shared_cbuffer"] = (12,
+            "Was fifteen, and wrong: right.x and up.x grouped as one register, so "
+            + "right.x * c.x + up.x * c.y read as dot(right.xx, c). Correct now. Still "
+            + "three over, and that part is not looked into - the expression is built "
+            + "once per output component rather than once."),
+
+        ["ps_4_0/reflect_cube"] = (15,
+            "Was eighteen, and wrong: (world - eye) / length(...) printed without "
+            + "parentheses as world - eye / length(...). Correct now. The two left are "
+            + "fxc's: the original multiplies by rsq where the decompiled source says "
+            + "divide by length, so it emits sqrt and div."),
+
+        ["vs_3_0/partial_overwrite"] = (15,
+            "The original computes a lerp over all four components and then overwrites "
+            + "y with the height lookup. An expression has nowhere to put that: x and "
+            + "zw carry the lerp, y carries the lerp plus the lookup, and the shared "
+            + "part is three separate nodes rather than one, so naming it would not "
+            + "help either. Correct, and the four instructions are the cost of saying "
+            + "it as one expression."),
 
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,

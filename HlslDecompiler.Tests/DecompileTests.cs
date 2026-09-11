@@ -86,6 +86,7 @@ public class DecompileTests
     [TestCase("vs_3_0", "normalize")]
     [TestCase("vs_3_0", "relative_address")]
     [TestCase("vs_3_0", "matrix_array")]
+    [TestCase("vs_3_0", "partial_overwrite")]
     [TestCase("vs_3_0", "vertex_outputs")]
     [TestCase("vs_3_0", "vertex_texture")]
     [TestCase("vs_3_0", "loop_relative_address")]

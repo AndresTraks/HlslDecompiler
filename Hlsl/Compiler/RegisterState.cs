@@ -46,6 +46,14 @@ public sealed class RegisterState
             {
                 return memberWidth;
             }
+            // Not a struct member, but still narrower than the register it shares: a
+            // float packed alongside three others is one component wide, and naming
+            // it after its own component made `power.w` out of a scalar.
+            if (declaration != null && declaration.TypeInfo.Columns >= 1
+                && declaration.TypeInfo.Columns <= 4)
+            {
+                return declaration.TypeInfo.Columns;
+            }
         }
         return GetRegisterMaskedLength(registerComponentKey.RegisterKey);
     }

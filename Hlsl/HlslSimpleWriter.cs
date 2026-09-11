@@ -864,6 +864,16 @@ public class HlslSimpleWriter : HlslWriter
             (int)operandIndices[1].Immediate);
         ConstantDeclaration declaration = _registers.FindConstant(registerKey, 0);
         int elementOffset = _registers.GetConstantBufferElementOffset(registerKey, declaration);
+        if (declaration.TypeInfo.Rows > 1)
+        {
+            // An array of matrices takes two subscripts. The index counts registers,
+            // which is rows across the whole array, so the element is that over the row
+            // count - `dot(position, instances[r0.x])` asks for a dot with a matrix.
+            string matrix = _registers.ColumnMajorOrder
+                ? $"transpose({declaration.Name}[{index} / {declaration.TypeInfo.Rows}])"
+                : $"{declaration.Name}[{index} / {declaration.TypeInfo.Rows}]";
+            return $"{matrix}[{elementOffset}]";
+        }
         return elementOffset == 0
             ? $"{declaration.Name}[{index}]"
             : $"{declaration.Name}[{index} + {elementOffset}]";

@@ -245,6 +245,23 @@ public class InstructionParser
                         SeedResourceComponents(registerKey);
                         break;
                     }
+                case D3D10Opcode.CustomData:
+                    {
+                        // Four floats a row. The class of custom data is in the
+                        // opcode token and the only one fxc emits here is an
+                        // immediate constant buffer.
+                        uint[] data = instruction.CustomData ?? [];
+                        for (int row = 0; row + 3 < data.Length; row += 4)
+                        {
+                            _registerState.ImmediateConstantBuffer.Add(new ConstantRegister(
+                                row / 4,
+                                BitConverter.Int32BitsToSingle((int)data[row]),
+                                BitConverter.Int32BitsToSingle((int)data[row + 1]),
+                                BitConverter.Int32BitsToSingle((int)data[row + 2]),
+                                BitConverter.Int32BitsToSingle((int)data[row + 3])));
+                        }
+                        break;
+                    }
                 case D3D10Opcode.DclSampler:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
@@ -1661,6 +1678,26 @@ public class InstructionParser
     // cb0[r0.x + 1] reads an array element chosen at run time. The immediate is the
     // register that element zero of the read would sit at, and the array may start
     // further back in the buffer, so the difference is added to the index.
+    // icb[r0.x + 0] reads the immediate constant buffer, which has one index
+    // rather than a buffer and an element.
+    private HlslTreeNode GetImmediateConstantBufferInput(
+        D3D10Instruction instruction,
+        int operandIndex,
+        int componentIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+
+        var registerKey = new D3D10RegisterKey(
+            OperandType.ImmediateConstantBuffer, (int)operandIndices[0].Immediate);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return new RelativeAddressNode(
+            new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
+    }
+
     private HlslTreeNode GetDynamicConstantBufferInput(
         D3D10Instruction instruction,
         int operandIndex,
@@ -1761,6 +1798,8 @@ public class InstructionParser
                 inputs[i] = operandType switch
                 {
                     OperandType.ConstantBuffer => GetDynamicConstantBufferInput(
+                        instruction, inputParameterIndex, componentIndex, operandIndices),
+                    OperandType.ImmediateConstantBuffer => GetImmediateConstantBufferInput(
                         instruction, inputParameterIndex, componentIndex, operandIndices),
                     OperandType.Input => GetDynamicVertexInput(
                         instruction, inputParameterIndex, componentIndex, operandIndices),

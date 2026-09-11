@@ -606,6 +606,25 @@ public class AsmWriter
                 WriteLine("dcl_input_ps_sgv {0} {1}, {2}", instruction.GetInterpolationModeName(),
                     FormatOperand(instruction, 0), GetSystemValueName(instruction));
                 break;
+            case D3D10Opcode.CustomData:
+                {
+                    // Four floats a row. fxc spreads it over a line each; one line
+                    // keeps it in step with the rest of this disassembly.
+                    uint[] data = instruction.CustomData ?? [];
+                    var rows = new List<string>();
+                    for (int row = 0; row + 3 < data.Length; row += 4)
+                    {
+                        var values = new List<string>();
+                        for (int i = 0; i < 4; i++)
+                        {
+                            values.Add(ConstantFormatter.Format(
+                                BitConverter.Int32BitsToSingle((int)data[row + i])));
+                        }
+                        rows.Add("{ " + string.Join(", ", values) + " }");
+                    }
+                    WriteLine("dcl_immediateConstantBuffer { " + string.Join(", ", rows) + " }");
+                    break;
+                }
             case D3D10Opcode.If:
                 WriteInstruction(instruction, "if_nz", 1);
                 break;
@@ -976,6 +995,9 @@ public class AsmWriter
             OperandType.Output => "o",
             OperandType.Temp => "r",
             OperandType.ConstantBuffer => "cb",
+            // Its register number is the index into it, so the prefix carries the
+            // whole name.
+            OperandType.ImmediateConstantBuffer => "icb",
             OperandType.Resource => "t",
             OperandType.Sampler => "s",
             OperandType.InputThreadID => "vThreadID",

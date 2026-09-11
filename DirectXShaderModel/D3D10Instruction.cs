@@ -53,6 +53,20 @@ public class D3D10Instruction : Instruction
     public int[] SampleOffsets { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
+    /// <summary>
+    /// The payload of a customdata instruction, which is not operand tokens - an
+    /// immediate constant buffer is four floats per row.
+    /// </summary>
+    public uint[] CustomData { get; private set; }
+
+    public static D3D10Instruction CreateCustomData(uint[] customData, bool isGeometryShader)
+    {
+        return new D3D10Instruction(D3D10Opcode.CustomData, [], isGeometryShader)
+        {
+            CustomData = customData,
+        };
+    }
+
     public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool isGeometryShader)
     {
         Opcode = opcode;

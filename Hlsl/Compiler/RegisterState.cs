@@ -10,6 +10,12 @@ public sealed class RegisterState
     public readonly bool ColumnMajorOrder = true;
 
     public ICollection<ConstantRegister> ConstantDefinitions = [];
+    /// <summary>
+    /// The rows of an immediate constant buffer, which fxc emits for a small
+    /// constant array it would rather index than unroll. Nothing names it, so it is
+    /// called icb as the disassembly calls it.
+    /// </summary>
+    public IList<ConstantRegister> ImmediateConstantBuffer { get; } = [];
     private readonly HashSet<int> _indexedConstants = [];
     private List<ConstantArray> _constantArrays;
     public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];
@@ -79,6 +85,13 @@ public sealed class RegisterState
             {
                 return 4;
             }
+        }
+
+        // An immediate constant buffer row is a float4 and is never declared.
+        if (registerKey is D3D10RegisterKey immediateKey
+            && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
+        {
+            return 4;
         }
 
         if (RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration registerDeclaration))

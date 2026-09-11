@@ -142,6 +142,22 @@ public abstract class HlslWriter
 
         // Emitted after the uniforms so that a subscript reading one is already in
         // scope, though nothing in a literal array can reference anything anyway.
+        if (_registers.ImmediateConstantBuffer.Count != 0)
+        {
+            WriteLine("static const float4 icb[{0}] =", _registers.ImmediateConstantBuffer.Count);
+            WriteLine("{");
+            indent = "	";
+            foreach (ConstantRegister row in _registers.ImmediateConstantBuffer)
+            {
+                string components = string.Join(", ", row.Value.Select(
+                    v => v.ToString(CultureInfo.InvariantCulture)));
+                WriteLine($"float4({components}),");
+            }
+            indent = "";
+            WriteLine("};");
+            WriteLine();
+        }
+
         foreach (ConstantArray constantArray in _registers.ConstantArrays)
         {
             WriteLine("static const float4 {0}[{1}] =", constantArray.Name, constantArray.Registers.Count);

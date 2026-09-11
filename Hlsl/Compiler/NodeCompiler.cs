@@ -452,6 +452,14 @@ public sealed class NodeCompiler
                 }
                 return $"{literals.Name}[{index}]{swizzle}";
             }
+            // The immediate constant buffer has no declaration to be named from; the
+            // disassembly calls it icb and so does the one this writes out.
+            if (arrayKey.RegisterKey is D3D10RegisterKey immediateKey
+                && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
+            {
+                return $"icb[{index}]{swizzle}";
+            }
+
             // Named from the declaration rather than the register, which would carry
             // an element index of its own. The base register need not be the first of
             // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.

@@ -169,7 +169,7 @@ public class DxbcReader : BinaryReader
             {
                 customData[i] = ReadUInt32();
             }
-            return new D3D10Instruction(opcode, customData, _isGeometryShader);
+            return D3D10Instruction.CreateCustomData(customData, _isGeometryShader);
         }
 
         int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;

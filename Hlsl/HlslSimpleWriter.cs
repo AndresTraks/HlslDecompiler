@@ -690,6 +690,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
             case D3D10Opcode.DclResourceStructured:
+            // The rows are written out with the other declarations.
+            case D3D10Opcode.CustomData:
             case D3D10Opcode.DclSampler:
             case D3D10Opcode.DclTemps:
             case D3D10Opcode.DclThreadGroup:
@@ -855,6 +857,12 @@ public class HlslSimpleWriter : HlslWriter
         string index = $"r{indexNumber}.{"xyzw"[indexComponent]}";
 
         OperandType operandType = instruction.GetOperandType(operandIndex);
+        if (operandType == OperandType.ImmediateConstantBuffer)
+        {
+            // One index rather than a buffer and an element, and no declaration to be
+            // named from.
+            return $"icb[{index}]";
+        }
         if (operandType == OperandType.Input)
         {
             // The vertex is the dynamic part; the second index names the register.

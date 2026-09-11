@@ -78,11 +78,6 @@ public class RoundTripCostTests
             "The conversions around udiv are moves rather than casts - the TODO in "
             + "InstructionParser about relying on implicit conversion."),
 
-        ["vs_4_0/shared_cbuffer"] = (12,
-            "Was fifteen, and wrong: right.x and up.x grouped as one register, so "
-            + "right.x * c.x + up.x * c.y read as dot(right.xx, c). Correct now. Still "
-            + "three over, and that part is not looked into - the expression is built "
-            + "once per output component rather than once."),
 
         ["ps_4_0/reflect_cube"] = (15,
             "Was eighteen, and wrong: (world - eye) / length(...) printed without "

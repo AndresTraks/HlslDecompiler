@@ -53,13 +53,13 @@ public class RoundTripCostTests
             + "expression adds them in the order the graph gives, which is not the "
             + "order they were written, and fxc folds one fewer multiply into an "
             + "add as a result."),
-        ["ps_3_0/loop_counter_reuse"] = (55,
-            "The shader is a loop over smoothstep, sign, fmod and clamp, none of "
-            + "which reduce here: ps_3_0 writes smoothstep with a reciprocal rather "
-            + "than a divide and fmod with a compare against zero rather than "
-            + "against its own negation, so neither template recognises them and "
-            + "each is written out longhand and expanded again by fxc. It is also a "
-            + "known difference: see EquivalenceTests."),
+        ["ps_3_0/loop_counter_reuse"] = (53,
+            "A loop over smoothstep, sign, fmod and clamp, none of which reduce on "
+            + "ps_3_0: smoothstep is written there with a reciprocal rather than a "
+            + "divide, and fmod compares against zero rather than against its own "
+            + "negation, so neither template recognises them and each is written out "
+            + "longhand for fxc to expand again. It computes the right answer now, "
+            + "which it did not when this entry was written."),
         ["ps_4_0/step_mask"] = (27,
             "One instruction, from the order the terms are summed in, as "
             + "sign_intrinsic. Kept for the known difference it records rather than "

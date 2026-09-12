@@ -167,6 +167,19 @@ public class StatementFinalizer
                 .Where(o => o.Key.RegisterKey.IsTempRegister)
                 .Where(o => !statement.Inputs.ContainsKey(o.Key) || statement.Inputs[o.Key] != statement.Outputs[o.Key])
                 .ToList();
+            // Which of these values feeds which, taken now because lowering is about
+            // to replace each of them with a variable. After that a read of the value
+            // this statement computes and a read of the one the register held before
+            // are the same name, and nothing tells them apart.
+            var feeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
+            foreach (var reader in newAssignments)
+            {
+                feeds[reader.Key] = [.. newAssignments
+                    .Where(fed => !ReferenceEquals(fed.Value, reader.Value)
+                        && fed.Value.IsInputOf(reader.Value))
+                    .Select(fed => fed.Key)];
+            }
+            var assignmentByKey = new Dictionary<RegisterComponentKey, TempAssignmentNode>();
             foreach (var newAssignment in newAssignments)
             {
                 HlslTreeNode tempValue = newAssignment.Value;
@@ -232,6 +245,21 @@ public class StatementFinalizer
                         tempUsage.Inputs[index] = tempVariable;
                     }
                     ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
+                    assignmentByKey[newAssignment.Key] = tempAssignment;
+                }
+            }
+
+            // Once every assignment exists, the record can name them. The
+            // assignment rather than its variable: branch and loop unification
+            // re-points variables afterwards, and the assignment stays itself.
+            foreach ((RegisterComponentKey key, TempAssignmentNode assignment) in assignmentByKey)
+            {
+                foreach (RegisterComponentKey fed in feeds[key])
+                {
+                    if (assignmentByKey.TryGetValue(fed, out TempAssignmentNode feeder))
+                    {
+                        assignment.DependsOnNewValueOf.Add(feeder);
+                    }
                 }
             }
         }

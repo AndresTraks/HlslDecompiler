@@ -53,7 +53,46 @@ public class TempAssignmentOrder
 
     private static bool ComesBefore(HlslTreeNode[] x, HlslTreeNode[] y)
     {
+        // What one assignment wants of another is recorded at lowering, which is the
+        // only point at which wanting the value this statement computes and wanting
+        // the one the register held before are different things.
+        if (NeedsNewValue(y, x))
+        {
+            return true;
+        }
+        if (NeedsNewValue(x, y))
+        {
+            return false;
+        }
+        // Neither wants the other new, so a read of a variable the other overwrites
+        // is a read of the value from before, and has to come first. This is what
+        // keeps `t1 = t1 + 1` at the end of a loop body.
+        if (ReadsOverwritten(x, y))
+        {
+            return true;
+        }
+        if (ReadsOverwritten(y, x))
+        {
+            return false;
+        }
         return x.Any(i => y.Any(i2 => IsInputOf(i, i2)));
+    }
+
+    /// <summary>Whether any of <paramref name="readers"/> wants a value that any of
+    /// <paramref name="written"/> computes here, rather than its earlier one.</summary>
+    private static bool NeedsNewValue(HlslTreeNode[] readers, HlslTreeNode[] written)
+    {
+        return readers.OfType<TempAssignmentNode>().Any(reader =>
+            written.OfType<TempAssignmentNode>().Any(assignment =>
+                reader.DependsOnNewValueOf.Any(fed => ReferenceEquals(fed, assignment))));
+    }
+
+    private static bool ReadsOverwritten(HlslTreeNode[] readers, HlslTreeNode[] written)
+    {
+        return written.OfType<TempAssignmentNode>().Any(assignment =>
+            assignment.IsReassignment
+            && readers.Any(reader => !ReferenceEquals(reader, assignment)
+                && assignment.TempVariable.IsInputOf(reader)));
     }
 
     // What makes an assignment a dependency is that the variable it assigns is read,

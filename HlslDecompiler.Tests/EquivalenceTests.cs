@@ -60,31 +60,6 @@ public class EquivalenceTests
         ["gs_4_1/circle"] =
             "`int2 r1` holds a loop counter and then an angle in radians, so "
             + "`r1.y = r1.y * 0.392699093` truncates. See ps_4_0/step_mask.",
-        ["ps_3_0/loop_counter_reuse"] =
-            "`t1 = t1 + 1` is the last instruction of the loop body and is emitted "
-            + "first, so every read in the body sees a counter one too high. The "
-            + "assignment order puts an assignment before anything reading its "
-            + "variable, which is right for a chain of instructions - component_chain "
-            + "depends on it - and exactly wrong for a value read before it is "
-            + "overwritten. Three attempts and what each found: reversing the rule "
-            + "for reassignments breaks component_chain; recording the previous value "
-            + "on the assignment does nothing, because lowering rewires the readers "
-            + "of a loop header phi onto the variable and the phi is then an input to "
-            + "nothing; recording the readers the variable already has finds none, "
-            + "because the increment is given a variable of its own and unified with "
-            + "the loop variable only afterwards. The body is one statement with the "
-            + "expression inlined, so instruction order is not in the graph either. "
-            + "Recording them where the two variables are unified - in "
-            + "ReplaceTempVariable, the last point at which they are distinct - does "
-            + "capture the right nodes, ten of them, and still does not match: "
-            + "reducing rebuilds nodes rather than editing them, so a reference taken "
-            + "before it names something no longer in the graph. TemplateMatcher "
-            + "memoises what each node reduced to, which is where those references "
-            + "could be followed, and that memo is per call and discarded. Note also "
-            + "that the constraint has to decide the pair rather than join the other "
-            + "rules: a reader of the old value also reads the variable the "
-            + "assignment writes, so both directions hold at once and the sort falls "
-            + "back to arrival order.",
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

@@ -29,8 +29,14 @@ public class D3D10Machine
     private readonly Dictionary<int, uint[][]> _constantBuffers = [];
     private readonly List<uint[]> _immediateConstantBuffer = [];
     private readonly Dictionary<int, string> _outputSemantics = [];
+    private readonly Dictionary<int, string> _inputSemantics = [];
+    private readonly Dictionary<(int Vertex, int Register), uint[]> _vertexInputs = [];
     private readonly Dictionary<string, uint[]> _results = [];
     private uint[] _depth = new uint[4];
+    // What a geometry shader put on its stream and what a compute shader wrote,
+    // which are the results those two have instead of a return value.
+    private readonly List<KeyValuePair<string, uint[]>> _emitted = [];
+    private readonly List<KeyValuePair<string, uint[]>> _stored = [];
     private bool _wroteDepth;
 
     /// <summary>Set by discard: the pixel is thrown away, whatever was written.</summary>
@@ -74,6 +80,10 @@ public class D3D10Machine
         if (machine._wroteDepth)
         {
             results["DEPTH"] = machine._depth.Select(BitConverter.UInt32BitsToSingle).ToArray();
+        }
+        foreach (var entry in machine._emitted.Concat(machine._stored))
+        {
+            results[entry.Key] = [.. entry.Value.Select(BitConverter.UInt32BitsToSingle)];
         }
         return results;
     }
@@ -141,6 +151,7 @@ public class D3D10Machine
                 continue;
             }
 
+            _inputSemantics[number] = signature.Name + signature.Index;
             float[] value = Named(signature.Name + signature.Index);
             for (int i = 0; i < 4; i++)
             {
@@ -152,6 +163,21 @@ public class D3D10Machine
         {
             _outputSemantics[signature.RegisterKey.Number] = signature.Name + signature.Index;
         }
+    }
+
+    // One value per vertex per register, named by the semantic so that two
+    // programs agree on it however they number their inputs.
+    private uint[] VertexInput(int vertex, int register)
+    {
+        if (!_vertexInputs.TryGetValue((vertex, register), out uint[] value))
+        {
+            string semantic = _inputSemantics.TryGetValue(register, out string name)
+                ? name
+                : "INPUT" + register;
+            value = [.. Named($"{semantic}[{vertex}]").Select(BitConverter.SingleToUInt32Bits)];
+            _vertexInputs[(vertex, register)] = value;
+        }
+        return value;
     }
 
     private float[] Named(string name)
@@ -237,6 +263,23 @@ public class D3D10Machine
                     breakable.Push(pc);
                     pc = flow.SwitchTarget(pc, Source(instruction, 0)[0]);
                     continue;
+                case D3D10Opcode.Emit:
+                case D3D10Opcode.EmitThenCut:
+                    Emit();
+                    if (instruction.Opcode == D3D10Opcode.EmitThenCut)
+                    {
+                        Cut();
+                    }
+                    pc++;
+                    continue;
+                case D3D10Opcode.Cut:
+                    Cut();
+                    pc++;
+                    continue;
+                case D3D10Opcode.StoreStructured:
+                    Store(instruction);
+                    pc++;
+                    continue;
                 case D3D10Opcode.CustomData:
                     LoadImmediateConstantBuffer(instruction);
                     pc++;
@@ -252,6 +295,18 @@ public class D3D10Machine
             if (instruction.Opcode == D3D10Opcode.Udiv)
             {
                 Divide(instruction);
+                pc++;
+                continue;
+            }
+            if (instruction.Opcode is D3D10Opcode.IMul or D3D10Opcode.UMul)
+            {
+                Multiply(instruction);
+                pc++;
+                continue;
+            }
+            if (instruction.Opcode == D3D10Opcode.SinCos)
+            {
+                SineCosine(instruction);
                 pc++;
                 continue;
             }
@@ -296,6 +351,84 @@ public class D3D10Machine
         if (instruction.GetOperandType(RemainderIndex) != OperandType.Null)
         {
             Store(instruction, RemainderIndex, remainder);
+        }
+    }
+
+    /// <summary>
+    /// A geometry shader appends the output registers to its stream. What it emits
+    /// is its result, so each vertex is reported under its own name.
+    /// </summary>
+    private void Emit()
+    {
+        int vertex = _emitted.Count;
+        foreach (var semantic in _outputSemantics.OrderBy(o => o.Key))
+        {
+            _emitted.Add(new KeyValuePair<string, uint[]>(
+                $"EMIT{vertex}_{semantic.Value}", [.. _output[semantic.Key]]));
+        }
+    }
+
+    // A strip restart carries no value, but where it falls is part of the result.
+    private void Cut()
+    {
+        _emitted.Add(new KeyValuePair<string, uint[]>(
+            $"CUT{_emitted.Count}", [0, 0, 0, 0]));
+    }
+
+    /// <summary>
+    /// store_structured is what a compute shader has instead of an output register,
+    /// so the writes are the result. Named by where they went rather than by the
+    /// order they happened in, since two programs may order them differently and
+    /// still agree.
+    /// </summary>
+    private void Store(D3D10Instruction instruction)
+    {
+        const int UnorderedAccessIndex = 0;
+        const int ElementIndex = 1;
+        const int OffsetIndex = 2;
+        const int ValueIndex = 3;
+        int resource = instruction.GetParamRegisterNumber(UnorderedAccessIndex);
+        int element = Ints(instruction, ElementIndex)[0];
+        int offset = Ints(instruction, OffsetIndex)[0];
+        _stored.Add(new KeyValuePair<string, uint[]>(
+            $"STORE{resource}[{element}][{offset}]", Source(instruction, ValueIndex)));
+    }
+
+    // imul writes the high half of the product to its first destination and the
+    // low half to its second; a shader wanting an ordinary 32 bit multiply leaves
+    // the high one null.
+    private void Multiply(D3D10Instruction instruction)
+    {
+        const int HighIndex = 0;
+        const int LowIndex = 1;
+        int[] left = Ints(instruction, 2);
+        int[] right = Ints(instruction, 3);
+        long[] product = [.. Enumerable.Range(0, 4).Select(i => (long)left[i] * right[i])];
+
+        if (instruction.GetOperandType(HighIndex) != OperandType.Null)
+        {
+            Store(instruction, HighIndex, [.. product.Select(p => unchecked((uint)(p >> 32)))]);
+        }
+        if (instruction.GetOperandType(LowIndex) != OperandType.Null)
+        {
+            Store(instruction, LowIndex, [.. product.Select(p => unchecked((uint)p))]);
+        }
+    }
+
+    // sincos writes the sine to its first destination and the cosine to its second,
+    // either of which may be null.
+    private void SineCosine(D3D10Instruction instruction)
+    {
+        const int SineIndex = 0;
+        const int CosineIndex = 1;
+        float[] angle = Floats(instruction, 2);
+        if (instruction.GetOperandType(SineIndex) != OperandType.Null)
+        {
+            Store(instruction, SineIndex, Pack(angle.Select(MathF.Sin)));
+        }
+        if (instruction.GetOperandType(CosineIndex) != OperandType.Null)
+        {
+            Store(instruction, CosineIndex, Pack(angle.Select(MathF.Cos)));
         }
     }
 
@@ -372,8 +505,6 @@ public class D3D10Machine
                 return MapFloat(instruction, MathF.Ceiling);
             case D3D10Opcode.RoundZ:
                 return MapFloat(instruction, MathF.Truncate);
-            case D3D10Opcode.SinCos:
-                throw new UnsupportedException("sincos, which writes two destinations");
             case D3D10Opcode.Eq:
                 return CompareFloat(instruction, (a, b) => a == b);
             case D3D10Opcode.Ne:
@@ -446,6 +577,15 @@ public class D3D10Machine
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
                 return LoadTexel(instruction);
+            case D3D10Opcode.LdStructured:
+                {
+                    // Element and byte offset, named so that both programs read the
+                    // same element of the same buffer whatever register it is in.
+                    int element = Ints(instruction, 1)[0];
+                    int offset = Ints(instruction, 2)[0];
+                    int resource = instruction.GetParamRegisterNumber(3);
+                    return Pack(Named($"buffer{resource}[{element}][{offset}]"));
+                }
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
                 // No neighbouring pixel to difference against. Both programs get
@@ -668,7 +808,25 @@ public class D3D10Machine
             case OperandType.Temp:
                 return _temp[instruction.GetParamRegisterNumber(index)];
             case OperandType.Input:
-                return _input[instruction.GetParamRegisterNumber(index)];
+                {
+                    // A geometry shader reads v[vertex][register], so the register
+                    // number is the second index and the first says which vertex of
+                    // the primitive. Every vertex gets its own value.
+                    // Only a geometry shader indexes by vertex; elsewhere a two
+                    // index input is something else and the register number stands.
+                    var indices = instruction.OperandTokens.GetOperandIndices(index);
+                    if (indices.Length < 2 || _shader.Type != ShaderType.Geometry)
+                    {
+                        return _input[instruction.GetParamRegisterNumber(index)];
+                    }
+                    // GetOperandIndices, not GetParamIndexImmediate32: the latter
+                    // counts a token per index from the operand token onwards, which
+                    // is neither the right place to start nor right for a nested
+                    // operand. It gave vertex numbers in the millions.
+                    int vertex = (int)indices[0].Immediate;
+                    int register = (int)indices[1].Immediate;
+                    return VertexInput(vertex, register);
+                }
             case OperandType.Output:
                 return _output[instruction.GetParamRegisterNumber(index)];
             case OperandType.ConstantBuffer:
@@ -680,14 +838,22 @@ public class D3D10Machine
                 }
             case OperandType.ImmediateConstantBuffer:
                 {
-                    int row = (int)instruction.GetParamIndexImmediate32(index, 0)
+                    int row = (int)instruction.OperandTokens.GetOperandIndices(index)[0].Immediate
                         + RelativeIndex(instruction, index, 0);
                     return row >= 0 && row < _immediateConstantBuffer.Count
                         ? _immediateConstantBuffer[row]
                         : new uint[4];
                 }
+            case OperandType.InputThreadID:
+            case OperandType.InputThreadGroupID:
+            case OperandType.InputThreadIDInGroup:
+            case OperandType.InputThreadIDInGroupFlattened:
+                // Small whole numbers: a thread index taken from float bits would
+                // address somewhere no buffer reaches.
+                return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];
             case OperandType.Sampler:
             case OperandType.Resource:
+            case OperandType.UnorderedAccessView:
                 return new uint[4];
             default:
                 throw new UnsupportedException($"reading operand type {type}");

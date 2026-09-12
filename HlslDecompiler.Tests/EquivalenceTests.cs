@@ -38,6 +38,16 @@ public class EquivalenceTests
             + "integer operation with asint, which breaks the shaders where the "
             + "integer declaration is right. It wants the register split by live "
             + "range, so that the two uses become two variables.",
+        // The same register reuse as step_mask, in two more shaders.
+        ["ps_4_0/sign_intrinsic"] =
+            "The register carrying the sign masks also carries a float later, and is "
+            + "declared int4. See ps_4_0/step_mask. Hidden until the machine learned "
+            + "imul: a writer whose output the machine cannot run is not compared at "
+            + "all, so implementing an opcode can uncover a difference rather than "
+            + "cause one.",
+        ["gs_4_1/circle"] =
+            "`int2 r1` holds a loop counter and then an angle in radians, so "
+            + "`r1.y = r1.y * 0.392699093` truncates. See ps_4_0/step_mask.",
         ["ps_3_0/loop_counter_reuse"] =
             "`t1 = t1 + 1` is the last instruction of the loop body and is emitted "
             + "first, so every read in the body sees a counter one too high. The "
@@ -76,11 +86,14 @@ public class EquivalenceTests
     private const float Tolerance = 1e-3f;
 
     /// <summary>
-    /// Geometry and compute shaders have no one result to compare - one emits a
-    /// stream, the other writes buffers - so they are not run.
+    /// Geometry and compute shaders have no return value, so the machine reports
+    /// what they put on their stream and what they wrote to their buffers instead.
     /// </summary>
     private static readonly string[] Profiles =
-        ["ps_2_0", "ps_3_0", "vs_1_1", "vs_3_0", "ps_4_0", "ps_4_1", "vs_4_0"];
+    [
+        "ps_2_0", "ps_3_0", "vs_1_1", "vs_3_0",
+        "ps_4_0", "ps_4_1", "vs_4_0", "gs_4_0", "gs_4_1", "cs_4_1",
+    ];
 
     public static IEnumerable<TestCaseData> Shaders()
     {

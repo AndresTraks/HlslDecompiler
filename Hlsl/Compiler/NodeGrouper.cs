@@ -122,6 +122,18 @@ public class NodeGrouper
             return false;
         }
 
+        if (node1 is RelativeAddressNode relative1 && node2 is RelativeAddressNode relative2)
+        {
+            // The index has to be the same node and not merely one that groups:
+            // c0[a0.x] and c0[a0.y] are two elements of the array rather than two
+            // components of one element. Left to the general rule below, the two
+            // index expressions group as components and three bone lookups come out
+            // as one.
+            return relative1.RegisterComponentKey.RegisterKey.Equals(
+                    relative2.RegisterComponentKey.RegisterKey)
+                && ReferenceEquals(relative1.Index, relative2.Index);
+        }
+
         if (node1 is DotProductOperation)
         {
             // FIXME: prevent grouping unrelated matrix rows

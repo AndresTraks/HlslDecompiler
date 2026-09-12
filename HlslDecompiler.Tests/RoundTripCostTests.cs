@@ -69,6 +69,12 @@ public class RoundTripCostTests
             + "it also stops fxc folding it back - the original is seven instructions "
             + "of a tightly nested expression. That is the trade, not a defect. Was "
             + "twenty until the hoist started naming a whole vector at once."),
+        ["vs_3_0/bone_array"] = (13,
+            "The original loads two indices in one mova and the third in another, "
+            + "and the decompiled source has three separate subscripts. fxc gives "
+            + "each its own mova rather than packing two into one, which is two "
+            + "instructions. The lookups themselves are right, which they were not "
+            + "before - all three used to read the same element."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

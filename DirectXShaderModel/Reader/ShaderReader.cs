@@ -27,6 +27,7 @@ public class ShaderReader : BinaryReader
                 ? ReadFixedSizeInstruction()
                 : ReadDynamicSizeInstruction();
             instruction.HasImpliedInputSemantics = impliedInputSemantics;
+            instruction.HasSeparateRelativeToken = majorVersion > 1;
             instructions.Add(instruction);
             if (instruction.Opcode == Opcode.End) break;
         }

@@ -47,6 +47,18 @@ public class D3D9Instruction : Instruction
     /// shader may even take.
     /// </summary>
     public bool HasImpliedInputSemantics { get; set; }
+    
+    /// <summary>Shader model 1 indexes only through a0.x and names no register.</summary>
+    public bool HasSeparateRelativeToken
+    {
+        set
+        {
+            if (Params is ParamRelativeCollection relative)
+            {
+                relative.HasSeparateRelativeToken = value;
+            }
+        }
+    }
 
     public D3D9Instruction(uint instructionToken, uint[] paramTokens) 
     {

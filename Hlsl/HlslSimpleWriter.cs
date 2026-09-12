@@ -70,7 +70,10 @@ public class HlslSimpleWriter : HlslWriter
             string scalarType = isAddressRegister || IsIntegerTempRegister(register.Key, writeMask)
                 ? "int"
                 : "float";
-            string writeMaskName = isAddressRegister ? "int" : writeMask switch
+            // The address register is as wide as it is written: `mova a0.xy`
+            // loads two indices, and reading them both out of a scalar is not
+            // possible.
+            string writeMaskName = isAddressRegister ? AddressTypeName(writeMask) : writeMask switch
             {
                 0x1 => scalarType,
                 0x3 => scalarType + "2",
@@ -871,9 +874,12 @@ public class HlslSimpleWriter : HlslWriter
         D3D9RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
 
         string registerName;
-        if (instruction.Opcode == Opcode.MovA && registerKey.Type == RegisterType.Addr)
+        // Addr and Texture are the same register type number, told apart by the
+        // kind of shader. Not by the opcode: shader model 1 has no mova and writes
+        // the address register with a plain mov, which was being named as an input.
+        if (registerKey.Type == RegisterType.Addr && _shader.Type == ShaderType.Vertex)
         {
-            registerName = "a0";
+            registerName = "a" + registerKey.Number;
         }
         else
         {
@@ -1035,12 +1041,44 @@ public class HlslSimpleWriter : HlslWriter
             : $"{declaration.Name}[{index} + {elementOffset}]";
     }
 
-    // aL counts the enclosing loop; a0 is the address register.
+    private static string AddressTypeName(int writeMask)
+    {
+        int components = 0;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                components = component + 1;
+            }
+        }
+        return components > 1 ? "int" + components : "int";
+    }
+
+    // aL counts the enclosing loop; a0 is the address register, one index per
+    // component - `c0[a0.y]` is not `c0[a0.x]`, and reading the one for the other
+    // indexes the array in the wrong place.
     private string GetRelativeAddressIndex(D3D9Instruction instruction, int srcIndex)
     {
-        return instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop
-            ? $"i{_loopVariableIndex}"
-            : $"a{instruction.GetRelativeParamRegisterNumber(srcIndex)}";
+        if (instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop)
+        {
+            return $"i{_loopVariableIndex}";
+        }
+
+        int number = instruction.GetRelativeParamRegisterNumber(srcIndex);
+        var addressKey = new D3D9RegisterKey(RegisterType.Addr, number);
+        string component = IsWideAddressRegister(addressKey)
+            ? "." + "xyzw"[instruction.GetRelativeParamComponent(srcIndex)]
+            : "";
+        return $"a{number}{component}";
+    }
+
+    private Dictionary<RegisterKey, int> _addressWriteMasks;
+
+    private bool IsWideAddressRegister(RegisterKey addressKey)
+    {
+        _addressWriteMasks ??= FindTemporaryRegisterAssignments(_shader.Instructions);
+        return _addressWriteMasks.TryGetValue(addressKey, out int writeMask)
+            && AddressTypeName(writeMask) != "int";
     }
 
     private string GetRelativeAddressingName(D3D9Instruction instruction, int srcIndex)

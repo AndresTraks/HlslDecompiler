@@ -917,7 +917,9 @@ public class AsmWriter
                 case RegisterType.Loop:
                     return $"{registerTypeName}{registerNumber}[aL]";
                 case RegisterType.Addr:
-                    return $"{registerTypeName}{registerNumber}[a0.x]";
+                    // One index per component: a0.y is not a0.x.
+                    char component = "xyzw"[instruction.GetRelativeParamComponent(index)];
+                    return $"{registerTypeName}{registerNumber}[a0.{component}]";
                 default:
                     throw new NotSupportedException(relativeType.ToString());
             }

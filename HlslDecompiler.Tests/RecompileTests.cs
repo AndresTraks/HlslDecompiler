@@ -169,14 +169,29 @@ public class RecompileTests
         return Recompile(profile, hlslOutputFilename, Path.ChangeExtension(hlslOutputFilename, ".fxo"));
     }
 
+    /// <summary>
+    /// fxc.exe is a Windows tool; off Windows it only runs under Wine, found on PATH
+    /// and pointed at the prefix it was set up in via the WINEPREFIX it inherits from
+    /// this process's environment.
+    /// </summary>
+    public static ProcessStartInfo CreateFxcProcessStartInfo()
+    {
+        var startInfo = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo(Fxc.Value)
+            : new ProcessStartInfo("wine");
+        startInfo.RedirectStandardError = true;
+        startInfo.RedirectStandardOutput = true;
+        startInfo.UseShellExecute = false;
+        if (!OperatingSystem.IsWindows())
+        {
+            startInfo.ArgumentList.Add(Fxc.Value);
+        }
+        return startInfo;
+    }
+
     private static string Recompile(string profile, string hlslOutputFilename, string objectFilename)
     {
-        var startInfo = new ProcessStartInfo(Fxc.Value)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        };
+        var startInfo = CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");
         startInfo.ArgumentList.Add("/T");
         startInfo.ArgumentList.Add(profile);
@@ -223,6 +238,14 @@ public class RecompileTests
 
     private static string FindFxc()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            // fxc.exe only runs under Wine here; there is no SDK layout to search.
+            // Point FXC_EXE at wherever it was copied from a Windows install.
+            string fxcExe = Environment.GetEnvironmentVariable("FXC_EXE");
+            return fxcExe != null && File.Exists(fxcExe) ? fxcExe : null;
+        }
+
         string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         string[] roots =
         [

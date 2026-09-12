@@ -215,12 +215,7 @@ public class RoundTripCostTests
 
     private static int CountInstructions(string binaryFilename)
     {
-        var startInfo = new ProcessStartInfo(RecompileTests.FxcPath)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        };
+        var startInfo = RecompileTests.CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");
         startInfo.ArgumentList.Add("/dumpbin");
         startInfo.ArgumentList.Add(binaryFilename);

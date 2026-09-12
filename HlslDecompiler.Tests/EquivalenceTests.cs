@@ -50,6 +50,12 @@ public class EquivalenceTests
             + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
             + "Splitting the register by live range avoids the question entirely and "
             + "is the larger change.",
+        ["ps_4_0/shadow_pcf"] =
+            "The register carrying the loop counter also carries the y offset of the "
+            + "sample, so IntegerOperandAnalysis marks it integer and the immediate "
+            + "-1.0f prints as the -1082130432 of its bits. Same cause as "
+            + "ps_4_0/step_mask, here in the AST writer rather than the instruction "
+            + "one.",
         // The same register reuse as step_mask, in two more shaders.
         ["ps_4_0/sign_intrinsic"] =
             "The register carrying the sign masks also carries a float later, and is "

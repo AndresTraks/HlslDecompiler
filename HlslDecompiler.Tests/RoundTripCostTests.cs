@@ -75,6 +75,11 @@ public class RoundTripCostTests
             + "each its own mova rather than packing two into one, which is two "
             + "instructions. The lookups themselves are right, which they were not "
             + "before - all three used to read the same element."),
+        ["ps_4_0/shadow_pcf"] = (49,
+            "Three instructions, from the division by w being written once per "
+            + "component where the original divides the vector and from the loop "
+            + "bounds being recovered as a comparison rather than a count. It is "
+            + "also a known difference: see EquivalenceTests."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

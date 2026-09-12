@@ -1001,7 +1001,13 @@ public class InstructionParser
                 {
                     continue;
                 }
-                if (parentNode is PhiNode headerPhi && !headerPhi.IsLoopHeader)
+                // Still open, meaning it is the one this loop seeded at its header:
+                // a branch join carries two values already and is not this loop's to
+                // close. Two loops in a row over a register assigned in an if before
+                // them reach here with one of those.
+                if (parentNode is PhiNode headerPhi
+                    && !headerPhi.IsLoopHeader
+                    && headerPhi.Inputs.Count == 1)
                 {
                     // Close the phi seeded at the header. The loop's output stays the
                     // phi, so code after the loop reads the loop-carried value.

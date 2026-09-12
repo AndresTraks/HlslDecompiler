@@ -42,7 +42,9 @@ public class TemplateMatcher
             new TrigonometricRangeReductionTemplate(),
             new SignedDivideTemplate(),
             new SignTemplate(),
-            new FloatingModuloTemplate()
+            new FloatingModuloTemplate(),
+            new SmoothStepTemplate(),
+            new ClampTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>
         {

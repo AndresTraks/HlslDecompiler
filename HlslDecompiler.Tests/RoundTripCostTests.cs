@@ -46,6 +46,13 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_4_0/sign_intrinsic"] = (24,
+            "sign, fmod, smoothstep and clamp each compile back to exactly the "
+            + "instructions the original had - the bodies are identical. The one "
+            + "instruction is the order the four terms are summed in: the decompiled "
+            + "expression adds them in the order the graph gives, which is not the "
+            + "order they were written, and fxc folds one fewer multiply into an "
+            + "add as a result."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

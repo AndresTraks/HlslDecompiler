@@ -1340,7 +1340,10 @@ public class HlslSimpleWriter : HlslWriter
             // name once the variable itself is named.
             writeMaskName = isPackedScalar
                 ? ""
-                : instruction.GetSourceSwizzleName(operandIndex, maskedLength);
+                : Rebased(
+                    instruction.GetSourceSwizzleName(operandIndex, maskedLength),
+                    GetConstantComponentBase(instruction, operandIndex),
+                    maskedLength);
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
@@ -1411,6 +1414,42 @@ public class HlslSimpleWriter : HlslWriter
         string type = _integerOperandAnalysis.IsIntegerOperand(instruction) ? "int" : "float";
         name = $"{type}{components.Length}({string.Join(", ", names)})";
         return true;
+    }
+
+    /// <summary>
+    /// A constant buffer packs several variables into one register, so a float3
+    /// declared after a float sits at .yzw. The swizzle naming it is rebased onto the
+    /// variable, whose own components start at x - eyePos.yzw asks for components it
+    /// has not got.
+    /// </summary>
+    private static string Rebased(string swizzleName, int componentBase, int? maskedLength)
+    {
+        if (componentBase == 0 || swizzleName.Length < 2)
+        {
+            return swizzleName;
+        }
+
+        string rebased = "";
+        foreach (char component in swizzleName[1..])
+        {
+            rebased += "xyzw"["xyzw".IndexOf(component) - componentBase];
+        }
+        if (maskedLength != null && rebased == "xyzw"[..maskedLength.Value])
+        {
+            return "";
+        }
+        return "." + rebased;
+    }
+
+    private int GetConstantComponentBase(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.ConstantBuffer)
+        {
+            return 0;
+        }
+        byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+        return _registers.GetConstantComponentBase(
+            new RegisterComponentKey(instruction.GetParamRegisterKey(operandIndex), component));
     }
 
     // Which entries of a source swizzle an instruction reads: those the destination

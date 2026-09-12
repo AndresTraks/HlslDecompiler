@@ -634,7 +634,8 @@ public sealed class NodeCompiler
             {
                 swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                     _registers.GetRegisterMaskedLength(shaderInput.RegisterComponentKey),
-                    promoteToVectorSize);
+                    promoteToVectorSize,
+                    _registers.GetConstantComponentBase(shaderInput.RegisterComponentKey));
             }
 
             // A named struct member already identifies the component, so it takes no
@@ -806,9 +807,15 @@ public sealed class NodeCompiler
         return $"{left} {first.Comparison.ToHlslString()} {right}";
     }
 
+    /// <param name="componentBase">
+    /// Which component of its register the thing being named starts at. A float3
+    /// packed after a float sits at .yzw of its register, and naming that eyePos.yzw
+    /// asks for components the variable has not got - it is eyePos.xyz.
+    /// </param>
     private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,
         int registerSize, 
-        int promoteToVectorSize = PromoteToAnyVectorSize)
+        int promoteToVectorSize = PromoteToAnyVectorSize,
+        int componentBase = 0)
     {
         if (registerSize == 1 || registerSize > 4)
         {
@@ -816,7 +823,7 @@ public sealed class NodeCompiler
         }
 
         string swizzleName = "";
-        foreach (int swizzle in inputs.Select(i => i.ComponentIndex))
+        foreach (int swizzle in inputs.Select(i => i.ComponentIndex - componentBase))
         {
             swizzleName += "xyzw"[swizzle];
         }

@@ -80,6 +80,16 @@ public class RoundTripCostTests
             + "component where the original divides the vector and from the loop "
             + "bounds being recovered as a comparison rather than a count. It is "
             + "also a known difference: see EquivalenceTests."),
+        ["ps_4_0/packed_cbuffer"] = (34,
+            "One instruction, from the two normal maps being sampled and combined in "
+            + "a different association than the original, so fxc folds one fewer mad."),
+        ["ps_4_0/packed_interpolator"] = (29,
+            "Three instructions. The blend weights are normalised by a reciprocal "
+            + "the original computes once and the decompiled source writes as three "
+            + "divisions, which fxc does not fold back. It is also a known "
+            + "difference: see EquivalenceTests."),
+        ["gs_4_0/particle_expand"] = (60,
+            "One instruction, and a known difference besides: see EquivalenceTests."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

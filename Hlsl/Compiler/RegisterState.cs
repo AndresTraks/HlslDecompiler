@@ -269,6 +269,33 @@ public sealed class RegisterState
         return (registerKey.ConstantBufferOffset ?? 0) - variableRegister;
     }
 
+    /// <summary>
+    /// Which component of its register a constant starts at. A constant buffer packs
+    /// several variables into one register, so a float3 declared after a float sits
+    /// at .yzw - and the swizzle naming it has to be rebased onto the variable, which
+    /// has components of its own starting at x.
+    /// </summary>
+    public int GetConstantComponentBase(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
+            || registerKey.OperandType != OperandType.ConstantBuffer)
+        {
+            return 0;
+        }
+
+        ConstantDeclaration declaration = FindConstant(
+            registerKey, registerComponentKey.ComponentIndex);
+        // An array or a struct is named by element or member, which carries its own
+        // offset; only a plain variable is named whole.
+        if (declaration is not D3D10ConstantDeclaration d3d10
+            || declaration.TypeInfo.NumElements > 1
+            || declaration.TypeInfo.ParameterClass == ParameterClass.Struct)
+        {
+            return 0;
+        }
+        return d3d10.VariableOffset % ConstantRegisterSizeInBytes / 4;
+    }
+
     public string GetRegisterName(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey

@@ -50,6 +50,21 @@ public class EquivalenceTests
             + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
             + "Splitting the register by live range avoids the question entirely and "
             + "is the larger change.",
+        ["ps_4_0/packed_interpolator"] =
+            "fxc packs interpolators as tightly as constants: TEXCOORD0 is v2.xy and "
+            + "TEXCOORD1 is v2.z. The input declarations are keyed by register, so "
+            + "the two become one `float3 texcoord : TEXCOORD` and the second "
+            + "semantic is lost, its reads coming out as texcoord.z. The cbuffer form "
+            + "of this was fixed by rebasing the swizzle onto the variable; this one "
+            + "needs the declarations keyed by component range first, so that two of "
+            + "them can share a register.",
+        ["gs_4_0/particle_expand"] =
+            "The fourth emitted vertex differs. `mad r1.xyz, cb0[4].xyzx, "
+            + "v[0][2].xxxx, -r0.xyzx` reads r0 and the instruction after it "
+            + "overwrites r0, and the output emits the write first. Not the same as "
+            + "ps_3_0/loop_counter_reuse, which was two outputs of one statement: "
+            + "these are two instructions, so statement order alone should have kept "
+            + "them apart. Not yet understood.",
         ["ps_4_0/shadow_pcf"] =
             "The register carrying the loop counter also carries the y offset of the "
             + "sample, so IntegerOperandAnalysis marks it integer and the immediate "

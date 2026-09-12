@@ -453,11 +453,114 @@ public class HlslAstWriter : HlslWriter
             // that do not depend on each other stay in component order.
             var registerNodes = TempAssignmentOrder.SortNodes(registerGroup);
             _compiler.Compile(registerNodes);
-            foreach (var componentGroup in nodeGrouper.GroupComponents(registerNodes)) {
-                groups.Add(componentGroup.ToArray());
+            List<HlslTreeNode[]> componentGroups =
+                [.. nodeGrouper.GroupComponents(registerNodes).Select(g => g.ToArray())];
+            // Before the groups themselves, and before anything overwrites what they
+            // read.
+            foreach (TempAssignmentNode hoisted in HoistStaleReads(componentGroups))
+            {
+                groups.Add([hoisted]);
             }
+            groups.AddRange(componentGroups);
         }
         return TempAssignmentOrder.Sort(groups);
+    }
+
+    /// <summary>
+    /// Names the expressions that one instruction computes once and several
+    /// assignments then read.
+    ///
+    /// One instruction writing several components becomes several assignments, and
+    /// those run one after another where the instruction did not. `cmp r1, r2.x, r3,
+    /// r1` decided every component from one condition, computed before any of them
+    /// changed; written as `t1.y = 3 - t1.y >= 0 ? ...` followed by `t1.xzw =
+    /// 3 - t1.y >= 0 ? ...`, the second tests a t1.y the first has already
+    /// overwritten. Naming the condition first puts back the value the instruction
+    /// saw. Unlike the hoisting below, this is not a matter of how large the
+    /// expression is - it is wrong at any size.
+    /// </summary>
+    private IEnumerable<TempAssignmentNode> HoistStaleReads(IList<HlslTreeNode[]> componentGroups)
+    {
+        if (componentGroups.Count < 2)
+        {
+            return [];
+        }
+
+        HashSet<HlslTreeNode> overwritten = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode root in componentGroups.SelectMany(g => g))
+        {
+            if (root is TempAssignmentNode assignment)
+            {
+                overwritten.Add(assignment.TempVariable);
+            }
+        }
+        if (overwritten.Count == 0)
+        {
+            return [];
+        }
+
+        // Which of the assignments each node is read by. Anything read by more than
+        // one of them is read after the first has already run.
+        var readers = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < componentGroups.Count; i++)
+        {
+            foreach (HlslTreeNode node in Reachable(componentGroups[i]))
+            {
+                readers.TryGetValue(node, out int count);
+                readers[node] = count + 1;
+            }
+        }
+
+        var assignments = new List<TempAssignmentNode>();
+        HashSet<HlslTreeNode> visited = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>(componentGroups.SelectMany(g => g));
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!visited.Add(node))
+            {
+                continue;
+            }
+
+            if (node is Operation
+                && readers.TryGetValue(node, out int count) && count > 1
+                && ReadsAnyOf(node, overwritten))
+            {
+                // Named, so nothing inside it is read stale either.
+                assignments.Add(NameSubexpression(node, _compiler.CreateScalarTempVariable()));
+                continue;
+            }
+
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                stack.Push(input);
+            }
+        }
+        return assignments;
+    }
+
+    private static IEnumerable<HlslTreeNode> Reachable(IEnumerable<HlslTreeNode> roots)
+    {
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>(roots);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            yield return node;
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                stack.Push(input);
+            }
+        }
+    }
+
+    private static bool ReadsAnyOf(HlslTreeNode node, HashSet<HlslTreeNode> variables)
+    {
+        return Reachable([node]).Any(variables.Contains);
     }
 
     /// <summary>

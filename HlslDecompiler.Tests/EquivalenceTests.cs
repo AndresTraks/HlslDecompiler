@@ -28,14 +28,6 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownDifferences = new()
     {
-        ["ps_3_0/continue_nested"] =
-            "cmp writes every component from one condition, computed before any of "
-            + "them changes. The output splits into one statement per group of "
-            + "components and recomputes the condition in each, so the second group "
-            + "tests a value the first has already overwritten: `t1.y = 3 - t1.y >= 0 "
-            + "? ...` followed by `t1.xzw = 3 - t1.y >= 0 ? ...`. Telling them apart "
-            + "needs the graph to distinguish a register before and after a write, "
-            + "which it cannot yet.",
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

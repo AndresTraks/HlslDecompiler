@@ -46,12 +46,14 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_3_0/continue_nested"] = (18,
-            "The four components of one cmp all read r1 as it was before it. Written as "
-            + "two statements, so the second reads what the first wrote and the "
-            + "condition is computed twice. The graph cannot tell a read of the value "
-            + "before an instruction from a read of the value after it: temp lowering "
-            + "gives both the same variable."),
+        ["ps_3_0/continue_nested"] = (17,
+            "The four components of one cmp all read r1 as it was before it, and they "
+            + "are written as two statements. Naming the condition first keeps it the "
+            + "value the instruction saw - it used to be recomputed in the second "
+            + "statement, from a r1.y the first had already overwritten, which was "
+            + "wrong as well as an instruction dearer. What is left is the naming "
+            + "itself: fxc has no reason to keep a variable the shader never asked "
+            + "for, and the two statements do not fold back into one cmp."),
         ["vs_4_0/skinning"] = (21,
             "The per bone blend does not group. Each component is a weighted sum of two "
             + "dots and the weights are applied before the components could be, so the "

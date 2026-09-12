@@ -217,15 +217,23 @@ public abstract class HlslWriter
         return components > 1 ? "float" + components : "float";
     }
 
-    private void WriteInputStructureDeclaration()
+    // A compute shader takes its thread and group indices the way any other shader
+    // takes its inputs, and more than one of them needs a structure to hold them.
+    private string GetInputStructureName()
     {
-        string inputStructType = _shader.Type switch
+        return _shader.Type switch
         {
             ShaderType.Pixel => "PS_IN",
             ShaderType.Vertex => "VS_IN",
             ShaderType.Geometry => "GS_IN",
+            ShaderType.Compute => "CS_IN",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
         };
+    }
+
+    private void WriteInputStructureDeclaration()
+    {
+        string inputStructType = GetInputStructureName();
         WriteLine($"struct {inputStructType}");
         WriteLine("{");
         indent = "\t";
@@ -325,9 +333,7 @@ public abstract class HlslWriter
             return CompileRegisterDeclaration(input);
         }
 
-        return _shader.Type == ShaderType.Pixel
-                ? "PS_IN i"
-                : "VS_IN i";
+        return GetInputStructureName() + " i";
     }
 
     private static int GetPrimitiveVertexCount(D3D10Primitive primitive)

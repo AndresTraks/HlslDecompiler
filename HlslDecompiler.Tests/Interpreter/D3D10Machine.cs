@@ -529,6 +529,10 @@ public class D3D10Machine
                 return Int(instruction, Math.Min);
             case D3D10Opcode.IMax:
                 return Int(instruction, Math.Max);
+            case D3D10Opcode.UMin:
+                return Bits(instruction, Math.Min);
+            case D3D10Opcode.UMax:
+                return Bits(instruction, Math.Max);
             case D3D10Opcode.INeg:
                 return MapInt(instruction, v => -v);
             case D3D10Opcode.Ieq:

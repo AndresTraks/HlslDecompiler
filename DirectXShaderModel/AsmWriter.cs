@@ -516,6 +516,15 @@ public class AsmWriter
             case D3D10Opcode.IMin:
                 WriteInstruction(instruction, "imin", 3);
                 break;
+            case D3D10Opcode.Umad:
+                WriteInstruction(instruction, "umad", 4);
+                break;
+            case D3D10Opcode.UMax:
+                WriteInstruction(instruction, "umax", 3);
+                break;
+            case D3D10Opcode.UMin:
+                WriteInstruction(instruction, "umin", 3);
+                break;
             case D3D10Opcode.INeg:
                 WriteInstruction(instruction, "ineg", 2);
                 break;
@@ -946,7 +955,7 @@ public class AsmWriter
         {
             registerNumber = instruction.GetParamRegisterNumber(index) + "[" + instruction.GetParamConstantBufferOffset(index) + "]";
         }
-        else if (operandType == OperandType.InputThreadID)
+        else if (D3D10Instruction.IsThreadRegister(operandType))
         {
             registerNumber = "";
         }
@@ -1015,6 +1024,9 @@ public class AsmWriter
             OperandType.Resource => "t",
             OperandType.Sampler => "s",
             OperandType.InputThreadID => "vThreadID",
+            OperandType.InputThreadGroupID => "vThreadGroupID",
+            OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
+            OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
             OperandType.UnorderedAccessView => "u",
             // These carry no register number of their own.
             OperandType.OutputDepth => "oDepth",

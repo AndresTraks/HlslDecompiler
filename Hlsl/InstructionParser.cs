@@ -1380,6 +1380,9 @@ public class InstructionParser
             case D3D10Opcode.IMad:
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMin:
+            case D3D10Opcode.Umad:
+            case D3D10Opcode.UMax:
+            case D3D10Opcode.UMin:
             case D3D10Opcode.INeg:
             case D3D10Opcode.Ine:
             case D3D10Opcode.RoundNe:
@@ -1458,10 +1461,13 @@ public class InstructionParser
                             return new ComparisonNode(
                                 inputs[0], inputs[1], IfComparison.NE, isInteger: true);
                         case D3D10Opcode.IMad:
+                        case D3D10Opcode.Umad:
                             return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.IMin:
+                        case D3D10Opcode.UMin:
                             return new MinimumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.IMax:
+                        case D3D10Opcode.UMax:
                             return new MaximumOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.INeg:
                             return new NegateOperation(inputs[0]);
@@ -1879,6 +1885,11 @@ public class InstructionParser
                     _ => throw new NotImplementedException(
                         $"Dynamically indexed {operandType} in {instruction.Opcode}"),
                 };
+                // A relative operand carries a modifier like any other, and this
+                // path used to return before applying it: `mov o1.xyz,
+                // -v[r0.x + 0][1].xyzx` came out without the negation.
+                inputs[i] = ApplyModifier(
+                    inputs[i], instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
             if (operandType == OperandType.Immediate32)
@@ -2072,12 +2083,15 @@ public class InstructionParser
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMin:
+            case D3D10Opcode.UMax:
+            case D3D10Opcode.UMin:
             case D3D10Opcode.Ine:
             case D3D10Opcode.Max:
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:
                 return 2;
             case D3D10Opcode.IMad:
+            case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:
             case D3D10Opcode.MovC:
             case D3D10Opcode.LdStructured:

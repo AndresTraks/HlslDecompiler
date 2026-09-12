@@ -113,7 +113,8 @@ public class RegisterDeclaration
         {
             string centroid = ResultModifier.HasFlag(ResultModifier.Centroid) ? "centroid " : "";
             string type;
-            if (RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.InputThreadID)
+            if (RegisterKey is D3D10RegisterKey d3D10RegisterKey
+                && D3D10Instruction.IsThreadRegister(d3D10RegisterKey.OperandType))
             {
                 type = "uint";
             }

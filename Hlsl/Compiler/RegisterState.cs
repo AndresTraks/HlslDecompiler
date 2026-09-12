@@ -434,7 +434,15 @@ public sealed class RegisterState
                     }
                     return "i." + decl.Name;
                 case OperandType.InputThreadID:
-                    return RegisterDeclarations[registerKey].Name;
+                case OperandType.InputThreadGroupID:
+                case OperandType.InputThreadIDInGroup:
+                case OperandType.InputThreadIDInGroupFlattened:
+                    {
+                        // In the input structure with every other input once there
+                        // is more than one of them.
+                        string threadName = RegisterDeclarations[registerKey].Name;
+                        return MethodInputRegisters.Count == 1 ? threadName : "i." + threadName;
+                    }
                 case OperandType.Resource:
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType == D3DShaderInputType.Texture || d.ShaderInputType == D3DShaderInputType.Structured)
@@ -881,6 +889,9 @@ public sealed class RegisterState
                     {
                         case OperandType.Input:
                         case OperandType.InputThreadID:
+                        case OperandType.InputThreadGroupID:
+                        case OperandType.InputThreadIDInGroup:
+                        case OperandType.InputThreadIDInGroupFlattened:
                             MethodInputRegisters.Add(registerKey, registerDeclaration);
                             break;
                         case OperandType.Output:

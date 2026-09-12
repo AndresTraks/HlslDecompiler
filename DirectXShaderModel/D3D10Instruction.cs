@@ -173,6 +173,10 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.UShr:
                 case D3D10Opcode.IMad:
                 case D3D10Opcode.IMax:
+                // The unsigned arithmetic writes a destination like the signed.
+                case D3D10Opcode.UMax:
+                case D3D10Opcode.UMin:
+                case D3D10Opcode.Umad:
                 case D3D10Opcode.IMin:
                 case D3D10Opcode.INeg:
                 case D3D10Opcode.Ine:
@@ -530,13 +534,16 @@ public class D3D10Instruction : Instruction
             OperandType.Input => "SV_Position",
             OperandType.Output => "SV_Target",
             OperandType.InputThreadID => "SV_DispatchThreadID",
+            OperandType.InputThreadGroupID => "SV_GroupID",
+            OperandType.InputThreadIDInGroup => "SV_GroupThreadID",
+            OperandType.InputThreadIDInGroupFlattened => "SV_GroupIndex",
             OperandType.OutputDepth => "SV_Depth",
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
-        if (operandType != OperandType.InputThreadID
+        if (!IsThreadRegister(operandType)
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
             && operandType != OperandType.OutputDepthLessEqual)
@@ -643,7 +650,7 @@ public class D3D10Instruction : Instruction
             }
             return new D3D10RegisterKey(GetParamSingle(index));
         }
-        else if (operandType == OperandType.InputThreadID)
+        else if (IsThreadRegister(operandType))
         {
             return new D3D10RegisterKey(operandType, 0);
         }
@@ -656,6 +663,18 @@ public class D3D10Instruction : Instruction
         return new D3D10RegisterKey(
             operandType,
             GetParamRegisterNumber(index));
+    }
+
+    /// <summary>
+    /// The registers a compute shader is given rather than declared: the thread
+    /// and group indices. None of them names a register number of its own.
+    /// </summary>
+    public static bool IsThreadRegister(OperandType operandType)
+    {
+        return operandType is OperandType.InputThreadID
+            or OperandType.InputThreadGroupID
+            or OperandType.InputThreadIDInGroup
+            or OperandType.InputThreadIDInGroupFlattened;
     }
 
     public OperandType GetOperandType(int index)

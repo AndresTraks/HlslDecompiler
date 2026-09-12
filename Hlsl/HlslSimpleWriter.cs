@@ -371,7 +371,7 @@ public class HlslSimpleWriter : HlslWriter
                     $"({GetSourceName(instruction, 1)} < {GetSourceName(instruction, 2)}) ? 1 : 0");
                 break;
             case Opcode.SinCos:
-                WriteLine("sincos({1}, {0}, {0});", GetDestinationName(instruction), GetSourceName(instruction, 1));
+                WriteSinCos(instruction);
                 break;
             case Opcode.Sub:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -820,6 +820,40 @@ public class HlslSimpleWriter : HlslWriter
                 // the instruction - sample_l left an empty method body.
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
+    }
+
+    // sincos writes the cosine to x and the sine to y, and a shader wanting only
+    // one of them masks the other off. HLSL names them the other way round -
+    // sincos(value, sine, cosine) - and writing the one destination as both
+    // arguments put whichever came second in both components.
+    private void WriteSinCos(D3D9Instruction instruction)
+    {
+        const int CosineComponent = 1;
+        const int SineComponent = 2;
+        int writeMask = instruction.GetDestinationWriteMask();
+        string register = GetDestinationRegisterName(instruction);
+        // One component: sincos replicates a scalar, and naming the source as
+        // wide as the destination asked HLSL for float2 outputs.
+        string value = GetSourceName(instruction, 1, 1);
+        if ((writeMask & CosineComponent) != 0 && (writeMask & SineComponent) != 0)
+        {
+            WriteLine("sincos({0}, {1}.y, {1}.x);", value, register);
+        }
+        else if ((writeMask & SineComponent) != 0)
+        {
+            WriteLine("{0}.y = sin({1});", register, value);
+        }
+        else
+        {
+            WriteLine("{0}.x = cos({1});", register, value);
+        }
+    }
+
+    // The register alone, for the one caller that names its own components.
+    private string GetDestinationRegisterName(D3D9Instruction instruction)
+    {
+        int destinationIndex = instruction.GetDestinationParamIndex().Value;
+        return _registers.GetRegisterName(instruction.GetParamRegisterKey(destinationIndex));
     }
 
     private string GetDestinationName(D3D9Instruction instruction)

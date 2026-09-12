@@ -57,6 +57,12 @@ public class RoundTripCostTests
             + "(t > 0 ? -1 : 0)`, which is what the shader does but not how fxc "
             + "writes it. fxc recognises its own sign expansion and this is not "
             + "quite it, so it emits the selects rather than folding them back."),
+        ["ps_3_0/sincos"] = (19,
+            "sin and cos on ps_3_0 are a range reduction - frac of the angle over "
+            + "two pi, scaled back - and then the sincos instruction. The decompiler "
+            + "recovers that reduction as source, and fxc applies its own on top of "
+            + "the sin and cos it then sees, so the reduction happens twice. The "
+            + "same shape as the doubled sign fixup in int_divide."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

@@ -24,8 +24,20 @@ public abstract class Instruction
 
     public string GetDestinationWriteMaskName(int destinationLength)
     {
+        return FormatWriteMask(GetDestinationWriteMask(), destinationLength);
+    }
+
+    /// <summary>The write mask of one named destination, for the two-destination
+    /// instructions where the first is not the only one.</summary>
+    public virtual string GetWriteMaskName(int operandIndex, int destinationLength)
+    {
+        return GetDestinationWriteMaskName(destinationLength);
+    }
+
+    protected static string FormatWriteMask(int writeMask, int destinationLength)
+    {
         int destinationMask = (1 << destinationLength) - 1;
-        int writeMask = GetDestinationWriteMask() & destinationMask;
+        writeMask &= destinationMask;
 
         if (writeMask == destinationMask || writeMask == 0)
         {

@@ -142,6 +142,13 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DclOutput:
                 case D3D10Opcode.DerivRtx:
                 case D3D10Opcode.DerivRty:
+                // Two destinations is still destinations. Saying they had none
+                // left both operands looking like sources, so they took source
+                // swizzles and the sources were read four components wide - a udiv
+                // by l(3, 3, 0, 0) then divides by the zeroes as well.
+                case D3D10Opcode.Udiv:
+                case D3D10Opcode.IMul:
+                case D3D10Opcode.UMul:
                 case D3D10Opcode.Dp2:
                 case D3D10Opcode.Dp3:
                 case D3D10Opcode.Dp4:
@@ -222,7 +229,44 @@ public class D3D10Instruction : Instruction
         {
             return null;
         }
+        // udiv, imul and sincos write two destinations and a shader wanting only
+        // one of the two leaves the other null. A null carries no write mask, so
+        // taking it as the destination said the instruction writes nothing - and
+        // `udiv null, r0.zw, r0.zzzw, l(0, 0, 7, 7)` then read the divisor from the
+        // first two components, which are the 0 of a division by zero.
+        if (GetOperandType(0) == OperandType.Null && HasSecondDestination())
+        {
+            return 1;
+        }
         return 0;
+    }
+
+    /// <summary>
+    /// Whether this operand is written rather than read. udiv, imul and sincos
+    /// write two, and treating the second as a source gave it a source swizzle
+    /// where it wanted its write mask.
+    /// </summary>
+    public bool IsDestinationOperand(int operandIndex)
+    {
+        if (operandIndex == GetDestinationParamIndex())
+        {
+            return true;
+        }
+        return operandIndex == 1 && HasSecondDestination();
+    }
+
+    private bool HasSecondDestination()
+    {
+        switch (Opcode)
+        {
+            case D3D10Opcode.Udiv:
+            case D3D10Opcode.IMul:
+            case D3D10Opcode.UMul:
+            case D3D10Opcode.SinCos:
+                return true;
+            default:
+                return false;
+        }
     }
 
     // A constant buffer operand is indexed twice: by buffer, then by element.
@@ -231,6 +275,11 @@ public class D3D10Instruction : Instruction
     public override int GetDestinationWriteMask()
     {
         return GetWriteMask(GetDestinationParamIndex().Value);
+    }
+
+    public override string GetWriteMaskName(int operandIndex, int destinationLength)
+    {
+        return FormatWriteMask(GetWriteMask(operandIndex), destinationLength);
     }
 
     public int GetWriteMask(int operandIndex)

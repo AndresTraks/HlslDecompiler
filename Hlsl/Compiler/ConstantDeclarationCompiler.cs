@@ -81,31 +81,25 @@ public sealed class ConstantDeclarationCompiler
         return $"{typeName} {declaration.Name}{arrayCountSpecifier}{registerSpecifier};";
     }
 
+    // bool, int, uint, float and so on, which the enum already spells.
+    private static string GetScalarTypeName(ParameterType parameterType)
+    {
+        return parameterType.ToString().ToLower();
+    }
+
     private string GetTypeName(ShaderTypeInfo typeInfo)
     {
         switch (typeInfo.ParameterClass)
         {
             case ParameterClass.Scalar:
-                return typeInfo.ParameterType.ToString().ToLower();
+                return GetScalarTypeName(typeInfo.ParameterType);
             case ParameterClass.Vector:
-                if (typeInfo.ParameterType == ParameterType.Float)
-                {
-                    return "float" + typeInfo.Columns;
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
+                // int4 and uint4 are as ordinary as float4, and a cbuffer holding
+                // one used to throw rather than be named.
+                return GetScalarTypeName(typeInfo.ParameterType) + typeInfo.Columns;
             case ParameterClass.MatrixColumns:
             case ParameterClass.MatrixRows:
-                if (typeInfo.ParameterType == ParameterType.Float)
-                {
-                    return $"float{typeInfo.Rows}x{typeInfo.Columns}";
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
+                return $"{GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}";
             case ParameterClass.Object:
                 return typeInfo.ParameterType switch
                 {

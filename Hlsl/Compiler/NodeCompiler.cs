@@ -126,6 +126,14 @@ public sealed class NodeCompiler
     {
         List<HlslTreeNode> list = components.ToList();
         string compiled = Compile(list, promoteToVectorSize);
+        // A comparison standing where a value is wanted is the mask it wrote, which
+        // is all ones for true rather than one. sign expands to the difference of
+        // two comparisons, and reading them as HLSL bools gave back the negation of
+        // the sign: `(t < 0) - (t > 0)` is 1 where the shader says -1.
+        if (list[0] is ComparisonNode)
+        {
+            return $"({compiled} ? -1 : 0)";
+        }
         return AssociativityTester.NeedsParenthesesAsOperand(list[0])
             ? $"({compiled})"
             : compiled;

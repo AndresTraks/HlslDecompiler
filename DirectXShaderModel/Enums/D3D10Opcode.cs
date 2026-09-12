@@ -278,6 +278,14 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.IMad:
             case D3D10Opcode.IMin:
             case D3D10Opcode.IMul:
+            // The unsigned arithmetic is as integer as the signed. Leaving udiv out
+            // printed its divisor l(3, 3, 0, 0) as floats, where the bits of the
+            // integer 3 are a denormal and the division is by zero.
+            case D3D10Opcode.Udiv:
+            case D3D10Opcode.Umad:
+            case D3D10Opcode.UMax:
+            case D3D10Opcode.UMin:
+            case D3D10Opcode.UMul:
             case D3D10Opcode.Ine:
             case D3D10Opcode.INeg:
             case D3D10Opcode.IMax:

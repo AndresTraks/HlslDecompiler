@@ -1233,9 +1233,10 @@ public class HlslSimpleWriter : HlslWriter
             registerName = _registers.GetRegisterName(registerKey);
         }
         string writeMaskName;
-        if (operandIndex == instruction.GetDestinationParamIndex())
+        if (instruction.IsDestinationOperand(operandIndex))
         {
-            writeMaskName = instruction.GetDestinationWriteMaskName(_registers.GetRegisterMaskedLength(registerKey));
+            writeMaskName = instruction.GetWriteMaskName(
+                operandIndex, _registers.GetRegisterMaskedLength(registerKey));
         }
         else if (instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
         {

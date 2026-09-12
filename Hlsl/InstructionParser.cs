@@ -842,6 +842,22 @@ public class InstructionParser
         InsertStatement(returnStatement);
     }
 
+    /// <summary>
+    /// The value the mask stands for. It is the bit pattern of what is wanted, so
+    /// against a float comparison it is read as those bits rather than as whatever
+    /// the operand typing made of them: step masks with 0x3f800000, which is 1.0f
+    /// and not 1065353216. Against an integer comparison the number is the number.
+    /// </summary>
+    private static ConstantNode AsMaskedValue(HlslTreeNode condition, ConstantNode mask)
+    {
+        bool isInteger = condition is ComparisonNode comparison && comparison.IsInteger;
+        if (isInteger || mask.IntegerValue == null)
+        {
+            return mask;
+        }
+        return new ConstantNode(BitConverter.Int32BitsToSingle(mask.IntegerValue.Value));
+    }
+
     // A comparison result. GE is still modelled as an operation rather than a
     // ComparisonNode, unlike every other comparison, so it has to be named here.
     private static bool IsCondition(HlslTreeNode node)
@@ -866,13 +882,15 @@ public class InstructionParser
 
         if (opcode == D3D10Opcode.And)
         {
-            if (IsCondition(inputs[0]) && inputs[1] is ConstantNode)
+            if (IsCondition(inputs[0]) && inputs[1] is ConstantNode mask1)
             {
-                return new MoveConditionalOperation(inputs[0], inputs[1], new ConstantNode(0));
+                return new MoveConditionalOperation(
+                    inputs[0], AsMaskedValue(inputs[0], mask1), new ConstantNode(0));
             }
-            if (IsCondition(inputs[1]) && inputs[0] is ConstantNode)
+            if (IsCondition(inputs[1]) && inputs[0] is ConstantNode mask0)
             {
-                return new MoveConditionalOperation(inputs[1], inputs[0], new ConstantNode(0));
+                return new MoveConditionalOperation(
+                    inputs[1], AsMaskedValue(inputs[1], mask0), new ConstantNode(0));
             }
         }
 
@@ -1422,20 +1440,23 @@ public class InstructionParser
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
                         case D3D10Opcode.Ne:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
+                        // The integer comparisons, marked as such: the mask one
+                        // writes is an integer where a float comparison writes the
+                        // bits of a float.
                         case D3D10Opcode.Ilt:
-                            // Only ever consumed by a branch, so model it as the condition itself.
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
-                        case D3D10Opcode.Ige:
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
-                        case D3D10Opcode.UGE:
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
                         case D3D10Opcode.ULT:
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
+                            return new ComparisonNode(
+                                inputs[0], inputs[1], IfComparison.LT, isInteger: true);
+                        case D3D10Opcode.Ige:
+                        case D3D10Opcode.UGE:
+                            return new ComparisonNode(
+                                inputs[0], inputs[1], IfComparison.GE, isInteger: true);
                         case D3D10Opcode.Ieq:
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
+                            return new ComparisonNode(
+                                inputs[0], inputs[1], IfComparison.EQ, isInteger: true);
                         case D3D10Opcode.Ine:
-                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
+                            return new ComparisonNode(
+                                inputs[0], inputs[1], IfComparison.NE, isInteger: true);
                         case D3D10Opcode.IMad:
                             return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.IMin:

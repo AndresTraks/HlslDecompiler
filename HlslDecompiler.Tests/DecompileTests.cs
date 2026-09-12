@@ -27,6 +27,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "absolute_multiply")]
     [TestCase("ps_3_0", "modifier")]
     [TestCase("ps_3_0", "sincos")]
+    [TestCase("ps_3_0", "loop_counter_reuse")]
     [TestCase("ps_3_0", "partial_precision")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]

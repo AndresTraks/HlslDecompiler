@@ -28,6 +28,25 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownDifferences = new()
     {
+        ["ps_4_0/step_mask"] =
+            "The instruction writer declares one variable per register for the whole "
+            + "shader, and fxc reuses a register: here one carries a comparison mask "
+            + "at one point and a max at another. IntegerOperandAnalysis marks it "
+            + "integer, so the max is truncated. Excluding registers a float "
+            + "instruction writes does not work either - the same register genuinely "
+            + "holds an integer earlier - and neither does reinterpreting every "
+            + "integer operation with asint, which breaks the shaders where the "
+            + "integer declaration is right. It wants the register split by live "
+            + "range, so that the two uses become two variables.",
+        ["ps_3_0/loop_counter_reuse"] =
+            "`t1 = t1 + 1` is the last instruction of the loop body and is emitted "
+            + "first, so every read in the body sees a counter one too high. The "
+            + "assignment order puts an assignment before anything reading its "
+            + "variable, which is right for a chain of instructions - component_chain "
+            + "depends on it - and exactly wrong for a value read before it is "
+            + "overwritten. Temp lowering gives both the same variable, so the graph "
+            + "cannot tell them apart; it wants the order the instructions were in, "
+            + "which nothing records.",
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

@@ -13,7 +13,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 		r0.x = r0.x + texcoord.x;
 		r0.y = r0.y + 1;
 	}
-	r0.x = (r0.x < 0) ? -1 : 0;
+	r0.x = asfloat((r0.x < 0) ? -1 : 0);
 	clip(r0.x);
 	o = a;
 

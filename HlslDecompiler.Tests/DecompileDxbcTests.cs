@@ -62,6 +62,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "rounding")]
     [TestCase("ps_4_0", "logical_and")]
     [TestCase("ps_4_0", "saturate_step")]
+    [TestCase("ps_4_0", "comparison_mask")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

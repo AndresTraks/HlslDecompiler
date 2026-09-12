@@ -46,6 +46,14 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_4_0/comparison_mask"] = (8,
+            "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
+            + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "
+            + "number has no decimal point. HLSL reads those as integers, so fxc "
+            + "compiles the whole expression in integers - ishl, and, iadd - and "
+            + "converts once at the end where the original never left float. The "
+            + "result is the same; giving every whole float a decimal point would "
+            + "churn every fixture for this one."),
         ["ps_3_0/continue_nested"] = (17,
             "The four components of one cmp all read r1 as it was before it, and they "
             + "are written as two statements. Naming the condition first keeps it the "

@@ -453,6 +453,55 @@ public class HlslSimpleWriter : HlslWriter
             GetOperandName(instruction, 0), $"({convertTo}{size}){reinterpreted}");
     }
 
+    // A comparison writes all ones for true and all zeroes for false, which is what
+    // lets an and with it act as a mask. Into a register declared float, `? -1 : 0`
+    // stores -1.0f instead, whose bits are 0xbf800000 - anded with the 0x3f800000 of
+    // 1.0f that happens to give 1.0f back, so it looked right, but anded with the
+    // 0x41000000 of 8.0f it gives 0x01000000, which is not 8.
+    private void WriteComparison(D3D10Instruction instruction, string op)
+    {
+        string condition =
+            $"({GetOperandName(instruction, 1)} {op} {GetOperandName(instruction, 2)}) ? -1 : 0";
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+            IsIntegerDestination(instruction) ? condition : $"asfloat({condition})");
+    }
+
+    // and, or and xor work on the bits, whatever the register holding them is
+    // declared as. A register holding what a float comparison wrote is declared
+    // float, and HLSL will not apply a bitwise operator to one - X3082 - so where
+    // that happens the bits are named directly. asint and asfloat reinterpret
+    // rather than convert, which is what makes this the same operation and not a
+    // rounding of it: the mask anded here is 0x3f800000, the bits of 1.0f, and
+    // converting it to an integer would make it 1065353216.
+    private void WriteBitwise(D3D10Instruction instruction, string op)
+    {
+        bool reinterpret = !IsIntegerDestination(instruction);
+        string left = Reinterpreted(instruction, 1, reinterpret);
+        string right = Reinterpreted(instruction, 2, reinterpret);
+        string expression = $"{left} {op} {right}";
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+            reinterpret ? $"asfloat({expression})" : expression);
+    }
+
+    private string Reinterpreted(D3D10Instruction instruction, int operandIndex, bool reinterpret)
+    {
+        string name = GetOperandName(instruction, operandIndex);
+        return reinterpret ? $"asint({name})" : name;
+    }
+
+    private bool IsIntegerDestination(D3D10Instruction instruction)
+    {
+        int? destinationIndex = instruction.GetDestinationParamIndex();
+        if (destinationIndex == null)
+        {
+            return true;
+        }
+
+        return IsIntegerTempRegister(
+            instruction.GetParamRegisterKey(destinationIndex.Value),
+            instruction.GetDestinationWriteMask());
+    }
+
     // A D3D10 result can be clamped to [0, 1] by a bit on the instruction rather
     // than by anything in the operands, and dropping it is not visible in the
     // output - dp3_sat feeding a log became log2 of a negative number. Every case
@@ -581,24 +630,24 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = floor({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LT:
-                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, "<");
                 break;
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:
-                WriteResult(instruction, "{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, ">=");
                 break;
             case D3D10Opcode.ULT:
-                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, "<");
                 break;
             case D3D10Opcode.EndLoop:
                 indent = indent.Substring(0, indent.Length - 1);
                 WriteLine("}");
                 break;
             case D3D10Opcode.GE:
-                WriteResult(instruction, "{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, ">=");
                 break;
             case D3D10Opcode.Ilt:
-                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, "<");
                 break;
             case D3D10Opcode.IToF:
                 WriteConversion(instruction, "int", "float");
@@ -693,10 +742,10 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = ceil({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Ieq:
-                WriteResult(instruction, "{0} = ({1} == {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteComparison(instruction, "==");
                 break;
             case D3D10Opcode.And:
-                WriteResult(instruction, "{0} = {1} & {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteBitwise(instruction, "&");
                 break;
             case D3D10Opcode.Udiv:
                 // Quotient and remainder, either of which may be null.
@@ -710,10 +759,10 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 break;
             case D3D10Opcode.Or:
-                WriteResult(instruction, "{0} = {1} | {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteBitwise(instruction, "|");
                 break;
             case D3D10Opcode.Xor:
-                WriteResult(instruction, "{0} = {1} ^ {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteBitwise(instruction, "^");
                 break;
             case D3D10Opcode.SinCos:
                 WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));

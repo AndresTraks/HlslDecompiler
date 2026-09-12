@@ -105,17 +105,6 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownInstructionFailures = new()
     {
-        ["ps_4_0/logical_and"] =
-            "A bitwise operator applied to a float register. The register holds the "
-            + "mask a float comparison writes, which IntegerOperandAnalysis does not "
-            + "count as integer-producing. Marking comparisons as such types the "
-            + "register correctly and breaks saturate_step, below.",
-        ["ps_4_0/saturate_step"] =
-            "The same bitwise operator on a float register, and the reason the "
-            + "obvious fix does not work: the mask is anded with 0x3f800000, the bits "
-            + "of 1.0f. Type the register as integer and that immediate reads as the "
-            + "integer 1065353216, which is worse - it compiles and is wrong. The "
-            + "register is genuinely neither, and the analysis has no way to say so.",
     };
 
     /// <summary>

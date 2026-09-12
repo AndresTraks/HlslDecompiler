@@ -1372,7 +1372,7 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         int dimension = GetTextureDimension(instruction);
-        string offsets = string.Join(", ", instruction.SampleOffsets.Take(dimension));
+        string offsets = string.Join(", ", instruction.SampleOffsets.Take(dimension).Select(o => o.ToString(_culture)));
         return dimension > 1
             ? $", int{dimension}({offsets})"
             : $", {offsets}";

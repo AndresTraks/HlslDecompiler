@@ -51,6 +51,9 @@ public abstract class HlslWriter
 
     public void Write(TextWriter writer)
     {
+        // HLSL output always uses Windows line endings, regardless of host OS,
+        // so decompiled shaders and their fxc round-trip are reproducible everywhere.
+        writer.NewLine = "\r\n";
         internalWriter = writer;
         WriteInternal();
     }

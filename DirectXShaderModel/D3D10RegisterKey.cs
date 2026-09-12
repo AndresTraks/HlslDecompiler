@@ -1,4 +1,6 @@
-﻿namespace HlslDecompiler.DirectXShaderModel;
+﻿using System.Linq;
+
+namespace HlslDecompiler.DirectXShaderModel;
 
 public class D3D10RegisterKey : RegisterKey
 {
@@ -138,13 +140,13 @@ public class D3D10RegisterKey : RegisterKey
         {
             if (ImmediateSingle.Length == 1)
             {
-                return ImmediateSingle[0].ToString();
+                return ImmediateSingle[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
-            return $"[{string.Join(", ", ImmediateSingle)}]";
+            return $"[{string.Join(", ", ImmediateSingle.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture)))}]";
         }
         if (ImmediateInt.HasValue)
         {
-            return ImmediateInt.Value.ToString();
+            return ImmediateInt.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
         if (GSVertex != null)
         {

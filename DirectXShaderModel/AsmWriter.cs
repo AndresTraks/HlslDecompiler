@@ -1,6 +1,7 @@
 ﻿using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -26,7 +27,7 @@ public class AsmWriter
 
     void WriteLine(string format, params object[] args)
     {
-        asmWriter.WriteLine(format, args);
+        asmWriter.WriteLine(string.Format(CultureInfo.InvariantCulture, format, args));
     }
 
     private string GetDestinationName(D3D9Instruction instruction)
@@ -74,7 +75,7 @@ public class AsmWriter
 
     public void Write(Stream stream)
     {
-        asmWriter = new StreamWriter(stream);
+        asmWriter = new StreamWriter(stream) { NewLine = "\r\n" };
         string shaderType = shader.Type switch
         {
             ShaderType.Vertex => "vs",
@@ -745,7 +746,7 @@ public class AsmWriter
         // and every other form of sample can carry them too.
         if (instruction.SampleOffsets != null)
         {
-            mnemonic += $"_aoffimmi({string.Join(",", instruction.SampleOffsets)})";
+            mnemonic += $"_aoffimmi({string.Join(",", instruction.SampleOffsets.Select(o => o.ToString(CultureInfo.InvariantCulture)))})";
         }
         string line = instruction.Saturate ? mnemonic + "_sat" : mnemonic;
         for (int i = 0; i < operandCount; i++)
@@ -973,7 +974,7 @@ public class AsmWriter
             {
                 if (isInteger)
                 {
-                    return $"l({instruction.GetParamInt(index)})";
+                    return $"l({instruction.GetParamInt(index).ToString(CultureInfo.InvariantCulture)})";
                 }
                 else
                 {
@@ -984,10 +985,10 @@ public class AsmWriter
             {
                 if (isInteger)
                 {
-                    string immediate0 = instruction.GetParamInt(index, 0).ToString();
-                    string immediate1 = instruction.GetParamInt(index, 1).ToString();
-                    string immediate2 = instruction.GetParamInt(index, 2).ToString();
-                    string immediate3 = instruction.GetParamInt(index, 3).ToString();
+                    string immediate0 = instruction.GetParamInt(index, 0).ToString(CultureInfo.InvariantCulture);
+                    string immediate1 = instruction.GetParamInt(index, 1).ToString(CultureInfo.InvariantCulture);
+                    string immediate2 = instruction.GetParamInt(index, 2).ToString(CultureInfo.InvariantCulture);
+                    string immediate3 = instruction.GetParamInt(index, 3).ToString(CultureInfo.InvariantCulture);
                     return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
                 }
                 else

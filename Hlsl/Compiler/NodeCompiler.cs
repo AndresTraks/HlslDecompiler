@@ -513,7 +513,8 @@ public sealed class NodeCompiler
         }
 
         int dimension = texture.GetDimensionSize();
-        string offsets = string.Join(", ", sampleOffsets.Take(dimension));
+        string offsets = string.Join(", ", sampleOffsets.Take(dimension)
+            .Select(o => o.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         return dimension > 1
             ? $", int{dimension}({offsets})"
             : $", {offsets}";

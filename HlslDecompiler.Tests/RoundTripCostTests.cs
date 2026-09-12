@@ -46,23 +46,12 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_4_0/integer_vector"] = (25,
-            "The same doubled sign fixup as int_divide, on two operations rather "
-            + "than one: a signed % and / each compile to udiv over the absolute "
-            + "values plus a correction, the decompiler recovers that correction as "
-            + "source, and fxc applies its own around the % and / it then sees."),
         ["ps_4_0/sign_intrinsic"] = (24,
             "sign is two comparisons subtracted, and the masks they write are all "
             + "ones rather than one - so the output says `(t < 0 ? -1 : 0) - "
             + "(t > 0 ? -1 : 0)`, which is what the shader does but not how fxc "
             + "writes it. fxc recognises its own sign expansion and this is not "
             + "quite it, so it emits the selects rather than folding them back."),
-        ["ps_3_0/sincos"] = (19,
-            "sin and cos on ps_3_0 are a range reduction - frac of the angle over "
-            + "two pi, scaled back - and then the sincos instruction. The decompiler "
-            + "recovers that reduction as source, and fxc applies its own on top of "
-            + "the sin and cos it then sees, so the reduction happens twice. The "
-            + "same shape as the doubled sign fixup in int_divide."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "
@@ -101,15 +90,6 @@ public class RoundTripCostTests
         ["ps_3_0/shared_subexpression"] = (20,
             "Naming the shared subexpression is what stops the output exploding, and it "
             + "also stops fxc folding it back. That is the trade, not a defect."),
-        ["ps_4_0/int_divide"] = (17,
-            "Was blamed on the conversions around udiv being moves rather than casts. "
-            + "They are casts now and the count did not move, so that was wrong. A "
-            + "signed % and / each compile to udiv over the absolute values plus a "
-            + "sign fixup, and the decompiler recovers that fixup as source: "
-            + "`a & -2147483648 ? -abs(a) % abs(b) : abs(a) % abs(b)`. fxc then "
-            + "applies its own fixup around the % and / in that expression, so the "
-            + "correction happens twice. Recognising the whole pattern and writing "
-            + "`a % b` would round trip to the original twelve."),
 
 
         ["ps_4_0/reflect_cube"] = (15,

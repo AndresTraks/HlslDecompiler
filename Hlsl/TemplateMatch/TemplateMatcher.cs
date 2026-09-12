@@ -38,7 +38,9 @@ public class TemplateMatcher
             new CompareNegativeWithZeroTemplate(),
             new ComparePositiveAndNegativeTemplate(),
             new CompareCompareTemplate(),
-            new MaxOfPositiveAndNegativeTemplate()
+            new MaxOfPositiveAndNegativeTemplate(),
+            new TrigonometricRangeReductionTemplate(),
+            new SignedDivideTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>
         {

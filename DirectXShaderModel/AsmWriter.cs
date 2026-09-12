@@ -122,10 +122,14 @@ public class AsmWriter
                 break;
             case Opcode.Dcl:
                 string dclInstruction = "dcl";
-                // ps_2_0 declares its texture coordinates as `dcl t0.xy`, with the
-                // semantic implied by the register rather than spelled out.
+                // ps_2_0 declares its texture coordinates as `dcl t0.xy` and its
+                // colours as `dcl v0`, with the semantic implied by the register
+                // rather than spelled out.
+                bool impliedSemantic = instruction.GetParamRegisterType(1) == RegisterType.Texture
+                    || (instruction.HasImpliedInputSemantics
+                        && instruction.GetParamRegisterType(1) == RegisterType.Input);
                 if (instruction.GetParamRegisterType(1) != RegisterType.MiscType
-                    && instruction.GetParamRegisterType(1) != RegisterType.Texture)
+                    && !impliedSemantic)
                 {
                     dclInstruction += "_" + instruction.GetDeclSemantic().ToLower();
                 }

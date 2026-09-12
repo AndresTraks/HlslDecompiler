@@ -40,6 +40,14 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class D3D9Instruction : Instruction
 {
+    /// <summary>
+    /// True for a pixel shader before version 3. Its input registers are the
+    /// diffuse and specular colours, declared as `dcl v0` with no usage field - and
+    /// a usage field of zero reads as POSITION, which is not a semantic a pixel
+    /// shader may even take.
+    /// </summary>
+    public bool HasImpliedInputSemantics { get; set; }
+
     public D3D9Instruction(uint instructionToken, uint[] paramTokens) 
     {
         InstructionToken = instructionToken;
@@ -77,6 +85,9 @@ public class D3D9Instruction : Instruction
             case RegisterType.Texture:
                 int textureIndex = GetParamRegisterNumber(1);
                 return textureIndex == 0 ? "TEXCOORD" : "TEXCOORD" + textureIndex;
+            case RegisterType.Input when HasImpliedInputSemantics:
+                int colourIndex = GetParamRegisterNumber(1);
+                return colourIndex == 0 ? "COLOR" : "COLOR" + colourIndex;
             case RegisterType.Input:
             case RegisterType.Output:
                 string name;

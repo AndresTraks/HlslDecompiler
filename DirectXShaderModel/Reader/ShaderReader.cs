@@ -19,12 +19,14 @@ public class ShaderReader : BinaryReader
         byte majorVersion = ReadByte();
         ShaderType shaderType = (ShaderType)ReadUInt16();
 
+        bool impliedInputSemantics = shaderType == ShaderType.Pixel && majorVersion < 3;
         var instructions = new List<Instruction>();
         while (true)
         {
             D3D9Instruction instruction = (majorVersion == 1)
                 ? ReadFixedSizeInstruction()
                 : ReadDynamicSizeInstruction();
+            instruction.HasImpliedInputSemantics = impliedInputSemantics;
             instructions.Add(instruction);
             if (instruction.Opcode == Opcode.End) break;
         }

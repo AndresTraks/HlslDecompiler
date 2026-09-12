@@ -409,11 +409,11 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)
     {
-        List<TempAssignmentNode> assignments = HoistSharedSubexpressions(roots).ToList();
-        assignments = TempAssignmentOrder.SortNodes(assignments);
-        foreach (TempAssignmentNode assignment in assignments)
+        List<HlslTreeNode[]> assignments = TempAssignmentOrder.Sort(
+            HoistSharedSubexpressions(roots));
+        foreach (HlslTreeNode[] assignment in assignments)
         {
-            WriteLine(_compiler.Compile([assignment]));
+            WriteLine(_compiler.Compile(assignment));
         }
     }
 
@@ -440,10 +440,7 @@ public class HlslAstWriter : HlslWriter
         // After reducing, not before: naming a subexpression hides it from the
         // templates, and a node feeding four components would be named rather than
         // broadcast.
-        foreach (TempAssignmentNode hoisted in HoistSharedSubexpressions(registerGroups))
-        {
-            groups.Add([hoisted]);
-        }
+        groups.AddRange(HoistSharedSubexpressions(registerGroups));
 
         foreach (var registerGroup in registerGroups)
         {
@@ -457,10 +454,7 @@ public class HlslAstWriter : HlslWriter
                 [.. nodeGrouper.GroupComponents(registerNodes).Select(g => g.ToArray())];
             // Before the groups themselves, and before anything overwrites what they
             // read.
-            foreach (TempAssignmentNode hoisted in HoistStaleReads(componentGroups))
-            {
-                groups.Add([hoisted]);
-            }
+            groups.AddRange(HoistStaleReads(componentGroups));
             groups.AddRange(componentGroups);
         }
         return TempAssignmentOrder.Sort(groups);
@@ -479,7 +473,7 @@ public class HlslAstWriter : HlslWriter
     /// saw. Unlike the hoisting below, this is not a matter of how large the
     /// expression is - it is wrong at any size.
     /// </summary>
-    private IEnumerable<TempAssignmentNode> HoistStaleReads(IList<HlslTreeNode[]> componentGroups)
+    private List<HlslTreeNode[]> HoistStaleReads(IList<HlslTreeNode[]> componentGroups)
     {
         if (componentGroups.Count < 2)
         {
@@ -511,7 +505,7 @@ public class HlslAstWriter : HlslWriter
             }
         }
 
-        var assignments = new List<TempAssignmentNode>();
+        var assignments = new List<HlslTreeNode[]>();
         HashSet<HlslTreeNode> visited = HlslTreeNode.NewNodeSet();
         var stack = new Stack<HlslTreeNode>(componentGroups.SelectMany(g => g));
         while (stack.Count != 0)
@@ -527,7 +521,7 @@ public class HlslAstWriter : HlslWriter
                 && ReadsAnyOf(node, overwritten))
             {
                 // Named, so nothing inside it is read stale either.
-                assignments.Add(NameSubexpression(node, _compiler.CreateScalarTempVariable()));
+                assignments.Add([NameSubexpression(node, _compiler.CreateScalarTempVariable())]);
                 continue;
             }
 
@@ -582,7 +576,7 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private const int InlinedSizeBudget = 500;
 
-    private IEnumerable<TempAssignmentNode> HoistSharedSubexpressions(
+    private List<HlslTreeNode[]> HoistSharedSubexpressions(
         IList<HlslTreeNode[]> registerGroups)
     {
         var roots = HlslTreeNode.NewNodeSet();
@@ -627,9 +621,9 @@ public class HlslAstWriter : HlslWriter
             return [];
         }
 
-        var assignments = new List<TempAssignmentNode>();
-        // Deepest first, so that a shared node inside another one is named before the
-        // node containing it stops being reachable from here.
+        // Deepest first, so that a shared node inside another one is named before
+        // the node containing it stops being reachable from here.
+        var candidates = new List<HlslTreeNode>();
         for (int i = order.Count - 1; i >= 0; i--)
         {
             HlslTreeNode node = order[i];
@@ -645,7 +639,48 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
-            assignments.Add(NameSubexpression(node, _compiler.CreateScalarTempVariable()));
+            candidates.Add(node);
+        }
+        return NameCandidates(candidates);
+    }
+
+    /// <summary>
+    /// Names the candidates, the components of one operation together.
+    ///
+    /// A value graph holds a four wide instruction as four separate nodes and puts
+    /// them back together when an assignment is compiled. Naming each of them on its
+    /// own happens before that and defeats it: four scalars that were one mad, and
+    /// nothing downstream can tell they belong together any more.
+    /// </summary>
+    private List<HlslTreeNode[]> NameCandidates(List<HlslTreeNode> candidates)
+    {
+        var nodeGrouper = new NodeGrouper(_registers);
+        var assignments = new List<HlslTreeNode[]>();
+        var named = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode candidate in candidates)
+        {
+            if (!named.Add(candidate))
+            {
+                continue;
+            }
+
+            List<HlslTreeNode> group = [candidate];
+            foreach (HlslTreeNode other in candidates)
+            {
+                if (group.Count == 4 || named.Contains(other))
+                {
+                    continue;
+                }
+                // Against the first, which is how GroupComponents reads a run too.
+                if (nodeGrouper.CanGroupComponents(candidate, other))
+                {
+                    group.Add(other);
+                    named.Add(other);
+                }
+            }
+
+            TempVariableNode[] variables = _compiler.CreateTempVariables(group.Count);
+            assignments.Add([.. group.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
         }
         return assignments;
     }

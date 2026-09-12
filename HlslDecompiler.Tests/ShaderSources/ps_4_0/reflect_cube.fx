@@ -12,12 +12,9 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	float t5 = length(i.texcoord - eye);
-	float t2 = (i.texcoord.x - eye.x) / t5;
-	float t3 = (i.texcoord.y - eye.y) / t5;
-	float t4 = 2 * dot(float3(t2, t3, (i.texcoord.z - eye.z) / t5), normalize(i.normal));
-	float t0 = i.normal.x / length(i.normal) * -t4 + t2;
-	float t1 = i.normal.y / length(i.normal) * -t4 + t3;
-	float t6 = i.normal.z / length(i.normal) * -t4 + (i.texcoord.z - eye.z) / t5;
-	return env.Sample(samp, float3(t0, t1, t6)) * reflectivity;
+	float t3 = length(i.texcoord - eye);
+	float3 t1 = (i.texcoord - eye) / t3;
+	float t2 = 2 * dot(t1, normalize(i.normal));
+	float3 t0 = normalize(i.normal) * -t2 + t1;
+	return env.Sample(samp, t0) * reflectivity;
 }

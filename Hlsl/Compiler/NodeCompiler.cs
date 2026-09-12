@@ -22,12 +22,25 @@ public sealed class NodeCompiler
     /// </summary>
     public TempVariableNode CreateScalarTempVariable()
     {
-        return new TempVariableNode
+        return CreateTempVariables(1)[0];
+    }
+
+    /// <summary>
+    /// One variable per component of a subexpression that spans several. They share
+    /// a declaration index, which is what makes the writer name them as one vector -
+    /// a value graph holds a four wide operation as four separate nodes, and naming
+    /// each of them on its own turns one instruction into four statements that can
+    /// never be put back together.
+    /// </summary>
+    public TempVariableNode[] CreateTempVariables(int size)
+    {
+        int index = _tempAssignmentindexCounter++;
+        return [.. Enumerable.Range(0, size).Select(component => new TempVariableNode
         {
-            DeclarationIndex = _tempAssignmentindexCounter++,
-            ComponentIndex = 0,
-            VariableSize = 1,
-        };
+            DeclarationIndex = index,
+            ComponentIndex = component,
+            VariableSize = size,
+        })];
     }
 
     public const int PromoteToAnyVectorSize = -1;

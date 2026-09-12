@@ -64,6 +64,11 @@ public class RoundTripCostTests
             "One instruction, from the order the terms are summed in, as "
             + "sign_intrinsic. Kept for the known difference it records rather than "
             + "for the cost: see EquivalenceTests."),
+        ["ps_3_0/shared_subexpression"] = (15,
+            "Naming the shared subexpression is what stops the output exploding, and "
+            + "it also stops fxc folding it back - the original is seven instructions "
+            + "of a tightly nested expression. That is the trade, not a defect. Was "
+            + "twenty until the hoist started naming a whole vector at once."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "
@@ -99,16 +104,8 @@ public class RoundTripCostTests
             + "branch. Confirmed by disabling AddZeroTemplate, which collapses the return "
             + "to one expression - and breaks twelve other fixtures, so the template is "
             + "earning its place and the fix has to be narrower than removing it."),
-        ["ps_3_0/shared_subexpression"] = (20,
-            "Naming the shared subexpression is what stops the output exploding, and it "
-            + "also stops fxc folding it back. That is the trade, not a defect."),
 
 
-        ["ps_4_0/reflect_cube"] = (15,
-            "Was eighteen, and wrong: (world - eye) / length(...) printed without "
-            + "parentheses as world - eye / length(...). Correct now. The two left are "
-            + "fxc's: the original multiplies by rsq where the decompiled source says "
-            + "divide by length, so it emits sqrt and div."),
 
         ["vs_3_0/partial_overwrite"] = (15,
             "The original computes a lerp over all four components and then overwrites "

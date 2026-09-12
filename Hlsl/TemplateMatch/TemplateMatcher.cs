@@ -40,7 +40,9 @@ public class TemplateMatcher
             new CompareCompareTemplate(),
             new MaxOfPositiveAndNegativeTemplate(),
             new TrigonometricRangeReductionTemplate(),
-            new SignedDivideTemplate()
+            new SignedDivideTemplate(),
+            new SignTemplate(),
+            new FloatingModuloTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>
         {

@@ -434,6 +434,11 @@ public sealed class NodeCompiler
                         Compile(components.Select(g => g.Inputs[1])));
                 }
 
+            case FloatingModuloOperation _:
+                return string.Format("fmod({0}, {1})",
+                    Compile(components.Select(g => g.Inputs[0])),
+                    Compile(components.Select(g => g.Inputs[1])));
+
             case MoveConditionalOperation _:
                 {
                     var value1 = Compile(components.Select(g => g.Inputs[0]));

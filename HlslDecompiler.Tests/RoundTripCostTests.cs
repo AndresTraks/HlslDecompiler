@@ -46,12 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_4_0/sign_intrinsic"] = (24,
-            "sign is two comparisons subtracted, and the masks they write are all "
-            + "ones rather than one - so the output says `(t < 0 ? -1 : 0) - "
-            + "(t > 0 ? -1 : 0)`, which is what the shader does but not how fxc "
-            + "writes it. fxc recognises its own sign expansion and this is not "
-            + "quite it, so it emits the selects rather than folding them back."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

@@ -24,7 +24,12 @@ public sealed class RegisterState
     public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
 
     public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
-    public IDictionary<RegisterKey, RegisterDeclaration> MethodInputRegisters { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
+
+    // A list rather than a dictionary keyed by register: fxc packs interpolators as
+    // tightly as constants, so two differently named inputs - TEXCOORD0 at v2.xy and
+    // TEXCOORD1 at v2.z - can share one register, and a plain per-register key could
+    // not hold both.
+    public IList<RegisterDeclaration> MethodInputRegisters { get; } = [];
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
     public int? MaxOutputVertexCount { get; set; }
     public int[]? NumThreads { get; set; }
@@ -60,8 +65,84 @@ public sealed class RegisterState
             {
                 return declaration.TypeInfo.Columns;
             }
+            // An input register can be packed the same way a constant buffer is, so
+            // its width is that of the declaration actually covering this component,
+            // not of the register's merged, wider mask.
+            if (d3d10RegisterKey.OperandType == OperandType.Input)
+            {
+                RegisterDeclaration inputDeclaration = FindInputDeclaration(
+                    d3d10RegisterKey, registerComponentKey.ComponentIndex);
+                if (inputDeclaration != null)
+                {
+                    return inputDeclaration.MaskedLength;
+                }
+            }
         }
         return GetRegisterMaskedLength(registerComponentKey.RegisterKey);
+    }
+
+    // Which declaration of a packed input register actually covers this component -
+    // fxc can declare TEXCOORD0 at v2.xy and TEXCOORD1 at v2.z, each with its own
+    // dcl_input_ps, and MethodInputRegisters holds one entry per declaration rather
+    // than one per register so both survive.
+    private RegisterDeclaration FindInputDeclaration(D3D10RegisterKey registerKey, int componentIndex)
+    {
+        return MethodInputRegisters.FirstOrDefault(d =>
+            d.RegisterKey.Equals(registerKey) && (d.WriteMask & (1 << componentIndex)) != 0);
+    }
+
+    // True only when another declaration actually shares this component's register -
+    // SV_VertexID is one component wide too, but alone in its register, and printing
+    // it as sv_vertexid rather than sv_vertexid.x is what the golden files expect.
+    public bool IsPackedInputComponent(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
+            || registerKey.OperandType != OperandType.Input)
+        {
+            return false;
+        }
+        return MethodInputRegisters.Count(d => d.RegisterKey.Equals(registerKey)) > 1;
+    }
+
+    private static int CountSetBits(int mask)
+    {
+        int count = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            if ((mask & (1 << i)) != 0)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// Which component of its register a packed input starts at, the same way a
+    /// packed constant does: TEXCOORD1 at v2.z starts at component 2, and a swizzle
+    /// naming it has to be rebased onto the variable, whose own components start at x.
+    /// </summary>
+    public int GetInputComponentBase(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
+            || registerKey.OperandType != OperandType.Input)
+        {
+            return 0;
+        }
+
+        RegisterDeclaration declaration = FindInputDeclaration(registerKey, registerComponentKey.ComponentIndex);
+        if (declaration == null)
+        {
+            return 0;
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            if ((declaration.WriteMask & (1 << i)) != 0)
+            {
+                return i;
+            }
+        }
+        return 0;
     }
 
     public int GetRegisterMaskedLength(RegisterKey registerKey)
@@ -312,6 +393,22 @@ public sealed class RegisterState
             if (declaration != null && declaration.TypeInfo.Rows == 1)
             {
                 return GetConstantBufferName(declaration, d3d10RegisterKey);
+            }
+        }
+        if (registerComponentKey.RegisterKey is D3D10RegisterKey inputRegisterKey
+            && inputRegisterKey.OperandType == OperandType.Input)
+        {
+            RegisterDeclaration inputDeclaration = FindInputDeclaration(
+                inputRegisterKey, registerComponentKey.ComponentIndex);
+            if (inputDeclaration != null)
+            {
+                if (inputRegisterKey.GSVertex.HasValue)
+                {
+                    return $"i[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
+                }
+                return MethodInputRegisters.Count == 1
+                    ? inputDeclaration.Name
+                    : "i." + inputDeclaration.Name;
             }
         }
         return GetRegisterName(registerComponentKey.RegisterKey);
@@ -815,7 +912,7 @@ public sealed class RegisterState
                 || registerKey.Type == RegisterType.MiscType
                 || registerKey.Type == RegisterType.Texture)
             {
-                MethodInputRegisters.Add(registerKey, registerDeclaration);
+                MethodInputRegisters.Add(registerDeclaration);
             }
             else if (registerKey.IsOutput)
             {
@@ -897,7 +994,7 @@ public sealed class RegisterState
                     {
                         var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, vertexKey);
                         RegisterDeclarations.Add(vertexKey, registerDeclaration);
-                        MethodInputRegisters.Add(vertexKey, registerDeclaration);
+                        MethodInputRegisters.Add(registerDeclaration);
                     }
                 }
             }
@@ -905,7 +1002,26 @@ public sealed class RegisterState
             {
                 if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
                 {
-                    existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                    // fxc packs interpolators as tightly as constants: TEXCOORD0 can be
+                    // v2.xy and TEXCOORD1 v2.z, each declared by its own dcl_input_ps.
+                    // Only widen the existing field when this dcl names the same thing;
+                    // otherwise it is a second field sharing the register, and needs a
+                    // declaration - and an input struct field - of its own.
+                    RegisterDeclaration candidate = registerKey.OperandType == OperandType.Input
+                        ? CreateRegisterDeclarationFromD3D10Dcl(instruction, registerKey)
+                        : null;
+                    if (candidate != null && candidate.Semantic != existingDeclaration.Semantic)
+                    {
+                        // candidate.WriteMask does not start at x, so the usual
+                        // highest-bit-plus-one width would count the other
+                        // declaration's components as its own.
+                        candidate.MaskedLengthOverride = CountSetBits(candidate.WriteMask);
+                        MethodInputRegisters.Add(candidate);
+                    }
+                    else
+                    {
+                        existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                    }
                 }
                 else
                 {
@@ -919,7 +1035,7 @@ public sealed class RegisterState
                         case OperandType.InputThreadGroupID:
                         case OperandType.InputThreadIDInGroup:
                         case OperandType.InputThreadIDInGroupFlattened:
-                            MethodInputRegisters.Add(registerKey, registerDeclaration);
+                            MethodInputRegisters.Add(registerDeclaration);
                             break;
                         case OperandType.Output:
                         // A depth output is written like any other, and naming no
@@ -1044,7 +1160,15 @@ public sealed class RegisterState
     private RegisterDeclaration CreateRegisterDeclarationFromD3D10Dcl(D3D10Instruction instruction, D3D10RegisterKey registerKey)
     {
         registerKey = registerKey.GetGSBaseKey();
+        // fxc can pack two differently named inputs into one register - TEXCOORD0 at
+        // v2.xy and TEXCOORD1 at v2.z - each declared by its own dcl_input_ps. Match
+        // on the mask this dcl actually declares, not just the register, so the two
+        // resolve to their own signatures instead of both finding whichever is first.
+        int declaredMask = instruction.GetDestinationWriteMask();
         RegisterSignature signature = _shaderModel.InputSignatures
+            .Concat(_shaderModel.OutputSignatures)
+            .FirstOrDefault(i => i.RegisterKey.Equals(registerKey) && (i.Mask & declaredMask) != 0)
+            ?? _shaderModel.InputSignatures
             .Concat(_shaderModel.OutputSignatures)
             .FirstOrDefault(i => i.RegisterKey.Equals(registerKey));
         if (signature != null)

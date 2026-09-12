@@ -86,8 +86,7 @@ public class RoundTripCostTests
         ["ps_4_0/packed_interpolator"] = (29,
             "Three instructions. The blend weights are normalised by a reciprocal "
             + "the original computes once and the decompiled source writes as three "
-            + "divisions, which fxc does not fold back. It is also a known "
-            + "difference: see EquivalenceTests."),
+            + "divisions, which fxc does not fold back."),
         ["gs_4_0/particle_expand"] = (60,
             "One instruction, and a known difference besides: see EquivalenceTests."),
         ["ps_4_0/comparison_mask"] = (8,
@@ -164,7 +163,7 @@ public class RoundTripCostTests
             + "comparison compiles to abs and a compare."),
         ["gs_4_1/circle"] = (20, "One extra move around the stream append."),
         ["vs_3_0/loop_nested_uniform"] = (19, "Not looked into."),
-    };
+    };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as
     // Recompile(...), which is the third test to have done that.

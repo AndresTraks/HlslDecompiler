@@ -250,7 +250,7 @@ public abstract class HlslWriter
         WriteLine($"struct {inputStructType}");
         WriteLine("{");
         indent = "\t";
-        ICollection<RegisterDeclaration> inputs = _registers.MethodInputRegisters.Values;
+        ICollection<RegisterDeclaration> inputs = _registers.MethodInputRegisters;
         if (_shader.Type == ShaderType.Geometry)
         {
             inputs = inputs
@@ -342,7 +342,7 @@ public abstract class HlslWriter
         }
         else if (_registers.MethodInputRegisters.Count == 1)
         {
-            var input = _registers.MethodInputRegisters.Values.First();
+            var input = _registers.MethodInputRegisters.First();
             return CompileRegisterDeclaration(input);
         }
 

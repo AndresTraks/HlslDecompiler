@@ -13,7 +13,8 @@ Texture2D blendMap;
 struct PS_IN
 {
 	float3 normal : NORMAL;
-	float3 texcoord : TEXCOORD;
+	float2 texcoord : TEXCOORD;
+	float texcoord1 : TEXCOORD1;
 };
 
 float4 main(PS_IN i) : SV_Target
@@ -43,7 +44,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.w = r0.w * 0.800000012 + 0.200000003;
 	r1.xyz = r0.www * r0.xyz;
 	r0.xyz = -(r0.xyz) * r0.www + fogColour.xyz;
-	r0.w = i.texcoord.z + -(fogStart);
+	r0.w = i.texcoord1 + -(fogStart);
 	r1.w = -(fogStart) + fogEnd;
 	r0.w = saturate(r0.w / r1.w);
 	o.xyz = r0.www * r0.xyz + r1.xyz;

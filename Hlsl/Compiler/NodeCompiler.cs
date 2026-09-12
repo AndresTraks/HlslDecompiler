@@ -633,10 +633,14 @@ public sealed class NodeCompiler
             if (!(registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Sampler)
                 && !(registerKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32))
             {
+                // A component base from whichever kind of packing applies - at most one
+                // of the two is ever non-zero for a given register.
+                int componentBase = _registers.GetConstantComponentBase(shaderInput.RegisterComponentKey)
+                    + _registers.GetInputComponentBase(shaderInput.RegisterComponentKey);
                 swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                     _registers.GetRegisterMaskedLength(shaderInput.RegisterComponentKey),
                     promoteToVectorSize,
-                    _registers.GetConstantComponentBase(shaderInput.RegisterComponentKey));
+                    componentBase);
             }
 
             // A named struct member already identifies the component, so it takes no

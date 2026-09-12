@@ -1309,6 +1309,17 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier, packed);
             }
         }
+        else if (registerKey.OperandType == OperandType.Input)
+        {
+            // fxc can pack two differently named inputs into one register - TEXCOORD0
+            // at v2.xy and TEXCOORD1 at v2.z - so which is meant depends on which
+            // component is actually read, the same as a packed constant.
+            byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            var inputComponentKey = new RegisterComponentKey(registerKey, component);
+            registerName = _registers.GetRegisterName(inputComponentKey);
+            isPackedScalar = _registers.IsPackedInputComponent(inputComponentKey)
+                && _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
+        }
         else
         {
             registerName = _registers.GetRegisterName(registerKey);
@@ -1443,13 +1454,15 @@ public class HlslSimpleWriter : HlslWriter
 
     private int GetConstantComponentBase(D3D10Instruction instruction, int operandIndex)
     {
-        if (instruction.GetOperandType(operandIndex) != OperandType.ConstantBuffer)
-        {
-            return 0;
-        }
         byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
-        return _registers.GetConstantComponentBase(
-            new RegisterComponentKey(instruction.GetParamRegisterKey(operandIndex), component));
+        var registerComponentKey = new RegisterComponentKey(
+            instruction.GetParamRegisterKey(operandIndex), component);
+        return instruction.GetOperandType(operandIndex) switch
+        {
+            OperandType.ConstantBuffer => _registers.GetConstantComponentBase(registerComponentKey),
+            OperandType.Input => _registers.GetInputComponentBase(registerComponentKey),
+            _ => 0,
+        };
     }
 
     // Which entries of a source swizzle an instruction reads: those the destination

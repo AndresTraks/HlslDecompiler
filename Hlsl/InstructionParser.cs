@@ -1955,8 +1955,11 @@ public class InstructionParser
         }
         if ((modifier & ResultModifier.PartialPrecision) != 0)
         {
-            bool inputHasPartialPrecision = input is RegisterInputNode registerInput
-                && _registerState.MethodInputRegisters.TryGetValue(registerInput.RegisterComponentKey.RegisterKey, out var declaration)
+            RegisterDeclaration declaration = input is RegisterInputNode registerInput
+                ? _registerState.MethodInputRegisters.FirstOrDefault(
+                    d => d.RegisterKey.Equals(registerInput.RegisterComponentKey.RegisterKey))
+                : null;
+            bool inputHasPartialPrecision = declaration != null
                 && declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision);
             if (!inputHasPartialPrecision)
             {

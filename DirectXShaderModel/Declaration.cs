@@ -144,6 +144,13 @@ public class RegisterDeclaration
     // it again, but PSIZE has to be a scalar to compile.
     private bool IsScalarSemantic => Semantic == "PSIZE" || Semantic == "FOG";
 
+    // Overrides the width MaskedLength would otherwise derive from WriteMask.
+    // Needed when a register is packed and this declaration's own mask does not
+    // start at x - TEXCOORD1 shares a register with TEXCOORD0 and is declared at
+    // .z alone - since the usual highest-bit-plus-one rule would then count
+    // padding that belongs to the other declaration sharing the register.
+    public int? MaskedLengthOverride { get; set; }
+
     public int MaskedLength
     {
         get
@@ -151,6 +158,10 @@ public class RegisterDeclaration
             if (IsScalarSemantic)
             {
                 return 1;
+            }
+            if (MaskedLengthOverride.HasValue)
+            {
+                return MaskedLengthOverride.Value;
             }
             for (int i = 3; i >= 0; i--)
             {

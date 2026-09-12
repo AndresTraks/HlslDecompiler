@@ -35,9 +35,21 @@ public class EquivalenceTests
             + "integer, so the max is truncated. Excluding registers a float "
             + "instruction writes does not work either - the same register genuinely "
             + "holds an integer earlier - and neither does reinterpreting every "
-            + "integer operation with asint, which breaks the shaders where the "
-            + "integer declaration is right. It wants the register split by live "
-            + "range, so that the two uses become two variables.",
+            + "integer operation with asint unless it is done everywhere at once. "
+            + "Carried further than that: declare a register float when a float "
+            + "instruction writes it, and give every operand and destination a "
+            + "domain - an int temp, a float temp, a constant typed by its "
+            + "declaration, an output, or an immediate, which is bits already. A "
+            + "value crossing domains is asint or asfloat and never a cast, because "
+            + "a cast rounds where the bits are wanted. Every site has to move "
+            + "together: iadd, ishl, ishr, imin, imax, ineg, imad, imul, udiv, ushr, "
+            + "the integer comparisons, movc, mov, the branch conditions, itof and "
+            + "utof, and the bitwise operators. That much made int_arithmetic, "
+            + "int_divide, uint_loop and conditional agree and all 187 outputs "
+            + "recompile, and left immediate_constant_buffer, integer_hash and "
+            + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
+            + "Splitting the register by live range avoids the question entirely and "
+            + "is the larger change.",
         // The same register reuse as step_mask, in two more shaders.
         ["ps_4_0/sign_intrinsic"] =
             "The register carrying the sign masks also carries a float later, and is "

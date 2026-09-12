@@ -8,7 +8,7 @@ float4 main(uint sv_vertexid : SV_VertexID) : SV_Position
 	r0.x = sv_vertexid.x & 7;
 	r0.y = mask ^ 3;
 	r0.x = r0.y | r0.x;
-	o = r0.x;
+	o = (float4)(uint4)r0.x;
 
 	return o;
 }

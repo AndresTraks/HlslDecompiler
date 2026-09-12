@@ -4,7 +4,7 @@ float4 main(float3 texcoord : TEXCOORD) : SV_Target
 
 	o.x = -(abs(texcoord.z));
 	o.y = texcoord.x;
-	o.zw = float2(0, 0);
+	o.zw = float2(1, 2);
 
 	return o;
 }

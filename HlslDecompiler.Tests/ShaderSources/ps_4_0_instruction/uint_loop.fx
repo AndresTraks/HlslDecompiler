@@ -12,7 +12,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 		r1.y = (r1.x >= n) ? -1 : 0;
 		if (r1.y != 0) break;
 		r1.y = r1.x << 2;
-		r1.y = r1.y;
+		r1.y = (float)(uint)r1.y;
 		r0 = texcoord * r1.y + r0;
 		r1.x = r1.x + 1;
 	}

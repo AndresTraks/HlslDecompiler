@@ -49,9 +49,11 @@ public class EquivalenceTests
     private const float Tolerance = 1e-3f;
 
     /// <summary>
-    /// Shader model 4 needs its own machine; this one is shader model 1 to 3.
+    /// Geometry and compute shaders have no one result to compare - one emits a
+    /// stream, the other writes buffers - so they are not run.
     /// </summary>
-    private static readonly string[] Profiles = ["ps_2_0", "ps_3_0", "vs_1_1", "vs_3_0"];
+    private static readonly string[] Profiles =
+        ["ps_2_0", "ps_3_0", "vs_1_1", "vs_3_0", "ps_4_0", "ps_4_1", "vs_4_0"];
 
     public static IEnumerable<TestCaseData> Shaders()
     {
@@ -104,7 +106,8 @@ public class EquivalenceTests
                 differences.AddRange(Compare(writer, original, recompiled).ToList());
                 compared++;
             }
-            catch (D3D9Machine.UnsupportedException e)
+            catch (Exception e) when (e is D3D9Machine.UnsupportedException
+                or D3D10Machine.UnsupportedException)
             {
                 unsupported = e.Message;
             }
@@ -171,8 +174,8 @@ public class EquivalenceTests
     {
         for (int trial = 0; trial < Trials; trial++)
         {
-            Dictionary<string, float[]> expected = D3D9Machine.Run(original, trial);
-            Dictionary<string, float[]> actual = D3D9Machine.Run(recompiled, trial);
+            Dictionary<string, float[]> expected = Run(original, trial);
+            Dictionary<string, float[]> actual = Run(recompiled, trial);
 
             foreach (string name in expected.Keys.Intersect(actual.Keys).OrderBy(n => n))
             {
@@ -190,6 +193,15 @@ public class EquivalenceTests
                 }
             }
         }
+    }
+
+    // The two instruction sets need two machines. Which one a shader wants is
+    // decided by how it was read, not by its profile name.
+    private static Dictionary<string, float[]> Run(ShaderModel shader, int trial)
+    {
+        return shader.Instructions.FirstOrDefault() is D3D10Instruction
+            ? D3D10Machine.Run(shader, trial)
+            : D3D9Machine.Run(shader, trial);
     }
 
     private static bool Same(float left, float right)

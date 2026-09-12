@@ -21,12 +21,12 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	o.sv_position = i[0].sv_position;
 	o.color = i[0].color;
 	stream.Append(o);
-	r0.zw = float2(0, 0);
+	r0.zw = float2(0.5, 0.5);
 	r1.x = 1;
 	while (true) {
 		r1.y = (17 < r1.x) ? -1 : 0;
 		if (r1.y != 0) break;
-		r1.y = r1.x;
+		r1.y = (float)(int)r1.x;
 		r1.y = r1.y * 0.392699093;
 		r2.x = sin(r1.y);
 		r0.x = cos(r1.y);

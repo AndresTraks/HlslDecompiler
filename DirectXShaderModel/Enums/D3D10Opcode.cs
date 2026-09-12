@@ -241,6 +241,24 @@ public static class D3D10OpcodeExtensions
         return Declarations.Contains(opcode);
     }
 
+    // Those whose opcode token carries the test-boolean bit, saying whether they
+    // branch on the register being non-zero or on its being zero.
+    public static bool HasBooleanTest(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.If:
+            case D3D10Opcode.BreakC:
+            case D3D10Opcode.ContinueC:
+            case D3D10Opcode.RetC:
+            case D3D10Opcode.CallC:
+            case D3D10Opcode.Discard:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public static bool IsInteger(this D3D10Opcode opcode)
     {
         switch (opcode)

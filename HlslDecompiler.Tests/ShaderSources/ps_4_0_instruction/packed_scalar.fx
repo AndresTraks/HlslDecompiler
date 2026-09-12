@@ -17,8 +17,8 @@ float4 main(float3 normal : NORMAL) : SV_Target
 	r0.w = dot(normal.xyz, normal.xyz);
 	r0.w = 1 / sqrt(r0.w);
 	r1.xyz = r0.www * normal.xyz;
-	r0.x = dot(r1.xyz, r0.xyz);
-	r0.y = dot(r1.xyz, -(lightDir.xyz));
+	r0.x = saturate(dot(r1.xyz, r0.xyz));
+	r0.y = saturate(dot(r1.xyz, -(lightDir.xyz)));
 	r0.x = log2(r0.x);
 	r0.x = r0.x * power;
 	r0.x = exp2(r0.x);

@@ -24,7 +24,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	while (true) {
 		r2.x = (r0.w >= 4) ? -1 : 0;
 		if (r2.x != 0) break;
-		r0.z = r0.w;
+		r0.z = (float)(int)r0.w;
 		r2 = layers.Sample(samp, r0.xyz);
 		r0.z = dot(weights, icb[r0.w]);
 		r1 = r2 * r0.z + r1;

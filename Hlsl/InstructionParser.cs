@@ -1395,7 +1395,8 @@ public class InstructionParser
                             return new ShiftLeftOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.IShr:
                         case D3D10Opcode.UShr:
-                            return new ShiftRightOperation(inputs[0], inputs[1]);
+                            return new ShiftRightOperation(inputs[0], inputs[1],
+                                instruction.Opcode == D3D10Opcode.UShr);
                         case D3D10Opcode.DerivRtx:
                             return new PartialDerivativeXOperation(inputs[0]);
                         case D3D10Opcode.DerivRty:

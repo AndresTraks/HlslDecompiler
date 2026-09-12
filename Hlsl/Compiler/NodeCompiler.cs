@@ -230,10 +230,20 @@ public sealed class NodeCompiler
                         CompileOperand(amount));
                 }
 
-            case ShiftRightOperation _:
-                return string.Format("{0} >> {1}",
-                    CompileOperand(components.Select(g => g.Inputs[0])),
-                    CompileOperand(components.Select(g => g.Inputs[1])));
+            case ShiftRightOperation shiftRight:
+                {
+                    string value = CompileOperand(components.Select(g => g.Inputs[0]));
+                    // HLSL reads >> as arithmetic or logical from the type of what
+                    // is shifted, so ushr has to say it there. As wide as the value,
+                    // since a bare (uint) over two components is X3014.
+                    if (shiftRight.IsUnsigned)
+                    {
+                        string size = components.Count > 1 ? components.Count.ToString() : "";
+                        value = $"(uint{size}){value}";
+                    }
+                    return string.Format("{0} >> {1}", value,
+                        CompileOperand(components.Select(g => g.Inputs[1])));
+                }
 
             case BitwiseAndOperation _:
             case BitwiseOrOperation _:

@@ -15,9 +15,9 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 	o.sv_target1.xyz = texcoord.xyz;
 	o.sv_target1.w = 0;
 	o.sv_target2.xy = texcoord.xy;
-	o.sv_target2.zw = float2(0, 0);
+	o.sv_target2.zw = float2(0, 1);
 	o.sv_target3.x = texcoord.x;
-	o.sv_target3.yzw = float3(0, 0, 1);
+	o.sv_target3.yzw = float3(0, 1, 2);
 	o.sv_target4.xyz = texcoord.www;
 	o.sv_target4.w = 3;
 

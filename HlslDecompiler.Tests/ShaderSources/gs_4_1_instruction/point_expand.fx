@@ -22,7 +22,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	while (true) {
 		r1.y = (r1.x >= 4) ? -1 : 0;
 		if (r1.y != 0) break;
-		r0.xy = r1.xx;
+		r0.xy = (float2)(int2)r1.xx;
 		r2 = r0 + i[0].sv_position;
 		o.sv_position = r2;
 		o.texcoord = r0.yy;

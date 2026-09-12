@@ -437,21 +437,62 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
+    // ftoi, ftou, itof and utof each say how to read their source and what to make
+    // of it, and a plain move says neither. A temp register is declared with one
+    // integer type, so utof on a register holding 0xFFFFFFFF read it as -1 where
+    // the original reads 4294967295. The reading is a reinterpretation of the same
+    // bits; only the outer cast converts. Both are as wide as what is written,
+    // since a bare (float) over two components is X3014.
+    private void WriteConversion(D3D10Instruction instruction, string readAs, string convertTo)
+    {
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        string source = GetOperandName(instruction, 1);
+        string reinterpreted = readAs == null ? source : $"({readAs}{size}){source}";
+        WriteResult(instruction, "{0} = {1};",
+            GetOperandName(instruction, 0), $"({convertTo}{size}){reinterpreted}");
+    }
+
+    // A D3D10 result can be clamped to [0, 1] by a bit on the instruction rather
+    // than by anything in the operands, and dropping it is not visible in the
+    // output - dp3_sat feeding a log became log2 of a negative number. Every case
+    // here assigns, in the one shape `{0} = <expression>;`, so the clamp goes on
+    // around the expression.
+    private void WriteResult(D3D10Instruction instruction, string format, params object[] args)
+    {
+        const string assignment = "{0} = ";
+        if (instruction.Saturate)
+        {
+            string expression = format[assignment.Length..^1];
+            format = $"{assignment}saturate({expression});";
+        }
+        WriteLine(format, args);
+    }
+
     private void WriteInstruction(D3D10Instruction instruction)
     {
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
             case D3D10Opcode.IAdd:
-                WriteLine("{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IShl:
-                WriteLine("{0} = {1} << {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IShr:
-            case D3D10Opcode.UShr:
-                WriteLine("{0} = {1} >> {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
+            case D3D10Opcode.UShr:
+                {
+                    // A temp register is declared signed, and >> on a signed value
+                    // shifts in the sign bit rather than zeroes.
+                    int length = instruction.GetDestinationMaskLength();
+                    string size = length == 1 ? "" : length.ToString();
+                    WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0),
+                        $"(uint{size}){GetOperandName(instruction, 1)}", GetOperandName(instruction, 2));
+                    break;
+                }
             case D3D10Opcode.BreakC:
                 WriteLine("if ({0} != 0) break;", GetOperandName(instruction, 0));
                 break;
@@ -459,10 +500,10 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("stream.RestartStrip();");
                 break;
             case D3D10Opcode.DerivRtx:
-                WriteLine("{0} = ddx({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = ddx({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.DerivRty:
-                WriteLine("{0} = ddy({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = ddy({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Discard:
                 WriteLine("clip({0});", GetOperandName(instruction, 0));
@@ -470,7 +511,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
-                WriteLine("{0} = dot({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = dot({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Emit:
                 WriteLine("stream.Append(o);");
@@ -514,92 +555,98 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0} != 0) continue;", GetOperandName(instruction, 0));
                 break;
             case D3D10Opcode.Div:
-                WriteLine("{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Exp:
-                WriteLine("{0} = exp2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = exp2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Max:
             case D3D10Opcode.IMax:
-                WriteLine("{0} = max({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IMin:
-                WriteLine("{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.INeg:
-                WriteLine("{0} = -{1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = -{1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.IMul:
                 // Two destinations, high and low halves; only the low one is modelled.
-                WriteLine("{0} = {1} * {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.IMad:
-                WriteLine("{0} = {1} * {2} + {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.RoundNi:
-                WriteLine("{0} = floor({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = floor({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LT:
-                WriteLine("{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:
-                WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.ULT:
-                WriteLine("{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.EndLoop:
                 indent = indent.Substring(0, indent.Length - 1);
                 WriteLine("}");
                 break;
             case D3D10Opcode.GE:
-                WriteLine("{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} >= {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Ilt:
-                WriteLine("{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} < {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IToF:
+                WriteConversion(instruction, "int", "float");
+                break;
             case D3D10Opcode.UTof:
+                WriteConversion(instruction, "uint", "float");
+                break;
             case D3D10Opcode.Ftoi:
+                WriteConversion(instruction, null, "int");
+                break;
             case D3D10Opcode.Ftou:
-                WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteConversion(instruction, null, "uint");
                 break;
             case D3D10Opcode.LdStructured:
                 // TODO: consider offset
-                WriteLine("{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, "{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Loop:
                 WriteLine("while (true) {");
                 indent += "\t";
                 break;
             case D3D10Opcode.Mad:
-                WriteLine("{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
+                WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
                     GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mov:
-                WriteLine("{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.MovC:
-                WriteLine("{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, "{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mul:
-                WriteLine("{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Rsq:
-                WriteLine("{0} = 1 / sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = 1 / sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Sample:
-                WriteLine("{0} = {2}.Sample({3}, {1}{4});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.Sample({3}, {1}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.RoundZ:
-                WriteLine("{0} = trunc({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = trunc({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Frc:
-                WriteLine("{0} = frac({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = frac({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.RoundNe:
-                WriteLine("{0} = round({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = round({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Gather4:
                 {
@@ -612,67 +659,68 @@ public class HlslSimpleWriter : HlslWriter
                         3 => "GatherAlpha",
                         _ => "Gather",
                     };
-                    WriteLine("{0} = {2}.{4}({3}, {1}{5});", GetOperandName(instruction, 0),
+                    WriteResult(instruction, "{0} = {2}.{4}({3}, {1}{5}){6};", GetOperandName(instruction, 0),
                         GetOperandName(instruction, 1), GetOperandName(instruction, 2),
-                        GetOperandName(instruction, 3), method, GetSampleOffset(instruction));
+                        GetOperandName(instruction, 3), method, GetSampleOffset(instruction),
+                        GetResourceSwizzle(instruction));
                     break;
                 }
             case D3D10Opcode.SampleL:
-                WriteLine("{0} = {2}.SampleLevel({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.SampleLevel({3}, {1}, {4}{5}){6};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.SampleB:
-                WriteLine("{0} = {2}.SampleBias({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.SampleBias({3}, {1}, {4}{5}){6};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.SampleC:
-                WriteLine("{0} = {2}.SampleCmp({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.SampleCmp({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleCLZ:
-                WriteLine("{0} = {2}.SampleCmpLevelZero({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.SampleCmpLevelZero({3}, {1}, {4}{5});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction));
                 break;
             case D3D10Opcode.SampleD:
-                WriteLine("{0} = {2}.SampleGrad({3}, {1}, {4}, {5}{6});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.SampleGrad({3}, {1}, {4}, {5}{6}){7};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.LD:
-                WriteLine("{0} = {2}.Load({1}{3});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction));
+                WriteResult(instruction, "{0} = {2}.Load({1}{3}){4};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.Log:
-                WriteLine("{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Min:
-                WriteLine("{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.RoundPi:
-                WriteLine("{0} = ceil({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = ceil({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Ieq:
-                WriteLine("{0} = ({1} == {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = ({1} == {2}) ? -1 : 0;", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.And:
-                WriteLine("{0} = {1} & {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} & {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Udiv:
                 // Quotient and remainder, either of which may be null.
                 if (instruction.GetOperandType(0) != OperandType.Null)
                 {
-                    WriteLine("{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                    WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 }
                 if (instruction.GetOperandType(1) != OperandType.Null)
                 {
-                    WriteLine("{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                    WriteResult(instruction, "{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 }
                 break;
             case D3D10Opcode.Or:
-                WriteLine("{0} = {1} | {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} | {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Xor:
-                WriteLine("{0} = {1} ^ {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} ^ {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.SinCos:
-                WriteLine("{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
-                WriteLine("{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Sqrt:
-                WriteLine("{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.StoreStructured:
                 // TODO: consider offset
@@ -1085,20 +1133,20 @@ public class HlslSimpleWriter : HlslWriter
                     ? instruction.GetParamInt(operandIndex, 0).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
             }
-            int destinationLength = GetSourceLength(instruction, operandIndex)
-                ?? (instruction.HasDestination ? instruction.GetDestinationMaskLength() : 4);
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            // Which entries of the swizzle are read depends on which components are
+            // written, as it does for a defined constant: `mov o0.zw, l(0, 0, 1, 2)`
+            // writes 1 and 2, not the first two.
+            int[] components = GetSourceComponents(instruction, operandIndex, swizzle);
             // Typed the same way as the single component above: a vector immediate
             // feeding an integer instruction is a vector of integers, and
             // `& float2(0.000000, 0.000000)` is the mask 255 read as float bits.
-            string[] constant = swizzle
-                            .Take(destinationLength)
-                            .Select(s => isInteger
-                                ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
-                                : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))
-                            .ToArray();
+            string[] constant = [.. components
+                .Select(s => isInteger
+                    ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
+                    : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
             string immediateType = isInteger ? "int" : "float";
-            return $"{immediateType}{destinationLength}(" + string.Join(", ", constant) + ")";
+            return $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
@@ -1122,6 +1170,14 @@ public class HlslSimpleWriter : HlslWriter
             // not the struct: `o.a.s` is a float, however wide struct2 is.
             isPackedScalar = _registers.GetRegisterMaskedLength(
                 new RegisterComponentKey(registerKey, component)) == 1;
+            // One operand can read two of those scalars at once. `imax r0.yz,
+            // cb0[0].xy, -cb0[0].xy` reads a and b, and naming it from the first
+            // component alone read a twice.
+            if (isPackedScalar
+                && TryNamePackedScalars(instruction, operandIndex, registerKey, out string packed))
+            {
+                return ApplyModifier(modifier, packed);
+            }
         }
         else
         {
@@ -1159,6 +1215,19 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
     }
 
+    // The resource operand carries a swizzle saying which channel of the texture
+    // each component of the result comes from: `sample r0, v0.xyxx, t2.yzxw, s0`
+    // puts green in x. Leaving it out reads the wrong channels and compiles.
+    // A comparison sample returns one value, so there is nothing to permute.
+    private static string GetResourceSwizzle(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ)
+        {
+            return "";
+        }
+        return instruction.GetSourceSwizzleName(2);
+    }
+
     // An offset shifts the sample by whole texels. Leaving it out compiles and
     // reads the wrong ones, so it belongs in the call.
     private string GetSampleOffset(D3D10Instruction instruction)
@@ -1181,6 +1250,57 @@ public class HlslSimpleWriter : HlslWriter
             .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
             .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
             .GetDimensionSize();
+    }
+
+    // A constructor over the variables an operand reads, when it reads more than
+    // one and they are not all the same. Each is a scalar of its own, so there is
+    // no name that covers them.
+    private bool TryNamePackedScalars(
+        D3D10Instruction instruction,
+        int operandIndex,
+        D3D10RegisterKey registerKey,
+        out string name)
+    {
+        name = null;
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        int[] components = GetSourceComponents(instruction, operandIndex, swizzle);
+        if (components.Length < 2)
+        {
+            return false;
+        }
+
+        string[] names = [.. components.Select(c =>
+            _registers.GetRegisterName(new RegisterComponentKey(registerKey, c)))];
+        if (names.Distinct().Count() < 2)
+        {
+            // All one variable, which the name alone already says.
+            return false;
+        }
+
+        string type = _integerOperandAnalysis.IsIntegerOperand(instruction) ? "int" : "float";
+        name = $"{type}{components.Length}({string.Join(", ", names)})";
+        return true;
+    }
+
+    // Which entries of a source swizzle an instruction reads: those the destination
+    // mask selects, unless the operand has a width of its own - a texture coordinate
+    // is as wide as the texture whatever the destination mask says.
+    private int[] GetSourceComponents(D3D10Instruction instruction, int operandIndex, byte[] swizzle)
+    {
+        int? length = GetSourceLength(instruction, operandIndex);
+        if (length != null)
+        {
+            return [.. swizzle.Take(length.Value).Select(c => (int)c)];
+        }
+        if (!instruction.HasDestination)
+        {
+            return [.. swizzle.Select(c => (int)c)];
+        }
+
+        int writeMask = instruction.GetDestinationWriteMask();
+        return [.. Enumerable.Range(0, 4)
+            .Where(i => (writeMask & (1 << i)) != 0)
+            .Select(i => (int)swizzle[i])];
     }
 
     // The coordinate is as wide as the texture, not as wide as whatever the sample

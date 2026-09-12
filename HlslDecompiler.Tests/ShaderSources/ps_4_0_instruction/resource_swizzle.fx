@@ -14,7 +14,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 
 	float4 r0;
 	float4 r1;
-	r0 = depthTex.Sample(samp, texcoord.xy);
+	r0 = depthTex.Sample(samp, texcoord.xy).yzxw;
 	r0.xy = texcoord.xy * float2(2, 2) + float2(-1, -1);
 	r0.w = 1;
 	r1.x = dot(r0, transpose(invViewProj)[0]);
@@ -27,11 +27,11 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r1.x = 1 / sqrt(r0.w);
 	r0.w = sqrt(r0.w);
 	r0.w = r0.w / lightRange;
-	r0.w = -(r0.w) + 1;
+	r0.w = saturate(-(r0.w) + 1);
 	r0.xyz = r0.xyz * r1.xxx;
 	r1 = normalTex.Sample(samp, texcoord.xy);
 	r1.xyz = r1.xyz * float3(2, 2, 2) + float3(-1, -1, -1);
-	r0.x = dot(r1.xyz, r0.xyz);
+	r0.x = saturate(dot(r1.xyz, r0.xyz));
 	r1 = albedoTex.Sample(samp, texcoord.xy);
 	r1 = r1 * lightColour;
 	r1 = r0.x * r1;

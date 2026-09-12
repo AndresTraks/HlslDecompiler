@@ -355,7 +355,7 @@ public class AsmWriter
                 WriteInstruction(instruction, "add", 3);
                 break;
             case D3D10Opcode.BreakC:
-                WriteInstruction(instruction, "breakc_nz", 1);
+                WriteInstruction(instruction, Conditional(instruction, "breakc"), 1);
                 break;
             case D3D10Opcode.Cut:
                 WriteInstruction(instruction, "cut", 0);
@@ -448,7 +448,7 @@ public class AsmWriter
                 WriteInstruction(instruction, "deriv_rty", 2);
                 break;
             case D3D10Opcode.Discard:
-                WriteInstruction(instruction, "discard_nz", 1);
+                WriteInstruction(instruction, Conditional(instruction, "discard"), 1);
                 break;
             case D3D10Opcode.Dp2:
                 WriteInstruction(instruction, "dp2", 3);
@@ -600,7 +600,7 @@ public class AsmWriter
             // The test-boolean bit is not decoded, so the nz form is assumed, as it
             // already is for if and discard.
             case D3D10Opcode.RetC:
-                WriteInstruction(instruction, "retc_nz", 1);
+                WriteInstruction(instruction, Conditional(instruction, "retc"), 1);
                 break;
             case D3D10Opcode.DclInputSgv:
                 WriteLine("dcl_input_sgv {0}, {1}", FormatOperand(instruction, 0),
@@ -630,7 +630,7 @@ public class AsmWriter
                     break;
                 }
             case D3D10Opcode.If:
-                WriteInstruction(instruction, "if_nz", 1);
+                WriteInstruction(instruction, Conditional(instruction, "if"), 1);
                 break;
             case D3D10Opcode.Else:
                 WriteInstruction(instruction, "else", 0);
@@ -657,7 +657,7 @@ public class AsmWriter
                 WriteInstruction(instruction, "continue", 0);
                 break;
             case D3D10Opcode.ContinueC:
-                WriteInstruction(instruction, "continuec_nz", 1);
+                WriteInstruction(instruction, Conditional(instruction, "continuec"), 1);
                 break;
             case D3D10Opcode.Mad:
                 WriteInstruction(instruction, "mad", 4);
@@ -716,6 +716,14 @@ public class AsmWriter
             builder.Append(char.ToLowerInvariant(name[i]));
         }
         return builder.ToString();
+    }
+
+    // _nz takes the branch when the register is not zero and _z when it is.
+    // fxc only ever emits the _nz form - it inverts the comparison instead - but
+    // the bit is there and the disassembly should say what it finds.
+    private static string Conditional(D3D10Instruction instruction, string mnemonic)
+    {
+        return instruction.TestNonZero ? mnemonic + "_nz" : mnemonic + "_z";
     }
 
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)

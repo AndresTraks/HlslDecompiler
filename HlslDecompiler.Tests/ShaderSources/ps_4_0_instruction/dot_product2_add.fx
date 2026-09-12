@@ -5,7 +5,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float r0;
 	r0 = dot(texcoord.yz, texcoord.zw);
 	o.x = r0.x + 1;
-	o.yzw = float3(0, 2, 3);
+	o.yzw = float3(2, 3, 4);
 
 	return o;
 }

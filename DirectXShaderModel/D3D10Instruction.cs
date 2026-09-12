@@ -49,6 +49,11 @@ public class D3D10Instruction : Instruction
     // the opcode token rather than in an operand, so the reader sets it.
     public bool Saturate { get; set; }
 
+    // Whether if, breakc and the rest take the branch when the tested register is
+    // non-zero, which is the _nz form, or when it is zero, which is _z. In the
+    // opcode token rather than in an operand, so the reader sets it.
+    public bool TestNonZero { get; set; } = true;
+
     // The texel offsets of sample_aoffimmi, or null when the sample has none.
     public int[] SampleOffsets { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }

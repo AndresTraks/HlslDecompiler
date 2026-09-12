@@ -228,6 +228,10 @@ public class DxbcReader : BinaryReader
         var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
         instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
         instruction.SampleOffsets = sampleOffsets;
+        if (opcode.HasBooleanTest())
+        {
+            instruction.TestNonZero = (opcodeToken & 0x40000) != 0;
+        }
         if (opcode == D3D10Opcode.DclInputPS
             || opcode == D3D10Opcode.DclInputPSSgv
             || opcode == D3D10Opcode.DclInputPSSiv)

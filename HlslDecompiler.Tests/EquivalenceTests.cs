@@ -50,14 +50,6 @@ public class EquivalenceTests
             + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
             + "Splitting the register by live range avoids the question entirely and "
             + "is the larger change.",
-        ["cs_4_1/compute_hash"] =
-            "A StructuredBuffer is written as holding floats whatever it holds: "
-            + "the element type is not in dcl_resource_structured, which carries only "
-            + "a stride, and the reader does not take it from the reflection data "
-            + "where it does appear. This one holds uints and is hashed with shifts "
-            + "and xors, so reading it as float both computes the wrong thing and, "
-            + "for the AST writer, does not compile - X3082, a bitwise operator "
-            + "wanting an integer.",
         // The same register reuse as step_mask, in two more shaders.
         ["ps_4_0/sign_intrinsic"] =
             "The register carrying the sign masks also carries a float later, and is "

@@ -1,5 +1,5 @@
-StructuredBuffer<float> src : register(t0);
-RWStructuredBuffer<float> dst : register(u0);
+StructuredBuffer<uint> src : register(t0);
+RWStructuredBuffer<uint> dst : register(u0);
 
 struct CS_IN
 {

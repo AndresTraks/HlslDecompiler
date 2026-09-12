@@ -13,6 +13,13 @@ public class ResourceDefinition
     public int BindCount { get; }
     public D3DShaderInputFlags Flags { get; }
     public ResourceDimension Dimension { get; internal set; }
+    
+    /// <summary>
+    /// What one element of a structured buffer holds, when the reflection data says.
+    /// dcl_resource_structured carries a stride and nothing about the type, so a
+    /// StructuredBuffer&lt;uint&gt; would otherwise be written as one of float.
+    /// </summary>
+    public ShaderTypeInfo ElementType { get; internal set; }
 
     public ResourceDefinition(
         string name, 

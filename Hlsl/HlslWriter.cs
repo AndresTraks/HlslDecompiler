@@ -208,10 +208,20 @@ public abstract class HlslWriter
         }
     }
 
-    // The element width comes from the declaration stride, so a
-    // StructuredBuffer<float4> is no longer declared as one of float.
+    /// <summary>
+    /// What one element holds. The reflection data says outright where it is there;
+    /// failing that the width comes from the declaration stride and the type is
+    /// assumed float, which is what a StructuredBuffer usually holds.
+    /// </summary>
     private string GetStructuredElementType(ResourceDefinition resource)
     {
+        if (resource.ElementType != null)
+        {
+            string scalar = resource.ElementType.ParameterType.ToString().ToLower();
+            int width = resource.ElementType.Columns;
+            return width > 1 ? scalar + width : scalar;
+        }
+
         int components = _registers.GetStructuredBufferComponents(
             resource.ShaderInputType, resource.BindPoint);
         return components > 1 ? "float" + components : "float";

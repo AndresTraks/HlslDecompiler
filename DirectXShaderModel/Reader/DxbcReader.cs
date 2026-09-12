@@ -57,6 +57,7 @@ public class DxbcReader : BinaryReader
                 shaderType = (ShaderType)ReadUInt16();
                 _isGeometryShader = shaderType == ShaderType.Geometry;
 
+                var structuredElements = new Dictionary<string, ShaderTypeInfo>();
                 constantBufferOffset = chunkOffset + constantBufferOffset + 8;
                 for (int i = 0; i < constantBufferCount; i++)
                 {
@@ -67,6 +68,8 @@ public class DxbcReader : BinaryReader
                     int size = ReadInt32();
                     D3D10ShaderCbufferFlags flags = (D3D10ShaderCbufferFlags)ReadInt32();
                     D3DCbufferType bufferType = (D3DCbufferType)ReadInt32();
+                    BaseStream.Position = chunkOffset + nameOffset + 8;
+                    string bufferName = ReadStringNullTerminated();
 
                     for (int j = 0; j < variableCount; j++)
                     {
@@ -86,6 +89,14 @@ public class DxbcReader : BinaryReader
                         // TODO
                         short registerNumber = (short)i;
                         short elementOffset = (short)j;
+                        // A resource bind info buffer describes a structured
+                        // buffer rather than being one, and is named after it.
+                        if (bufferType == D3DCbufferType.ResourceBindInfo)
+                        {
+                            structuredElements[bufferName] = typeInfo;
+                            continue;
+                        }
+
                         var description = new D3D10ConstantDeclaration(name, registerNumber, variableSize, variableOffset, typeInfo, elementOffset);
                         constantDeclarations.Add(description);
                     }
@@ -116,6 +127,10 @@ public class DxbcReader : BinaryReader
                         bindPoint,
                         bindCount,
                         flags);
+                    if (structuredElements.TryGetValue(name, out ShaderTypeInfo element))
+                    {
+                        resourceDefinition.ElementType = element;
+                    }
                     resourceDefinitions.Add(resourceDefinition);
                 }
             }

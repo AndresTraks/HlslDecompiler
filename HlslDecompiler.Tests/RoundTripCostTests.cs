@@ -125,9 +125,6 @@ public class RoundTripCostTests
             + "would fix it, but the vector is not a node - each dot has one consumer, "
             + "so there is no shared subexpression to name."),
 
-        ["cs_4_1/integer_multiply"] = (11,
-            "The index is written out twice, once for the bound test and once for the "
-            + "store."),
 
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,

@@ -1,7 +1,7 @@
 uint n;
 uint stride;
 
-RWStructuredBuffer<float> data : register(u0);
+RWStructuredBuffer<uint> data : register(u0);
 
 [numthreads(32, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)

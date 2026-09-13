@@ -334,7 +334,8 @@ public abstract class HlslWriter
         {
             string primitive = _registers.InputPrimitive.Value.ToHlslString();
             int vertexCount = GetPrimitiveVertexCount(_registers.InputPrimitive.Value);
-            return $"{primitive} GS_IN i[{vertexCount}], inout TriangleStream<GS_OUT> stream";
+            string stream = GetStreamType(_registers.PrimitiveTopology);
+            return $"{primitive} GS_IN i[{vertexCount}], inout {stream}<GS_OUT> stream";
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {
@@ -347,6 +348,19 @@ public abstract class HlslWriter
         }
 
         return GetInputStructureName() + " i";
+    }
+
+    // A geometry shader can only emit strips, so the declared topology names the
+    // stream type outright.
+    private static string GetStreamType(D3D10PrimitiveTopology? topology)
+    {
+        return topology switch
+        {
+            D3D10PrimitiveTopology.PointList => "PointStream",
+            D3D10PrimitiveTopology.LineStrip => "LineStream",
+            D3D10PrimitiveTopology.TriangleStrip => "TriangleStream",
+            _ => throw new NotImplementedException(topology?.ToString() ?? "no output topology"),
+        };
     }
 
     private static int GetPrimitiveVertexCount(D3D10Primitive primitive)

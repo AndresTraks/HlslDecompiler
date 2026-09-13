@@ -12,7 +12,7 @@ struct GS_OUT
 };
 
 [maxvertexcount(3)]
-void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
+void main(point GS_IN i[1], inout PointStream<GS_OUT> stream)
 {
 	GS_OUT o;
 

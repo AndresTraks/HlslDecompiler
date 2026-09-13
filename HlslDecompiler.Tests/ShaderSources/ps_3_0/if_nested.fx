@@ -5,15 +5,16 @@ float t;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {
-	float4 t0;
+	float t0 = t - texcoord.x;
+	float4 t1;
 	if (t < texcoord.x) {
 		if (t < texcoord.y) {
-			t0 = a;
+			t1 = a;
 		} else {
-			t0 = b;
+			t1 = b;
 		}
 	} else {
-		t0 = 0;
+		t1 = 0;
 	}
-	return t - texcoord.x >= 0 ? c : t0;
+	return t0 >= 0 ? c : t1;
 }

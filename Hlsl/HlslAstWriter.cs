@@ -484,15 +484,27 @@ public class HlslAstWriter : HlslWriter
         return node;
     }
 
+    private static bool IsPhiRead(HlslTreeNode value)
+    {
+        return value is TempAssignmentNode assignment
+            && assignment.TempVariable.Outputs.Any(reader => reader is PhiNode);
+    }
+
     private List<HlslTreeNode[]> GroupAssignments(IDictionary<RegisterComponentKey, HlslTreeNode> outputs)
     {
         var nodeGrouper = new NodeGrouper(_registers);
 
         var groups = new List<HlslTreeNode[]>();
+        // By register, except that a component whose variable a phi goes on to
+        // read - a loop counter or accumulator being given its starting value - is
+        // kept apart from the register's other components. Its variable is shared
+        // with every reassignment of it, and grouping it into a float3 with two
+        // loop invariants that happen to sit beside it makes the counter t0.z for
+        // the rest of the shader, which no loop is recovered from.
         var registerGroups = outputs
             .Where(o => o.Key.RegisterKey.IsTempRegister || o.Key.RegisterKey.IsOutput)
             .OrderBy(o => o.Key.ComponentIndex)
-            .GroupBy(o => o.Key.RegisterKey)
+            .GroupBy(o => (o.Key.RegisterKey, IsPhiRead(o.Value)))
             .Select(o => o.Select(c => Reduce(c.Value)).ToArray())
             .ToList();
         registerGroups = TempAssignmentOrder.Sort(registerGroups);

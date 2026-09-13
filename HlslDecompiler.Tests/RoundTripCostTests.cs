@@ -173,7 +173,14 @@ public class RoundTripCostTests
             "The original selects with cmp over def'd constants; the decompiled "
             + "comparison compiles to abs and a compare."),
         ["gs_4_1/circle"] = (20, "One extra move around the stream append."),
-        ["vs_3_0/loop_nested_uniform"] = (19, "Not looked into."),
+        ["vs_3_0/loop_nested_uniform"] = (18,
+            "One instruction, and fxc's choice. The body sums four weighted matrix "
+            + "rows into the accumulator, and every weight is a loop invariant; the "
+            + "original does that as four mads inside the loop, and fxc hoists the "
+            + "sum out of the decompiled loop - a mul and three mads before it, one "
+            + "add inside - which is one instruction more in total and three fewer "
+            + "per iteration. Was 19 while the invariants were inlined into every "
+            + "use rather than named before the loop."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

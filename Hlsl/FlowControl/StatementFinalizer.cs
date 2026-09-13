@@ -81,10 +81,29 @@ public class StatementFinalizer
     {
         if (statements[i] is AssignmentStatement assignment)
         {
-            var assignmentOutputs = assignment.Outputs.Where(o => o.Key.RegisterKey.IsTempRegister).ToDictionary();
+            // Only what this statement computes: a value carried through unchanged
+            // from its inputs belongs to the statement that computed it. Judging it
+            // here, in a loop body whose own outputs read it, found every consumer
+            // inside the body and dropped the assignment from the statement before
+            // the loop as well, which then inlined a loop invariant into every use.
+            var assignmentOutputs = assignment.Outputs
+                .Where(o => o.Key.RegisterKey.IsTempRegister)
+                .Where(o => !(assignment.Inputs.TryGetValue(o.Key, out var input) && ReferenceEquals(input, o.Value)))
+                .ToDictionary();
             foreach (var assignmentOutput in assignmentOutputs)
             {
                 var assignmentNode = assignmentOutput.Value;
+
+                // A constant or a plain register read is never worth a variable,
+                // wherever it is read - a literal in a loop body is a literal, and an
+                // input is an input. Unless a phi reads it: then it is the value a
+                // loop counter or accumulator starts from, and the variable is the
+                // point.
+                if (IsFreeToRead(assignmentNode) && assignmentNode.Outputs.All(v => v is not PhiNode))
+                {
+                    RemoveAnyAssignment(assignmentNode);
+                    continue;
+                }
 
                 // Check if assignment output goes only into itself. A phi consumer
                 // means the value leaves the statement - to a branch join, or along a
@@ -661,6 +680,12 @@ public class StatementFinalizer
                 }
             }
         });
+    }
+
+    private static bool IsFreeToRead(HlslTreeNode node)
+    {
+        return node is ConstantNode or RegisterInputNode
+            || (node is MoveOperation move && move.Inputs[0] is ConstantNode or RegisterInputNode);
     }
 
     private void RemoveAnyAssignment(HlslTreeNode node)

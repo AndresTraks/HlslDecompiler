@@ -23,12 +23,13 @@ namespace HlslDecompiler.Tests;
 public class EquivalenceTests
 {
     /// <summary>
-    /// Shaders whose decompilation computes something else, and why. A shader that
-    /// starts agreeing fails the test so that it gets removed from here.
+    /// Shaders whose decompilation computes something else, by which writer, and
+    /// why. The other writer is still held to computing the same. A writer that
+    /// starts agreeing fails the test so that its entry gets removed from here.
     /// </summary>
-    private static readonly Dictionary<string, string> KnownDifferences = new()
+    private static readonly Dictionary<string, (string Writer, string Reason)> KnownDifferences = new()
     {
-        ["ps_4_0/step_mask"] =
+        ["ps_4_0/step_mask"] = ("instruction",
             "The instruction writer declares one variable per register for the whole "
             + "shader, and fxc reuses a register: here one carries a comparison mask "
             + "at one point and a max at another. IntegerOperandAnalysis marks it "
@@ -49,23 +50,23 @@ public class EquivalenceTests
             + "recompile, and left immediate_constant_buffer, integer_hash and "
             + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
             + "Splitting the register by live range avoids the question entirely and "
-            + "is the larger change.",
-        ["ps_4_0/shadow_pcf"] =
+            + "is the larger change. The AST writer is past this: it types a value "
+            + "by what reads it, not by the register it sat in."),
+        ["ps_4_0/shadow_pcf"] = ("instruction",
             "The register carrying the loop counter also carries the y offset of the "
             + "sample, so IntegerOperandAnalysis marks it integer and the immediate "
-            + "-1.0f prints as the -1082130432 of its bits. Same cause as "
-            + "ps_4_0/step_mask, here in the AST writer rather than the instruction "
-            + "one.",
+            + "-1.0f is stored as the -1082130432 of its bits. Same cause as "
+            + "ps_4_0/step_mask."),
         // The same register reuse as step_mask, in two more shaders.
-        ["ps_4_0/sign_intrinsic"] =
+        ["ps_4_0/sign_intrinsic"] = ("instruction",
             "The register carrying the sign masks also carries a float later, and is "
             + "declared int4. See ps_4_0/step_mask. Hidden until the machine learned "
             + "imul: a writer whose output the machine cannot run is not compared at "
             + "all, so implementing an opcode can uncover a difference rather than "
-            + "cause one.",
-        ["gs_4_1/circle"] =
+            + "cause one."),
+        ["gs_4_1/circle"] = ("instruction",
             "`int2 r1` holds a loop counter and then an angle in radians, so "
-            + "`r1.y = r1.y * 0.392699093` truncates. See ps_4_0/step_mask.",
+            + "`r1.y = r1.y * 0.392699093` truncates. See ps_4_0/step_mask."),
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>
@@ -123,7 +124,7 @@ public class EquivalenceTests
         ShaderModel original = RecompileTests.ReadShaderModel(
             Path.Combine("CompiledShaders", profile, baseFilename + ".fxc"));
 
-        var differences = new List<string>();
+        var differences = new List<(string Writer, string Message)>();
         string unsupported = null;
         int compared = 0;
         foreach ((string writer, Func<ShaderModel, HlslWriter> create) in Writers())
@@ -136,7 +137,7 @@ public class EquivalenceTests
 
             try
             {
-                differences.AddRange(Compare(writer, original, recompiled).ToList());
+                differences.AddRange(Compare(writer, original, recompiled).Select(d => (writer, d)).ToList());
                 compared++;
             }
             catch (Exception e) when (e is D3D9Machine.UnsupportedException
@@ -156,15 +157,22 @@ public class EquivalenceTests
         }
 
         string key = $"{profile}/{baseFilename}";
-        if (KnownDifferences.TryGetValue(key, out string reason))
+        List<string> unexpected = [.. differences.Select(d => d.Message)];
+        if (KnownDifferences.TryGetValue(key, out (string Writer, string Reason) known))
         {
-            Assert.That(differences, Is.Not.Empty,
-                $"{key} now computes the same. Remove it from {nameof(KnownDifferences)}.");
-            Assert.Ignore($"Known difference: {reason}");
+            Assert.That(differences.Any(d => d.Writer == known.Writer), Is.True,
+                $"The {known.Writer} writer's output for {key} now computes the same. "
+                + $"Remove it from {nameof(KnownDifferences)}.");
+            unexpected = [.. differences.Where(d => d.Writer != known.Writer).Select(d => d.Message)];
         }
 
-        Assert.That(differences, Is.Empty,
-            string.Join(Environment.NewLine, differences));
+        Assert.That(unexpected, Is.Empty,
+            string.Join(Environment.NewLine, unexpected));
+
+        if (known.Reason != null)
+        {
+            Assert.Ignore($"Known difference in the {known.Writer} writer: {known.Reason}");
+        }
     }
 
     private static IEnumerable<(string Name, Func<ShaderModel, HlslWriter> Create)> Writers()

@@ -9,6 +9,15 @@ public class HlslTreeNode
     public IList<HlslTreeNode> Inputs { get; } = [];
     public IList<HlslTreeNode> Outputs { get; } = [];
 
+    /// <summary>
+    /// Whether the instruction this node came from reads its operands as integers
+    /// (iadd, itof, ld), as floats (add, mad, sample, ftoi), or says nothing about
+    /// them - a mov passes its bits along, and and/or/xor work on bits as bits.
+    /// A value that could be either, the immediate a mov writes, is typed by the
+    /// nodes that go on to read it, which is what this is for.
+    /// </summary>
+    public bool? ConsumesInteger { get; set; }
+
     public void Replace(HlslTreeNode with)
     {
         // Replacing a node with itself would drop its own back-references and then

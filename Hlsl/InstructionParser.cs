@@ -15,6 +15,10 @@ public class InstructionParser
     private int _instructionPointer;
     private IntegerOperandAnalysis _integerOperandAnalysis;
 
+    // The immediates a mov or movc writes, with their bits: the instruction says
+    // nothing about their type, so they are typed after parsing by what reads them.
+    private readonly List<(ConstantNode Constant, uint Bits)> _polymorphicImmediates = [];
+
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
     private IList<IStatement> ActiveStatementSequence
@@ -73,6 +77,7 @@ public class InstructionParser
             }
         }
 
+        ResolvePolymorphicImmediates();
         return new HlslAst(_statements, _registerState);
     }
 
@@ -1380,6 +1385,117 @@ public class InstructionParser
 
     private HlslTreeNode CreateInstructionTree(D3D10Instruction instruction, RegisterComponentKey destinationKey)
     {
+        HlslTreeNode node = CreateD3D10InstructionTree(instruction, destinationKey);
+        node.ConsumesInteger ??= GetConsumedType(instruction.Opcode);
+        return node;
+    }
+
+    // What an instruction makes of the operands it reads. itof reads integers and
+    // ftoi floats, whatever their results; a mov or movc passes bits along and the
+    // bitwise operators treat them as bits, so neither says anything.
+    private static bool? GetConsumedType(D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.Mov:
+            case D3D10Opcode.MovC:
+            case D3D10Opcode.And:
+            case D3D10Opcode.Or:
+            case D3D10Opcode.Xor:
+            case D3D10Opcode.Not:
+                return null;
+            case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
+                return true;
+            case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
+                return false;
+            default:
+                return opcode.IsInteger();
+        }
+    }
+
+    /// <summary>
+    /// Types the immediates moved into registers by what goes on to read them. The
+    /// register rule types them by the register, and a register fxc reuses - a loop
+    /// counter in one place, a sample offset in another - gets one type for both,
+    /// so -1.0f moved into it printed as the -1082130432 of its bits. The readers of
+    /// this particular value know better, and where they all agree, they win.
+    /// </summary>
+    private void ResolvePolymorphicImmediates()
+    {
+        foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
+        {
+            bool? consumedAsInteger = GetConsumedType(constant);
+            if (consumedAsInteger == null || consumedAsInteger == (constant.IntegerValue != null))
+            {
+                continue;
+            }
+            ConstantNode typed = consumedAsInteger == true
+                ? new ConstantNode((int)bits)
+                : new ConstantNode(BitConverter.UInt32BitsToSingle(bits));
+            constant.Replace(typed);
+            new StatementVisitor(_statements).Visit(statement =>
+            {
+                foreach (var key in statement.Outputs.Where(o => ReferenceEquals(o.Value, constant)).Select(o => o.Key).ToList())
+                {
+                    statement.Outputs[key] = typed;
+                }
+                foreach (var key in statement.Inputs.Where(o => ReferenceEquals(o.Value, constant)).Select(o => o.Key).ToList())
+                {
+                    statement.Inputs[key] = typed;
+                }
+            });
+        }
+    }
+
+    // What the readers of a value agree it is, looking through the nodes that
+    // merely carry it - moves, conditional moves, phis, and a sign or absolute
+    // modifier - or null where they disagree or there are none.
+    private static bool? GetConsumedType(HlslTreeNode value)
+    {
+        bool? type = null;
+        var visited = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(value);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            foreach (HlslTreeNode reader in node.Outputs)
+            {
+                if (!visited.Add(reader))
+                {
+                    continue;
+                }
+                bool carries = reader is MoveOperation or MoveConditionalOperation or PhiNode
+                    or NegateOperation or AbsoluteOperation;
+                if (reader is MoveConditionalOperation && ReferenceEquals(reader.Inputs[0], node))
+                {
+                    // The condition, not a value carried through.
+                    continue;
+                }
+                if (carries)
+                {
+                    pending.Push(reader);
+                    continue;
+                }
+                bool? consumed = reader is ComparisonNode comparison ? comparison.IsInteger : reader.ConsumesInteger;
+                if (consumed == null)
+                {
+                    continue;
+                }
+                if (type != null && type != consumed)
+                {
+                    return null;
+                }
+                type = consumed;
+            }
+        }
+        return type;
+    }
+
+    private HlslTreeNode CreateD3D10InstructionTree(D3D10Instruction instruction, RegisterComponentKey destinationKey)
+    {
         int componentIndex = destinationKey.ComponentIndex;
 
         switch (instruction.Opcode)
@@ -2003,9 +2119,16 @@ public class InstructionParser
             if (operandType == OperandType.Immediate32)
             {
                 // An immediate's 32 bits are typed by the instruction consuming them.
-                inputs[i] = _integerOperandAnalysis.IsIntegerOperand(instruction)
+                // A mov consumes nothing - the register it writes is the best guess
+                // for now, and what reads the value decides once the graph is whole.
+                var constant = _integerOperandAnalysis.IsIntegerOperand(instruction)
                     ? new ConstantNode((int)instruction.GetParamInt(inputParameterIndex, componentIndex))
                     : new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));
+                if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC)
+                {
+                    _polymorphicImmediates.Add((constant, (uint)instruction.GetParamInt(inputParameterIndex, componentIndex)));
+                }
+                inputs[i] = constant;
             }
             else
             {

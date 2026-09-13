@@ -118,6 +118,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "compute_vector")]
     [TestCase("cs_4_1", "compute_loop")]
     [TestCase("cs_4_1", "integer_multiply")]
+    [TestCase("cs_4_1", "groupshared_reduce")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

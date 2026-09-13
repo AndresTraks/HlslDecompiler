@@ -467,7 +467,8 @@ public class StatementFinalizer
             || lastStatement is AppendStatement
             || lastStatement is StoreStructuredStatement
             || lastStatement is IndexableTempStoreStatement
-            || lastStatement is RestartStripStatement)
+            || lastStatement is RestartStripStatement
+            || lastStatement is SyncStatement)
         {
             return;
         }

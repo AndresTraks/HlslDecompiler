@@ -69,6 +69,7 @@ public abstract class HlslWriter
         _registers = _ast.RegisterState;
 
         WriteConstantDeclarations();
+        WriteThreadGroupSharedMemoryDeclarations();
 
         // The geometry shader signature always names the input struct, so it has to
         // be declared even when it holds a single register.
@@ -214,6 +215,33 @@ public abstract class HlslWriter
             }
             WriteLine();
         }
+    }
+
+    /// <summary>
+    /// Declares a compute shader's groupshared arrays, g0[64] and so on, at file
+    /// scope where HLSL wants them. The stride gives the element width; the type is
+    /// float unless every store into the array is an integer, the same rule as an
+    /// indexable temp. Nothing in the bytecode names them, so they keep the register.
+    /// </summary>
+    private void WriteThreadGroupSharedMemoryDeclarations()
+    {
+        if (_registers.ThreadGroupSharedMemory.Count == 0)
+        {
+            return;
+        }
+        var integerOperandAnalysis = new IntegerOperandAnalysis(_shader);
+        foreach ((int register, (int stride, int elements)) in _registers.ThreadGroupSharedMemory.OrderBy(t => t.Key))
+        {
+            int components = stride / sizeof(float);
+            if (components < 1 || components > 4 || stride % sizeof(float) != 0)
+            {
+                throw new NotImplementedException($"groupshared element stride {stride}");
+            }
+            string type = integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(register) ? "int" : "float";
+            string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
+            WriteLine($"groupshared {type}{size} g{register}[{elements}];");
+        }
+        WriteLine();
     }
 
     /// <summary>

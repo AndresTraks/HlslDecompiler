@@ -450,6 +450,10 @@ public class AsmWriter
             case D3D10Opcode.DclUnorderedAccessViewStructured:
                 WriteLine("dcl_uav_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
+            case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
+                WriteLine("dcl_tgsm_structured {0}, {1}, {2}", FormatOperand(instruction, 0),
+                    instruction.GetThreadGroupSharedMemoryStride(), instruction.GetThreadGroupSharedMemoryCount());
+                break;
             case D3D10Opcode.DerivRtx:
                 WriteInstruction(instruction, "deriv_rtx", 2);
                 break;
@@ -718,9 +722,23 @@ public class AsmWriter
             case D3D10Opcode.StoreStructured:
                 WriteInstruction(instruction, "store_structured", 4);
                 break;
+            case D3D10Opcode.Sync:
+                WriteLine("sync" + GetSyncSuffix(instruction.SyncFlags));
+                break;
             default:
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
+    }
+
+    // In the order fxc writes them: sync_uglobal_g_t.
+    private static string GetSyncSuffix(D3D10SyncFlags flags)
+    {
+        string suffix = "";
+        if (flags.HasFlag(D3D10SyncFlags.UavMemoryGlobal)) suffix += "_uglobal";
+        if (flags.HasFlag(D3D10SyncFlags.UavMemoryGroup)) suffix += "_ugroup";
+        if (flags.HasFlag(D3D10SyncFlags.ThreadGroupSharedMemory)) suffix += "_g";
+        if (flags.HasFlag(D3D10SyncFlags.ThreadsInGroup)) suffix += "_t";
+        return suffix;
     }
 
     // fxc spells these with underscores - is_front_face, vertex_id - and the enum
@@ -1056,6 +1074,7 @@ public class AsmWriter
             OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
             OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
             OperandType.UnorderedAccessView => "u",
+            OperandType.ThreadGroupSharedMemory => "g",
             // These carry no register number of their own.
             OperandType.OutputDepth => "oDepth",
             OperandType.OutputDepthGreaterEqual => "oDepthGE",
@@ -1064,9 +1083,13 @@ public class AsmWriter
             _ => throw new NotImplementedException(operandType.ToString()),
         };
 
-        string swizzle = index == instruction.GetDestinationParamIndex()
-            ? instruction.GetDestinationWriteMaskName(GetDestinationSemanticSize(instruction))
-            : instruction.GetSourceSwizzleName(index);
+        // A no-component operand - dcl_input vThreadIDInGroupFlattened - is written
+        // bare, the way fxc writes it.
+        string swizzle = instruction.GetOperandComponentSelection(index) == D3D10OperandNumComponents.Operand0Component
+            ? ""
+            : index == instruction.GetDestinationParamIndex()
+                ? instruction.GetDestinationWriteMaskName(GetDestinationSemanticSize(instruction))
+                : instruction.GetSourceSwizzleName(index);
 
         var modifier = instruction.GetOperandModifier(index);
         return ApplyModifier(modifier, $"{registerTypeName}{registerNumber}{swizzle}");

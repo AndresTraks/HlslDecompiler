@@ -251,6 +251,10 @@ public class DxbcReader : BinaryReader
         {
             instruction.ResInfoReturnType = (D3D10ResInfoReturnType)((opcodeToken >> 11) & 0x3);
         }
+        if (opcode == D3D10Opcode.Sync)
+        {
+            instruction.SyncFlags = (D3D10SyncFlags)((opcodeToken >> 11) & 0xF);
+        }
         if (opcode == D3D10Opcode.DclInputPS
             || opcode == D3D10Opcode.DclInputPSSgv
             || opcode == D3D10Opcode.DclInputPSSiv)

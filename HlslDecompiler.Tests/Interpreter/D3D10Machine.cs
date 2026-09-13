@@ -26,6 +26,11 @@ public class D3D10Machine
     private readonly uint[][] _temp = NewFile(64);
     // x# registers: each a small array of 4-component elements, sized by its dcl.
     private readonly Dictionary<int, uint[][]> _indexableTemps = [];
+    // g# registers: groupshared memory, one dword per 4 bytes of the declared
+    // stride times count, zero until the shader writes it. One thread runs here, so
+    // what it reads back is what it stored itself, and a sync has nothing to wait
+    // for - the same for the original and the decompiled shader.
+    private readonly Dictionary<int, (int Stride, uint[] Words)> _threadGroupSharedMemory = [];
     private readonly uint[][] _input = NewFile(64);
     private readonly uint[][] _output = NewFile(64);
     private readonly Dictionary<int, uint[][]> _constantBuffers = [];
@@ -282,6 +287,9 @@ public class D3D10Machine
                     Store(instruction);
                     pc++;
                     continue;
+                case D3D10Opcode.Sync:
+                    pc++;
+                    continue;
                 case D3D10Opcode.CustomData:
                     LoadImmediateConstantBuffer(instruction);
                     pc++;
@@ -292,6 +300,13 @@ public class D3D10Machine
             {
                 _indexableTemps[instruction.IndexableTempRegister] =
                     NewFile(instruction.IndexableTempElementCount);
+            }
+            if (instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryStructured)
+            {
+                int stride = (int)instruction.GetThreadGroupSharedMemoryStride();
+                int count = (int)instruction.GetThreadGroupSharedMemoryCount();
+                _threadGroupSharedMemory[instruction.GetParamRegisterNumber(0)] =
+                    (stride, new uint[stride / 4 * count]);
             }
             if (instruction.Opcode.IsDeclaration())
             {
@@ -397,8 +412,39 @@ public class D3D10Machine
         int resource = instruction.GetParamRegisterNumber(UnorderedAccessIndex);
         int element = Ints(instruction, ElementIndex)[0];
         int offset = Ints(instruction, OffsetIndex)[0];
+        uint[] value = Source(instruction, ValueIndex);
+        if (instruction.GetOperandType(UnorderedAccessIndex) == OperandType.ThreadGroupSharedMemory)
+        {
+            // Into memory rather than out of the shader: the components the mask
+            // names, at the element, from the byte offset on.
+            (int stride, uint[] words) = _threadGroupSharedMemory[resource];
+            int writeMask = instruction.GetDestinationWriteMask();
+            int word = SharedMemoryWord(stride, words, element, offset);
+            for (int component = 0, written = 0; component < 4; component++)
+            {
+                if ((writeMask & (1 << component)) != 0)
+                {
+                    int index = word + written++;
+                    if (index < words.Length)
+                    {
+                        words[index] = value[component];
+                    }
+                }
+            }
+            return;
+        }
         _stored.Add(new KeyValuePair<string, uint[]>(
-            $"STORE{resource}[{element}][{offset}]", Source(instruction, ValueIndex)));
+            $"STORE{resource}[{element}][{offset}]", value));
+    }
+
+    // The word an element and byte offset address, clamped into the array the way
+    // an out of range index is elsewhere - both programs derive the index from the
+    // same named values, so they clamp to the same word.
+    private static int SharedMemoryWord(int stride, uint[] words, int element, int offset)
+    {
+        int elements = words.Length / (stride / 4);
+        element = Math.Clamp(element, 0, Math.Max(elements - 1, 0));
+        return element * (stride / 4) + Math.Clamp(offset, 0, stride - 4) / 4;
     }
 
     // imul writes the high half of the product to its first destination and the
@@ -597,6 +643,22 @@ public class D3D10Machine
                     int element = Ints(instruction, 1)[0];
                     int offset = Ints(instruction, 2)[0];
                     int resource = instruction.GetParamRegisterNumber(3);
+                    if (instruction.GetOperandType(3) == OperandType.ThreadGroupSharedMemory)
+                    {
+                        // Groupshared memory is read back rather than made up.
+                        (int stride, uint[] words) = _threadGroupSharedMemory[resource];
+                        int word = SharedMemoryWord(stride, words, element, offset);
+                        var read = new uint[4];
+                        for (int component = 0; component < 4; component++)
+                        {
+                            int index = word + component;
+                            read[component] = index < words.Length && component < stride / 4 ? words[index] : 0;
+                        }
+                        // The resource operand's swizzle picks the components, the
+                        // way it does for a buffer.
+                        byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
+                        return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
+                    }
                     return Pack(Named($"buffer{resource}[{element}][{offset}]"));
                 }
             case D3D10Opcode.DerivRtx:

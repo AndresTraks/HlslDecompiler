@@ -41,6 +41,11 @@ public sealed class RegisterState
     public IDictionary<int, (int Elements, int Components)> IndexableTemps { get; } =
         new Dictionary<int, (int Elements, int Components)>();
 
+    // g# registers: a compute shader's groupshared arrays, declared with the
+    // element stride in bytes and the element count.
+    public IDictionary<int, (int Stride, int Elements)> ThreadGroupSharedMemory { get; } =
+        new Dictionary<int, (int Stride, int Elements)>();
+
     private ShaderModel _shaderModel;
 
     public RegisterState(ShaderModel shaderModel)
@@ -201,6 +206,10 @@ public sealed class RegisterState
             if (d3D10RegisterKey.OperandType == OperandType.IndexableTemp)
             {
                 return IndexableTemps[registerKey.Number].Components;
+            }
+            if (d3D10RegisterKey.OperandType == OperandType.ThreadGroupSharedMemory)
+            {
+                return GetStructuredBufferComponents(registerKey);
             }
         }
         throw new NotImplementedException();
@@ -593,6 +602,9 @@ public sealed class RegisterState
                         .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
+                // Groupshared memory has no reflection entry to take a name from.
+                case OperandType.ThreadGroupSharedMemory:
+                    return "g" + registerKey.Number;
                 default:
                     throw new NotImplementedException();
             }
@@ -853,6 +865,12 @@ public sealed class RegisterState
         {
             ResourceDefinitions.Add(definition);
         }
+    }
+
+    public void DeclareThreadGroupSharedMemory(D3D10RegisterKey registerKey, uint stride, uint elements)
+    {
+        DeclareStructuredStride(registerKey, stride);
+        ThreadGroupSharedMemory[registerKey.Number] = ((int)stride, (int)elements);
     }
 
     public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey, uint stride)
@@ -1194,11 +1212,14 @@ public sealed class RegisterState
             };
         }
 
-        // A depth output is one component; the 4 is a guess for everything else.
-        bool isDepth = registerKey.OperandType == OperandType.OutputDepth
+        // A depth output is one component, and so is SV_GroupIndex, the flattened
+        // thread id; the 4 is a guess for everything else - it happens to make the
+        // three-wide thread ids three wide.
+        bool isScalar = registerKey.OperandType == OperandType.OutputDepth
             || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
-            || registerKey.OperandType == OperandType.OutputDepthLessEqual;
-        int writeMask = isDepth ? 1 : 4;
+            || registerKey.OperandType == OperandType.OutputDepthLessEqual
+            || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened;
+        int writeMask = isScalar ? 1 : 4;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask);
     }
 }

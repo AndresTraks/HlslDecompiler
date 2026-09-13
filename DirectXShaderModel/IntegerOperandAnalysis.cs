@@ -44,6 +44,129 @@ public sealed class IntegerOperandAnalysis
         return IsIntegerIndexableTemp(register, _integerRegisters);
     }
 
+    /// <summary>
+    /// Whether a groupshared array holds integers. The register rule cannot answer:
+    /// the value a store writes usually sits in a register that also carried the
+    /// element index a moment before, and that alone would make every array an
+    /// integer. So each store is traced back to the instruction that last wrote the
+    /// value it stores - an integer operation, a float one, or a load whose buffer
+    /// the reflection data types. Integer only when some store says so and none
+    /// says float.
+    /// </summary>
+    public bool IsIntegerThreadGroupSharedMemory(int register)
+    {
+        const int ValueIndex = 3;
+        var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        bool anyInteger = false;
+        for (int i = 0; i < instructions.Count; i++)
+        {
+            D3D10Instruction store = instructions[i];
+            if (store.Opcode != D3D10Opcode.StoreStructured
+                || store.GetOperandType(0) != OperandType.ThreadGroupSharedMemory
+                || store.GetParamRegisterNumber(0) != register)
+            {
+                continue;
+            }
+            switch (StoredValueType(instructions, i, ValueIndex))
+            {
+                case StoredType.Float:
+                    return false;
+                case StoredType.Integer:
+                    anyInteger = true;
+                    break;
+            }
+        }
+        return anyInteger;
+    }
+
+    private enum StoredType { Unknown, Integer, Float }
+
+    // What the operand of the instruction at index holds, by the instruction that
+    // last wrote it. Straight-line order only; a value written in one branch and
+    // read after the join reads as whichever write comes last in the listing, which
+    // is as much as the bytecode says without a flow graph.
+    private StoredType StoredValueType(List<D3D10Instruction> instructions, int index, int operandIndex)
+    {
+        D3D10Instruction reader = instructions[index];
+        OperandType type = reader.GetOperandType(operandIndex);
+        if (type == OperandType.Immediate32)
+        {
+            return StoredType.Unknown;
+        }
+        if (type != OperandType.Temp)
+        {
+            // An input or a constant, typed by its own declaration; not worth
+            // chasing for this.
+            return _integerRegisters != null && IsIntegerRegister(
+                new RegisterComponentKey(reader.GetParamRegisterKey(operandIndex), reader.GetSourceSwizzleComponents(operandIndex)[0]))
+                ? StoredType.Integer
+                : StoredType.Unknown;
+        }
+        RegisterKey source = reader.GetParamRegisterKey(operandIndex);
+        int component = reader.GetSourceSwizzleComponents(operandIndex)[0];
+        for (int i = index - 1; i >= 0; i--)
+        {
+            D3D10Instruction writer = instructions[i];
+            if (writer.Opcode.IsDeclaration() || !writer.HasDestination
+                || writer.Opcode == D3D10Opcode.StoreStructured)
+            {
+                continue;
+            }
+            int destination = writer.GetDestinationParamIndex().Value;
+            if (!writer.GetParamRegisterKey(destination).Equals(source)
+                || (writer.GetWriteMask(destination) & (1 << component)) == 0)
+            {
+                continue;
+            }
+            if (writer.Opcode.IsInteger() || writer.Opcode == D3D10Opcode.Ftoi || writer.Opcode == D3D10Opcode.Ftou)
+            {
+                return StoredType.Integer;
+            }
+            switch (writer.Opcode)
+            {
+                case D3D10Opcode.Mov:
+                    return StoredValueType(instructions, i, 1);
+                case D3D10Opcode.MovC:
+                    {
+                        StoredType first = StoredValueType(instructions, i, 2);
+                        return first != StoredType.Unknown ? first : StoredValueType(instructions, i, 3);
+                    }
+                case D3D10Opcode.LdStructured:
+                    return LoadedElementType(writer);
+                default:
+                    return StoredType.Float;
+            }
+        }
+        return StoredType.Unknown;
+    }
+
+    // What ld_structured reads: the element type the reflection data gives the
+    // buffer, or nothing for groupshared memory, which has none.
+    private StoredType LoadedElementType(D3D10Instruction load)
+    {
+        const int ResourceIndex = 3;
+        OperandType type = load.GetOperandType(ResourceIndex);
+        D3DShaderInputType inputType = type switch
+        {
+            OperandType.Resource => D3DShaderInputType.Structured,
+            OperandType.UnorderedAccessView => D3DShaderInputType.UavRWStructured,
+            _ => (D3DShaderInputType)(-1),
+        };
+        ResourceDefinition definition = _shader.ResourceDefinitions
+            .FirstOrDefault(d => d.ShaderInputType == inputType
+                && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
+        if (definition?.ElementType == null)
+        {
+            return StoredType.Unknown;
+        }
+        return definition.ElementType.ParameterType switch
+        {
+            ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
+            ParameterType.Float => StoredType.Float,
+            _ => StoredType.Unknown,
+        };
+    }
+
     private bool IsIntegerIndexableTemp(int register, HashSet<RegisterComponentKey> integerRegisters)
     {
         bool anyStore = false;

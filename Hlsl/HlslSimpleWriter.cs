@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
+using HlslDecompiler.Hlsl.FlowControl;
 using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
@@ -547,7 +548,7 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.BreakC:
-                WriteLine("if ({0} != 0) break;", GetOperandName(instruction, 0));
+                WriteLine("if ({0} {1} 0) break;", GetOperandName(instruction, 0), TestOperator(instruction));
                 break;
             case D3D10Opcode.Cut:
                 WriteLine("stream.RestartStrip();");
@@ -572,7 +573,7 @@ public class HlslSimpleWriter : HlslWriter
             // Control flow was skipped entirely, so a DXBC loop with a guarded break
             // printed as `while (true)` with nothing to end it.
             case D3D10Opcode.If:
-                WriteLine("if ({0} != 0) {{", GetOperandName(instruction, 0));
+                WriteLine("if ({0} {1} 0) {{", GetOperandName(instruction, 0), TestOperator(instruction));
                 indent += "\t";
                 break;
             case D3D10Opcode.Else:
@@ -605,7 +606,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("continue;");
                 break;
             case D3D10Opcode.ContinueC:
-                WriteLine("if ({0} != 0) continue;", GetOperandName(instruction, 0));
+                WriteLine("if ({0} {1} 0) continue;", GetOperandName(instruction, 0), TestOperator(instruction));
                 break;
             case D3D10Opcode.Div:
                 WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
@@ -791,6 +792,9 @@ public class HlslSimpleWriter : HlslWriter
                 // TODO: consider offset
                 WriteLine("{0}[{1}] = {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
+            case D3D10Opcode.Sync:
+                WriteLine("{0}();", SyncStatement.GetIntrinsicName(instruction.SyncFlags));
+                break;
             case D3D10Opcode.DclConstantBuffer:
             case D3D10Opcode.DclGlobalFlags:
             case D3D10Opcode.DclGSInputPrimitive:
@@ -815,12 +819,15 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclIndexableTemp:
             case D3D10Opcode.DclThreadGroup:
             case D3D10Opcode.DclUnorderedAccessViewStructured:
+            // Declared at file scope, before main.
+            case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                 break;
             case D3D10Opcode.RetC:
-                WriteLine("if ({0} != 0) return{1};", GetOperandName(instruction, 0),
+                WriteLine("if ({0} {2} 0) return{1};", GetOperandName(instruction, 0),
                     _registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
                         ? " o"
-                        : "");
+                        : "",
+                    TestOperator(instruction));
                 break;
             case D3D10Opcode.Ret:
                 // The last ret is the method returning, which is written after the
@@ -1398,6 +1405,12 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
+    }
+
+    // if_nz branches when the register is non-zero, if_z when it is zero.
+    private static string TestOperator(D3D10Instruction instruction)
+    {
+        return instruction.TestNonZero ? "!=" : "==";
     }
 
     // The resource operand carries a swizzle saying which channel of the texture

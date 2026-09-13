@@ -302,6 +302,18 @@ public class InstructionParser
                         SeedResourceComponents(registerKey);
                         break;
                     }
+                case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareThreadGroupSharedMemory(registerKey,
+                            instruction.GetThreadGroupSharedMemoryStride(),
+                            instruction.GetThreadGroupSharedMemoryCount());
+                        SeedResourceComponents(registerKey);
+                        break;
+                    }
+                case D3D10Opcode.Sync:
+                    InsertStatement(new SyncStatement(instruction.SyncFlags, ActiveOutputs));
+                    break;
                 case D3D10Opcode.EndLoop:
                     EndLoop();
                     break;
@@ -667,17 +679,24 @@ public class InstructionParser
         RegisterKey registerKey = instruction.GetParamRegisterKey(0);
         HlslTreeNode condition = GetActiveOutput(new RegisterComponentKey(registerKey, component));
 
-        if (condition is ComparisonNode)
+        ComparisonNode comparison;
+        if (condition is ComparisonNode conditionComparison)
         {
-            return condition;
+            comparison = conditionComparison;
         }
         // A float comparison feeding a branch reads as the condition itself rather
         // than as a value tested against zero.
-        if (condition is GreaterEqualOperation greaterEqual)
+        else if (condition is GreaterEqualOperation greaterEqual)
         {
-            return new ComparisonNode(greaterEqual.Inputs[0], greaterEqual.Inputs[1], IfComparison.GE);
+            comparison = new ComparisonNode(greaterEqual.Inputs[0], greaterEqual.Inputs[1], IfComparison.GE);
         }
-        return new ComparisonNode(condition, new ConstantNode(0), IfComparison.NE);
+        else
+        {
+            comparison = new ComparisonNode(condition, new ConstantNode(0), IfComparison.NE);
+        }
+        // if_z, breakc_z and the rest take the branch when the register is zero, which
+        // for a comparison mask is when the comparison does not hold.
+        return instruction.TestNonZero ? comparison : comparison.Inverted();
     }
 
     /// <summary>

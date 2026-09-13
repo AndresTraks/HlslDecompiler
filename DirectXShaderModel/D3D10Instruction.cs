@@ -61,6 +61,10 @@ public class D3D10Instruction : Instruction
     // the integers GetDimensions' uint overloads take. In the opcode token, so the
     // reader sets it.
     public D3D10ResInfoReturnType ResInfoReturnType { get; set; }
+
+    // What a sync waits on: the threads of the group, group shared memory, or UAV
+    // memory. In the opcode token, so the reader sets it.
+    public D3D10SyncFlags SyncFlags { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
     // dcl_indexableTemp carries no operand tokens: three plain dwords name the x#
@@ -338,7 +342,9 @@ public class D3D10Instruction : Instruction
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand0Component)
         {
-            return 0;
+            // dcl_input vThreadIDInGroupFlattened declares SV_GroupIndex with no
+            // components at all - it is a scalar, and every read of it is .x.
+            return IsThreadRegister(GetOperandType(operandIndex)) ? 1 : 0;
         }
         throw new NotImplementedException();
     }
@@ -747,6 +753,18 @@ public class D3D10Instruction : Instruction
     public uint GetResourceStructuredBufferStride()
     {
         return GetParamIndexImmediate32(1, 0);
+    }
+
+    // dcl_tgsm_structured g0, stride, count: the g# operand is followed by two plain
+    // dwords, the element stride in bytes and the element count.
+    public uint GetThreadGroupSharedMemoryStride()
+    {
+        return GetParamIndexImmediate32(1, 0);
+    }
+
+    public uint GetThreadGroupSharedMemoryCount()
+    {
+        return GetParamIndexImmediate32(2, 0);
     }
 
     public uint GetParamIndexImmediate32(int operandIndex, int index)

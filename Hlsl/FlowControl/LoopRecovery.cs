@@ -78,7 +78,7 @@ public static class LoopRecovery
 
         // Work this out before anything is moved: not every comparison can be
         // inverted, and the statements must not be left half-rewritten.
-        ComparisonNode continueCondition = Invert(breakCondition);
+        ComparisonNode continueCondition = breakCondition.Inverted();
         if (continueCondition == null)
         {
             return;
@@ -89,12 +89,14 @@ public static class LoopRecovery
             return;
         }
 
-        // The increment must be `v = v + step` on a variable the break tests.
+        // The increment must be `v = v + step` on a variable the break tests - or a
+        // step by a shift or a multiply, `stride >>= 1`, which is a for loop just the
+        // same, and one fxc closes with a breakc rather than an if around a break.
         var increment = lastStatement.Outputs
             .Where(o => o.Value is TempAssignmentNode assignment
-                && assignment.Value is AddOperation add
-                && add.Inputs.Any(a => ReferenceEquals(a, assignment.TempVariable))
-                && add.Inputs.Any(a => a is ConstantNode))
+                && assignment.Value is AddOperation or ShiftRightOperation or ShiftLeftOperation or MultiplyOperation
+                && assignment.Value.Inputs.Any(a => ReferenceEquals(a, assignment.TempVariable))
+                && assignment.Value.Inputs.Any(a => a is ConstantNode))
             .Select(o => (Key: o.Key, Assignment: (TempAssignmentNode)o.Value))
             .FirstOrDefault(o => IsTestedBy(o.Assignment.TempVariable, breakCondition));
         if (increment.Assignment == null)
@@ -153,24 +155,6 @@ public static class LoopRecovery
         }
 
         return null;
-    }
-
-    /// <summary>The loop runs while the break condition does not hold.</summary>
-    private static ComparisonNode Invert(ComparisonNode comparison)
-    {
-        IfComparison inverted = comparison.Comparison switch
-        {
-            IfComparison.GT => IfComparison.LE,
-            IfComparison.GE => IfComparison.LT,
-            IfComparison.LT => IfComparison.GE,
-            IfComparison.LE => IfComparison.GT,
-            IfComparison.EQ => IfComparison.NE,
-            IfComparison.NE => IfComparison.EQ,
-            _ => IfComparison.None,
-        };
-        return inverted == IfComparison.None
-            ? null
-            : new ComparisonNode(comparison.Left, comparison.Right, inverted);
     }
 
     private static bool IsTestedBy(TempVariableNode variable, ComparisonNode comparison)

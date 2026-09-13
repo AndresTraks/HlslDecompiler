@@ -24,6 +24,25 @@ public class ComparisonNode : HlslTreeNode
     /// </summary>
     public bool IsInteger { get; }
 
+    /// <summary>The same comparison with the opposite outcome, or null for one
+    /// that has none - a stale loop counter test, say.</summary>
+    public ComparisonNode Inverted()
+    {
+        IfComparison inverted = Comparison switch
+        {
+            IfComparison.GT => IfComparison.LE,
+            IfComparison.GE => IfComparison.LT,
+            IfComparison.LT => IfComparison.GE,
+            IfComparison.LE => IfComparison.GT,
+            IfComparison.EQ => IfComparison.NE,
+            IfComparison.NE => IfComparison.EQ,
+            _ => IfComparison.None,
+        };
+        return inverted == IfComparison.None
+            ? null
+            : new ComparisonNode(Left, Right, inverted, IsInteger);
+    }
+
     public override string ToString()
     {
         return $"{Left} {Comparison.ToHlslString()} {Right}";

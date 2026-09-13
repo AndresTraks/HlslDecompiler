@@ -96,6 +96,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteLine("stream.RestartStrip();");
         }
+        else if (statement is SyncStatement sync)
+        {
+            WriteLine($"{sync.IntrinsicName}();");
+        }
         else if (statement is LoopStatement loop)
         {
             WriteLoopStatement(loop);

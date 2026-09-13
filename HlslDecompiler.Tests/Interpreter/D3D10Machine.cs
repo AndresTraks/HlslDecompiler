@@ -24,6 +24,8 @@ public class D3D10Machine
     private readonly ShaderModel _shader;
     private readonly int _trial;
     private readonly uint[][] _temp = NewFile(64);
+    // x# registers: each a small array of 4-component elements, sized by its dcl.
+    private readonly Dictionary<int, uint[][]> _indexableTemps = [];
     private readonly uint[][] _input = NewFile(64);
     private readonly uint[][] _output = NewFile(64);
     private readonly Dictionary<int, uint[][]> _constantBuffers = [];
@@ -286,6 +288,11 @@ public class D3D10Machine
                     continue;
             }
 
+            if (instruction.Opcode == D3D10Opcode.DclIndexableTemp)
+            {
+                _indexableTemps[instruction.IndexableTempRegister] =
+                    NewFile(instruction.IndexableTempElementCount);
+            }
             if (instruction.Opcode.IsDeclaration())
             {
                 pc++;
@@ -834,6 +841,8 @@ public class D3D10Machine
                 ];
             case OperandType.Temp:
                 return _temp[instruction.GetParamRegisterNumber(index)];
+            case OperandType.IndexableTemp:
+                return IndexableTempElement(instruction, index);
             case OperandType.Input:
                 {
                     // A geometry shader reads v[vertex][register], so the register
@@ -887,6 +896,17 @@ public class D3D10Machine
         }
     }
 
+    // x0[3], x0[r0.x + 1]: the first index names the array, the second the element,
+    // clamped like a constant buffer's - both programs derive it from the same
+    // named values, so they clamp to the same one.
+    private uint[] IndexableTempElement(D3D10Instruction instruction, int operandIndex)
+    {
+        var indices = instruction.OperandTokens.GetOperandIndices(operandIndex);
+        uint[][] array = _indexableTemps[(int)indices[0].Immediate];
+        int element = (int)indices[1].Immediate + RelativeIndex(instruction, operandIndex, 1);
+        return array[Math.Clamp(element, 0, array.Length - 1)];
+    }
+
     // cb0[r0.x + 4] adds a register to the immediate. A made up index need not be
     // in range the way a real one is, so the caller clamps; both programs derive it
     // from the same named values, so they clamp to the same element.
@@ -930,6 +950,9 @@ public class D3D10Machine
         {
             case OperandType.Temp:
                 destination = _temp[number];
+                break;
+            case OperandType.IndexableTemp:
+                destination = IndexableTempElement(instruction, destinationIndex);
                 break;
             case OperandType.Output:
                 destination = _output[number];

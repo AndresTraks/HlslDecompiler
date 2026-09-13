@@ -121,6 +121,13 @@ public class InstructionParser
         // and SinCos, Udiv and IMul each write two destinations, so none of them fits
         // the single-destination assignment path.
         if (instruction.HasDestination
+            && instruction.GetOperandType(instruction.GetDestinationParamIndex().Value) == OperandType.IndexableTemp)
+        {
+            // A write to a local array is a store into memory, not a register
+            // assignment: see IndexableTempStoreStatement.
+            InsertIndexableTempStore(instruction);
+        }
+        else if (instruction.HasDestination
             && instruction.Opcode != D3D10Opcode.StoreStructured
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
@@ -196,6 +203,10 @@ public class InstructionParser
                         }
                         break;
                     }
+                case D3D10Opcode.DclIndexableTemp:
+                    _registerState.IndexableTemps[instruction.IndexableTempRegister] =
+                        (instruction.IndexableTempElementCount, instruction.IndexableTempComponentCount);
+                    break;
                 case D3D10Opcode.DclConstantBuffer:
                     {
                         int registerNumber = (int)instruction.GetParamInt(0);
@@ -1887,6 +1898,47 @@ public class InstructionParser
         return new RelativeAddressNode(inputKey, GetActiveOutput(addressKey));
     }
 
+    // The element an x# operand names: a literal, a register, or a register plus a
+    // literal, as cb0[r0.x + 2] is. Whatever the shader indexes an array with is an
+    // integer, so a literal is one too.
+    private HlslTreeNode GetIndexableTempElementIndex(D3D10Instruction instruction, int operandIndex)
+    {
+        const int ElementIndex = 1;
+        D3D10OperandTokenCollection.OperandIndex element =
+            instruction.OperandTokens.GetOperandIndices(operandIndex)[ElementIndex];
+        if (!element.IsRelative)
+        {
+            return new ConstantNode((int)element.Immediate);
+        }
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, ElementIndex);
+        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+        return element.Immediate == 0
+            ? index
+            : new AddOperation(index, new ConstantNode((int)element.Immediate));
+    }
+
+    private void InsertIndexableTempStore(D3D10Instruction instruction)
+    {
+        int destinationIndex = instruction.GetDestinationParamIndex().Value;
+        int register = (int)instruction.OperandTokens.GetOperandIndices(destinationIndex)[0].Immediate;
+        HlslTreeNode index = GetIndexableTempElementIndex(instruction, destinationIndex);
+        RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+        HlslTreeNode[] values = [.. destinationKeys.Select(key =>
+        {
+            // A mov's value is its source itself: wrapping it in a move would give
+            // the source a consumer, and a value consumed by nothing but a store is
+            // meant to be written into it inline.
+            HlslTreeNode value = instruction.Opcode == D3D10Opcode.Mov
+                ? GetInputs(instruction, key.ComponentIndex)[0]
+                : CreateInstructionTree(instruction, key);
+            return instruction.Saturate ? new SaturateOperation(value) : value;
+        })];
+        InsertStatement(new IndexableTempStoreStatement(
+            register, index, [.. destinationKeys.Select(key => key.ComponentIndex)], values, ActiveOutputs));
+    }
+
     private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
     {
         int numInputs = GetNumInputs(instruction.Opcode);
@@ -1897,6 +1949,16 @@ public class InstructionParser
             var operandType = instruction.GetOperandType(inputParameterIndex);
             D3D10OperandTokenCollection.OperandIndex[] operandIndices =
                 instruction.OperandTokens.GetOperandIndices(inputParameterIndex);
+            if (operandType == OperandType.IndexableTemp)
+            {
+                byte[] swizzle = instruction.GetSourceSwizzleComponents(inputParameterIndex);
+                var load = new IndexableTempLoadNode(
+                    (int)operandIndices[0].Immediate,
+                    GetIndexableTempElementIndex(instruction, inputParameterIndex),
+                    swizzle[componentIndex]);
+                inputs[i] = ApplyModifier(load, instruction.GetOperandModifier(inputParameterIndex));
+                continue;
+            }
             if (operandIndices.Any(index => index.IsRelative))
             {
                 // The register number decoded from a relative operand is meaningless,

@@ -440,6 +440,10 @@ public class AsmWriter
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                 break;
+            case D3D10Opcode.DclIndexableTemp:
+                WriteLine("dcl_indexableTemp x{0}[{1}], {2}", instruction.IndexableTempRegister,
+                    instruction.IndexableTempElementCount, instruction.IndexableTempComponentCount);
+                break;
             case D3D10Opcode.DclThreadGroup:
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
                 break;
@@ -1009,6 +1013,14 @@ public class AsmWriter
                 }
             }
         }
+        else if (operandType == OperandType.IndexableTemp)
+        {
+            // x0[3], x0[r0.x + 1]: the register outside the brackets, the element
+            // inside, the way fxc writes them.
+            D3D10OperandTokenCollection.OperandIndex[] indices =
+                instruction.OperandTokens.GetOperandIndices(index);
+            registerNumber = indices[0].Immediate + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
+        }
         else
         {
             D3D10OperandTokenCollection.OperandIndex[] indices =
@@ -1032,6 +1044,7 @@ public class AsmWriter
             OperandType.Input => "v",
             OperandType.Output => "o",
             OperandType.Temp => "r",
+            OperandType.IndexableTemp => "x",
             OperandType.ConstantBuffer => "cb",
             // Its register number is the index into it, so the prefix carries the
             // whole name.

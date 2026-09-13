@@ -91,8 +91,20 @@ public class StatementFinalizer
                 // loop backedge into the next iteration - so it is still live.
                 if (assignmentNode.Outputs.All(v => v is not PhiNode && v.IsInputOf(assignment.Outputs.Values)))
                 {
-                    RemoveAnyAssignment(assignmentNode);
-                    continue;
+                    // A store into a local array holds its value without being a
+                    // node that reads it. Written into the very next statement the
+                    // value can be inlined there; held any further away it has to be
+                    // named here, since a store in between may change what the value
+                    // reads - a swap loads both elements before it writes either.
+                    IStatement[] holders = FindHoldingStatements(assignmentNode);
+                    if (holders.Length == 0
+                        || (holders.Length == 1 && i < statements.Count - 1
+                            && ReferenceEquals(holders[0], statements[i + 1])
+                            && statements[i + 1] is IndexableTempStoreStatement))
+                    {
+                        RemoveAnyAssignment(assignmentNode);
+                        continue;
+                    }
                 }
 
                 // Check if assignment output goes only into the next statement
@@ -198,8 +210,10 @@ public class StatementFinalizer
                 HlslTreeNode tempValue = newAssignment.Value;
 
                 // Insert temp variable if value has output outside of current statement
-                // or if an iteration variable is changed
-                bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values));
+                // or if an iteration variable is changed. A store statement holding the
+                // value is a use outside the statement too.
+                bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values))
+                    || FindHoldingStatements(tempValue).Length != 0;
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
                 TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
@@ -221,7 +235,9 @@ public class StatementFinalizer
                         && tempUsages.All(u => u is PhiNode phi
                             && phi.IsLoopHeader
                             && ReferenceEquals(phi.PreLoopValue, tempValue));
-                    if ((tempUsages.All(u => u is PhiNode) && !declaresLoopVariable)
+                    // A value with no node reading it - one held by a store statement
+                    // alone - is not "all phis"; it is a fresh declaration.
+                    if ((tempUsages.Count != 0 && tempUsages.All(u => u is PhiNode) && !declaresLoopVariable)
                         || tempInputAssignment != null
                         || tempInputVariable != null)
                     {
@@ -257,6 +273,8 @@ public class StatementFinalizer
                         int index = tempUsage.Inputs.IndexOf(tempValue);
                         tempUsage.Inputs[index] = tempVariable;
                     }
+                    // A statement holding the value reads the variable from now on.
+                    ReplaceInStatementNodes(tempValue, tempVariable);
                     ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
                     assignmentByKey[newAssignment.Key] = tempAssignment;
                 }
@@ -448,6 +466,7 @@ public class StatementFinalizer
         if (lastStatement is ReturnStatement
             || lastStatement is AppendStatement
             || lastStatement is StoreStructuredStatement
+            || lastStatement is IndexableTempStoreStatement
             || lastStatement is RestartStripStatement)
         {
             return;
@@ -579,6 +598,25 @@ public class StatementFinalizer
     // values of a store, the values of a clip. Those are not consumers in the graph,
     // so rewiring by output list never reaches them, and a phi left behind there
     // reaches compilation unlowered.
+    // The local array stores that hold a node directly - as their value or their
+    // index - rather than reading it through the graph. A structured store or a
+    // clip holds its values the same way, but they inline whatever they hold
+    // wherever it was computed, as they always have; only the local array, whose
+    // stores can change what an earlier load meant, is made to keep the distance.
+    private IStatement[] FindHoldingStatements(HlslTreeNode node)
+    {
+        var holders = new List<IStatement>();
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is IndexableTempStoreStatement store
+                && (store.Index == node || store.Values.Contains(node)))
+            {
+                holders.Add(statement);
+            }
+        });
+        return [.. holders];
+    }
+
     private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)
     {
         new StatementVisitor(_statements).Visit(statement =>
@@ -605,6 +643,20 @@ public class StatementFinalizer
                     {
                         clip.Values[i] = replacement;
                     }
+                }
+            }
+            else if (statement is IndexableTempStoreStatement indexableTempStore)
+            {
+                for (int i = 0; i < indexableTempStore.Values.Length; i++)
+                {
+                    if (indexableTempStore.Values[i] == node)
+                    {
+                        indexableTempStore.Values[i] = replacement;
+                    }
+                }
+                if (indexableTempStore.Index == node)
+                {
+                    indexableTempStore.Index = replacement;
                 }
             }
         });

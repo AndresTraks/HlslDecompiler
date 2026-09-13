@@ -36,6 +36,7 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         WriteTemporaryVariableDeclarations();
+        WriteIndexableTempDeclarations(_integerOperandAnalysis);
         foreach (Instruction instruction in _shader.Instructions)
         {
             if (instruction is D3D9Instruction d3d9Instruction)
@@ -810,6 +811,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.CustomData:
             case D3D10Opcode.DclSampler:
             case D3D10Opcode.DclTemps:
+            // Declared with the temps, above.
+            case D3D10Opcode.DclIndexableTemp:
             case D3D10Opcode.DclThreadGroup:
             case D3D10Opcode.DclUnorderedAccessViewStructured:
                 break;
@@ -993,6 +996,36 @@ public class HlslSimpleWriter : HlslWriter
         sourceRegisterName += GetRelativeAddressingName(instruction, srcIndex);
         sourceRegisterName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
         return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
+    }
+
+    // x0[3], x0[r0.x], x0[r0.x + 1]: the array, then the element it names.
+    private static string GetIndexableTempOperandName(
+        D3D10Instruction instruction,
+        int operandIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        const int ElementIndex = 1;
+        D3D10OperandTokenCollection.OperandIndex element = operandIndices[ElementIndex];
+        string index;
+        if (!element.IsRelative)
+        {
+            index = element.Immediate.ToString(CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            (OperandType indexType, int indexNumber, byte indexComponent) =
+                instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, ElementIndex);
+            if (indexType != OperandType.Temp)
+            {
+                throw new NotImplementedException(indexType.ToString());
+            }
+            index = $"r{indexNumber}.{"xyzw"[indexComponent]}";
+            if (element.Immediate != 0)
+            {
+                index += $" + {element.Immediate.ToString(CultureInfo.InvariantCulture)}";
+            }
+        }
+        return $"x{operandIndices[0].Immediate}[{index}]";
     }
 
     private string GetDynamicOperandName(
@@ -1289,7 +1322,11 @@ public class HlslSimpleWriter : HlslWriter
             instruction.OperandTokens.GetOperandIndices(operandIndex);
         string registerName;
         bool isPackedScalar = false;
-        if (operandIndices.Any(i => i.IsRelative))
+        if (registerKey.OperandType == OperandType.IndexableTemp)
+        {
+            registerName = GetIndexableTempOperandName(instruction, operandIndex, operandIndices);
+        }
+        else if (operandIndices.Any(i => i.IsRelative))
         {
             registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices);
         }

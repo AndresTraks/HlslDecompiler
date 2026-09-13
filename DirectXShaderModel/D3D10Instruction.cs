@@ -63,6 +63,12 @@ public class D3D10Instruction : Instruction
     public D3D10ResInfoReturnType ResInfoReturnType { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
+    // dcl_indexableTemp carries no operand tokens: three plain dwords name the x#
+    // register, how many elements it has, and how many components each holds.
+    public int IndexableTempRegister => (int)OperandTokens.Tokens[0];
+    public int IndexableTempElementCount => (int)OperandTokens.Tokens[1];
+    public int IndexableTempComponentCount => (int)OperandTokens.Tokens[2];
+
     /// <summary>
     /// The payload of a customdata instruction, which is not operand tokens - an
     /// immediate constant buffer is four floats per row.
@@ -135,7 +141,6 @@ public class D3D10Instruction : Instruction
             switch (Opcode)
             {
                 case D3D10Opcode.Add:
-                case D3D10Opcode.DclIndexableTemp:
                 case D3D10Opcode.DclInputPSSgv:
                 case D3D10Opcode.DclInputPSSiv:
                 case D3D10Opcode.DclInputPS:
@@ -659,6 +664,15 @@ public class D3D10Instruction : Instruction
         else if (IsThreadRegister(operandType))
         {
             return new D3D10RegisterKey(operandType, 0);
+        }
+        else if (operandType == OperandType.IndexableTemp)
+        {
+            // x0[3] and x0[r0.x + 1] are one register: the first index names it and
+            // the second, immediate or not, picks the element. The key is the whole
+            // array, and the element is modelled by whoever reads the operand.
+            return new D3D10RegisterKey(
+                operandType,
+                (int)OperandTokens.GetOperandIndices(index)[0].Immediate);
         }
         if (_isGeometryShader && operandType == OperandType.Input)
         {

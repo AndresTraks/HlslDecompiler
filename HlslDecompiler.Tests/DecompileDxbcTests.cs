@@ -50,6 +50,8 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "derivatives")]
     [TestCase("ps_4_0", "mrt_depth")]
     [TestCase("ps_4_0", "sample_variants")]
+    [TestCase("ps_4_0", "indexable_temp")]
+    [TestCase("ps_4_0", "indexable_temp_loop")]
     [TestCase("ps_4_0", "get_dimensions")]
     [TestCase("ps_4_0", "get_dimensions_mip")]
     [TestCase("ps_4_1", "gather")]

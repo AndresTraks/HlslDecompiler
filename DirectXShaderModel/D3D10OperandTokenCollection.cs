@@ -15,6 +15,21 @@ public class D3D10OperandTokenCollection
         _opcode = opcode;
     }
 
+    // How many operands the tokens hold. Not for a declaration whose tokens are
+    // plain dwords rather than operands.
+    public int OperandCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < Tokens.Length; i = SkipOperand(i))
+            {
+                count++;
+            }
+            return count;
+        }
+    }
+
     public Span<uint> GetSpan(int index)
     {
         int operandCount = 0;

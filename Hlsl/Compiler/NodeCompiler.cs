@@ -524,6 +524,22 @@ public sealed class NodeCompiler
             : $", {offsets}";
     }
 
+    // An array subscript is an integer, so its literals print as integers and its
+    // arithmetic is not sent through a float.
+    public string CompileIndexableTempIndex(HlslTreeNode index)
+    {
+        bool wasAssigningToInteger = _assigningToInteger;
+        _assigningToInteger = true;
+        try
+        {
+            return Compile(index);
+        }
+        finally
+        {
+            _assigningToInteger = wasAssigningToInteger;
+        }
+    }
+
     private string CompileNodesWithComponents(List<HlslTreeNode> components, HlslTreeNode first, int promoteToVectorSize)
     {
         var componentsWithIndices = components.Cast<IHasComponentIndex>();
@@ -532,6 +548,14 @@ public sealed class NodeCompiler
         {
             return LoopVariableName
                 ?? throw new InvalidOperationException("aL used outside a counted loop");
+        }
+
+        if (first is IndexableTempLoadNode indexableTempLoad)
+        {
+            string swizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                _registers.IndexableTemps[indexableTempLoad.Register].Components,
+                promoteToVectorSize);
+            return $"x{indexableTempLoad.Register}[{CompileIndexableTempIndex(indexableTempLoad.Index)}]{swizzle}";
         }
 
         if (first is RelativeAddressNode relativeAddress)

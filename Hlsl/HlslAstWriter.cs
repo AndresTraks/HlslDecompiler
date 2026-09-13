@@ -35,7 +35,20 @@ public class HlslAstWriter : HlslWriter
             WriteLine();
         }
 
+        if (_registers.IndexableTemps.Count != 0)
+        {
+            WriteIndexableTempDeclarations(CreateIntegerOperandAnalysis());
+            WriteLine();
+        }
+
         WriteAst(_ast);
+    }
+
+    private IntegerOperandAnalysis CreateIntegerOperandAnalysis()
+    {
+        return _shader.Instructions.Count != 0 && _shader.Instructions[0] is D3D10Instruction
+            ? new IntegerOperandAnalysis(_shader)
+            : null;
     }
 
     private void WriteAst(HlslAst ast)
@@ -45,9 +58,7 @@ public class HlslAstWriter : HlslWriter
         _templateMatcher = new TemplateMatcher(_grouper);
 
         StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
-            _shader.Instructions.Count != 0 && _shader.Instructions[0] is D3D10Instruction
-                ? new IntegerOperandAnalysis(_shader)
-                : null);
+            CreateIntegerOperandAnalysis());
         WriteStatements(ast.Statements);
     }
 
@@ -68,6 +79,10 @@ public class HlslAstWriter : HlslWriter
         else if (statement is StoreStructuredStatement storeStructured)
         {
             WriteStoreStructuredStatement(storeStructured);
+        }
+        else if (statement is IndexableTempStoreStatement indexableTempStore)
+        {
+            WriteIndexableTempStoreStatement(indexableTempStore);
         }
         else if (statement is ClipStatement clip)
         {
@@ -205,6 +220,19 @@ public class HlslAstWriter : HlslWriter
         string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
         string compiledValue = _compiler.Compile(storeStructured.Values.Select(Reduce));
         WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
+    }
+
+    private void WriteIndexableTempStoreStatement(IndexableTempStoreStatement store)
+    {
+        string index = _compiler.CompileIndexableTempIndex(Reduce(store.Index));
+        // The write mask is dropped when the whole element is written, the way a
+        // register's is.
+        int components = _registers.IndexableTemps[store.Register].Components;
+        string mask = store.Components.Length == components
+            ? ""
+            : "." + string.Concat(store.Components.Select(c => "xyzw"[c]));
+        string value = _compiler.Compile(store.Values.Select(Reduce).ToList(), store.Values.Length);
+        WriteLine($"x{store.Register}[{index}]{mask} = {value};");
     }
 
     private void WriteClipStatement( ClipStatement clip)

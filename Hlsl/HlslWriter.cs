@@ -221,6 +221,23 @@ public abstract class HlslWriter
     /// failing that the width comes from the declaration stride and the type is
     /// assumed float, which is what a StructuredBuffer usually holds.
     /// </summary>
+    /// <summary>
+    /// Declares the shader's indexable temps, x0[4] and so on, as local arrays. An
+    /// element is a float4 unless every write to the array is an integer
+    /// instruction - an array that carries both has to stay float, the same as a
+    /// register that does.
+    /// </summary>
+    protected void WriteIndexableTempDeclarations(IntegerOperandAnalysis integerOperandAnalysis)
+    {
+        foreach ((int register, (int elements, int components)) in _registers.IndexableTemps.OrderBy(t => t.Key))
+        {
+            bool isInteger = integerOperandAnalysis?.IsIntegerIndexableTemp(register) == true;
+            string type = isInteger ? "int" : "float";
+            string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
+            WriteLine($"{type}{size} x{register}[{elements}];");
+        }
+    }
+
     private string GetStructuredElementType(ResourceDefinition resource)
     {
         if (resource.ElementType != null)

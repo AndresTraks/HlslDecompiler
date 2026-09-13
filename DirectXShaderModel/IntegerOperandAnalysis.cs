@@ -32,9 +32,86 @@ public sealed class IntegerOperandAnalysis
         return _integerRegisters.Contains(registerComponent);
     }
 
-    private static HashSet<RegisterComponentKey> FindIntegerRegisters(ShaderModel shader)
+    /// <summary>
+    /// Whether an indexable temp holds integers: every store into it is an integer
+    /// instruction or a move of a register component known to be one. Its elements
+    /// share one key, so the register rule cannot answer for it - one element
+    /// written from an index would make every element an integer.
+    /// </summary>
+    public bool IsIntegerIndexableTemp(int register)
+    {
+        _integerRegisters ??= FindIntegerRegisters(_shader);
+        return IsIntegerIndexableTemp(register, _integerRegisters);
+    }
+
+    private bool IsIntegerIndexableTemp(int register, HashSet<RegisterComponentKey> integerRegisters)
+    {
+        bool anyStore = false;
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode.IsDeclaration() || !instruction.HasDestination)
+            {
+                continue;
+            }
+            int destination = instruction.GetDestinationParamIndex().Value;
+            if (instruction.GetOperandType(destination) != OperandType.IndexableTemp
+                || instruction.OperandTokens.GetOperandIndices(destination)[0].Immediate != register)
+            {
+                continue;
+            }
+            anyStore = true;
+            if (instruction.Opcode.IsInteger())
+            {
+                continue;
+            }
+            if (instruction.Opcode != D3D10Opcode.Mov
+                || instruction.GetOperandType(1) == OperandType.Immediate32
+                || instruction.GetOperandType(1) == OperandType.IndexableTemp)
+            {
+                // A float instruction, or a move whose source says nothing.
+                return false;
+            }
+            RegisterKey source = instruction.GetParamRegisterKey(1);
+            int writeMask = instruction.GetDestinationWriteMask();
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+            for (int component = 0; component < 4; component++)
+            {
+                if ((writeMask & (1 << component)) != 0
+                    && !integerRegisters.Contains(new RegisterComponentKey(source, swizzle[component])))
+                {
+                    return false;
+                }
+            }
+        }
+        return anyStore;
+    }
+
+    private HashSet<RegisterComponentKey> FindIntegerRegisters(ShaderModel shader)
     {
         var integerRegisters = new HashSet<RegisterComponentKey>();
+
+        // An input the signature types as an integer holds one before any
+        // instruction touches it. Geometry shader inputs are keyed by vertex as
+        // well, so they are left to the instructions that read them.
+        const int UInt32ComponentType = 1;
+        const int SInt32ComponentType = 2;
+        if (shader.Type != ShaderType.Geometry)
+        {
+            foreach (RegisterSignature signature in shader.InputSignatures)
+            {
+                if (signature.ComponentType != UInt32ComponentType && signature.ComponentType != SInt32ComponentType)
+                {
+                    continue;
+                }
+                for (int component = 0; component < 4; component++)
+                {
+                    if ((signature.Mask & (1 << component)) != 0)
+                    {
+                        integerRegisters.Add(new RegisterComponentKey(signature.RegisterKey, component));
+                    }
+                }
+            }
+        }
 
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
@@ -60,6 +137,8 @@ public sealed class IntegerOperandAnalysis
             {
                 AddSourceComponents(instruction, integerRegisters);
             }
+            // Whatever indexes a local array is an integer.
+            AddIndexableTempIndexComponents(instruction, integerRegisters);
         }
 
         // mov, and, or and xor take their type from what they touch, so a register
@@ -94,6 +173,27 @@ public sealed class IntegerOperandAnalysis
         }
         while (changed);
 
+        // A register read out of an integer array is an integer. The array's type
+        // is decided from the registers written into it, so it comes after them.
+        var integerArrays = new HashSet<int>();
+        foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode == D3D10Opcode.DclIndexableTemp
+                && IsIntegerIndexableTemp(instruction.IndexableTempRegister, integerRegisters))
+            {
+                integerArrays.Add(instruction.IndexableTempRegister);
+            }
+        }
+        foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode == D3D10Opcode.Mov
+                && instruction.GetOperandType(1) == OperandType.IndexableTemp
+                && integerArrays.Contains((int)instruction.OperandTokens.GetOperandIndices(1)[0].Immediate))
+            {
+                AddDestinationComponents(instruction, integerRegisters);
+            }
+        }
+
         return integerRegisters;
     }
 
@@ -107,6 +207,15 @@ public sealed class IntegerOperandAnalysis
             yield break;
         }
 
+        // An indexable temp is memory whose elements all share one key, so a mov
+        // through it would tie every element to whatever register touched any of
+        // them - an integer index moved into x0[3] would make x0[0] an integer too,
+        // and then whatever reads x0[0]. Only an integer instruction writing it
+        // says anything about it.
+        if (instruction.GetOperandType(destinationIndex.Value) == OperandType.IndexableTemp)
+        {
+            yield break;
+        }
         RegisterKey destinationKey = instruction.GetParamRegisterKey(destinationIndex.Value);
         int writeMask = instruction.GetDestinationWriteMask();
         for (int component = 0; component < 4; component++)
@@ -121,7 +230,8 @@ public sealed class IntegerOperandAnalysis
             };
             for (int source = 1; source <= sourceCount; source++)
             {
-                if (instruction.GetOperandType(source) == OperandType.Immediate32)
+                if (instruction.GetOperandType(source) == OperandType.Immediate32
+                    || instruction.GetOperandType(source) == OperandType.IndexableTemp)
                 {
                     continue;
                 }
@@ -161,6 +271,13 @@ public sealed class IntegerOperandAnalysis
             return false;
         }
 
+        int? destination = instruction.GetDestinationParamIndex();
+        if (destination != null && instruction.GetOperandType(destination.Value) == OperandType.IndexableTemp)
+        {
+            return IsIntegerIndexableTemp(
+                (int)instruction.OperandTokens.GetOperandIndices(destination.Value)[0].Immediate, _integerRegisters);
+        }
+
         var components = new HashSet<RegisterComponentKey>();
         AddDestinationComponents(instruction, components);
         if (instruction.Opcode != D3D10Opcode.Mov)
@@ -168,6 +285,30 @@ public sealed class IntegerOperandAnalysis
             AddSourceComponents(instruction, components, sourceCount);
         }
         return components.Overlaps(_integerRegisters);
+    }
+
+    private static void AddIndexableTempIndexComponents(
+        D3D10Instruction instruction, HashSet<RegisterComponentKey> components)
+    {
+        if (instruction.Opcode.IsDeclaration() || instruction.Opcode == D3D10Opcode.CustomData)
+        {
+            return;
+        }
+        for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+        {
+            if (instruction.GetOperandType(operand) != OperandType.IndexableTemp)
+            {
+                continue;
+            }
+            const int ElementIndex = 1;
+            if (!instruction.IsRelativelyAddressed(operand, ElementIndex))
+            {
+                continue;
+            }
+            (OperandType type, int number, byte component) =
+                instruction.OperandTokens.GetRelativeIndexOperand(operand, ElementIndex);
+            components.Add(new RegisterComponentKey(new D3D10RegisterKey(type, number), component));
+        }
     }
 
     private static void AddDestinationComponents(D3D10Instruction instruction, HashSet<RegisterComponentKey> components)

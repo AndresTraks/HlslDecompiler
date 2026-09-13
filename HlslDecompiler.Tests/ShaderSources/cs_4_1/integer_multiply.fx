@@ -10,6 +10,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	int t1;
 	if (t0.y < n) {
 		t1 = data[t0.y];
-		data[sv_dispatchthreadid.x * stride + stride] = data[t0.x] + t1;
+		data[t0.y] = data[t0.x] + t1;
 	}
 }

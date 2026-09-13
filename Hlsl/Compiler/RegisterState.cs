@@ -36,6 +36,11 @@ public sealed class RegisterState
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
 
+    // x# registers: a local array the shader indexes at run time, declared with
+    // its element count and how many components each element holds.
+    public IDictionary<int, (int Elements, int Components)> IndexableTemps { get; } =
+        new Dictionary<int, (int Elements, int Components)>();
+
     private ShaderModel _shaderModel;
 
     public RegisterState(ShaderModel shaderModel)
@@ -192,6 +197,10 @@ public sealed class RegisterState
                 && r.BindPoint == registerKey.Number))
             {
                 return GetStructuredBufferComponents(registerKey);
+            }
+            if (d3D10RegisterKey.OperandType == OperandType.IndexableTemp)
+            {
+                return IndexableTemps[registerKey.Number].Components;
             }
         }
         throw new NotImplementedException();

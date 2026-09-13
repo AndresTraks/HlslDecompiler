@@ -441,6 +441,10 @@ public sealed class NodeCompiler
             case LogicalAndOperation _:
             case LogicalOrOperation _:
                 {
+                    if (components.All(c => ReferenceEquals(c, operation)) && TryCompileAnyAll(operation, out string anyAll))
+                    {
+                        return anyAll;
+                    }
                     string op = operation is LogicalAndOperation ? "&&" : "||";
                     return string.Format("{0} " + op + " {1}",
                         Compile(components.Select(g => g.Inputs[0])),
@@ -803,6 +807,60 @@ public sealed class NodeCompiler
         }
 
         throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// any() and all() over a vector comparison compile to a tree of ors or ands
+    /// over its lanes. Written back lane by lane fxc reduces them one at a time;
+    /// as the intrinsic over the vector it pairs them up the way it did originally.
+    /// </summary>
+    private bool TryCompileAnyAll(Operation root, out string compiled)
+    {
+        compiled = null;
+        var leaves = new List<ComparisonNode>();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(root);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (node.GetType() == root.GetType())
+            {
+                pending.Push(node.Inputs[0]);
+                pending.Push(node.Inputs[1]);
+            }
+            else if (node is ComparisonNode comparison)
+            {
+                leaves.Add(comparison);
+            }
+            else
+            {
+                return false;
+            }
+        }
+        if (leaves.Count < 2)
+        {
+            return false;
+        }
+        // Lane order is immaterial to the intrinsic, and component order is what
+        // lets the swizzle drop away.
+        leaves.Sort((a, b) => LaneOf(a).CompareTo(LaneOf(b)));
+        for (int i = 1; i < leaves.Count; i++)
+        {
+            if (!_nodeGrouper.CanGroupComponents(leaves[0], leaves[i]))
+            {
+                return false;
+            }
+        }
+        string intrinsic = root is LogicalAndOperation ? "all" : "any";
+        compiled = $"{intrinsic}({Compile(leaves.Cast<HlslTreeNode>().ToList())})";
+        return true;
+    }
+
+    private static int LaneOf(ComparisonNode comparison)
+    {
+        return comparison.Left is IHasComponentIndex left ? left.ComponentIndex
+            : comparison.Right is IHasComponentIndex right ? right.ComponentIndex
+            : 0;
     }
 
     private string CompileComparison(List<HlslTreeNode> components, ComparisonNode first)

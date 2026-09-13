@@ -860,9 +860,13 @@ public class InstructionParser
 
     // A comparison result. GE is still modelled as an operation rather than a
     // ComparisonNode, unlike every other comparison, so it has to be named here.
+    // Two conditions combined are a condition too: any() over a bool4 is an or of
+    // ors, and reading the outer one as bitwise costs fxc an `and ..., 1` to make
+    // a bool of the mask again.
     private static bool IsCondition(HlslTreeNode node)
     {
-        return node is ComparisonNode || node is GreaterEqualOperation;
+        return node is ComparisonNode || node is GreaterEqualOperation
+            || node is LogicalAndOperation || node is LogicalOrOperation;
     }
 
     /// <summary>

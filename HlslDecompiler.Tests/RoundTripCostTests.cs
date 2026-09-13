@@ -103,6 +103,14 @@ public class RoundTripCostTests
             + "wrong as well as an instruction dearer. What is left is the naming "
             + "itself: fxc has no reason to keep a variable the shader never asked "
             + "for, and the two statements do not fold back into one cmp."),
+        ["ps_4_0/derivatives"] = (7,
+            "One instruction. The original is a single four wide mad whose addend is "
+            + "ddx in .xy and ddy in .zw - two instructions feeding one. The grouper "
+            + "will not group two mad components whose addends do not group, so the "
+            + "mad is written as two halves inside a float4 constructor, rather than "
+            + "as one mad with the constructor around its addend, and fxc keeps the "
+            + "two halves apart. The constructor wants pushing inward, which is a "
+            + "grouper change and not a template."),
         ["vs_4_0/skinning"] = (21,
             "The per bone blend does not group. Each component is a weighted sum of two "
             + "dots and the weights are applied before the components could be, so the "

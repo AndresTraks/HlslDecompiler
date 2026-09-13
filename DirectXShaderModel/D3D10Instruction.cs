@@ -56,6 +56,11 @@ public class D3D10Instruction : Instruction
 
     // The texel offsets of sample_aoffimmi, or null when the sample has none.
     public int[] SampleOffsets { get; set; }
+
+    // How resinfo reports what it measures: as floats, as their reciprocals, or as
+    // the integers GetDimensions' uint overloads take. In the opcode token, so the
+    // reader sets it.
+    public D3D10ResInfoReturnType ResInfoReturnType { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
     /// <summary>
@@ -193,6 +198,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.UTof:
                 case D3D10Opcode.LD:
                 case D3D10Opcode.LdStructured:
+                case D3D10Opcode.ResInfo:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Mov:
                 case D3D10Opcode.MovC:

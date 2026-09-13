@@ -1522,6 +1522,8 @@ public class InstructionParser
                 }
             case D3D10Opcode.LD:
                 return CreateResourceLoadNode(instruction, componentIndex);
+            case D3D10Opcode.ResInfo:
+                return CreateResourceInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
@@ -1564,6 +1566,21 @@ public class InstructionParser
         {
             SampleOffsets = instruction.SampleOffsets,
         };
+    }
+
+    private ResourceInfoNode CreateResourceInfoNode(D3D10Instruction instruction, int outputComponent)
+    {
+        const int MipLevelParamIndex = 1;
+        const int ResourceParamIndex = 2;
+
+        // The resource operand's swizzle says which measurement each component of
+        // the result is, the same way a sample's says which channel.
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent] as RegisterInputNode;
+        // A mip level is an integer, whatever bits an immediate holds.
+        HlslTreeNode mipLevel = instruction.GetOperandType(MipLevelParamIndex) == OperandType.Immediate32
+            ? new ConstantNode((int)instruction.GetParamInt(MipLevelParamIndex, 0))
+            : GetInputComponents(instruction, MipLevelParamIndex, 1)[0];
+        return new ResourceInfoNode(resource, mipLevel, outputComponent, instruction.ResInfoReturnType);
     }
 
     private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -2110,6 +2127,8 @@ public class InstructionParser
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
                 return 3;
+            case D3D10Opcode.ResInfo:
+                return 2;
             default:
                 throw new NotImplementedException();
         }

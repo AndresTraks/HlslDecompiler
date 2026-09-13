@@ -32,8 +32,13 @@ public abstract class HlslWriter
 
     protected void WriteLine(string value)
     {
-        internalWriter.Write(indent);
-        internalWriter.WriteLine(value);
+        // A compiled statement can be two lines - a declaration and the call that
+        // fills it - and each wants the indent.
+        foreach (string line in value.Split("\r\n"))
+        {
+            internalWriter.Write(indent);
+            internalWriter.WriteLine(line);
+        }
     }
 
     protected void WriteLine(string format, params object[] args)

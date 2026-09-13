@@ -44,6 +44,14 @@ public sealed class IntegerOperandAnalysis
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
+            // resinfo_uint writes the dimensions as integers; its mip level source
+            // is one too, but an immediate or a register the shader already treats
+            // as one, so only the destination is worth recording.
+            if (instruction.Opcode == D3D10Opcode.ResInfo
+                && instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint)
+            {
+                AddDestinationComponents(instruction, integerRegisters);
+            }
             // ftoi and ftou read floats and write integers, so the destination is
             // an integer component but the source is not.
             if (instruction.Opcode != D3D10Opcode.Ftoi

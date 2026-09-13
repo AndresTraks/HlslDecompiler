@@ -581,6 +581,8 @@ public class D3D10Machine
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
                 return LoadTexel(instruction);
+            case D3D10Opcode.ResInfo:
+                return ResourceInfo(instruction);
             case D3D10Opcode.LdStructured:
                 {
                     // Element and byte offset, named so that both programs read the
@@ -623,6 +625,27 @@ public class D3D10Machine
         float reference = Floats(instruction, 4)[0];
         float sampled = Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates)[0];
         return BroadcastFloat(sampled >= reference ? 1 : 0);
+    }
+
+    // A texture's size is whatever both programs agree it is: one made up per
+    // resource slot, halved per mip level, with a mip count in w. z, the depth or
+    // array size, is zero for a 2D texture. The return type is the instruction's:
+    // the dimensions as floats, as their reciprocals, or as the integers the uint
+    // overloads of GetDimensions take.
+    private uint[] ResourceInfo(D3D10Instruction instruction)
+    {
+        int slot = instruction.GetParamRegisterNumber(2);
+        int mipLevel = Ints(instruction, 1)[0];
+        const int mipCount = 9;
+        float width = (256 + 16 * slot) >> Math.Clamp(mipLevel, 0, mipCount - 1);
+        float height = (128 + 16 * slot) >> Math.Clamp(mipLevel, 0, mipCount - 1);
+        float[] info = instruction.ResInfoReturnType == D3D10ResInfoReturnType.RcpFloat
+            ? [1 / width, 1 / height, 0, mipCount]
+            : [width, height, 0, mipCount];
+        float[] swizzled = ResourceSwizzle(instruction, info);
+        return instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
+            ? [.. swizzled.Select(v => (uint)v)]
+            : Pack(swizzled);
     }
 
     private uint[] LoadTexel(D3D10Instruction instruction)

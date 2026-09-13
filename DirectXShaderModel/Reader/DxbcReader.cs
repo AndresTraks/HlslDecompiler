@@ -247,6 +247,10 @@ public class DxbcReader : BinaryReader
         {
             instruction.TestNonZero = (opcodeToken & 0x40000) != 0;
         }
+        if (opcode == D3D10Opcode.ResInfo)
+        {
+            instruction.ResInfoReturnType = (D3D10ResInfoReturnType)((opcodeToken >> 11) & 0x3);
+        }
         if (opcode == D3D10Opcode.DclInputPS
             || opcode == D3D10Opcode.DclInputPSSgv
             || opcode == D3D10Opcode.DclInputPSSiv)

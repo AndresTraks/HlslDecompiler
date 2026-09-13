@@ -636,6 +636,10 @@ public class HlslAstWriter : HlslWriter
             }
         }
 
+        // GetDimensions has no expression form - it hands its results back through
+        // out parameters - so a resinfo result is always named, whatever it costs.
+        List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
+
         // Sharing alone is not a reason to name something - almost every expression
         // shares a register read. Only an expression that explodes when written out is.
         var inlinedSize = new Dictionary<HlslTreeNode, long>(ReferenceEqualityComparer.Instance);
@@ -646,7 +650,7 @@ public class HlslAstWriter : HlslWriter
         }
         if (total <= InlinedSizeBudget)
         {
-            return [];
+            return resourceInfo;
         }
 
         // Deepest first, so that a shared node inside another one is named before
@@ -669,7 +673,62 @@ public class HlslAstWriter : HlslWriter
             }
             candidates.Add(node);
         }
-        return NameCandidates(candidates);
+        resourceInfo.AddRange(NameCandidates(candidates));
+        return resourceInfo;
+    }
+
+    /// <summary>
+    /// Names every resinfo result reachable from here, the components of one call
+    /// together, as one variable per call: GetDimensions writes a whole set of out
+    /// parameters, and its components are read out of the variable afterwards.
+    /// </summary>
+    private List<HlslTreeNode[]> NameResourceInfo(IList<HlslTreeNode> order)
+    {
+        var assignments = new List<HlslTreeNode[]>();
+        var named = HlslTreeNode.NewNodeSet();
+        foreach (ResourceInfoNode info in order.OfType<ResourceInfoNode>())
+        {
+            if (named.Contains(info) || info.NamedAs != null)
+            {
+                continue;
+            }
+            List<ResourceInfoNode> call = [.. order.OfType<ResourceInfoNode>()
+                .Where(other => other.NamedAs == null && IsSameResourceInfoCall(info, other))
+                .OrderBy(other => other.InfoComponent)];
+            foreach (ResourceInfoNode component in call)
+            {
+                named.Add(component);
+            }
+
+            // Width and height at mip 0 is the two-argument overload, and reads out
+            // of a two-wide variable; anything more takes the full form.
+            bool isSize = call.All(c => c.InfoComponent < 2) && IsConstantZero(info.MipLevel);
+            TempVariableNode[] variables = _compiler.CreateTempVariables(isSize ? 2 : 4);
+            foreach (TempVariableNode variable in variables)
+            {
+                variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;
+            }
+            assignments.Add([.. call.Select(component =>
+            {
+                TempVariableNode variable = variables[component.InfoComponent];
+                component.NamedAs = variable;
+                return (HlslTreeNode)NameSubexpression(component, variable);
+            })]);
+        }
+        return assignments;
+    }
+
+    private static bool IsSameResourceInfoCall(ResourceInfoNode a, ResourceInfoNode b)
+    {
+        return a.ReturnType == b.ReturnType
+            && a.Resource.RegisterComponentKey.RegisterKey.Equals(b.Resource.RegisterComponentKey.RegisterKey)
+            && (ReferenceEquals(a.MipLevel, b.MipLevel)
+                || (a.MipLevel is ConstantNode ca && b.MipLevel is ConstantNode cb && ca.Value == cb.Value));
+    }
+
+    private static bool IsConstantZero(HlslTreeNode node)
+    {
+        return node is ConstantNode constant && constant.Value == 0;
     }
 
     /// <summary>

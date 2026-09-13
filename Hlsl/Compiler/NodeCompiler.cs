@@ -664,7 +664,19 @@ public sealed class NodeCompiler
             ResourceDefinition resourceDefinition = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
-            string address = Compile(resourceLoad.Address, resourceLoad.Address.Count());
+            // Load addresses in texels, so its coordinate vector is built as ints:
+            // as a float3 fxc converts an integer address to float and straight back.
+            bool wasAssigningToInteger = _assigningToInteger;
+            _assigningToInteger = true;
+            string address;
+            try
+            {
+                address = Compile(resourceLoad.Address, resourceLoad.Address.Count());
+            }
+            finally
+            {
+                _assigningToInteger = wasAssigningToInteger;
+            }
             string loadOffsets = CompileSampleOffsets(resourceLoad.SampleOffsets, resourceDefinition);
             return $"{resourceDefinition.Name}.Load({address}{loadOffsets}){loadSwizzle}";
         }
@@ -755,6 +767,11 @@ public sealed class NodeCompiler
 
         if (first is TempAssignmentNode tempAssignment)
         {
+            if (tempAssignment.Value is ResourceInfoNode)
+            {
+                return CompileResourceInfoCall(components.Cast<TempAssignmentNode>().ToList());
+            }
+
             // Compile variable once with all components
             string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
 
@@ -806,7 +823,46 @@ public sealed class NodeCompiler
             return $"t{tempVariable.DeclarationIndex}{swizzle}";
         }
 
+        if (first is ResourceInfoNode resourceInfo)
+        {
+            // A resinfo result standing as an output's own value is read from the
+            // variable its call was hoisted into; the hoist rewires every other
+            // reader, but a root has none to rewire.
+            if (resourceInfo.NamedAs == null)
+            {
+                throw new NotImplementedException(
+                    "A resinfo result was compiled before its GetDimensions call was named.");
+            }
+            return Compile(components.Select(c => (HlslTreeNode)((ResourceInfoNode)c).NamedAs));
+        }
+
         throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// The declaration and the call for a hoisted resinfo: GetDimensions fills out
+    /// parameters, so the variable is declared first and the call fills it. Two
+    /// statements, which the writer indents line by line.
+    /// </summary>
+    private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)
+    {
+        var info = (ResourceInfoNode)assignments[0].Value;
+        TempVariableNode variable = assignments[0].TempVariable;
+        ResourceDefinition resource = _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .First(d => d.BindPoint == info.Resource.RegisterComponentKey.RegisterKey.Number);
+
+        string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
+        string name = $"t{variable.DeclarationIndex}";
+        string declaration = $"{type}{variable.VariableSize} {name};";
+
+        // The two-wide variable is the two-argument overload; otherwise the full
+        // form, which for a 2D texture is the mip level in and width, height and
+        // mip count out. z is the depth or array size, which a 2D texture has not.
+        string call = variable.VariableSize == 2
+            ? $"{resource.Name}.GetDimensions({name}.x, {name}.y);"
+            : $"{resource.Name}.GetDimensions({Compile(info.MipLevel)}, {name}.x, {name}.y, {name}.w);";
+        return declaration + "\r\n" + call;
     }
 
     /// <summary>

@@ -578,6 +578,14 @@ public class AsmWriter
             case D3D10Opcode.LD:
                 WriteInstruction(instruction, "ld", 3);
                 break;
+            case D3D10Opcode.ResInfo:
+                WriteInstruction(instruction, instruction.ResInfoReturnType switch
+                {
+                    D3D10ResInfoReturnType.Uint => "resinfo_uint",
+                    D3D10ResInfoReturnType.RcpFloat => "resinfo_rcpFloat",
+                    _ => "resinfo",
+                }, 3);
+                break;
             case D3D10Opcode.LdStructured:
                 WriteInstruction(instruction, "ld_structured", 4);
                 break;

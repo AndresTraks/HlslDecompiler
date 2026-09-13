@@ -744,6 +744,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.LD:
                 WriteResult(instruction, "{0} = {2}.Load({1}{3}){4};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
+            case D3D10Opcode.ResInfo:
+                WriteResourceInfo(instruction);
+                break;
             case D3D10Opcode.Log:
                 WriteResult(instruction, "{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -1364,6 +1367,46 @@ public class HlslSimpleWriter : HlslWriter
     // each component of the result comes from: `sample r0, v0.xyxx, t2.yzxw, s0`
     // puts green in x. Leaving it out reads the wrong channels and compiles.
     // A comparison sample returns one value, so there is nothing to permute.
+    private int _resourceInfoCount;
+
+    // GetDimensions fills out parameters rather than returning a value, so the
+    // result goes through a variable of its own and is then moved to the register,
+    // which is what carries the resource operand's swizzle and the write mask. The
+    // two-argument overload is width and height at mip 0; anything more takes the
+    // full form, which for a 2D texture is the mip in and width, height and mip
+    // count out - z, the depth or array size, is what a 2D texture has not got.
+    private void WriteResourceInfo(D3D10Instruction instruction)
+    {
+        string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
+        string resource = GetOperandName(instruction, 2);
+        string mipLevel = instruction.GetOperandType(1) == OperandType.Immediate32
+            ? instruction.GetParamInt(1, 0).ToString(_culture)
+            : GetOperandName(instruction, 1);
+        string dimensions = $"dimensions{_resourceInfoCount++}";
+
+        int written = instruction.GetDestinationWriteMask();
+        bool[] read = new bool[4];
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((written & (1 << component)) != 0)
+            {
+                read[swizzle[component]] = true;
+            }
+        }
+        if (!read[2] && !read[3] && mipLevel == "0")
+        {
+            WriteLine($"{type}2 {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
+        }
+        else
+        {
+            WriteLine($"{type}4 {dimensions} = 0;");
+            WriteLine($"{resource}.GetDimensions({mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.w);");
+        }
+        WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0), dimensions, GetResourceSwizzle(instruction));
+    }
+
     private static string GetResourceSwizzle(D3D10Instruction instruction)
     {
         if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ)

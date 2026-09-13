@@ -179,6 +179,19 @@ public class StatementFinalizer
                         && fed.Value.IsInputOf(reader.Value))
                     .Select(fed => fed.Key)];
             }
+            // The same for the output registers: one that reads a value this statement
+            // assigns to a temp has to be written after that assignment, and one that
+            // reads what the register held before has to be written before it. An
+            // output whose value *is* the temp's value is neither - it recomputes it
+            // from the old variable, and the sort's overwrite rule handles that.
+            var outputFeeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
+            foreach (var output in statement.Outputs.Where(o => !o.Key.RegisterKey.IsTempRegister))
+            {
+                outputFeeds[output.Key] = [.. newAssignments
+                    .Where(fed => !ReferenceEquals(fed.Value, output.Value)
+                        && fed.Value.IsInputOf(output.Value))
+                    .Select(fed => fed.Key)];
+            }
             var assignmentByKey = new Dictionary<RegisterComponentKey, TempAssignmentNode>();
             foreach (var newAssignment in newAssignments)
             {
@@ -260,6 +273,17 @@ public class StatementFinalizer
                     {
                         assignment.DependsOnNewValueOf.Add(feeder);
                     }
+                }
+            }
+            var assignmentStatement = (AssignmentStatement)statement;
+            foreach ((RegisterComponentKey key, List<RegisterComponentKey> fedBy) in outputFeeds)
+            {
+                List<TempAssignmentNode> feeders = [.. fedBy
+                    .Where(assignmentByKey.ContainsKey)
+                    .Select(fed => assignmentByKey[fed])];
+                if (feeders.Count != 0)
+                {
+                    assignmentStatement.OutputDependsOnNewValueOf[key] = feeders;
                 }
             }
         }

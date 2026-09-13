@@ -20,26 +20,60 @@ namespace HlslDecompiler.Hlsl;
 /// </summary>
 public class TempAssignmentOrder
 {
-    public static List<T> Sort<T>(IEnumerable<T> items, System.Func<T, HlslTreeNode[]> nodes)
+    /// <param name="wantsNewValueOf">For an item that is not itself an assignment -
+    /// an output register's value - the assignments whose value it wants as this
+    /// statement computes it. An assignment carries that record on itself.</param>
+    public static List<T> Sort<T>(
+        IEnumerable<T> items,
+        System.Func<T, HlslTreeNode[]> nodes,
+        System.Func<T, IEnumerable<TempAssignmentNode>> wantsNewValueOf = null)
     {
-        var remaining = items.ToList();
+        var remaining = items
+            .Select(item => new Entry<T>(
+                item,
+                nodes(item),
+                wantsNewValueOf == null ? [] : [.. wantsNewValueOf(item)]))
+            .ToList();
         var sorted = new List<T>(remaining.Count);
         while (remaining.Count != 0)
         {
-            int next = remaining.FindIndex(
-                candidate => !remaining.Any(other => !ReferenceEquals(other, candidate)
-                    && ComesBefore(nodes(other), nodes(candidate))));
+            // By index, not ReferenceEquals: T can be a value type (a tuple, a
+            // KeyValuePair), and comparing two boxed structs by reference never
+            // excludes an item from being checked against itself - which, for a
+            // TempAssignmentNode, ComesBefore can answer true to, blocking the one
+            // real candidate every round and leaving the fallback below to paper
+            // over it by accident.
+            int next = -1;
+            for (int i = 0; i < remaining.Count; i++)
+            {
+                bool blocked = false;
+                for (int j = 0; j < remaining.Count; j++)
+                {
+                    if (j != i && ComesBefore(remaining[j], remaining[i]))
+                    {
+                        blocked = true;
+                        break;
+                    }
+                }
+                if (!blocked)
+                {
+                    next = i;
+                    break;
+                }
+            }
             // Every one of them waits on another, which a value graph cannot really
             // be. Take the first rather than spin.
             if (next < 0)
             {
                 next = 0;
             }
-            sorted.Add(remaining[next]);
+            sorted.Add(remaining[next].Item);
             remaining.RemoveAt(next);
         }
         return sorted;
     }
+
+    private sealed record Entry<T>(T Item, HlslTreeNode[] Nodes, TempAssignmentNode[] Wants);
 
     public static List<HlslTreeNode[]> Sort(IEnumerable<HlslTreeNode[]> groups)
     {
@@ -51,9 +85,9 @@ public class TempAssignmentOrder
         return Sort(items, n => new HlslTreeNode[] { n });
     }
 
-    private static bool ComesBefore(HlslTreeNode[] x, HlslTreeNode[] y)
+    private static bool ComesBefore<T>(Entry<T> x, Entry<T> y)
     {
-        // What one assignment wants of another is recorded at lowering, which is the
+        // What one write wants of another is recorded at lowering, which is the
         // only point at which wanting the value this statement computes and wanting
         // the one the register held before are different things.
         if (NeedsNewValue(y, x))
@@ -67,24 +101,25 @@ public class TempAssignmentOrder
         // Neither wants the other new, so a read of a variable the other overwrites
         // is a read of the value from before, and has to come first. This is what
         // keeps `t1 = t1 + 1` at the end of a loop body.
-        if (ReadsOverwritten(x, y))
+        if (ReadsOverwritten(x.Nodes, y.Nodes))
         {
             return true;
         }
-        if (ReadsOverwritten(y, x))
+        if (ReadsOverwritten(y.Nodes, x.Nodes))
         {
             return false;
         }
-        return x.Any(i => y.Any(i2 => IsInputOf(i, i2)));
+        return x.Nodes.Any(i => y.Nodes.Any(i2 => IsInputOf(i, i2)));
     }
 
-    /// <summary>Whether any of <paramref name="readers"/> wants a value that any of
+    /// <summary>Whether <paramref name="reader"/> wants a value that any of
     /// <paramref name="written"/> computes here, rather than its earlier one.</summary>
-    private static bool NeedsNewValue(HlslTreeNode[] readers, HlslTreeNode[] written)
+    private static bool NeedsNewValue<T>(Entry<T> reader, Entry<T> written)
     {
-        return readers.OfType<TempAssignmentNode>().Any(reader =>
-            written.OfType<TempAssignmentNode>().Any(assignment =>
-                reader.DependsOnNewValueOf.Any(fed => ReferenceEquals(fed, assignment))));
+        IEnumerable<TempAssignmentNode> wants = reader.Wants
+            .Concat(reader.Nodes.OfType<TempAssignmentNode>().SelectMany(r => r.DependsOnNewValueOf));
+        return written.Nodes.OfType<TempAssignmentNode>().Any(assignment =>
+            wants.Any(fed => ReferenceEquals(fed, assignment)));
     }
 
     private static bool ReadsOverwritten(HlslTreeNode[] readers, HlslTreeNode[] written)

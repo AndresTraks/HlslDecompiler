@@ -118,6 +118,14 @@ public class HlslAstWriter : HlslWriter
     // Registers the statement assigns, skipping the ones it merely carries forward.
     private void WriteStatementTempAssignments(IStatement statement)
     {
+        foreach (var group in GetTempAssignmentGroups(statement))
+        {
+            WriteLine(_compiler.Compile(group));
+        }
+    }
+
+    private List<HlslTreeNode[]> GetTempAssignmentGroups(IStatement statement)
+    {
         IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = statement.Outputs
                 .Where(o => {
                     if (!o.Key.RegisterKey.IsTempRegister)
@@ -131,16 +139,12 @@ public class HlslAstWriter : HlslWriter
                     return true;
                 })
                 .ToDictionary();
-        foreach (var temp in GroupAssignments(tempComponents))
-        {
-            string compiled = _compiler.Compile(temp);
-            WriteLine(compiled);
-        }
+        return GroupAssignments(tempComponents);
     }
 
     private void WriteAssignmentStatement(AssignmentStatement assignmentStatement)
     {
-        WriteStatementTempAssignments(assignmentStatement);
+        List<HlslTreeNode[]> tempGroups = GetTempAssignmentGroups(assignmentStatement);
 
         // With one output register there is no struct to write into: every return
         // compiles the live value, so writing `o.name = ...` first names something
@@ -148,6 +152,10 @@ public class HlslAstWriter : HlslWriter
         // struct and appends it rather than returning.
         if (_shader.Type != ShaderType.Geometry && _registers.MethodOutputRegisters.Count <= 1)
         {
+            foreach (var group in tempGroups)
+            {
+                WriteLine(_compiler.Compile(group));
+            }
             return;
         }
 
@@ -160,11 +168,31 @@ public class HlslAstWriter : HlslWriter
                     .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
                         && o.Value == inputNode)))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
+
+        // An output that reads a temp's value as this statement computes it prints
+        // after that temp's assignment; one that reads what the register held before
+        // prints before the reassignment that overwrites it. Which of the two an
+        // output is was recorded at lowering, since afterwards both are the same
+        // variable name. Ordering temps and outputs together, rather than as two
+        // hardcoded passes, is what lets TempAssignmentOrder see either dependency.
+        var writes = new List<(HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, Action Write)>();
+        foreach (var group in tempGroups)
+        {
+            writes.Add((group, [], () => WriteLine(_compiler.Compile(group))));
+        }
         foreach (var rootGroup in outputs.OrderBy(o => o.Key.Number))
         {
             RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
-            string compiled = _compiler.Compile(rootGroup.Value);
-            WriteLine($"o.{outputRegister.Name} = {compiled};");
+            HlslTreeNode[] nodes = rootGroup.Value;
+            TempAssignmentNode[] wants = [.. assignmentStatement.OutputDependsOnNewValueOf
+                .Where(o => o.Key.RegisterKey.Equals(rootGroup.Key))
+                .SelectMany(o => o.Value)
+                .Distinct()];
+            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {_compiler.Compile(nodes)};")));
+        }
+        foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
+        {
+            write.Write();
         }
     }
 

@@ -100,6 +100,7 @@ public class DecompileDxbcTests
     [TestCase("gs_4_1", "circle")]
     [TestCase("gs_4_0", "triangle_passthrough")]
     [TestCase("gs_4_0", "particle_expand")]
+    [TestCase("gs_4_0", "reassigned_old_and_new")]
     [TestCase("gs_4_0", "triangle_expand")]
     [TestCase("gs_4_1", "point_expand")]
     [TestCase("cs_4_1", "compute")]

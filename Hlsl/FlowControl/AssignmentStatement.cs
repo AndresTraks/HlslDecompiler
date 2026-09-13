@@ -9,6 +9,15 @@ public class AssignmentStatement : IStatement
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
+    /// <summary>
+    /// For each output register this statement writes, the temp assignments whose
+    /// value it wants as this statement computes it rather than as the register
+    /// held it before - the same record as TempAssignmentNode.DependsOnNewValueOf,
+    /// for a reader that is not itself an assignment. Taken at lowering, because
+    /// afterwards a read of either value is the same variable name.
+    /// </summary>
+    public Dictionary<RegisterComponentKey, List<TempAssignmentNode>> OutputDependsOnNewValueOf { get; } = [];
+
     public AssignmentStatement(IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
     {
         Inputs = inputs.ToDictionary();

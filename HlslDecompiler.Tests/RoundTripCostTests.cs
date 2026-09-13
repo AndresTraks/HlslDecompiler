@@ -87,8 +87,6 @@ public class RoundTripCostTests
             "Three instructions. The blend weights are normalised by a reciprocal "
             + "the original computes once and the decompiled source writes as three "
             + "divisions, which fxc does not fold back."),
-        ["gs_4_0/particle_expand"] = (60,
-            "One instruction, and a known difference besides: see EquivalenceTests."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

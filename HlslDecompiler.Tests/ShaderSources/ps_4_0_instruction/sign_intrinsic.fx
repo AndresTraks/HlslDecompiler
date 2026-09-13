@@ -5,8 +5,8 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float4 o;
 
 	float4 r0;
-	int4 r1;
-	int4 r2;
+	float4 r1;
+	float4 r2;
 	r0.x = -(k.x) + k.y;
 	r0.x = float1(1) / r0.x;
 	r1 = texcoord + -(k.x);

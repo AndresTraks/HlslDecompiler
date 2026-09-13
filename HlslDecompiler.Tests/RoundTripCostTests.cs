@@ -62,8 +62,7 @@ public class RoundTripCostTests
             + "which it did not when this entry was written."),
         ["ps_4_0/step_mask"] = (27,
             "One instruction, from the order the terms are summed in, as "
-            + "sign_intrinsic. Kept for the known difference it records rather than "
-            + "for the cost: see EquivalenceTests."),
+            + "sign_intrinsic."),
         ["ps_3_0/shared_subexpression"] = (15,
             "Naming the shared subexpression is what stops the output exploding, and "
             + "it also stops fxc folding it back - the original is seven instructions "
@@ -85,8 +84,7 @@ public class RoundTripCostTests
             + "and `t0.y + bias.w`, two adds hoisted above two loops, where fxc "
             + "used to fold the two bit-pattern immediates into one mad. Was 49 "
             + "while those immediates printed as integers and the shader computed "
-            + "the wrong thing. The instruction writer is still a known difference: "
-            + "see EquivalenceTests."),
+            + "the wrong thing."),
         ["ps_4_0/packed_cbuffer"] = (34,
             "One instruction, from the two normal maps being sampled and combined in "
             + "a different association than the original, so fxc folds one fewer mad."),

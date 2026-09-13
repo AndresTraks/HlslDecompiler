@@ -295,4 +295,86 @@ public static class D3D10OpcodeExtensions
                 return false;
         }
     }
+
+    /// <summary>
+    /// What an instruction reads its register operands as. The integer
+    /// instructions and itof read integers; ftoi and the float instructions read
+    /// floats; a branch, a discard and a movc condition test bits; and a mov, a
+    /// movc value or a bitwise operator carries whatever it was given.
+    /// </summary>
+    public static ValueKind ConsumedKind(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.Mov:
+            case D3D10Opcode.MovC:
+            case D3D10Opcode.And:
+            case D3D10Opcode.Or:
+            case D3D10Opcode.Xor:
+            case D3D10Opcode.Not:
+                return ValueKind.Unknown;
+            case D3D10Opcode.If:
+            case D3D10Opcode.BreakC:
+            case D3D10Opcode.ContinueC:
+            case D3D10Opcode.RetC:
+            case D3D10Opcode.CallC:
+            case D3D10Opcode.Discard:
+                return ValueKind.Bits;
+            case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
+            // The mip level, and the element and byte offsets.
+            case D3D10Opcode.ResInfo:
+            case D3D10Opcode.LdStructured:
+            case D3D10Opcode.Swtich:
+                return ValueKind.Integer;
+            case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
+                return ValueKind.Float;
+            default:
+                return opcode.IsInteger() ? ValueKind.Integer : ValueKind.Float;
+        }
+    }
+
+    /// <summary>
+    /// What an instruction writes. A comparison writes a mask, all ones or all
+    /// zeroes; ftoi an integer, itof a float; a mov, a movc and the bitwise
+    /// operators write what they read. resinfo and ld_structured depend on the
+    /// instruction rather than the opcode and are answered elsewhere.
+    /// </summary>
+    public static ValueKind ProducedKind(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.Mov:
+            case D3D10Opcode.MovC:
+            case D3D10Opcode.And:
+            case D3D10Opcode.Or:
+            case D3D10Opcode.Xor:
+            case D3D10Opcode.Not:
+            case D3D10Opcode.ResInfo:
+            case D3D10Opcode.LdStructured:
+                return ValueKind.Unknown;
+            case D3D10Opcode.LT:
+            case D3D10Opcode.GE:
+            case D3D10Opcode.Eq:
+            case D3D10Opcode.Ne:
+            case D3D10Opcode.Ilt:
+            case D3D10Opcode.Ige:
+            case D3D10Opcode.Ieq:
+            case D3D10Opcode.Ine:
+            case D3D10Opcode.ULT:
+            case D3D10Opcode.UGE:
+                return ValueKind.Bits;
+            case D3D10Opcode.Ftoi:
+            case D3D10Opcode.Ftou:
+                return ValueKind.Integer;
+            case D3D10Opcode.IToF:
+            case D3D10Opcode.UTof:
+            // A texel, whatever address it was read at.
+            case D3D10Opcode.LD:
+                return ValueKind.Float;
+            default:
+                return opcode.IsInteger() ? ValueKind.Integer : ValueKind.Float;
+        }
+    }
 }

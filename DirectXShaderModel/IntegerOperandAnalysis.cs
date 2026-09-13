@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HlslDecompiler.DirectXShaderModel;
@@ -6,6 +6,10 @@ namespace HlslDecompiler.DirectXShaderModel;
 public sealed class IntegerOperandAnalysis
 {
     private HashSet<RegisterComponentKey> _integerRegisters;
+    private HashSet<RegisterComponentKey> _floatRegisters;
+    private HashSet<RegisterComponentKey> _bitsRegisters;
+    private HashSet<RegisterComponentKey> _maskRegisters;
+    private HashSet<RegisterKey> _integerDeclaredRegisters;
     private readonly ShaderModel _shader;
 
     public IntegerOperandAnalysis(ShaderModel shader)
@@ -30,6 +34,375 @@ public sealed class IntegerOperandAnalysis
     {
         _integerRegisters ??= FindIntegerRegisters(_shader);
         return _integerRegisters.Contains(registerComponent);
+    }
+
+    /// <summary>
+    /// How the instruction writer keeps a temp register component. Registers are
+    /// declared once each, and fxc reuses them freely, so one component can carry
+    /// a loop counter, a comparison mask and a float in turn. A register is
+    /// declared int only when nothing float ever touches any component it writes;
+    /// otherwise it is a float, and a component in it holds either its values -
+    /// an integer as the float of the same value, converted on the way in and out
+    /// - or, once a comparison or a bitwise operator has had it, its bits, which
+    /// the integer instructions then read with asint and write with asfloat.
+    /// Reinterpreting rather than converting is what keeps a mask a mask.
+    /// </summary>
+    public ComponentStorage GetStorage(RegisterComponentKey registerComponent)
+    {
+        if (!registerComponent.RegisterKey.IsTempRegister)
+        {
+            return IsIntegerRegister(registerComponent) ? ComponentStorage.Integer : ComponentStorage.Numeric;
+        }
+        if (IsIntegerDeclaredRegister(registerComponent.RegisterKey))
+        {
+            return ComponentStorage.Integer;
+        }
+        // A comparison mask that only tests, branches and integer arithmetic read
+        // is -1 or 0 as a number just as well, and stays a number - so long as
+        // the component is otherwise an integer's. One nothing integer ever touches
+        // is kept as bits, as it always was, since -1.0f anded with the bits of 8.0f
+        // is not 8.
+        if (IsBitsTouched(registerComponent)
+            || (IsMask(registerComponent) && !IsIntegerRegister(registerComponent)))
+        {
+            return ComponentStorage.Bits;
+        }
+        return ComponentStorage.Numeric;
+    }
+
+    /// <summary>Whether a comparison writes the component.</summary>
+    private bool IsMask(RegisterComponentKey registerComponent)
+    {
+        _maskRegisters ??= FindMaskRegisters();
+        return _maskRegisters.Contains(registerComponent);
+    }
+
+    private HashSet<RegisterComponentKey> FindMaskRegisters()
+    {
+        var masks = new HashSet<RegisterComponentKey>();
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode.ProducedKind() == ValueKind.Bits
+                && instruction.GetOperandType(0) == OperandType.Temp)
+            {
+                AddWrittenComponents(instruction, 0, masks);
+            }
+        }
+        return masks;
+    }
+
+    /// <summary>Whether a temp register is declared int: every component any
+    /// instruction writes is an integer that no float instruction touches.</summary>
+    public bool IsIntegerDeclaredRegister(RegisterKey registerKey)
+    {
+        _integerDeclaredRegisters ??= FindIntegerDeclaredRegisters();
+        return _integerDeclaredRegisters.Contains(registerKey);
+    }
+
+    /// <summary>Whether a float instruction reads or writes the component, directly
+    /// or through a move.</summary>
+    public bool IsFloatTouched(RegisterComponentKey registerComponent)
+    {
+        _floatRegisters ??= FindTouchedRegisters(ValueKind.Float);
+        return _floatRegisters.Contains(registerComponent);
+    }
+
+    /// <summary>Whether a bitwise operator reads or writes the component, or a
+    /// move brings in a value from one that does - the one kind of reader for
+    /// which a value's bits, and not its number, are what matters.</summary>
+    public bool IsBitsTouched(RegisterComponentKey registerComponent)
+    {
+        _bitsRegisters ??= FindTouchedRegisters(ValueKind.Bits);
+        return _bitsRegisters.Contains(registerComponent);
+    }
+
+    /// <summary>
+    /// What ld_structured reads or store_structured writes: the element type the
+    /// reflection data gives the buffer, or nothing for groupshared memory.
+    /// </summary>
+    public ValueKind GetStructuredElementKind(D3D10Instruction instruction)
+    {
+        return LoadedElementType(instruction) switch
+        {
+            StoredType.Integer => ValueKind.Integer,
+            StoredType.Float => ValueKind.Float,
+            _ => ValueKind.Unknown,
+        };
+    }
+
+    /// <summary>
+    /// What the immediate a mov or movc writes is, by the instructions that go on
+    /// to read the register components it writes - the mov itself says nothing.
+    /// Unknown where the components' readers disagree, or there are none.
+    /// </summary>
+    public ValueKind GetImmediateKindByReaders(D3D10Instruction instruction)
+    {
+        ValueKind kind = ValueKind.Unknown;
+        foreach (ValueKind component in GetImmediateKindsByReaders(instruction))
+        {
+            if (component == ValueKind.Unknown)
+            {
+                continue;
+            }
+            if (kind != ValueKind.Unknown && kind != component)
+            {
+                return ValueKind.Unknown;
+            }
+            kind = component;
+        }
+        return kind;
+    }
+
+    /// <summary>
+    /// The same, one answer per component of the destination register - `mov
+    /// r0.xy, l(0, 0)` can start a float accumulator and an integer counter at
+    /// once. A forward scan, stopping for a component once it is written again at
+    /// the same or a shallower nesting level; a write deeper inside an if or a
+    /// loop leaves a read after it possible, so the scan looks past it.
+    /// </summary>
+    public ValueKind[] GetImmediateKindsByReaders(D3D10Instruction instruction)
+    {
+        var kinds = new ValueKind[4];
+        var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        int start = instructions.IndexOf(instruction);
+        int? destinationIndex = instruction.GetDestinationParamIndex();
+        if (start < 0 || destinationIndex == null
+            || instruction.GetOperandType(destinationIndex.Value) != OperandType.Temp)
+        {
+            return kinds;
+        }
+        RegisterKey destination = instruction.GetParamRegisterKey(destinationIndex.Value);
+        int live = instruction.GetDestinationWriteMask();
+        var disagree = new bool[4];
+        int depth = 0;
+        for (int i = start + 1; i < instructions.Count && live != 0; i++)
+        {
+            D3D10Instruction reader = instructions[i];
+            switch (reader.Opcode)
+            {
+                case D3D10Opcode.If:
+                case D3D10Opcode.Loop:
+                case D3D10Opcode.Swtich:
+                    depth++;
+                    break;
+                case D3D10Opcode.EndIf:
+                case D3D10Opcode.EndLoop:
+                case D3D10Opcode.EndSwitch:
+                    depth--;
+                    break;
+            }
+            if (reader.Opcode.IsDeclaration() || reader.Opcode == D3D10Opcode.CustomData)
+            {
+                continue;
+            }
+            for (int operand = 0; operand < reader.OperandTokens.OperandCount; operand++)
+            {
+                if (reader.GetOperandType(operand) != OperandType.Temp
+                    || !reader.GetParamRegisterKey(operand).Equals(destination))
+                {
+                    continue;
+                }
+                if (reader.IsDestinationOperand(operand))
+                {
+                    if (depth <= 0)
+                    {
+                        live &= ~reader.GetWriteMask(operand);
+                    }
+                    continue;
+                }
+                ValueKind consumed = reader.Opcode.ConsumedKind();
+                if (reader.Opcode == D3D10Opcode.StoreStructured && operand == 3)
+                {
+                    consumed = GetStructuredElementKind(reader);
+                }
+                if (consumed != ValueKind.Integer && consumed != ValueKind.Float)
+                {
+                    continue;
+                }
+                foreach (byte component in reader.GetSourceSwizzleComponents(operand).Distinct())
+                {
+                    if ((live & (1 << component)) == 0 || disagree[component])
+                    {
+                        continue;
+                    }
+                    if (kinds[component] != ValueKind.Unknown && kinds[component] != consumed)
+                    {
+                        kinds[component] = ValueKind.Unknown;
+                        disagree[component] = true;
+                        continue;
+                    }
+                    kinds[component] = consumed;
+                }
+            }
+        }
+        return kinds;
+    }
+
+    private HashSet<RegisterKey> FindIntegerDeclaredRegisters()
+    {
+        var written = new Dictionary<RegisterKey, HashSet<RegisterComponentKey>>();
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode.IsDeclaration() || instruction.Opcode == D3D10Opcode.CustomData)
+            {
+                continue;
+            }
+            for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+            {
+                if (!instruction.IsDestinationOperand(operand)
+                    || instruction.GetOperandType(operand) != OperandType.Temp)
+                {
+                    continue;
+                }
+                RegisterKey key = instruction.GetParamRegisterKey(operand);
+                if (!written.TryGetValue(key, out HashSet<RegisterComponentKey> components))
+                {
+                    components = [];
+                    written[key] = components;
+                }
+                int writeMask = instruction.GetWriteMask(operand);
+                for (int component = 0; component < 4; component++)
+                {
+                    if ((writeMask & (1 << component)) != 0)
+                    {
+                        components.Add(new RegisterComponentKey(key, component));
+                    }
+                }
+            }
+        }
+        return [.. written
+            .Where(r => r.Value.All(c => IsIntegerRegister(c) && !IsFloatTouched(c)))
+            .Select(r => r.Key)];
+    }
+
+    // The components a float instruction writes, or a bitwise operator reads or
+    // writes, followed forward through the moves that carry them on. Writes rather than reads: an int register read by a float
+    // instruction converts its value on the way, which is right, where one
+    // written by a float instruction truncates it. itof and utof write a float
+    // that is a whole number, which an int register holds without loss, and
+    // counting them would turn every integer register that is ever converted into
+    // a float one. A moved immediate counts as whatever reads it afterwards.
+    private HashSet<RegisterComponentKey> FindTouchedRegisters(ValueKind kind)
+    {
+        var touched = new HashSet<RegisterComponentKey>();
+        var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        foreach (D3D10Instruction instruction in instructions)
+        {
+            if (instruction.Opcode.IsDeclaration() || instruction.Opcode == D3D10Opcode.CustomData)
+            {
+                continue;
+            }
+            ValueKind produced = instruction.Opcode.ProducedKind();
+            if (instruction.Opcode == D3D10Opcode.ResInfo)
+            {
+                produced = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
+                    ? ValueKind.Integer
+                    : ValueKind.Float;
+            }
+            else if (instruction.Opcode == D3D10Opcode.LdStructured)
+            {
+                produced = GetStructuredElementKind(instruction);
+            }
+            else if (instruction.Opcode is D3D10Opcode.IToF or D3D10Opcode.UTof)
+            {
+                produced = ValueKind.Unknown;
+            }
+            else if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC
+                && Enumerable.Range(1, instruction.OperandTokens.OperandCount - 1)
+                    .Any(operand => instruction.GetOperandType(operand) == OperandType.Immediate32))
+            {
+                produced = GetImmediateKindByReaders(instruction);
+            }
+            bool bitwise = instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or
+                or D3D10Opcode.Xor or D3D10Opcode.Not;
+            for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+            {
+                if (instruction.GetOperandType(operand) != OperandType.Temp)
+                {
+                    continue;
+                }
+                if (instruction.IsDestinationOperand(operand))
+                {
+                    if ((kind == ValueKind.Float && produced == kind) || (kind == ValueKind.Bits && bitwise))
+                    {
+                        AddWrittenComponents(instruction, operand, touched);
+                    }
+                }
+                else if (kind == ValueKind.Bits && bitwise)
+                {
+                    AddReadComponents(instruction, operand, touched);
+                }
+            }
+        }
+
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (D3D10Instruction instruction in instructions)
+            {
+                if (instruction.Opcode != D3D10Opcode.Mov && instruction.Opcode != D3D10Opcode.MovC)
+                {
+                    continue;
+                }
+                if (instruction.GetOperandType(0) != OperandType.Temp)
+                {
+                    continue;
+                }
+                RegisterKey destination = instruction.GetParamRegisterKey(0);
+                int writeMask = instruction.GetDestinationWriteMask();
+                int firstValue = instruction.Opcode == D3D10Opcode.Mov ? 1 : 2;
+                for (int component = 0; component < 4; component++)
+                {
+                    if ((writeMask & (1 << component)) == 0)
+                    {
+                        continue;
+                    }
+                    var destinationComponent = new RegisterComponentKey(destination, component);
+                    var sources = new List<RegisterComponentKey>();
+                    for (int operand = firstValue; operand < instruction.OperandTokens.OperandCount; operand++)
+                    {
+                        if (instruction.GetOperandType(operand) == OperandType.Temp)
+                        {
+                            sources.Add(new RegisterComponentKey(
+                                instruction.GetParamRegisterKey(operand),
+                                instruction.GetSourceSwizzleComponents(operand)[component]));
+                        }
+                    }
+                    if (sources.Any(touched.Contains))
+                    {
+                        changed |= touched.Add(destinationComponent);
+                    }
+                }
+            }
+        }
+        while (changed);
+
+        return touched;
+    }
+
+    private static void AddWrittenComponents(
+        D3D10Instruction instruction, int operand, HashSet<RegisterComponentKey> components)
+    {
+        RegisterKey key = instruction.GetParamRegisterKey(operand);
+        int writeMask = instruction.GetWriteMask(operand);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                components.Add(new RegisterComponentKey(key, component));
+            }
+        }
+    }
+
+    private static void AddReadComponents(
+        D3D10Instruction instruction, int operand, HashSet<RegisterComponentKey> components)
+    {
+        RegisterKey key = instruction.GetParamRegisterKey(operand);
+        foreach (byte component in instruction.GetSourceSwizzleComponents(operand).Distinct())
+        {
+            components.Add(new RegisterComponentKey(key, component));
+        }
     }
 
     /// <summary>
@@ -144,7 +517,8 @@ public sealed class IntegerOperandAnalysis
     // buffer, or nothing for groupshared memory, which has none.
     private StoredType LoadedElementType(D3D10Instruction load)
     {
-        const int ResourceIndex = 3;
+        // The resource is the last operand of a load and the first of a store.
+        int ResourceIndex = load.Opcode == D3D10Opcode.StoreStructured ? 0 : 3;
         OperandType type = load.GetOperandType(ResourceIndex);
         D3DShaderInputType inputType = type switch
         {
@@ -152,7 +526,7 @@ public sealed class IntegerOperandAnalysis
             OperandType.UnorderedAccessView => D3DShaderInputType.UavRWStructured,
             _ => (D3DShaderInputType)(-1),
         };
-        ResourceDefinition definition = _shader.ResourceDefinitions
+        ResourceDefinition definition = _shader.ResourceDefinitions?
             .FirstOrDefault(d => d.ShaderInputType == inputType
                 && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
         if (definition?.ElementType == null)
@@ -506,4 +880,16 @@ public sealed class IntegerOperandAnalysis
                 return 0;
         }
     }
+}
+
+/// <summary>How the instruction writer keeps a register component. See
+/// <see cref="IntegerOperandAnalysis.GetStorage"/>.</summary>
+public enum ComponentStorage
+{
+    /// <summary>In a register declared int.</summary>
+    Integer,
+    /// <summary>In a float register, as its value: an integer as the float equal to it.</summary>
+    Numeric,
+    /// <summary>In a float register, as its bits: an integer with asint and asfloat around it.</summary>
+    Bits,
 }

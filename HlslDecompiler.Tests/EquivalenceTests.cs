@@ -29,44 +29,6 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)> KnownDifferences = new()
     {
-        ["ps_4_0/step_mask"] = ("instruction",
-            "The instruction writer declares one variable per register for the whole "
-            + "shader, and fxc reuses a register: here one carries a comparison mask "
-            + "at one point and a max at another. IntegerOperandAnalysis marks it "
-            + "integer, so the max is truncated. Excluding registers a float "
-            + "instruction writes does not work either - the same register genuinely "
-            + "holds an integer earlier - and neither does reinterpreting every "
-            + "integer operation with asint unless it is done everywhere at once. "
-            + "Carried further than that: declare a register float when a float "
-            + "instruction writes it, and give every operand and destination a "
-            + "domain - an int temp, a float temp, a constant typed by its "
-            + "declaration, an output, or an immediate, which is bits already. A "
-            + "value crossing domains is asint or asfloat and never a cast, because "
-            + "a cast rounds where the bits are wanted. Every site has to move "
-            + "together: iadd, ishl, ishr, imin, imax, ineg, imad, imul, udiv, ushr, "
-            + "the integer comparisons, movc, mov, the branch conditions, itof and "
-            + "utof, and the bitwise operators. That much made int_arithmetic, "
-            + "int_divide, uint_loop and conditional agree and all 187 outputs "
-            + "recompile, and left immediate_constant_buffer, integer_hash and "
-            + "vs_4_0/dynamic_index disagreeing, each a crossing not yet named. "
-            + "Splitting the register by live range avoids the question entirely and "
-            + "is the larger change. The AST writer is past this: it types a value "
-            + "by what reads it, not by the register it sat in."),
-        ["ps_4_0/shadow_pcf"] = ("instruction",
-            "The register carrying the loop counter also carries the y offset of the "
-            + "sample, so IntegerOperandAnalysis marks it integer and the immediate "
-            + "-1.0f is stored as the -1082130432 of its bits. Same cause as "
-            + "ps_4_0/step_mask."),
-        // The same register reuse as step_mask, in two more shaders.
-        ["ps_4_0/sign_intrinsic"] = ("instruction",
-            "The register carrying the sign masks also carries a float later, and is "
-            + "declared int4. See ps_4_0/step_mask. Hidden until the machine learned "
-            + "imul: a writer whose output the machine cannot run is not compared at "
-            + "all, so implementing an opcode can uncover a difference rather than "
-            + "cause one."),
-        ["gs_4_1/circle"] = ("instruction",
-            "`int2 r1` holds a loop counter and then an angle in radians, so "
-            + "`r1.y = r1.y * 0.392699093` truncates. See ps_4_0/step_mask."),
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

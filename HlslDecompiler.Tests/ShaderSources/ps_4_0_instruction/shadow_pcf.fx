@@ -26,7 +26,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.xyz = r0.xyz / r0.www;
 	r0.xy = r0.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
 	r0.z = r0.z + -(bias.x);
-	r1.yw = int2(-1082130432, 0);
+	r1.yw = float2(-1, 0);
 	r0.w = 0;
 	r2.x = -1;
 	while (true) {
@@ -49,7 +49,7 @@ float4 main(PS_IN i) : SV_Target
 		r1.x = r1.z + r1.x;
 		r1.y = r1.y + 1;
 	}
-	r2.y = 1065353216;
+	r2.y = 1;
 	r0.w = r1.x;
 	r1.y = -1;
 	while (true) {

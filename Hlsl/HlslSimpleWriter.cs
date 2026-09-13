@@ -87,25 +87,180 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
-    // Only when every written component is one the analysis never saw a float in.
-    // A register that carries both has to stay a float, which is the state of things
-    // before this and no worse.
+    // Only when every written component is an integer no float instruction ever
+    // touches. fxc reuses a register freely, and one it uses for a loop counter and
+    // later for an angle is a float register holding an integer for a while, not
+    // an int register holding a float - the float would truncate. What such a
+    // component holds, and how the integer instructions get at it, is the
+    // register's storage: see IntegerOperandAnalysis.GetStorage.
     private bool IsIntegerTempRegister(RegisterKey registerKey, int writeMask)
     {
         if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
         {
             return false;
         }
+        return _integerOperandAnalysis.IsIntegerDeclaredRegister(registerKey);
+    }
+
+    private ComponentStorage GetStorage(D3D10Instruction instruction, int operandIndex, int component)
+    {
+        return _integerOperandAnalysis.GetStorage(
+            new RegisterComponentKey(instruction.GetParamRegisterKey(operandIndex), component));
+    }
+
+    // The storage of what an operand reads, or Bits where any component read is
+    // kept as bits: an integer read across a numeric and a bits component cannot
+    // be right, and the bits one is the one that would be wrong by more.
+    private ComponentStorage GetSourceStorage(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) is not (OperandType.Temp or OperandType.Input
+            or OperandType.InputThreadID or OperandType.InputThreadGroupID
+            or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened))
+        {
+            return ComponentStorage.Numeric;
+        }
+        ComponentStorage storage = ComponentStorage.Numeric;
+        foreach (byte component in instruction.GetSourceSwizzleComponents(operandIndex).Distinct())
+        {
+            ComponentStorage componentStorage = GetStorage(instruction, operandIndex, component);
+            if (componentStorage == ComponentStorage.Bits)
+            {
+                return ComponentStorage.Bits;
+            }
+            storage = componentStorage;
+        }
+        return storage;
+    }
+
+    private ComponentStorage GetDestinationStorage(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.Temp)
+        {
+            return ComponentStorage.Numeric;
+        }
+        int writeMask = instruction.GetWriteMask(operandIndex);
+        ComponentStorage storage = ComponentStorage.Numeric;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            ComponentStorage componentStorage = GetStorage(instruction, operandIndex, component);
+            if (componentStorage == ComponentStorage.Bits)
+            {
+                return ComponentStorage.Bits;
+            }
+            storage = componentStorage;
+        }
+        return storage;
+    }
+
+    // What an instruction writes, where the opcode alone does not say.
+    private ValueKind GetProducedKind(D3D10Instruction instruction)
+    {
+        return instruction.Opcode switch
+        {
+            D3D10Opcode.ResInfo => instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
+                ? ValueKind.Integer
+                : ValueKind.Float,
+            D3D10Opcode.LdStructured => _integerOperandAnalysis.GetStructuredElementKind(instruction),
+            _ => instruction.Opcode.ProducedKind(),
+        };
+    }
+
+    // What an instruction reads an operand as, where the opcode alone does not say.
+    private ValueKind GetConsumedKind(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.Opcode == D3D10Opcode.StoreStructured)
+        {
+            return operandIndex == 3
+                ? _integerOperandAnalysis.GetStructuredElementKind(instruction)
+                : ValueKind.Integer;
+        }
+        if (instruction.Opcode == D3D10Opcode.MovC && operandIndex == 1)
+        {
+            return ValueKind.Bits;
+        }
+        return instruction.Opcode.ConsumedKind();
+    }
+
+    // Whether some component a mov or movc writes is kept as bits and read as an
+    // integer, so that an integer immediate moved into it has to keep its bits.
+    private bool IsIntegerIntoBits(D3D10Instruction instruction)
+    {
+        if (instruction.GetOperandType(0) != OperandType.Temp)
+        {
+            return false;
+        }
+        int writeMask = instruction.GetDestinationWriteMask();
+        ValueKind[] kinds = _integerOperandAnalysis.GetImmediateKindsByReaders(instruction);
         for (int component = 0; component < 4; component++)
         {
             if ((writeMask & (1 << component)) != 0
-                && !_integerOperandAnalysis.IsIntegerRegister(
-                    new RegisterComponentKey(registerKey, component)))
+                && GetStorage(instruction, 0, component) == ComponentStorage.Bits
+                && kinds[component] != ValueKind.Float)
             {
-                return false;
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    private static string AsInt(string name)
+    {
+        return $"asint({name})";
+    }
+
+    /// <summary>
+    /// A value carried by a mov or a movc from one storage into another. Bits are
+    /// reinterpreted on the way in or out of an int register; a number kept as a
+    /// float and going into bits storage is converted to the integer it is first,
+    /// and coming out of bits into a component known to hold integers as floats
+    /// is converted back. Between the same storage, or where a float is what is
+    /// held, nothing is needed.
+    /// </summary>
+    private string Moved(D3D10Instruction instruction, int sourceIndex, string name)
+    {
+        if (instruction.GetOperandType(sourceIndex) == OperandType.Immediate32)
+        {
+            return name;
+        }
+        ComponentStorage source = GetSourceStorage(instruction, sourceIndex);
+        ComponentStorage destination = GetDestinationStorage(instruction, 0);
+        if (source == destination)
+        {
+            return name;
+        }
+        switch (source, destination)
+        {
+            case (ComponentStorage.Integer, ComponentStorage.Bits):
+                return $"asfloat({name})";
+            case (ComponentStorage.Bits, ComponentStorage.Integer):
+                return AsInt(name);
+            case (ComponentStorage.Numeric, ComponentStorage.Bits):
+                return HoldsIntegers(instruction, sourceIndex) ? $"asfloat((int){name})" : name;
+            case (ComponentStorage.Bits, ComponentStorage.Numeric):
+                return HoldsIntegers(instruction, 0) ? $"(float){AsInt(name)}" : name;
+            default:
+                return name;
+        }
+    }
+
+    // Whether a numeric operand only ever holds integers: read and written by
+    // integer instructions and never by a float one.
+    private bool HoldsIntegers(D3D10Instruction instruction, int operandIndex)
+    {
+        RegisterKey key = instruction.GetParamRegisterKey(operandIndex);
+        IEnumerable<int> components = instruction.IsDestinationOperand(operandIndex)
+            ? Enumerable.Range(0, 4).Where(c => (instruction.GetWriteMask(operandIndex) & (1 << c)) != 0)
+            : instruction.GetSourceSwizzleComponents(operandIndex).Distinct().Select(c => (int)c);
+        return components.All(c =>
+        {
+            var component = new RegisterComponentKey(key, c);
+            return _integerOperandAnalysis.IsIntegerRegister(component)
+                && !_integerOperandAnalysis.IsFloatTouched(component);
+        });
     }
 
     private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
@@ -453,22 +608,29 @@ public class HlslSimpleWriter : HlslWriter
         int length = instruction.GetDestinationMaskLength();
         string size = length == 1 ? "" : length.ToString();
         string source = GetOperandName(instruction, 1);
-        string reinterpreted = readAs == null ? source : $"({readAs}{size}){source}";
+        // Bits storage is read with asint already; a cast on top of that would
+        // convert the integer to itself, and (int) on the raw float would round it.
+        string reinterpreted = readAs == null || GetSourceStorage(instruction, 1) == ComponentStorage.Bits
+            ? source
+            : $"({readAs}{size}){source}";
         WriteResult(instruction, "{0} = {1};",
             GetOperandName(instruction, 0), $"({convertTo}{size}){reinterpreted}");
     }
 
     // A comparison writes all ones for true and all zeroes for false, which is what
-    // lets an and with it act as a mask. Into a register declared float, `? -1 : 0`
-    // stores -1.0f instead, whose bits are 0xbf800000 - anded with the 0x3f800000 of
-    // 1.0f that happens to give 1.0f back, so it looked right, but anded with the
-    // 0x41000000 of 8.0f it gives 0x01000000, which is not 8.
+    // lets an and with it act as a mask. Into bits storage `? -1 : 0` would store
+    // -1.0f instead, whose bits are 0xbf800000 - anded with the 0x3f800000 of 1.0f
+    // that happens to give 1.0f back, so it looked right, but anded with the
+    // 0x41000000 of 8.0f it gives 0x01000000, which is not 8. Into an int register,
+    // or a float one whose readers only test it or do integer arithmetic on it, -1
+    // and 0 are the numbers wanted.
     private void WriteComparison(D3D10Instruction instruction, string op)
     {
         string condition =
             $"({GetOperandName(instruction, 1)} {op} {GetOperandName(instruction, 2)}) ? -1 : 0";
+        bool bits = GetDestinationStorage(instruction, 0) == ComponentStorage.Bits;
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
-            IsIntegerDestination(instruction) ? condition : $"asfloat({condition})");
+            bits ? $"asfloat({condition})" : condition);
     }
 
     // and, or and xor work on the bits, whatever the register holding them is
@@ -491,7 +653,10 @@ public class HlslSimpleWriter : HlslWriter
     private string Reinterpreted(D3D10Instruction instruction, int operandIndex, bool reinterpret)
     {
         string name = GetOperandName(instruction, operandIndex);
-        return reinterpret ? $"asint({name})" : name;
+        // Bits storage is read as the integer it holds whatever the destination is.
+        bool bits = instruction.GetOperandType(operandIndex) != OperandType.Immediate32
+            && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits;
+        return reinterpret || bits ? AsInt(name) : name;
     }
 
     private bool IsIntegerDestination(D3D10Instruction instruction)
@@ -501,10 +666,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return true;
         }
-
-        return IsIntegerTempRegister(
-            instruction.GetParamRegisterKey(destinationIndex.Value),
-            instruction.GetDestinationWriteMask());
+        return GetDestinationStorage(instruction, destinationIndex.Value) == ComponentStorage.Integer;
     }
 
     // A D3D10 result can be clamped to [0, 1] by a bit on the instruction rather
@@ -514,11 +676,24 @@ public class HlslSimpleWriter : HlslWriter
     // around the expression.
     private void WriteResult(D3D10Instruction instruction, string format, params object[] args)
     {
+        WriteResult(instruction, instruction.GetDestinationParamIndex() ?? 0, format, args);
+    }
+
+    private void WriteResult(D3D10Instruction instruction, int destinationIndex, string format, params object[] args)
+    {
         const string assignment = "{0} = ";
         if (instruction.Saturate)
         {
             string expression = format[assignment.Length..^1];
             format = $"{assignment}saturate({expression});";
+        }
+        // An integer result into bits storage keeps its bits, so that whatever
+        // reads them as an integer next gets them back with asint.
+        if (GetProducedKind(instruction) == ValueKind.Integer
+            && GetDestinationStorage(instruction, destinationIndex) == ComponentStorage.Bits)
+        {
+            string expression = format[assignment.Length..^1];
+            format = $"{assignment}asfloat({expression});";
         }
         WriteLine(format, args);
     }
@@ -635,7 +810,7 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.IMul:
                 // Two destinations, high and low halves; only the low one is modelled.
-                WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, 1, "{0} = {1} * {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.IMad:
                 WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
@@ -688,10 +863,14 @@ public class HlslSimpleWriter : HlslWriter
                     GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
             case D3D10Opcode.Mov:
-                WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                    Moved(instruction, 1, GetOperandName(instruction, 1)));
                 break;
             case D3D10Opcode.MovC:
-                WriteResult(instruction, "{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                WriteResult(instruction, "{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1),
+                    Moved(instruction, 2, GetOperandName(instruction, 2)),
+                    Moved(instruction, 3, GetOperandName(instruction, 3)));
                 break;
             case D3D10Opcode.Mul:
                 WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
@@ -772,7 +951,7 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 if (instruction.GetOperandType(1) != OperandType.Null)
                 {
-                    WriteResult(instruction, "{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                    WriteResult(instruction, 1, "{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 }
                 break;
             case D3D10Opcode.Or:
@@ -1298,13 +1477,31 @@ public class HlslSimpleWriter : HlslWriter
         if (registerKey.OperandType == OperandType.Immediate32)
         {
             // The 32 bits are typed by the instruction using them. Reading an integer
-            // as a float printed its bit pattern - l(4) came out as 0.000000.
+            // as a float printed its bit pattern - l(4) came out as 0.000000. A mov
+            // uses them for nothing itself, so its immediate is typed by whatever
+            // reads the register afterwards: -1.0f moved into a register that is a
+            // loop counter elsewhere is still -1.0f.
             bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction);
+            bool isMove = instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC;
+            if (isMove)
+            {
+                ValueKind readAs = _integerOperandAnalysis.GetImmediateKindByReaders(instruction);
+                if (readAs != ValueKind.Unknown)
+                {
+                    isInteger = readAs == ValueKind.Integer;
+                }
+            }
+            // An integer moved into bits storage is stored as its bits - where it is
+            // an integer to the readers of that component. One immediate can start a
+            // float accumulator and an integer counter in one register, and the
+            // float half is typed by the register's int half; it is still 0.0f.
+            bool asBits = isMove && isInteger && IsIntegerIntoBits(instruction);
             if (registerKey.ImmediateSingle.Length == 1)
             {
-                return isInteger
+                string scalar = isInteger
                     ? instruction.GetParamInt(operandIndex, 0).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
+                return asBits ? $"asfloat({scalar})" : scalar;
             }
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             // Which entries of the swizzle are read depends on which components are
@@ -1319,7 +1516,8 @@ public class HlslSimpleWriter : HlslWriter
                     ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
             string immediateType = isInteger ? "int" : "float";
-            return $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
+            string vector = $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
+            return asBits ? $"asfloat({vector})" : vector;
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
@@ -1402,6 +1600,15 @@ public class HlslSimpleWriter : HlslWriter
                     instruction.GetSourceSwizzleName(operandIndex, maskedLength),
                     GetConstantComponentBase(instruction, operandIndex),
                     maskedLength);
+            // Bits storage is a float register holding an integer's bits, and an
+            // instruction wanting the integer reads them back with asint. A float
+            // instruction reads the float that is there, and a test of the bits
+            // needs nothing: the NaN that all ones are as a float is not zero either.
+            if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits)
+            {
+                return ApplyModifier(modifier, AsInt(string.Format("{0}{1}", registerName, writeMaskName)));
+            }
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));

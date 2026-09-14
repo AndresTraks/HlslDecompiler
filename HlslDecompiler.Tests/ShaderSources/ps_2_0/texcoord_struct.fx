@@ -6,5 +6,5 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	return float4(i.texcoord * i.texcoord1.xx, i.texcoord1.zw * i.texcoord1.xx);
+	return float4(i.texcoord, i.texcoord1.zw) * i.texcoord1.x;
 }

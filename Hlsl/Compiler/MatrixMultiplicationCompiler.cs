@@ -11,7 +11,9 @@ public sealed class MatrixMultiplicationCompiler
 
     public string Compile(MatrixMultiplicationContext context)
     {
-        string matrixName = context.MatrixDeclaration.Name;
+        string matrixName = context.ElementIndex is int element
+            ? $"{context.MatrixDeclaration.Name}[{element}]"
+            : context.MatrixDeclaration.Name;
         if (context.MatrixDeclaration.TypeInfo.Columns != context.MatrixColumnCount)
         {
             matrixName = $"(float{context.MatrixRowCount}x{context.MatrixColumnCount}){matrixName}";

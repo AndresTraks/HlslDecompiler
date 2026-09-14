@@ -162,7 +162,10 @@ public class MatrixMultiplicationGrouper
 
         vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
-        return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count, firstMatrixRow.Count);
+        return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count, firstMatrixRow.Count)
+        {
+            ElementIndex = GetElementIndex(matrix, (RegisterInputNode)firstMatrixRow[0]),
+        };
     }
 
     private static IList<HlslTreeNode> SwizzleVector(IList<HlslTreeNode> vector, IList<HlslTreeNode> firstMatrixRow, bool matrixByVector)
@@ -199,6 +202,22 @@ public class MatrixMultiplicationGrouper
             }
         }
         return vectorSwizzled;
+    }
+
+    // Which element of an array of matrices the rows belong to, or null for a
+    // matrix that is not in an array. The rows' register says: so many registers
+    // past the declaration, over the registers an element takes.
+    private int? GetElementIndex(ConstantDeclaration matrix, RegisterInputNode firstRow)
+    {
+        if (matrix.TypeInfo.NumElements <= 1)
+        {
+            return null;
+        }
+        RegisterKey key = firstRow.RegisterComponentKey.RegisterKey;
+        int registerOffset = key is D3D10RegisterKey d3d10Key
+            ? _registers.GetConstantBufferElementOffset(d3d10Key, matrix)
+            : ((D3D9RegisterKey)key).Number - matrix.RegisterIndex;
+        return registerOffset / matrix.RegistersPerElement;
     }
 
     private ConstantDeclaration TryGetMatrixDeclaration(IList<HlslTreeNode[]> dotProductNodes)
@@ -305,6 +324,7 @@ public class MatrixMultiplicationContext
     public HlslTreeNode[] Vector { get; }
 
     public ConstantDeclaration MatrixDeclaration { get; }
+    public int? ElementIndex { get; init; }
     public bool IsMatrixByVector { get; }
     public int MatrixRowCount { get; }
     public int MatrixColumnCount { get; }

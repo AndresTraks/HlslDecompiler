@@ -27,7 +27,7 @@ VS_OUT main(VS_IN i)
 	float t5 = dot(i.normal.xyz, transpose(bones[i.blendindices.x])[2].xyz) * i.blendweight.x + dot(i.normal.xyz, transpose(bones[i.blendindices.y])[2].xyz) * i.blendweight.y;
 	float t6 = sqrt(t3 * t3 + t4 * t4 + t5 * t5);
 	o.position = mul(float4(t0, t1, t2, 1), vp);
-	o.texcoord = float3(t3 / t6, t4 / t6, t5 / t6);
+	o.texcoord = float3(t3, t4, t5) / t6;
 
 	return o;
 }

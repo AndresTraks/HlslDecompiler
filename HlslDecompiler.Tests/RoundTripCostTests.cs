@@ -108,32 +108,24 @@ public class RoundTripCostTests
             + "wrong as well as an instruction dearer. What is left is the naming "
             + "itself: fxc has no reason to keep a variable the shader never asked "
             + "for, and the two statements do not fold back into one cmp."),
-        ["ps_4_0/derivatives"] = (7,
-            "One instruction. The original is a single four wide mad whose addend is "
-            + "ddx in .xy and ddy in .zw - two instructions feeding one. The grouper "
-            + "will not group two mad components whose addends do not group, so the "
-            + "mad is written as two halves inside a float4 constructor, rather than "
-            + "as one mad with the constructor around its addend, and fxc keeps the "
-            + "two halves apart. The constructor wants pushing inward, which is a "
-            + "grouper change and not a template."),
+        ["ps_4_0/derivatives"] = (8,
+            "Two instructions. The mad is one four wide mad again, as in the "
+            + "original, now that the constructor sits around its addend rather "
+            + "than around two halves of it. What remains is ddx(texcoord.x) being "
+            + "read twice - inside fwidth and as .x of the addend - without being "
+            + "named, since the statement is under the hoist's size budget, so fxc "
+            + "takes the derivatives once more and packs them with two movs. Was 7 "
+            + "as two half-mads, which was cheaper by one and the wrong shape."),
         ["vs_2_0/matrix_palette"] = (38,
             "Twelve instructions, of two kinds. Ten are the per bone blend not "
             + "grouping, as vs_4_0/skinning: each of the six blended components is "
             + "its own scalar, so the original's one vector mul and mad per bone "
-            + "become one per component, and the normalize at the end is three "
-            + "divides rather than an rsq and a mul. Two are the blend index: the "
-            + "input has to be declared float, the bytecode not saying otherwise, "
-            + "and fxc floors a float subscript with a frc and an add where the "
-            + "original rounds it into the address register. The bones are the right "
-            + "ones, which they were not when the element stride was taken from the "
-            + "matrix's row count."),
-        ["ps_3_0/kill_derivatives"] = (16,
-            "Three instructions. The original ends in one lerp - a four wide add "
-            + "and a mad - between the sample and a float4 of sin, cos, ddx and ddy. "
-            + "Four different operations do not group, so the lerp is written per "
-            + "component inside a float4 constructor and fxc keeps it in three "
-            + "pieces. The constructor wants pushing inward, as ps_4_0/derivatives: "
-            + "`lerp(t0, float4(sin(a), cos(a), ddx(x), ddy(y)), t0.w)` is one mad."),
+            + "become one per component. Two are the blend index: the input has to "
+            + "be declared float, the bytecode not saying otherwise, and fxc floors "
+            + "a float subscript with a frc and an add where the original rounds it "
+            + "into the address register. The bones are the right ones, which they "
+            + "were not when the element stride was taken from the matrix's row "
+            + "count."),
         ["vs_4_0/skinning"] = (21,
             "The per bone blend does not group. Each component is a weighted sum of two "
             + "dots and the weights are applied before the components could be, so the "

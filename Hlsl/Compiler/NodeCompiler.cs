@@ -79,6 +79,18 @@ public sealed class NodeCompiler
             IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {
+                // The grouper splits a vector operation whose operands do not all
+                // group - a mad whose addend is ddx in .xy and ddy in .zw. Written
+                // as two half-mads inside a constructor, fxc keeps the halves apart;
+                // written as one mad with the constructor around the operand that
+                // differs, it is the instruction it came from. Only for an operation
+                // that works a component at a time - a dot or a length is not one -
+                // and only when one operand differs: two constructors, one per
+                // operand, read worse than the one around the whole.
+                if (IsElementwiseAcross(components) && CountUngroupedOperands(components) == 1)
+                {
+                    return CompileOperation((Operation)components[0], components, promoteToVectorSize);
+                }
                 return CompileVectorConstructor(components, componentGroups);
             }
 
@@ -131,6 +143,46 @@ public sealed class NodeCompiler
         }
 
         throw new NotImplementedException("Unsupported node: " + first.GetType().Name);
+    }
+
+    private static bool IsElementwiseAcross(List<HlslTreeNode> components)
+    {
+        if (components[0] is not Operation first || !IsElementwise(first))
+        {
+            return false;
+        }
+        return components.All(c => c.GetType() == first.GetType() && c.Inputs.Count == first.Inputs.Count);
+    }
+
+    private int CountUngroupedOperands(List<HlslTreeNode> components)
+    {
+        int ungrouped = 0;
+        for (int operand = 0; operand < components[0].Inputs.Count; operand++)
+        {
+            List<HlslTreeNode> values = [.. components.Select(c => c.Inputs[operand])];
+            if (_nodeGrouper.GroupComponents(values).Count > 1)
+            {
+                ungrouped++;
+            }
+        }
+        return ungrouped;
+    }
+
+    // An operation whose every result component depends on that component of its
+    // operands alone, so that a vector of them is the same operation on vectors.
+    // A conversion is left out: `(float4)float4(a, b, c, d)` says less than four
+    // casts do.
+    private static bool IsElementwise(Operation operation)
+    {
+        return operation is AddOperation or SubtractOperation or MultiplyOperation
+            or MultiplyAddOperation or DivisionOperation or NegateOperation or AbsoluteOperation
+            or MinimumOperation or MaximumOperation or SaturateOperation or ClampOperation
+            or LinearInterpolateOperation or SmoothStepOperation or MoveConditionalOperation
+            or FractionalOperation or FloorOperation or CeilingOperation or RoundOperation
+            or TruncateOperation or SquareRootOperation or ReciprocalOperation
+            or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
+            or PowerOperation or SineOperation or CosineOperation or SignOperation
+            or FloatingModuloOperation;
     }
 
     // Compiles a sub-expression, parenthesised when its operator binds more loosely

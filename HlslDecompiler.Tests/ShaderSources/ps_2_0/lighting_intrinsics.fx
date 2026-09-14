@@ -18,5 +18,5 @@ float4 main(PS_IN i) : COLOR
 	float t6 = dot(normalize(i.texcoord).xyz, normalize(lightDir + eyeDir).xyz);
 	float t7 = (-t6 >= 0 ? 0 : t5) * pow(t6, shininess);
 	float t1 = t7 * t7;
-	return float4(t1 * t3 + 1, t1 * t3 + dot(t0, t0) / length(t0) * t4 * t5, t1 * t3 + t7, t1 * t3 + 1);
+	return t1 * t3 + float4(1, dot(t0, t0) / length(t0) * t4 * t5, t7, 1);
 }

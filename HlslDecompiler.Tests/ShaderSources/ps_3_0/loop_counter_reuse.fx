@@ -2,7 +2,7 @@ float4 k;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-	float2 t0 = float2(rcp(k.y - k.x), rcp(k.w));
+	float2 t0 = rcp(float2(k.y - k.x, k.w));
 	float4 t1 = 0;
 	float t2 = 0;
 	for (int i = 0; i < 3; i++) {

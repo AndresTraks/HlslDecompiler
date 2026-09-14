@@ -80,6 +80,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]
     [TestCase("ps_4_0", "int_arithmetic")]
+    [TestCase("ps_4_0", "int_constant_divide")]
     [TestCase("vs_4_0", "constant")]
     [TestCase("vs_4_0", "constant_struct")]
     [TestCase("vs_4_0", "dot_product")]

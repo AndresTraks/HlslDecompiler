@@ -207,6 +207,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.UTof:
                 case D3D10Opcode.LD:
                 case D3D10Opcode.LdStructured:
+                case D3D10Opcode.LdRaw:
+                case D3D10Opcode.StoreRaw:
                 case D3D10Opcode.ResInfo:
                 case D3D10Opcode.Mad:
                 case D3D10Opcode.Mov:

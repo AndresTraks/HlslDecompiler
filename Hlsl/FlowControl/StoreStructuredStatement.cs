@@ -12,6 +12,8 @@ public class StoreStructuredStatement : IStatement
     // One per component of the element written: a StructuredBuffer<float4> store
     // writes four, and carrying a single value silently kept only one of them.
     public HlslTreeNode[] Values { get; }
+    // store_raw: the address is a byte offset, written with Store, Store2 and so on.
+    public bool IsRaw { get; init; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

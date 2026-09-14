@@ -45,6 +45,8 @@ public class ResourceDefinition
     {
         return Dimension switch
         {
+            // A buffer is addressed by one index, and Load takes just that.
+            ResourceDimension.Buffer => 1,
             ResourceDimension.Texture1D => 1,
             ResourceDimension.Texture2D => 2,
             ResourceDimension.Texture2Dms => 2,
@@ -58,6 +60,34 @@ public class ResourceDefinition
             _ => throw new NotImplementedException(Dimension.ToString()),
         };
     }
+
+    /// <summary>
+    /// How many components a typed resource returns: the reflection flags carry
+    /// the count less one in two bits, so Buffer&lt;uint&gt; and Buffer&lt;float4&gt;
+    /// can be told apart where the declaration in the bytecode says four for both.
+    /// </summary>
+    public int ReturnComponents =>
+        (((int)Flags & (int)(D3DShaderInputFlags.TextureComponent0 | D3DShaderInputFlags.TextureComponent1)) >> 2) + 1;
+
+    /// <summary>The HLSL element type of a typed resource: float4, uint, and so on.</summary>
+    public string ReturnTypeName
+    {
+        get
+        {
+            string scalar = ResourceReturnType switch
+            {
+                D3DResourceReturnType.SInt => "int",
+                D3DResourceReturnType.UInt => "uint",
+                _ => "float",
+            };
+            return ReturnComponents > 1 ? scalar + ReturnComponents : scalar;
+        }
+    }
+
+    /// <summary>The HLSL type a texture or buffer resource is declared as.</summary>
+    public string TypeName => Dimension == ResourceDimension.Buffer
+        ? $"Buffer<{ReturnTypeName}>"
+        : Dimension.ToString();
 
     public override string ToString()
     {

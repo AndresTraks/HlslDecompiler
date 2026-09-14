@@ -189,7 +189,7 @@ public abstract class HlslWriter
             {
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
-                    WriteLine($"{resource.Dimension} {resource.Name};");
+                    WriteLine($"{resource.TypeName} {resource.Name};");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
@@ -207,6 +207,14 @@ public abstract class HlslWriter
                 else if (resource.ShaderInputType == D3DShaderInputType.UavRWStructured)
                 {
                     WriteLine($"RWStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.ByteAddress)
+                {
+                    WriteLine($"ByteAddressBuffer {resource.Name} : register(t{resource.BindPoint});");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.UavRWByteAddress)
+                {
+                    WriteLine($"RWByteAddressBuffer {resource.Name} : register(u{resource.BindPoint});");
                 }
                 else
                 {

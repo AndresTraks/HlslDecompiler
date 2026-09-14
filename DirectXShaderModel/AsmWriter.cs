@@ -428,10 +428,17 @@ public class AsmWriter
                     break;
                 }
             case D3D10Opcode.DclResource:
-                WriteInstruction(instruction, "dcl_resource_texture2d (float,float,float,float)", 1);
+                WriteInstruction(instruction,
+                    $"dcl_resource_{GetResourceDimensionName(instruction.GetResourceDimension())} ({GetResourceReturnTypes(instruction)})", 1);
                 break;
             case D3D10Opcode.DclResourceStructured:
                 WriteLine("dcl_resource_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
+                break;
+            case D3D10Opcode.DclResourceRaw:
+                WriteLine("dcl_resource_raw {0}", FormatOperand(instruction, 0));
+                break;
+            case D3D10Opcode.DclUnorderedAccessViewRaw:
+                WriteLine("dcl_uav_raw {0}", FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclSampler:
                 WriteLine("dcl_sampler {0}, mode_{1}", FormatOperand(instruction, 0),
@@ -597,6 +604,9 @@ public class AsmWriter
             case D3D10Opcode.LdStructured:
                 WriteInstruction(instruction, "ld_structured", 4);
                 break;
+            case D3D10Opcode.LdRaw:
+                WriteInstruction(instruction, "ld_raw", 3);
+                break;
             case D3D10Opcode.Loop:
                 WriteInstruction(instruction, "loop", 0);
                 break;
@@ -721,6 +731,9 @@ public class AsmWriter
                 break;
             case D3D10Opcode.StoreStructured:
                 WriteInstruction(instruction, "store_structured", 4);
+                break;
+            case D3D10Opcode.StoreRaw:
+                WriteInstruction(instruction, "store_raw", 3);
                 break;
             case D3D10Opcode.Sync:
                 WriteLine("sync" + GetSyncSuffix(instruction.SyncFlags));
@@ -1093,5 +1106,42 @@ public class AsmWriter
 
         var modifier = instruction.GetOperandModifier(index);
         return ApplyModifier(modifier, $"{registerTypeName}{registerNumber}{swizzle}");
+    }
+
+    private static string GetResourceDimensionName(ResourceDimension dimension)
+    {
+        return dimension switch
+        {
+            ResourceDimension.Buffer => "buffer",
+            ResourceDimension.Texture1D => "texture1d",
+            ResourceDimension.Texture2D => "texture2d",
+            ResourceDimension.Texture2Dms => "texture2dms",
+            ResourceDimension.Texture3D => "texture3d",
+            ResourceDimension.TextureCube => "texturecube",
+            ResourceDimension.Texture1DArray => "texture1darray",
+            ResourceDimension.Texture2DArray => "texture2darray",
+            ResourceDimension.Texture2DmsArray => "texture2dmsarray",
+            ResourceDimension.TextureCubeArray => "texturecubearray",
+            _ => throw new NotImplementedException(dimension.ToString()),
+        };
+    }
+
+    // The return type token holds four nibbles, one per component, each a
+    // D3D_RESOURCE_RETURN_TYPE: (float,float,float,float), (uint,uint,uint,uint).
+    private static string GetResourceReturnTypes(D3D10Instruction instruction)
+    {
+        int token = instruction.GetResourceReturnTypeToken();
+        return string.Join(",", Enumerable.Range(0, 4).Select(i =>
+            (D3DResourceReturnType)((token >> (4 * i)) & 0xF) switch
+            {
+                D3DResourceReturnType.UNorm => "unorm",
+                D3DResourceReturnType.SNorm => "snorm",
+                D3DResourceReturnType.SInt => "sint",
+                D3DResourceReturnType.UInt => "uint",
+                D3DResourceReturnType.Float => "float",
+                D3DResourceReturnType.Mixed => "mixed",
+                D3DResourceReturnType.Double => "double",
+                _ => "float",
+            }));
     }
 }

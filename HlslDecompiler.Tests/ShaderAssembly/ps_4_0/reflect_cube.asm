@@ -1,7 +1,7 @@
 ps_4_0
 dcl_constantbuffer cb0[1], immediateIndexed
 dcl_sampler s0, mode_default
-dcl_resource_texture2d (float,float,float,float) t0
+dcl_resource_texturecube (float,float,float,float) t0
 dcl_input_ps linear v0.xyz
 dcl_input_ps linear v1.xyz
 dcl_output o0

@@ -287,6 +287,10 @@ public class D3D10Machine
                     Store(instruction);
                     pc++;
                     continue;
+                case D3D10Opcode.StoreRaw:
+                    StoreRaw(instruction);
+                    pc++;
+                    continue;
                 case D3D10Opcode.Sync:
                     pc++;
                     continue;
@@ -435,6 +439,25 @@ public class D3D10Machine
         }
         _stored.Add(new KeyValuePair<string, uint[]>(
             $"STORE{resource}[{element}][{offset}]", value));
+    }
+
+    // store_raw u0.xy, byteOffset, value: the dwords the mask names, from the byte
+    // offset on, each a result of its own named by where it went, so that a Store2
+    // and two Stores of the same words compare the same.
+    private void StoreRaw(D3D10Instruction instruction)
+    {
+        int resource = instruction.GetParamRegisterNumber(0);
+        int offset = Ints(instruction, 1)[0];
+        uint[] value = Source(instruction, 2);
+        int writeMask = instruction.GetDestinationWriteMask();
+        for (int component = 0, written = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                _stored.Add(new KeyValuePair<string, uint[]>(
+                    $"STORERAW{resource}[{offset + 4 * written++}]", [value[component], 0, 0, 0]));
+            }
+        }
     }
 
     // The word an element and byte offset address, clamped into the array the way
@@ -660,6 +683,18 @@ public class D3D10Machine
                         return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
                     }
                     return Pack(Named($"buffer{resource}[{element}][{offset}]"));
+                }
+            case D3D10Opcode.LdRaw:
+                {
+                    // Each dword is a value of its byte address, so that a Load2 and
+                    // two Loads of the same words agree; the resource operand's
+                    // swizzle then picks which of the four read go where.
+                    int offset = Ints(instruction, 1)[0];
+                    int resource = instruction.GetParamRegisterNumber(2);
+                    uint[] read = [.. Enumerable.Range(0, 4)
+                        .Select(word => Pack(Named($"raw{resource}[{offset + 4 * word}]"))[0])];
+                    byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
+                    return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
                 }
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:

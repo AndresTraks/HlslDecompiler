@@ -223,6 +223,14 @@ public class HlslAstWriter : HlslWriter
             ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey);
         string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
         string compiledValue = _compiler.Compile(storeStructured.Values.Select(Reduce));
+        if (storeStructured.IsRaw)
+        {
+            // Store, Store2, Store3 or Store4 at the byte offset, by how many dwords
+            // are written.
+            string method = storeStructured.Values.Length == 1 ? "Store" : $"Store{storeStructured.Values.Length}";
+            WriteLine($"{compiledDestination}.{method}({compiledAddress}, {compiledValue});");
+            return;
+        }
         WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
     }
 

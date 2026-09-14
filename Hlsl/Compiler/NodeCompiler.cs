@@ -484,12 +484,23 @@ public sealed class NodeCompiler
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     return $"length({value1})";
                 }
-            case LoadStructuredNode _:
+            case LoadStructuredNode load:
                 {
                     // TODO: consider the byte offset in Inputs[1].
                     var address = Compile(components.Select(g => g.Inputs[0]));
                     var resource = (RegisterInputNode)components[0].Inputs[2];
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
+                    if (load.IsRaw)
+                    {
+                        // A raw buffer reads as many dwords as the highest component
+                        // asked for: Load, Load2, Load3 or Load4 at the byte offset,
+                        // and a swizzle after it where the shader took less than all.
+                        int width = components.Max(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex) + 1;
+                        string rawSwizzle = GetAstSourceSwizzleName(
+                            components.Select(g => (IHasComponentIndex)g.Inputs[2]), width);
+                        string method = width == 1 ? "Load" : $"Load{width}";
+                        return $"{_registers.GetRegisterName(resourceKey)}.{method}({address}){rawSwizzle}";
+                    }
                     // The subscript picks the element, so a component selection goes
                     // after it. Naming the buffer with a swizzle gave `In.w[i]`.
                     // The load carries no component index of its own; the resource

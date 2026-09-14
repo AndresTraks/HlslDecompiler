@@ -854,6 +854,21 @@ public class HlslSimpleWriter : HlslWriter
                 // TODO: consider offset
                 WriteResult(instruction, "{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
+            case D3D10Opcode.LdRaw:
+                {
+                    // As many dwords as the highest component asked for, at the byte
+                    // offset: Load, Load2, Load3 or Load4, then the resource's swizzle.
+                    byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
+                    int[] read = GetSourceComponents(instruction, 2, swizzle);
+                    int width = read.Max() + 1;
+                    string method = width == 1 ? "Load" : $"Load{width}";
+                    string picked = width == 1 || read.SequenceEqual(Enumerable.Range(0, width))
+                        ? ""
+                        : "." + string.Concat(read.Select(c => "xyzw"[c]));
+                    WriteResult(instruction, "{0} = {2}.{3}({1}){4};", GetOperandName(instruction, 0),
+                        GetOperandName(instruction, 1), GetOperandName(instruction, 2), method, picked);
+                    break;
+                }
             case D3D10Opcode.Loop:
                 WriteLine("while (true) {");
                 indent += "\t";
@@ -971,6 +986,14 @@ public class HlslSimpleWriter : HlslWriter
                 // TODO: consider offset
                 WriteLine("{0}[{1}] = {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
+            case D3D10Opcode.StoreRaw:
+                {
+                    int width = instruction.GetDestinationMaskLength();
+                    string method = width == 1 ? "Store" : $"Store{width}";
+                    WriteLine("{0}.{3}({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1),
+                        GetOperandName(instruction, 2), method);
+                    break;
+                }
             case D3D10Opcode.Sync:
                 WriteLine("{0}();", SyncStatement.GetIntrinsicName(instruction.SyncFlags));
                 break;
@@ -990,6 +1013,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
             case D3D10Opcode.DclResourceStructured:
+            case D3D10Opcode.DclResourceRaw:
+            case D3D10Opcode.DclUnorderedAccessViewRaw:
             // The rows are written out with the other declarations.
             case D3D10Opcode.CustomData:
             case D3D10Opcode.DclSampler:
@@ -1571,14 +1596,18 @@ public class HlslSimpleWriter : HlslWriter
             registerName = _registers.GetRegisterName(registerKey);
         }
         string writeMaskName;
-        if (instruction.IsDestinationOperand(operandIndex))
+        // A buffer is named, never masked or swizzled: what it reads or writes is
+        // said by the method - Load2, Store - and the register's own mask.
+        if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
+            || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
+            || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0))
+        {
+            writeMaskName = "";
+        }
+        else if (instruction.IsDestinationOperand(operandIndex))
         {
             writeMaskName = instruction.GetWriteMaskName(
                 operandIndex, _registers.GetRegisterMaskedLength(registerKey));
-        }
-        else if (instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
-        {
-            writeMaskName = "";
         }
         else
         {
@@ -1688,6 +1717,14 @@ public class HlslSimpleWriter : HlslWriter
         return dimension > 1
             ? $", int{dimension}({offsets})"
             : $", {offsets}";
+    }
+
+    private bool IsBufferResource(D3D10Instruction instruction)
+    {
+        return _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .FirstOrDefault(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
+            ?.Dimension == ResourceDimension.Buffer;
     }
 
     private int GetTextureDimension(D3D10Instruction instruction)
@@ -1804,7 +1841,13 @@ public class HlslSimpleWriter : HlslWriter
         }
         if (instruction.Opcode == D3D10Opcode.LD)
         {
-            return GetTextureDimension(instruction) + 1;
+            // A buffer is addressed by its index alone; a texture takes a mip too.
+            return IsBufferResource(instruction) ? 1 : GetTextureDimension(instruction) + 1;
+        }
+        if (instruction.Opcode is D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw)
+        {
+            // One byte offset.
+            return 1;
         }
         return null;
     }

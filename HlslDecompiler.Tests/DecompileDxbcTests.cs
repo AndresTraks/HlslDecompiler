@@ -81,6 +81,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "transcend")]
     [TestCase("ps_4_0", "int_arithmetic")]
     [TestCase("ps_4_0", "int_constant_divide")]
+    [TestCase("ps_4_0", "typed_buffer")]
     [TestCase("vs_4_0", "constant")]
     [TestCase("vs_4_0", "constant_struct")]
     [TestCase("vs_4_0", "dot_product")]
@@ -120,6 +121,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "compute_loop")]
     [TestCase("cs_4_1", "integer_multiply")]
     [TestCase("cs_4_1", "groupshared_reduce")]
+    [TestCase("cs_4_0", "raw_buffer")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

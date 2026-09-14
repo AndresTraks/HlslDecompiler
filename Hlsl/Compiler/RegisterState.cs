@@ -197,13 +197,13 @@ public sealed class RegisterState
         if (registerKey is D3D10RegisterKey d3D10RegisterKey)
         {
             if (d3D10RegisterKey.OperandType == OperandType.Resource
-                && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.Structured
+                && ResourceDefinitions.Any(r => r.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress
                 && r.BindPoint == registerKey.Number))
             {
                 return GetStructuredBufferComponents(registerKey);
             }
             if (d3D10RegisterKey.OperandType == OperandType.UnorderedAccessView
-                && ResourceDefinitions.Any(r => r.ShaderInputType == D3DShaderInputType.UavRWStructured
+                && ResourceDefinitions.Any(r => r.ShaderInputType is D3DShaderInputType.UavRWStructured or D3DShaderInputType.UavRWByteAddress
                 && r.BindPoint == registerKey.Number))
             {
                 return GetStructuredBufferComponents(registerKey);
@@ -592,7 +592,8 @@ public sealed class RegisterState
                     }
                 case OperandType.Resource:
                     return ResourceDefinitions
-                        .Where(d => d.ShaderInputType == D3DShaderInputType.Texture || d.ShaderInputType == D3DShaderInputType.Structured)
+                        .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
+                            or D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 case OperandType.Sampler:
@@ -604,7 +605,8 @@ public sealed class RegisterState
                     return "r" + registerKey.Number;
                 case OperandType.UnorderedAccessView:
                     return ResourceDefinitions
-                        .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
+                        .Where(d => d.ShaderInputType is D3DShaderInputType.UavRWStructured
+                            or D3DShaderInputType.UavRWByteAddress)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 // Groupshared memory has no reflection entry to take a name from.
@@ -865,6 +867,23 @@ public sealed class RegisterState
         DeclareStructuredStride(registerKey, stride);
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => d.ShaderInputType == D3DShaderInputType.Structured)
+            .FirstOrDefault(d => d.BindPoint == registerKey.Number);
+        if (definition != null)
+        {
+            ResourceDefinitions.Add(definition);
+        }
+    }
+
+    // A raw buffer has no stride: it is read and written by byte offset, so many
+    // dwords at a time. Four components, since a load can take up to four.
+    public void DeclareRawBuffer(D3D10RegisterKey registerKey)
+    {
+        DeclareStructuredStride(registerKey, 16);
+        D3DShaderInputType inputType = registerKey.OperandType == OperandType.UnorderedAccessView
+            ? D3DShaderInputType.UavRWByteAddress
+            : D3DShaderInputType.ByteAddress;
+        ResourceDefinition definition = _shaderModel.ResourceDefinitions
+            .Where(d => d.ShaderInputType == inputType)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);
         if (definition != null)
         {

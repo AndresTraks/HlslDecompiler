@@ -134,6 +134,7 @@ public class InstructionParser
         }
         else if (instruction.HasDestination
             && instruction.Opcode != D3D10Opcode.StoreStructured
+            && instruction.Opcode != D3D10Opcode.StoreRaw
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
             && instruction.Opcode != D3D10Opcode.Udiv)
@@ -265,6 +266,14 @@ public class InstructionParser
                         SeedResourceComponents(registerKey);
                         break;
                     }
+                case D3D10Opcode.DclResourceRaw:
+                case D3D10Opcode.DclUnorderedAccessViewRaw:
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareRawBuffer(registerKey);
+                        SeedResourceComponents(registerKey);
+                        break;
+                    }
                 case D3D10Opcode.CustomData:
                     {
                         // Four floats a row. The class of custom data is in the
@@ -344,6 +353,19 @@ public class InstructionParser
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs));
+                        break;
+                    }
+                case D3D10Opcode.StoreRaw:
+                    {
+                        // store_raw u0.xy, byteOffset, value: a byte offset in place of
+                        // an element and an offset, otherwise a structured store.
+                        RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+                        var output = new RegisterInputNode(destinationKeys[0]);
+                        HlslTreeNode address = GetInputs(instruction, destinationKeys[0].ComponentIndex)[0];
+                        HlslTreeNode[] values = destinationKeys
+                            .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
+                            .ToArray();
+                        InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs) { IsRaw = true });
                         break;
                     }
                 case D3D10Opcode.Ret:
@@ -650,7 +672,8 @@ public class InstructionParser
 
     private static bool IsStoreStructured(Instruction instruction)
     {
-        return instruction is D3D10Instruction d3d10 && d3d10.Opcode == D3D10Opcode.StoreStructured;
+        return instruction is D3D10Instruction d3d10
+            && d3d10.Opcode is D3D10Opcode.StoreStructured or D3D10Opcode.StoreRaw;
     }
 
     private void InsertLoop(Instruction instruction, int countParamIndex, bool hasLoopCounter = false)
@@ -1553,6 +1576,7 @@ public class InstructionParser
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
             case D3D10Opcode.LdStructured:
+            case D3D10Opcode.LdRaw:
             case D3D10Opcode.Log:
             case D3D10Opcode.Mad:
             case D3D10Opcode.Max:
@@ -1637,6 +1661,10 @@ public class InstructionParser
                             return new TruncateOperation(inputs[0]);
                         case D3D10Opcode.LdStructured:
                             return new LoadStructuredNode(inputs[0], inputs[1], inputs[2]);
+                        case D3D10Opcode.LdRaw:
+                            // ld_raw dst, byteOffset, t#: the offset stands where an
+                            // element index would, and there is no offset within one.
+                            return new LoadStructuredNode(inputs[0], new ConstantNode(0), inputs[1]) { IsRaw = true };
                         case D3D10Opcode.Log:
                             return new LogOperation(inputs[0]);
                         case D3D10Opcode.Mad:
@@ -1699,8 +1727,11 @@ public class InstructionParser
             .FirstOrDefault(d => d.BindPoint == resource.RegisterComponentKey.RegisterKey.Number);
 
         // Load reads a texel directly, so it takes the mip level alongside the
-        // coordinates: a 2D texture is addressed by an int3.
-        int addressLength = (definition?.GetDimensionSize() ?? 2) + 1;
+        // coordinates: a 2D texture is addressed by an int3. A buffer has no mips
+        // and is addressed by its index alone.
+        int addressLength = definition?.Dimension == ResourceDimension.Buffer
+            ? 1
+            : (definition?.GetDimensionSize() ?? 2) + 1;
         // The address is in texels, so an immediate operand holds integers rather
         // than the floats those same bits would spell.
         HlslTreeNode[] address = instruction.GetOperandType(AddressParamIndex) == OperandType.Immediate32
@@ -2332,6 +2363,8 @@ public class InstructionParser
             case D3D10Opcode.StoreStructured:
                 return 3;
             case D3D10Opcode.ResInfo:
+            case D3D10Opcode.LdRaw:
+            case D3D10Opcode.StoreRaw:
                 return 2;
             default:
                 throw new NotImplementedException();

@@ -325,6 +325,8 @@ public static class D3D10OpcodeExtensions
             // The mip level, and the element and byte offsets.
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdStructured:
+            case D3D10Opcode.LdRaw:
+            case D3D10Opcode.StoreRaw:
             case D3D10Opcode.Swtich:
                 return ValueKind.Integer;
             case D3D10Opcode.Ftoi:
@@ -354,6 +356,9 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdStructured:
                 return ValueKind.Unknown;
+            // A raw buffer holds dwords, read out as uints.
+            case D3D10Opcode.LdRaw:
+                return ValueKind.Integer;
             case D3D10Opcode.LT:
             case D3D10Opcode.GE:
             case D3D10Opcode.Eq:

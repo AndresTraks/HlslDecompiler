@@ -13,5 +13,9 @@ public class LoadStructuredNode : Operation
     public HlslTreeNode ByteOffset => Inputs[1];
     public HlslTreeNode Value => Inputs[2];
 
-    public override string Mnemonic => "ld_structured";
+    // ld_raw: the address is a byte offset into a buffer with no elements, and
+    // reads out as Load, Load2, Load3 or Load4 rather than a subscript.
+    public bool IsRaw { get; init; }
+
+    public override string Mnemonic => IsRaw ? "ld_raw" : "ld_structured";
 }

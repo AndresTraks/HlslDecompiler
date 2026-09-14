@@ -140,7 +140,18 @@ public class D3D9Machine
             switch (type)
             {
                 case RegisterType.Input:
-                    Array.Copy(Named(instruction.GetDeclSemantic()), _input[number], 4);
+                    {
+                        string semantic = instruction.GetDeclSemantic();
+                        float[] value = Named(semantic);
+                        // A blend index is only ever a whole number, and a shader
+                        // that rounds it into the address register and one that
+                        // truncates it agree on nothing else.
+                        if (semantic.StartsWith("BLENDINDICES", StringComparison.OrdinalIgnoreCase))
+                        {
+                            value = [.. value.Select(v => (float)((int)Math.Abs(v * 4) % 8))];
+                        }
+                        Array.Copy(value, _input[number], 4);
+                    }
                     break;
                 case RegisterType.Texture:
                     Array.Copy(Named(instruction.GetDeclSemantic()), _texture[number], 4);

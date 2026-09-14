@@ -616,7 +616,7 @@ public sealed class NodeCompiler
                     // is left. Indexing it as though each register were an element
                     // gives dot(float4, float4x4).
                     string matrixElement = CompileRegisterIndexAsElement(
-                        relativeAddress.Index, constantBufferArray.TypeInfo.Rows);
+                        relativeAddress.Index, constantBufferArray.RegistersPerElement);
                     string matrixName = _registers.ColumnMajorOrder
                         ? $"transpose({arrayName}[{matrixElement}])"
                         : $"{arrayName}[{matrixElement}]";
@@ -639,7 +639,7 @@ public sealed class NodeCompiler
                     // counts rows across the whole array, so the element is that
                     // index over the row count and the row is the constant left over.
                     string element = CompileRegisterIndexAsElement(
-                        relativeAddress.Index, array.TypeInfo.Rows);
+                        relativeAddress.Index, array.RegistersPerElement);
                     string matrix = _registers.ColumnMajorOrder
                         ? $"transpose({arrayName}[{element}])"
                         : $"{arrayName}[{element}]";

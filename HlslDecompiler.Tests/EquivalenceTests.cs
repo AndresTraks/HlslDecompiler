@@ -42,36 +42,18 @@ public class EquivalenceTests
     private const float Tolerance = 1e-3f;
 
     /// <summary>
-    /// Geometry and compute shaders have no return value, so the machine reports
-    /// what they put on their stream and what they wrote to their buffers instead.
+    /// Every compiled shader there is, whatever its profile - the same set the
+    /// recompile tier runs. A fixed list of profiles here let a shader in a new
+    /// folder go uncompared, and its decompilation was wrong. Geometry and compute
+    /// shaders have no return value, so the machine reports what they put on their
+    /// stream and what they wrote to their buffers instead.
     /// </summary>
-    private static readonly string[] Profiles =
-    [
-        "ps_2_0", "ps_3_0", "vs_1_1", "vs_3_0",
-        "ps_4_0", "ps_4_1", "vs_4_0", "gs_4_0", "gs_4_1", "cs_4_1",
-    ];
-
     public static IEnumerable<TestCaseData> Shaders()
     {
-        const string root = "CompiledShaders";
-        if (!Directory.Exists(root))
+        foreach (TestCaseData data in RecompileTests.Shaders())
         {
-            yield break;
-        }
-
-        foreach (string profile in Profiles)
-        {
-            string directory = Path.Combine(root, profile);
-            if (!Directory.Exists(directory))
-            {
-                continue;
-            }
-
-            foreach (string shader in Directory.EnumerateFiles(directory, "*.fxc").OrderBy(f => f))
-            {
-                yield return new TestCaseData(profile, Path.GetFileNameWithoutExtension(shader))
-                    .SetName($"Equivalent({profile},{Path.GetFileNameWithoutExtension(shader)})");
-            }
+            yield return new TestCaseData(data.Arguments)
+                .SetName($"Equivalent({data.Arguments[0]},{data.Arguments[1]})");
         }
     }
 

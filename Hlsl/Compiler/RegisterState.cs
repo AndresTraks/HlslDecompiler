@@ -167,7 +167,12 @@ public sealed class RegisterState
             var constant = FindConstant(registerKey);
             if (constant != null)
             {
-                return constant.TypeInfo.Columns;
+                // A matrix stored column-major puts a column in each register, so
+                // the register is as wide as the matrix is tall: a float4x3's is a
+                // float4, and reading three of its components is a swizzle.
+                return constant.TypeInfo.Rows > 1 && ColumnMajorOrder
+                    ? constant.TypeInfo.Rows
+                    : constant.TypeInfo.Columns;
             }
 
             // An indexed def has no declaration to be as wide as. Every def is a

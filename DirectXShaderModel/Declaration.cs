@@ -26,6 +26,13 @@ public class ConstantDeclaration
         };
     }
 
+    /// <summary>
+    /// How many registers one element of an array occupies. A matrix stored
+    /// column-major takes a register per column, row-major one per row, so it is
+    /// read off the declaration's own size rather than assumed from the type.
+    /// </summary>
+    public virtual int RegistersPerElement => System.Math.Max(TypeInfo.Rows, 1);
+
     public override string ToString()
     {
         return Name;
@@ -48,6 +55,9 @@ public class D3D9ConstantDeclaration : ConstantDeclaration
     {
         return (index >= RegisterIndex) && (index < RegisterIndex + RegisterCount);
     }
+
+    public override int RegistersPerElement =>
+        System.Math.Max(RegisterCount / System.Math.Max(TypeInfo.NumElements, 1), 1);
 }
 
 public class D3D10ConstantDeclaration : ConstantDeclaration
@@ -63,6 +73,11 @@ public class D3D10ConstantDeclaration : ConstantDeclaration
         VariableSize = variableSize;
         VariableOffset = variableOffset;
     }
+
+    // Array elements are 16-byte aligned, so a float4x3 stored by column is three
+    // registers and by row four, whatever the type alone would say.
+    public override int RegistersPerElement =>
+        System.Math.Max((VariableSize / System.Math.Max(TypeInfo.NumElements, 1) + 15) / 16, 1);
 }
 
 // https://learn.microsoft.com/en-us/windows-hardware/drivers/display/dcl-instruction

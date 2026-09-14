@@ -428,8 +428,17 @@ public class HlslAstWriter : HlslWriter
         // reads what that statement assigned.
         WriteStatementTempAssignments(returnStatement);
 
+        // With an output struct, a return writes only what changed since the struct
+        // was last written: an if whose both branches return would otherwise repeat
+        // the position computed above it in each of them. A single output has no
+        // struct and is returned as the expression, wherever it was computed.
+        bool hasOutputStruct = _registers.MethodOutputRegisters.Count > 1;
         Dictionary<RegisterKey, HlslTreeNode[]> outputs =
-            GroupComponents(returnStatement.Outputs.Where(o => o.Key.RegisterKey.IsOutput))
+            GroupComponents(returnStatement.Outputs
+                    .Where(o => o.Key.RegisterKey.IsOutput)
+                    .Where(o => !(hasOutputStruct
+                        && returnStatement.Inputs.TryGetValue(o.Key, out var inputNode)
+                        && o.Value == inputNode)))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
 
         // The returned expression is compiled straight from here rather than through
@@ -440,7 +449,7 @@ public class HlslAstWriter : HlslWriter
             ? null
             : _compiler.Compile(Reduce(returnStatement.Comparison));
 
-        if (outputs.Count == 1)
+        if (!hasOutputStruct)
         {
             string compiled = _compiler.Compile(outputs.Single().Value);
             WriteLine(condition == null
@@ -462,7 +471,10 @@ public class HlslAstWriter : HlslWriter
                 string compiled = _compiler.Compile(rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
             }
-            WriteLine();
+            if (outputs.Count != 0)
+            {
+                WriteLine();
+            }
             WriteLine($"return {_registers.OutputVariableName};");
         }
     }

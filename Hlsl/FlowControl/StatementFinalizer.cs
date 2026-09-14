@@ -132,7 +132,11 @@ public class StatementFinalizer
                     IStatement nextStatement = statements[i + 1];
                     if (nextStatement is ClipStatement clip)
                     {
-                        if (assignmentNode.IsInputOf(clip.Values))
+                        // Only when the clip is all that reads it. A sample whose
+                        // alpha feeds the clip and the colour after it was dropped
+                        // here and re-read at every later use.
+                        if (assignmentNode.IsInputOf(clip.Values)
+                            && assignmentNode.Outputs.All(o => o.IsInputOf(clip.Values)))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);
                             clip.Inputs.Remove(assignmentOutput.Key);

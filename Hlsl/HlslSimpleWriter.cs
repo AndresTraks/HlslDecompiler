@@ -1131,12 +1131,13 @@ public class HlslSimpleWriter : HlslWriter
                 }
 
                 // An array of matrices takes two subscripts, and its register offset
-                // counts rows across the whole array: the element is that offset over
-                // the row count and the row is what is left.
+                // counts registers across the whole array: the element is that offset
+                // over the registers an element takes - its columns, stored by column
+                // - and the register within the element is what is left.
                 if (decl.TypeInfo.Rows > 1 && decl.TypeInfo.NumElements > 1)
                 {
                     int offset = registerKey.Number - decl.RegisterIndex;
-                    int rows = decl.TypeInfo.Rows;
+                    int rows = decl.RegistersPerElement;
                     string element = instruction.Params.HasRelativeAddressing(srcIndex)
                         ? $"{GetRelativeAddressIndex(instruction, srcIndex)} / {rows}"
                         : (offset / rows).ToString(_culture);
@@ -1254,8 +1255,8 @@ public class HlslSimpleWriter : HlslWriter
             // which is rows across the whole array, so the element is that over the row
             // count - `dot(position, instances[r0.x])` asks for a dot with a matrix.
             string matrix = _registers.ColumnMajorOrder
-                ? $"transpose({declaration.Name}[{index} / {declaration.TypeInfo.Rows}])"
-                : $"{declaration.Name}[{index} / {declaration.TypeInfo.Rows}]";
+                ? $"transpose({declaration.Name}[{index} / {declaration.RegistersPerElement}])"
+                : $"{declaration.Name}[{index} / {declaration.RegistersPerElement}]";
             return $"{matrix}[{elementOffset}]";
         }
         return elementOffset == 0

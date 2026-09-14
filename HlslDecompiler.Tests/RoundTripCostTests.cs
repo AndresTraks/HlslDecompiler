@@ -112,16 +112,13 @@ public class RoundTripCostTests
             + "named, since the statement is under the hoist's size budget, so fxc "
             + "takes the derivatives once more and packs them with two movs. Was 7 "
             + "as two half-mads, which was cheaper by one and the wrong shape."),
-        ["vs_2_0/matrix_palette"] = (38,
-            "Twelve instructions, of two kinds. Ten are the per bone blend not "
-            + "grouping, as vs_4_0/skinning: each of the six blended components is "
-            + "its own scalar, so the original's one vector mul and mad per bone "
-            + "become one per component. Two are the blend index: the input has to "
-            + "be declared float, the bytecode not saying otherwise, and fxc floors "
-            + "a float subscript with a frc and an add where the original rounds it "
-            + "into the address register. The bones are the right ones, which they "
-            + "were not when the element stride was taken from the matrix's row "
-            + "count."),
+        ["vs_2_0/matrix_palette"] = (28,
+            "Two instructions, the blend index: the input has to be declared float, "
+            + "the bytecode not saying otherwise, and fxc floors a float subscript "
+            + "with a frc and an add where the original rounds it into the address "
+            + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
+            + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
+            + "the address register was not a row."),
         ["vs_4_0/skinning"] = (15,
             "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
             + "viewProj)`, which is the source, and fxc orders the two blends the "

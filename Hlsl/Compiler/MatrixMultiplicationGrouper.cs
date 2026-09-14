@@ -157,14 +157,15 @@ public class MatrixMultiplicationGrouper
         }
 
         bool matrixByVector = firstMatrixRow
-            .Cast<RegisterInputNode>()
+            .Cast<IHasComponentIndex>()
             .All(row => row.ComponentIndex == 0);
 
         vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
         return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count, firstMatrixRow.Count)
         {
-            ElementIndex = GetElementIndex(matrix, (RegisterInputNode)firstMatrixRow[0]),
+            ElementIndex = GetElementIndex(matrix, firstMatrixRow[0]),
+            ElementIndexNode = RowIndex(firstMatrixRow[0]),
         };
     }
 
@@ -179,7 +180,7 @@ public class MatrixMultiplicationGrouper
         bool needsSwizzle = false;
         for (int i = 0; i < firstMatrixRow.Count; i++)
         {
-            var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
+            var component = ((IHasComponentIndex)firstMatrixRow[i]).ComponentIndex;
             if (i != component)
             {
                 needsSwizzle = true;
@@ -195,7 +196,7 @@ public class MatrixMultiplicationGrouper
         var vectorSwizzled = vector.ToArray();
         for (int i = 0; i < firstMatrixRow.Count; i++)
         {
-            var component = (firstMatrixRow[i] as RegisterInputNode).RegisterComponentKey.ComponentIndex;
+            var component = ((IHasComponentIndex)firstMatrixRow[i]).ComponentIndex;
             if (i != component)
             {
                 vectorSwizzled[i] = vector[component];
@@ -207,13 +208,13 @@ public class MatrixMultiplicationGrouper
     // Which element of an array of matrices the rows belong to, or null for a
     // matrix that is not in an array. The rows' register says: so many registers
     // past the declaration, over the registers an element takes.
-    private int? GetElementIndex(ConstantDeclaration matrix, RegisterInputNode firstRow)
+    private int? GetElementIndex(ConstantDeclaration matrix, HlslTreeNode firstRow)
     {
         if (matrix.TypeInfo.NumElements <= 1)
         {
             return null;
         }
-        RegisterKey key = firstRow.RegisterComponentKey.RegisterKey;
+        RegisterKey key = RowKey(firstRow).RegisterKey;
         int registerOffset = key is D3D10RegisterKey d3d10Key
             ? _registers.GetConstantBufferElementOffset(d3d10Key, matrix)
             : ((D3D9RegisterKey)key).Number - matrix.RegisterIndex;
@@ -224,9 +225,9 @@ public class MatrixMultiplicationGrouper
     {
         int dimension = dotProductNodes.Count;
         var first = dotProductNodes[0];
-        if (first[0] is RegisterInputNode register1)
+        if (IsRow(first[0]))
         {
-            var matrixBaseConstant = _registers.FindConstant(register1);
+            var matrixBaseConstant = _registers.FindConstant(RowKey(first[0]).RegisterKey);
             if (matrixBaseConstant != null && 
                 (matrixBaseConstant.TypeInfo.Rows == dimension ||
                 matrixBaseConstant.TypeInfo.Columns == dimension))
@@ -252,11 +253,10 @@ public class MatrixMultiplicationGrouper
         {
             return false;
         }
-        var registerA = (RegisterInputNode)rowA[0];
-        var registerB = (RegisterInputNode)rowB[0];
-        ConstantDeclaration matrix = _registers.FindConstant(registerA);
-        if (matrix == null || matrix != _registers.FindConstant(registerB)
-            || GetElementIndex(matrix, registerA) != GetElementIndex(matrix, registerB))
+        ConstantDeclaration matrix = _registers.FindConstant(RowKey(rowA[0]).RegisterKey);
+        if (matrix == null || matrix != _registers.FindConstant(RowKey(rowB[0]).RegisterKey)
+            || GetElementIndex(matrix, rowA[0]) != GetElementIndex(matrix, rowB[0])
+            || !ReferenceEquals(RowIndex(rowA[0]), RowIndex(rowB[0])))
         {
             return false;
         }
@@ -265,69 +265,68 @@ public class MatrixMultiplicationGrouper
         return NodeGrouper.AreNodesEquivalent(vectorA, vectorB);
     }
 
+    // A matrix row is read either straight from its register or through the
+    // address register - `c1` or `c1[a0.x]` - and a row of the same element is
+    // one register on from the row before it, read the same way.
+    private static bool IsRow(HlslTreeNode node)
+    {
+        return node is RegisterInputNode or RelativeAddressNode;
+    }
+
+    private static RegisterComponentKey RowKey(HlslTreeNode node)
+    {
+        return node is RelativeAddressNode relative
+            ? relative.RegisterComponentKey
+            : ((RegisterInputNode)node).RegisterComponentKey;
+    }
+
+    private static HlslTreeNode RowIndex(HlslTreeNode node)
+    {
+        return node is RelativeAddressNode relative ? relative.Index : null;
+    }
+
     private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
     {
-        if (dot.X.Inputs[0] is RegisterInputNode constantRegister)
+        foreach ((IList<HlslTreeNode> candidate, IList<HlslTreeNode> firstCandidate) in
+            new[] { (dot.X.Inputs, firstDot.X.Inputs), (dot.Y.Inputs, firstDot.Y.Inputs) })
         {
-            ConstantDeclaration constant = _registers.FindConstant(constantRegister);
-            if(constant != null && constant.TypeInfo.Rows > 1)
+            if (!IsRow(candidate[0]))
             {
-                if (row == 0)
-                {
-                    return dot.X.Inputs;
-                }
-                var firstConstantRegister =  firstDot.X.Inputs[0] as RegisterInputNode;
-                if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
-                    firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister.RegisterComponentKey.RegisterKey.Number &&
-                    firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex)
-                {
-                    return dot.X.Inputs;
-                }
-                if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister.RegisterComponentKey.RegisterKey) &&
-                    firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister.RegisterComponentKey.RegisterKey.Number &&
-                    firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister.RegisterComponentKey.ComponentIndex)
-                {
-                    return dot.X.Inputs;
-                }
-                if (firstConstantRegister.RegisterComponentKey.RegisterKey is D3D10RegisterKey firstD3D10RegisterKey &&
-                    constantRegister.RegisterComponentKey.RegisterKey is D3D10RegisterKey d3D10RegisterKey)
-                {
-                    if (d3D10RegisterKey.TypeEquals(d3D10RegisterKey) &&
-                        firstD3D10RegisterKey.Number == d3D10RegisterKey.Number &&
-                        firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister.RegisterComponentKey.ComponentIndex &&
-                        firstD3D10RegisterKey.ConstantBufferOffset + row == d3D10RegisterKey.ConstantBufferOffset)
-                    {
-                        return dot.X.Inputs;
-                    }
-                }
+                continue;
+            }
+            RegisterComponentKey key = RowKey(candidate[0]);
+            ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+            if (constant == null || constant.TypeInfo.Rows <= 1)
+            {
+                continue;
+            }
+            if (row == 0)
+            {
+                return candidate;
+            }
+            if (!IsRow(firstCandidate[0]) || !ReferenceEquals(RowIndex(candidate[0]), RowIndex(firstCandidate[0])))
+            {
+                continue;
+            }
+            RegisterComponentKey firstKey = RowKey(firstCandidate[0]);
+            if (!firstKey.RegisterKey.TypeEquals(key.RegisterKey))
+            {
+                continue;
+            }
+            bool nextRegister = firstKey.RegisterKey.Number + row == key.RegisterKey.Number
+                && firstKey.ComponentIndex == key.ComponentIndex;
+            bool nextComponent = firstKey.RegisterKey.Number == key.RegisterKey.Number
+                && firstKey.ComponentIndex + row == key.ComponentIndex;
+            bool nextBufferRegister = firstKey.RegisterKey is D3D10RegisterKey firstD3D10
+                && key.RegisterKey is D3D10RegisterKey d3d10
+                && firstD3D10.Number == d3d10.Number
+                && firstKey.ComponentIndex == key.ComponentIndex
+                && firstD3D10.ConstantBufferOffset + row == d3d10.ConstantBufferOffset;
+            if (nextRegister || nextComponent || nextBufferRegister)
+            {
+                return candidate;
             }
         }
-
-        if (dot.Y.Inputs[0] is RegisterInputNode constantRegister1)
-        {
-            ConstantDeclaration constant = _registers.FindConstant(constantRegister1);
-            if (constant != null && constant.TypeInfo.Rows > 1)
-            {
-                if (row == 0)
-                {
-                    return dot.Y.Inputs;
-                }
-                var firstConstantRegister = firstDot.Y.Inputs[0] as RegisterInputNode;
-                if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
-                    firstConstantRegister.RegisterComponentKey.RegisterKey.Number + row == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
-                    firstConstantRegister.RegisterComponentKey.ComponentIndex == constantRegister1.RegisterComponentKey.ComponentIndex)
-                {
-                    return dot.Y.Inputs;
-                }
-                if (firstConstantRegister.RegisterComponentKey.RegisterKey.TypeEquals(constantRegister1.RegisterComponentKey.RegisterKey) &&
-                    firstConstantRegister.RegisterComponentKey.RegisterKey.Number == constantRegister1.RegisterComponentKey.RegisterKey.Number &&
-                    firstConstantRegister.RegisterComponentKey.ComponentIndex + row == constantRegister1.RegisterComponentKey.ComponentIndex)
-                {
-                    return dot.Y.Inputs;
-                }
-            }
-        }
-
         return null;
     }
 }
@@ -352,6 +351,8 @@ public class MatrixMultiplicationContext
 
     public ConstantDeclaration MatrixDeclaration { get; }
     public int? ElementIndex { get; init; }
+    // The index expression of rows read through the address register, or null.
+    public HlslTreeNode ElementIndexNode { get; init; }
     public bool IsMatrixByVector { get; }
     public int MatrixRowCount { get; }
     public int MatrixColumnCount { get; }

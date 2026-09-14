@@ -545,7 +545,7 @@ public sealed class NodeCompiler
     // The index into an array of matrices counts registers, so it is already the
     // element index times the row count. Undo that multiplication where it is
     // visible rather than emitting a division that only fxc would fold away.
-    private string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
+    public string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
     {
         // DXBC shifts where D3D9 multiplies: `ishl r0.x, v1.x, l(2)` is the element
         // times four.

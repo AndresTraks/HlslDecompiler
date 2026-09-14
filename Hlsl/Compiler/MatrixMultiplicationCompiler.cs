@@ -11,12 +11,33 @@ public sealed class MatrixMultiplicationCompiler
 
     public string Compile(MatrixMultiplicationContext context)
     {
-        string matrixName = context.ElementIndex is int element
-            ? $"{context.MatrixDeclaration.Name}[{element}]"
-            : context.MatrixDeclaration.Name;
-        if (context.MatrixDeclaration.TypeInfo.Columns != context.MatrixColumnCount)
+        string matrixName = context.MatrixDeclaration.Name;
+        if (context.ElementIndexNode != null)
         {
-            matrixName = $"(float{context.MatrixRowCount}x{context.MatrixColumnCount}){matrixName}";
+            // Rows read through the address register: the index counts registers
+            // across the array, and the element is that over the registers one takes.
+            string element = nodeCompiler.CompileRegisterIndexAsElement(
+                context.ElementIndexNode, context.MatrixDeclaration.RegistersPerElement);
+            if (context.ElementIndex is int and not 0)
+            {
+                element += $" + {context.ElementIndex}";
+            }
+            matrixName = $"{matrixName}[{element}]";
+        }
+        else if (context.ElementIndex is int element)
+        {
+            matrixName = $"{matrixName}[{element}]";
+        }
+        // A submatrix is cast to its own size. In mul(matrix, vector) the dot
+        // products are the rows and their width the columns; in mul(vector, matrix)
+        // it is the other way about, and a float4x3 read whole by four wide dots
+        // three times is the float4x3 it was declared as.
+        int rows = context.IsMatrixByVector ? context.MatrixRowCount : context.MatrixColumnCount;
+        int columns = context.IsMatrixByVector ? context.MatrixColumnCount : context.MatrixRowCount;
+        if (rows != context.MatrixDeclaration.TypeInfo.Rows
+            || columns != context.MatrixDeclaration.TypeInfo.Columns)
+        {
+            matrixName = $"(float{rows}x{columns}){matrixName}";
         }
         string vector = nodeCompiler.Compile(context.Vector);
         return context.IsMatrixByVector

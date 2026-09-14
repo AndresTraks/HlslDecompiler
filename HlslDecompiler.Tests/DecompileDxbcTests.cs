@@ -82,6 +82,8 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "transcend")]
     [TestCase("ps_4_0", "int_arithmetic")]
     [TestCase("ps_4_0", "int_constant_divide")]
+    [TestCase("ps_4_0", "conditional_depth")]
+    [TestCase("ps_4_0", "texture_1d_3d")]
     [TestCase("ps_4_0", "typed_buffer")]
     [TestCase("vs_4_0", "constant")]
     [TestCase("vs_4_0", "constant_struct")]
@@ -97,6 +99,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "shared_cbuffer")]
     [TestCase("vs_4_0", "vertex_id")]
     [TestCase("vs_4_0", "any_all")]
+    [TestCase("vs_4_0", "integer_inputs")]
     [TestCase("vs_4_0", "bitwise")]
     [TestCase("vs_4_0", "skinning")]
     [TestCase("vs_4_0", "dynamic_index")]
@@ -115,6 +118,7 @@ public class DecompileDxbcTests
     [TestCase("gs_4_0", "triangle_expand")]
     [TestCase("gs_4_0", "line_strip")]
     [TestCase("gs_4_0", "primitive_id")]
+    [TestCase("gs_4_0", "adjacency_viewport")]
     [TestCase("gs_4_1", "point_expand")]
     [TestCase("cs_4_1", "compute")]
     [TestCase("cs_4_1", "compute_reduce")]
@@ -124,6 +128,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "integer_multiply")]
     [TestCase("cs_4_1", "groupshared_reduce")]
     [TestCase("cs_4_0", "raw_buffer")]
+    [TestCase("cs_4_0", "tile_blur")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

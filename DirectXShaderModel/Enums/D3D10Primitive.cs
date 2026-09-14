@@ -55,8 +55,8 @@ public static class D3D10PrimitiveExtensions
             D3D10Primitive.Point => "point",
             D3D10Primitive.Line => "line",
             D3D10Primitive.Triangle => "triangle",
-            D3D10Primitive.LineAdj => "line_adj",
-            D3D10Primitive.TriangleAdj => "triangle_adj",
+            D3D10Primitive.LineAdj => "lineadj",
+            D3D10Primitive.TriangleAdj => "triangleadj",
             _ => throw new NotImplementedException(primitive.ToString()),
         };
     }

@@ -119,6 +119,12 @@ public class RoundTripCostTests
             + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
             + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
             + "the address register was not a row."),
+        ["cs_4_0/tile_blur"] = (21,
+            "One instruction. The pixel coordinate, `groupId.xy * 8 + threadId.xy`, "
+            + "is a two wide add read by both buffer addresses, and it is inlined per "
+            + "component since the statement is under the hoist's size budget; the "
+            + "original does it once as a vector and folds y into the imad, where "
+            + "fxc folds one of the decompiled halves and adds the other."),
         ["vs_4_0/skinning"] = (15,
             "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
             + "viewProj)`, which is the source, and fxc orders the two blends the "

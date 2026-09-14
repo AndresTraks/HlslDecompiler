@@ -592,9 +592,14 @@ public sealed class IntegerOperandAnalysis
         // well, so they are left to the instructions that read them.
         const int UInt32ComponentType = 1;
         const int SInt32ComponentType = 2;
-        if (shader.Type != ShaderType.Geometry)
+        // An output the signature types as an integer - a viewport or render
+        // target index - holds one whatever is moved into it: `mov o1.x, l(1)`
+        // is the integer 1, and as a float it is a denormal that prints as 0.
+        IEnumerable<RegisterSignature> typedSignatures = shader.Type != ShaderType.Geometry
+            ? shader.InputSignatures.Concat(shader.OutputSignatures)
+            : shader.OutputSignatures;
         {
-            foreach (RegisterSignature signature in shader.InputSignatures)
+            foreach (RegisterSignature signature in typedSignatures)
             {
                 if (signature.ComponentType != UInt32ComponentType && signature.ComponentType != SInt32ComponentType)
                 {

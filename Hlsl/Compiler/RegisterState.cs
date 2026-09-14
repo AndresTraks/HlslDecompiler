@@ -299,6 +299,53 @@ public sealed class RegisterState
         return TryGetMemberAtOffset(declaration.TypeInfo, variable, target, out element, out memberWidth);
     }
 
+    /// <summary>
+    /// The member of an element of a struct array that a register within the
+    /// element falls in, for an element picked at run time - `instances[id]` read
+    /// as cb0[r0.x + 5], where 5 is the register within the element. Says where
+    /// the member starts and what it is, so that a scalar prints without a swizzle
+    /// and a matrix member takes a row.
+    /// </summary>
+    public static bool TryGetStructMemberAt(
+        ConstantDeclaration declaration,
+        string element,
+        int registerWithinElement,
+        int componentIndex,
+        out StructMemberAccess member)
+    {
+        member = null;
+        if (declaration.TypeInfo.MemberInfo == null)
+        {
+            return false;
+        }
+        int target = registerWithinElement * 4 + componentIndex;
+        return TryGetMemberAccessAtOffset(declaration.TypeInfo, element, target, 0, out member);
+    }
+
+    private static bool TryGetMemberAccessAtOffset(
+        ShaderTypeInfo typeInfo, string name, int target, int start, out StructMemberAccess member)
+    {
+        member = null;
+        int offset = 0;
+        foreach (ShaderStructMemberInfo info in typeInfo.MemberInfo)
+        {
+            int width = GetTypeWidth(info.TypeInfo);
+            if (target < offset + width)
+            {
+                string memberName = $"{name}.{info.Name}";
+                if (info.TypeInfo.MemberInfo != null)
+                {
+                    return TryGetMemberAccessAtOffset(
+                        info.TypeInfo, memberName, target - offset, start + offset, out member);
+                }
+                member = new StructMemberAccess(memberName, info.TypeInfo, start + offset);
+                return true;
+            }
+            offset += width;
+        }
+        return false;
+    }
+
     // The member covering a float offset within a struct, descending into a member
     // that is a struct itself so that Outer.a.v does not stop at Outer.a.
     private static bool TryGetMemberAtOffset(

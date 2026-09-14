@@ -1250,6 +1250,19 @@ public class HlslSimpleWriter : HlslWriter
         int operandIndex,
         D3D10OperandTokenCollection.OperandIndex[] operandIndices)
     {
+        return GetDynamicOperandName(instruction, operandIndex, operandIndices, out _);
+    }
+
+    /// <param name="member">The struct member named, when the operand reads an
+    /// element of an array of structs picked at run time; the swizzle then wants
+    /// rebasing onto it, and a scalar wants none.</param>
+    private string GetDynamicOperandName(
+        D3D10Instruction instruction,
+        int operandIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices,
+        out StructMemberAccess member)
+    {
+        member = null;
         int relativeIndex = Array.FindIndex(operandIndices, i => i.IsRelative);
         (OperandType indexType, int indexNumber, byte indexComponent) =
             instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, relativeIndex);
@@ -1279,6 +1292,30 @@ public class HlslSimpleWriter : HlslWriter
             (int)operandIndices[1].Immediate);
         ConstantDeclaration declaration = _registers.FindConstant(registerKey, 0);
         int elementOffset = _registers.GetConstantBufferElementOffset(registerKey, declaration);
+        if (declaration.TypeInfo.MemberInfo != null && declaration.TypeInfo.NumElements > 1)
+        {
+            // An array of structs: the element is the index over the registers one
+            // takes, and the constant part of the offset picks the member.
+            int stride = declaration.RegistersPerElement;
+            string element = elementOffset / stride == 0
+                ? $"{index} / {stride}"
+                : $"{index} / {stride} + {elementOffset / stride}";
+            byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            if (RegisterState.TryGetStructMemberAt(declaration, $"{declaration.Name}[{element}]",
+                elementOffset % stride, component, out member))
+            {
+                if (member.IsMatrix)
+                {
+                    int row = (elementOffset % stride) - member.StartOffset / 4;
+                    string matrixMember = _registers.ColumnMajorOrder
+                        ? $"transpose({member.Name})"
+                        : member.Name;
+                    member = null;
+                    return $"{matrixMember}[{row}]";
+                }
+                return member.Name;
+            }
+        }
         if (declaration.TypeInfo.Rows > 1)
         {
             // An array of matrices takes two subscripts. The index counts registers,
@@ -1558,13 +1595,15 @@ public class HlslSimpleWriter : HlslWriter
             instruction.OperandTokens.GetOperandIndices(operandIndex);
         string registerName;
         bool isPackedScalar = false;
+        StructMemberAccess dynamicMember = null;
         if (registerKey.OperandType == OperandType.IndexableTemp)
         {
             registerName = GetIndexableTempOperandName(instruction, operandIndex, operandIndices);
         }
         else if (operandIndices.Any(i => i.IsRelative))
         {
-            registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices);
+            registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices, out dynamicMember);
+            isPackedScalar = dynamicMember != null && dynamicMember.Width == 1;
         }
         else if (registerKey.OperandType == OperandType.ConstantBuffer)
         {
@@ -1629,11 +1668,17 @@ public class HlslSimpleWriter : HlslWriter
             int? maskedLength = GetSourceLength(instruction, operandIndex);
             // A scalar variable sharing a register has no component of its own to
             // name once the variable itself is named.
+            if (dynamicMember != null)
+            {
+                // A vector member of a run-time element: as wide as the member, and
+                // rebased onto it.
+                maskedLength = dynamicMember.Width;
+            }
             writeMaskName = isPackedScalar
                 ? ""
                 : Rebased(
                     instruction.GetSourceSwizzleName(operandIndex, maskedLength),
-                    GetConstantComponentBase(instruction, operandIndex),
+                    dynamicMember?.ComponentBase ?? GetConstantComponentBase(instruction, operandIndex),
                     maskedLength);
             // Bits storage is a float register holding an integer's bits, and an
             // instruction wanting the integer reads them back with asint. A float

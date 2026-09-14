@@ -162,10 +162,13 @@ public class MatrixMultiplicationGrouper
 
         vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
+        RowMatrix rowMatrix = GetRowMatrix(firstMatrixRow[0]);
         return new MatrixMultiplicationContext(vector.ToArray(), matrix, matrixByVector, matrixRows.Count, firstMatrixRow.Count)
         {
             ElementIndex = GetElementIndex(matrix, firstMatrixRow[0]),
             ElementIndexNode = RowIndex(firstMatrixRow[0]),
+            MemberPath = rowMatrix.MemberPath,
+            MatrixTypeInfo = rowMatrix.MatrixType,
         };
     }
 
@@ -227,12 +230,11 @@ public class MatrixMultiplicationGrouper
         var first = dotProductNodes[0];
         if (IsRow(first[0]))
         {
-            var matrixBaseConstant = _registers.FindConstant(RowKey(first[0]).RegisterKey);
-            if (matrixBaseConstant != null && 
-                (matrixBaseConstant.TypeInfo.Rows == dimension ||
-                matrixBaseConstant.TypeInfo.Columns == dimension))
+            RowMatrix matrix = GetRowMatrix(first[0]);
+            if (matrix != null
+                && (matrix.MatrixType.Rows == dimension || matrix.MatrixType.Columns == dimension))
             {
-                return matrixBaseConstant;
+                return matrix.Declaration;
             }
         }
 
@@ -253,9 +255,12 @@ public class MatrixMultiplicationGrouper
         {
             return false;
         }
-        ConstantDeclaration matrix = _registers.FindConstant(RowKey(rowA[0]).RegisterKey);
-        if (matrix == null || matrix != _registers.FindConstant(RowKey(rowB[0]).RegisterKey)
-            || GetElementIndex(matrix, rowA[0]) != GetElementIndex(matrix, rowB[0])
+        RowMatrix matrixA = GetRowMatrix(rowA[0]);
+        RowMatrix matrixB = GetRowMatrix(rowB[0]);
+        if (matrixA == null || matrixB == null
+            || matrixA.Declaration != matrixB.Declaration
+            || matrixA.MemberPath != matrixB.MemberPath
+            || GetElementIndex(matrixA.Declaration, rowA[0]) != GetElementIndex(matrixA.Declaration, rowB[0])
             || !ReferenceEquals(RowIndex(rowA[0]), RowIndex(rowB[0])))
         {
             return false;
@@ -285,6 +290,41 @@ public class MatrixMultiplicationGrouper
         return node is RelativeAddressNode relative ? relative.Index : null;
     }
 
+    /// <summary>
+    /// The matrix a row register belongs to: a matrix constant, an element of an
+    /// array of them, or a matrix member of a struct element - `instances[id].world`
+    /// read as cb0[r0.x + 2] - or null for a register that is no row of anything.
+    /// </summary>
+    private RowMatrix GetRowMatrix(HlslTreeNode rowNode)
+    {
+        RegisterComponentKey key = RowKey(rowNode);
+        ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+        if (constant == null)
+        {
+            return null;
+        }
+        if (constant.TypeInfo.Rows > 1)
+        {
+            return new RowMatrix(constant, constant.TypeInfo, null);
+        }
+        if (constant.TypeInfo.MemberInfo != null
+            && constant.TypeInfo.NumElements > 1
+            && key.RegisterKey is D3D10RegisterKey d3d10Key)
+        {
+            int stride = constant.RegistersPerElement;
+            int registerOffset = _registers.GetConstantBufferElementOffset(d3d10Key, constant);
+            if (RegisterState.TryGetStructMemberAt(constant, "", registerOffset % stride, key.ComponentIndex,
+                    out StructMemberAccess member)
+                && member.IsMatrix)
+            {
+                return new RowMatrix(constant, member.TypeInfo, member.Name);
+            }
+        }
+        return null;
+    }
+
+    private sealed record RowMatrix(ConstantDeclaration Declaration, ShaderTypeInfo MatrixType, string MemberPath);
+
     private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
     {
         foreach ((IList<HlslTreeNode> candidate, IList<HlslTreeNode> firstCandidate) in
@@ -295,8 +335,7 @@ public class MatrixMultiplicationGrouper
                 continue;
             }
             RegisterComponentKey key = RowKey(candidate[0]);
-            ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
-            if (constant == null || constant.TypeInfo.Rows <= 1)
+            if (GetRowMatrix(candidate[0]) == null)
             {
                 continue;
             }
@@ -353,6 +392,10 @@ public class MatrixMultiplicationContext
     public int? ElementIndex { get; init; }
     // The index expression of rows read through the address register, or null.
     public HlslTreeNode ElementIndexNode { get; init; }
+    // For a matrix member of a struct element, the member's name - ".world" -
+    // following the element subscript, and the member's own type.
+    public string MemberPath { get; init; }
+    public ShaderTypeInfo MatrixTypeInfo { get; init; }
     public bool IsMatrixByVector { get; }
     public int MatrixRowCount { get; }
     public int MatrixColumnCount { get; }

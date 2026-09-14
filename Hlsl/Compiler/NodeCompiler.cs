@@ -680,6 +680,39 @@ public sealed class NodeCompiler
                 arrayName = constantBufferArray.Name;
                 int elementOffset = _registers.GetConstantBufferElementOffset(
                     d3d10ArrayKey, constantBufferArray);
+                if (constantBufferArray.TypeInfo.MemberInfo != null
+                    && constantBufferArray.TypeInfo.NumElements > 1)
+                {
+                    // An array of structs picked at run time: the index counts
+                    // registers across the array, so the element is that over the
+                    // registers one takes, and the constant part of the offset says
+                    // which register of the element - which member - is read.
+                    int stride = constantBufferArray.RegistersPerElement;
+                    string element = CompileRegisterIndexAsElement(relativeAddress.Index, stride);
+                    if (elementOffset / stride != 0)
+                    {
+                        element += $" + {elementOffset / stride}";
+                    }
+                    if (RegisterState.TryGetStructMemberAt(constantBufferArray, $"{arrayName}[{element}]",
+                        elementOffset % stride, arrayKey.ComponentIndex, out StructMemberAccess member))
+                    {
+                        if (member.IsMatrix)
+                        {
+                            int row = (elementOffset % stride) - member.StartOffset / 4;
+                            string matrix = _registers.ColumnMajorOrder
+                                ? $"transpose({member.Name})"
+                                : member.Name;
+                            int rowWidth = _registers.ColumnMajorOrder
+                                ? member.TypeInfo.Rows
+                                : member.TypeInfo.Columns;
+                            swizzle = GetAstSourceSwizzleName(componentsWithIndices, rowWidth, promoteToVectorSize);
+                            return $"{matrix}[{row}]{swizzle}";
+                        }
+                        swizzle = GetAstSourceSwizzleName(
+                            componentsWithIndices, member.Width, promoteToVectorSize, member.ComponentBase);
+                        return $"{member.Name}{swizzle}";
+                    }
+                }
                 if (constantBufferArray.TypeInfo.Rows > 1)
                 {
                     // An array of matrices takes two subscripts, the same as the D3D9

@@ -100,6 +100,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "vertex_id")]
     [TestCase("vs_4_0", "any_all")]
     [TestCase("vs_4_0", "integer_inputs")]
+    [TestCase("vs_4_0", "instance_structs")]
     [TestCase("vs_4_0", "bitwise")]
     [TestCase("vs_4_0", "skinning")]
     [TestCase("vs_4_0", "dynamic_index")]

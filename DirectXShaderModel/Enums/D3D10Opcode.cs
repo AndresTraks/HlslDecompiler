@@ -266,6 +266,7 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.Case:
             // Its only immediate operand is the texel address, which is integer.
             case D3D10Opcode.LD:
+            case D3D10Opcode.LDMS:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
             case D3D10Opcode.IShr:
@@ -377,6 +378,7 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.UTof:
             // A texel, whatever address it was read at.
             case D3D10Opcode.LD:
+            case D3D10Opcode.LDMS:
                 return ValueKind.Float;
             default:
                 return opcode.IsInteger() ? ValueKind.Integer : ValueKind.Float;

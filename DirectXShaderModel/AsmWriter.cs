@@ -428,8 +428,15 @@ public class AsmWriter
                     break;
                 }
             case D3D10Opcode.DclResource:
-                WriteInstruction(instruction,
-                    $"dcl_resource_{GetResourceDimensionName(instruction.GetResourceDimension())} ({GetResourceReturnTypes(instruction)})", 1);
+                {
+                    string dimension = GetResourceDimensionName(instruction.GetResourceDimension());
+                    if (instruction.ResourceSampleCount != 0)
+                    {
+                        dimension += $"({instruction.ResourceSampleCount})";
+                    }
+                    WriteInstruction(instruction,
+                        $"dcl_resource_{dimension} ({GetResourceReturnTypes(instruction)})", 1);
+                }
                 break;
             case D3D10Opcode.DclResourceStructured:
                 WriteLine("dcl_resource_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
@@ -592,6 +599,9 @@ public class AsmWriter
                 break;
             case D3D10Opcode.LD:
                 WriteInstruction(instruction, "ld", 3);
+                break;
+            case D3D10Opcode.LDMS:
+                WriteInstruction(instruction, "ldms", 4);
                 break;
             case D3D10Opcode.ResInfo:
                 WriteInstruction(instruction, instruction.ResInfoReturnType switch
@@ -1086,6 +1096,7 @@ public class AsmWriter
             OperandType.InputThreadGroupID => "vThreadGroupID",
             OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
             OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
+            OperandType.InputPrimitiveID => "vPrim",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
             // These carry no register number of their own.

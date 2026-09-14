@@ -153,7 +153,9 @@ public class D3D10Machine
         foreach (RegisterSignature signature in _shader.InputSignatures)
         {
             int number = signature.RegisterKey.Number;
-            if (number >= _input.Length)
+            // A system value the shader is given rather than declared - the
+            // primitive id - has no register at all, and the signature says -1.
+            if (number < 0 || number >= _input.Length)
             {
                 continue;
             }
@@ -657,6 +659,8 @@ public class D3D10Machine
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
                 return LoadTexel(instruction);
+            case D3D10Opcode.LDMS:
+                return LoadSample(instruction);
             case D3D10Opcode.ResInfo:
                 return ResourceInfo(instruction);
             case D3D10Opcode.LdStructured:
@@ -760,6 +764,19 @@ public class D3D10Machine
         int[] address = [.. Ints(instruction, 1)];
         float[] coordinates = WithOffsets(instruction,
             [address[0] * 0.01f, address[1] * 0.01f, address[2] * 0.01f, 0]);
+        return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates));
+    }
+
+    // One sample of a multisampled texel. The address has no mip and only its xy
+    // matter - whatever the register carries in zw is not read - and the sample
+    // index takes the third coordinate, so different samples of one texel differ
+    // and the same sample read by two programs agrees.
+    private uint[] LoadSample(D3D10Instruction instruction)
+    {
+        int[] address = [.. Ints(instruction, 1)];
+        int sample = Ints(instruction, 3)[0];
+        float[] coordinates = WithOffsets(instruction,
+            [address[0] * 0.01f, address[1] * 0.01f, sample * 0.1f, 0]);
         return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates));
     }
 
@@ -981,6 +998,7 @@ public class D3D10Machine
             case OperandType.InputThreadGroupID:
             case OperandType.InputThreadIDInGroup:
             case OperandType.InputThreadIDInGroupFlattened:
+            case OperandType.InputPrimitiveID:
                 // Small whole numbers: a thread index taken from float bits would
                 // address somewhere no buffer reaches.
                 return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];

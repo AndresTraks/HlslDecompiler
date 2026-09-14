@@ -393,7 +393,10 @@ public abstract class HlslWriter
             string primitive = _registers.InputPrimitive.Value.ToHlslString();
             int vertexCount = GetPrimitiveVertexCount(_registers.InputPrimitive.Value);
             string stream = GetStreamType(_registers.PrimitiveTopology);
-            return $"{primitive} GS_IN i[{vertexCount}], inout {stream}<GS_OUT> stream";
+            string primitiveId = _registers.PrimitiveIdDeclaration == null
+                ? ""
+                : $"{CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration)}, ";
+            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}inout {stream}<GS_OUT> stream";
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {

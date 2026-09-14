@@ -237,7 +237,13 @@ public class DxbcReader : BinaryReader
         if (opcode == D3D10Opcode.DclResource)
         {
             var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
-            return new D3D10Instruction(opcode, operandTokens, resourceDimension, _isGeometryShader);
+            // A multisampled texture carries its sample count in the seven bits above
+            // the dimension: dcl_resource_texture2dms(4).
+            int sampleCount = (int)((opcodeToken >> 16) & 0x7F);
+            return new D3D10Instruction(opcode, operandTokens, resourceDimension, _isGeometryShader)
+            {
+                ResourceSampleCount = sampleCount,
+            };
         }
 
         var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);

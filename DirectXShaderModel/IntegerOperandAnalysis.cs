@@ -610,6 +610,25 @@ public sealed class IntegerOperandAnalysis
             }
         }
 
+        // The registers a shader is given rather than declared - thread and group
+        // indices, the primitive id - are unsigned integers by definition, whatever
+        // reads them: `and r0.xyz, vPrim, l(3, 1, 2, 0)` says nothing about its
+        // operands' type, and would have left the id a float.
+        foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
+        {
+            for (int operand = 0; operand < instruction.OperandTokens.Count; operand++)
+            {
+                if (D3D10Instruction.IsThreadRegister(instruction.GetOperandType(operand)))
+                {
+                    RegisterKey key = instruction.GetParamRegisterKey(operand);
+                    for (int component = 0; component < 4; component++)
+                    {
+                        integerRegisters.Add(new RegisterComponentKey(key, component));
+                    }
+                }
+            }
+        }
+
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
             if (instruction.Opcode != D3D10Opcode.IToF

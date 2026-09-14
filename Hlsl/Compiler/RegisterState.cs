@@ -31,6 +31,9 @@ public sealed class RegisterState
     // not hold both.
     public IList<RegisterDeclaration> MethodInputRegisters { get; } = [];
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
+
+    /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
+    public RegisterDeclaration PrimitiveIdDeclaration { get; set; }
     public int? MaxOutputVertexCount { get; set; }
     public int[]? NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
@@ -590,6 +593,8 @@ public sealed class RegisterState
                         string threadName = RegisterDeclarations[registerKey].Name;
                         return MethodInputRegisters.Count == 1 ? threadName : "i." + threadName;
                     }
+                case OperandType.InputPrimitiveID:
+                    return RegisterDeclarations[registerKey].Name;
                 case OperandType.Resource:
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
@@ -813,7 +818,7 @@ public sealed class RegisterState
         RegisterDeclarations.Add(registerKey, registerDeclaration);
     }
 
-    public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType)
+    public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType, int sampleCount = 0)
     {
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
@@ -821,6 +826,7 @@ public sealed class RegisterState
         if (definition != null)
         {
             definition.Dimension = resourceDimension;
+            definition.SampleCount = sampleCount;
             ResourceDefinitions.Add(definition);
         }
     }
@@ -1088,6 +1094,11 @@ public sealed class RegisterState
                         case OperandType.InputThreadIDInGroupFlattened:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
+                        // Per primitive rather than per vertex, so not a field of the
+                        // vertex struct: a parameter of main of its own.
+                        case OperandType.InputPrimitiveID:
+                            PrimitiveIdDeclaration = registerDeclaration;
+                            break;
                         case OperandType.Output:
                         // A depth output is written like any other, and naming no
                         // register does not make it less of one.
@@ -1242,7 +1253,8 @@ public sealed class RegisterState
         bool isScalar = registerKey.OperandType == OperandType.OutputDepth
             || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
-            || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened;
+            || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
+            || registerKey.OperandType == OperandType.InputPrimitiveID;
         int writeMask = isScalar ? 1 : 4;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask);
     }

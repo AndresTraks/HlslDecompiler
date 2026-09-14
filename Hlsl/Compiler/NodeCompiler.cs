@@ -774,7 +774,10 @@ public sealed class NodeCompiler
                 _assigningToInteger = wasAssigningToInteger;
             }
             string loadOffsets = CompileSampleOffsets(resourceLoad.SampleOffsets, resourceDefinition);
-            return $"{resourceDefinition.Name}.Load({address}{loadOffsets}){loadSwizzle}";
+            string sampleIndex = resourceLoad.HasSampleIndex
+                ? $", {Compile(new[] { resourceLoad.SampleIndex })}"
+                : "";
+            return $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
         }
 
         if (first is TextureLoadOutputNode textureLoad)

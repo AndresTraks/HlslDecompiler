@@ -10,7 +10,8 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
 {
     private readonly int _addressLength;
 
-    public ResourceLoadNode(RegisterInputNode resource, HlslTreeNode[] address, int componentIndex)
+    public ResourceLoadNode(RegisterInputNode resource, HlslTreeNode[] address, int componentIndex,
+        HlslTreeNode sampleIndex = null)
     {
         AddInput(resource);
         foreach (HlslTreeNode component in address)
@@ -19,10 +20,20 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
         }
         _addressLength = address.Length;
         ComponentIndex = componentIndex;
+        if (sampleIndex != null)
+        {
+            AddInput(sampleIndex);
+            HasSampleIndex = true;
+        }
     }
 
     public RegisterInputNode Resource => (RegisterInputNode)Inputs[0];
     public IEnumerable<HlslTreeNode> Address => Inputs.Skip(1).Take(_addressLength);
+
+    // A multisampled load - Texture2DMS.Load(int2, sampleIndex) - reads one sample
+    // of the texel, which it names as an argument after the address.
+    public bool HasSampleIndex { get; }
+    public HlslTreeNode SampleIndex => HasSampleIndex ? Inputs[1 + _addressLength] : null;
     public int ComponentIndex { get; }
 
     // The texel offsets of ld_aoffimmi, or null when the load has none.

@@ -13,6 +13,9 @@ public class ResourceDefinition
     public int BindCount { get; }
     public D3DShaderInputFlags Flags { get; }
     public ResourceDimension Dimension { get; internal set; }
+
+    /// <summary>The sample count of a multisampled texture, from its declaration.</summary>
+    public int SampleCount { get; internal set; }
     
     /// <summary>
     /// What one element of a structured buffer holds, when the reflection data says.
@@ -85,9 +88,19 @@ public class ResourceDefinition
     }
 
     /// <summary>The HLSL type a texture or buffer resource is declared as.</summary>
-    public string TypeName => Dimension == ResourceDimension.Buffer
-        ? $"Buffer<{ReturnTypeName}>"
-        : Dimension.ToString();
+    public string TypeName => Dimension switch
+    {
+        ResourceDimension.Buffer => $"Buffer<{ReturnTypeName}>",
+        // A multisampled texture always names its element type, and its sample
+        // count where the shader declared one.
+        ResourceDimension.Texture2Dms => SampleCount > 0
+            ? $"Texture2DMS<{ReturnTypeName}, {SampleCount}>"
+            : $"Texture2DMS<{ReturnTypeName}>",
+        ResourceDimension.Texture2DmsArray => SampleCount > 0
+            ? $"Texture2DMSArray<{ReturnTypeName}, {SampleCount}>"
+            : $"Texture2DMSArray<{ReturnTypeName}>",
+        _ => Dimension.ToString(),
+    };
 
     public override string ToString()
     {

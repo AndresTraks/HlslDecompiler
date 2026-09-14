@@ -123,6 +123,9 @@ public class D3D10Instruction : Instruction
         return _resourceDimension;
     }
 
+    /// <summary>The sample count a dcl_resource_texture2dms declares, or 0.</summary>
+    public int ResourceSampleCount { get; set; }
+
     public D3D10GlobalFlags GetGlobalFlags()
     {
         return _globalFlags;
@@ -206,6 +209,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.IToF:
                 case D3D10Opcode.UTof:
                 case D3D10Opcode.LD:
+                case D3D10Opcode.LDMS:
                 case D3D10Opcode.LdStructured:
                 case D3D10Opcode.LdRaw:
                 case D3D10Opcode.StoreRaw:
@@ -455,7 +459,10 @@ public class D3D10Instruction : Instruction
 
     public override string GetSourceSwizzleName(int srcIndex, int? destinationLength = null)
     {
-        if (GetOperandComponentSelection(srcIndex) == D3D10OperandNumComponents.Operand0Component)
+        // A one component operand - vPrim - is a scalar, and fxc writes it bare;
+        // the identity swizzle it decodes to would read .xyz off a scalar.
+        if (GetOperandComponentSelection(srcIndex) is D3D10OperandNumComponents.Operand0Component
+            or D3D10OperandNumComponents.Operand1Component)
         {
             return "";
         }
@@ -556,6 +563,7 @@ public class D3D10Instruction : Instruction
             OperandType.InputThreadGroupID => "SV_GroupID",
             OperandType.InputThreadIDInGroup => "SV_GroupThreadID",
             OperandType.InputThreadIDInGroupFlattened => "SV_GroupIndex",
+            OperandType.InputPrimitiveID => "SV_PrimitiveID",
             OperandType.OutputDepth => "SV_Depth",
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
@@ -694,15 +702,17 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// The registers a compute shader is given rather than declared: the thread
-    /// and group indices. None of them names a register number of its own.
+    /// The registers a shader is given rather than declared: a compute shader's
+    /// thread and group indices, and a geometry shader's primitive id. None of
+    /// them names a register number of its own.
     /// </summary>
     public static bool IsThreadRegister(OperandType operandType)
     {
         return operandType is OperandType.InputThreadID
             or OperandType.InputThreadGroupID
             or OperandType.InputThreadIDInGroup
-            or OperandType.InputThreadIDInGroupFlattened;
+            or OperandType.InputThreadIDInGroupFlattened
+            or OperandType.InputPrimitiveID;
     }
 
     public OperandType GetOperandType(int index)

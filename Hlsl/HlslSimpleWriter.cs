@@ -115,7 +115,8 @@ public class HlslSimpleWriter : HlslWriter
     {
         if (instruction.GetOperandType(operandIndex) is not (OperandType.Temp or OperandType.Input
             or OperandType.InputThreadID or OperandType.InputThreadGroupID
-            or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened))
+            or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened
+            or OperandType.InputPrimitiveID))
         {
             return ComponentStorage.Numeric;
         }
@@ -939,6 +940,10 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.LD:
                 WriteResult(instruction, "{0} = {2}.Load({1}{3}){4};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
+                break;
+            case D3D10Opcode.LDMS:
+                // One sample of a texel: Texture2DMS.Load(int2, sampleIndex).
+                WriteResult(instruction, "{0} = {2}.Load({1}, {3}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.ResInfo:
                 WriteResourceInfo(instruction);
@@ -1843,6 +1848,11 @@ public class HlslSimpleWriter : HlslWriter
         {
             // A buffer is addressed by its index alone; a texture takes a mip too.
             return IsBufferResource(instruction) ? 1 : GetTextureDimension(instruction) + 1;
+        }
+        if (instruction.Opcode == D3D10Opcode.LDMS)
+        {
+            // No mip: the sample index is an operand of its own.
+            return GetTextureDimension(instruction);
         }
         if (instruction.Opcode is D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw)
         {

@@ -248,7 +248,7 @@ public class InstructionParser
                 case D3D10Opcode.DclResource:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
-                        _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
+                        _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken(), instruction.ResourceSampleCount);
                         // Every component, not just the first: a sample names the
                         // resource with the swizzle that picks its result, and reading
                         // t2.xyzw wants all four of them to exist.
@@ -1695,6 +1695,7 @@ public class InstructionParser
                     }
                 }
             case D3D10Opcode.LD:
+            case D3D10Opcode.LDMS:
                 return CreateResourceLoadNode(instruction, componentIndex);
             case D3D10Opcode.ResInfo:
                 return CreateResourceInfoNode(instruction, componentIndex);
@@ -1728,10 +1729,12 @@ public class InstructionParser
 
         // Load reads a texel directly, so it takes the mip level alongside the
         // coordinates: a 2D texture is addressed by an int3. A buffer has no mips
-        // and is addressed by its index alone.
+        // and is addressed by its index alone, and a multisampled texture has none
+        // either - it takes the sample index as an argument of its own instead.
+        bool multisampled = instruction.Opcode == D3D10Opcode.LDMS;
         int addressLength = definition?.Dimension == ResourceDimension.Buffer
             ? 1
-            : (definition?.GetDimensionSize() ?? 2) + 1;
+            : (definition?.GetDimensionSize() ?? 2) + (multisampled ? 0 : 1);
         // The address is in texels, so an immediate operand holds integers rather
         // than the floats those same bits would spell.
         HlslTreeNode[] address = instruction.GetOperandType(AddressParamIndex) == OperandType.Immediate32
@@ -1739,7 +1742,14 @@ public class InstructionParser
                 .Select(i => (HlslTreeNode)new ConstantNode((int)instruction.GetParamInt(AddressParamIndex, i)))]
             : GetInputComponents(instruction, AddressParamIndex, addressLength);
 
-        return new ResourceLoadNode(resource, address, outputComponent)
+        const int SampleIndexParamIndex = 3;
+        HlslTreeNode sampleIndex = !multisampled
+            ? null
+            : instruction.GetOperandType(SampleIndexParamIndex) == OperandType.Immediate32
+                ? new ConstantNode((int)instruction.GetParamInt(SampleIndexParamIndex, 0))
+                : GetInputComponents(instruction, SampleIndexParamIndex, 1)[0];
+
+        return new ResourceLoadNode(resource, address, outputComponent, sampleIndex)
         {
             SampleOffsets = instruction.SampleOffsets,
         };
@@ -2362,6 +2372,8 @@ public class InstructionParser
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
                 return 3;
+            case D3D10Opcode.LDMS:
+                return 3;
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreRaw:
@@ -2379,6 +2391,14 @@ public class InstructionParser
         if (registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.MiscType && d3D9RegisterKey.Number == 1)
         {
             componentIndex = 0; // Force VFACE x component
+        }
+        else if (instruction is D3D10Instruction d3d10Instruction
+            && d3d10Instruction.GetOperandComponentSelection(paramIndex) == D3D10OperandNumComponents.Operand1Component)
+        {
+            // A one component operand - vPrim, vThreadIDInGroupFlattened - has only
+            // its x, whichever component of the result it is read for: `and r0.xyz,
+            // vPrim, l(3, 1, 2, 0)` reads the one value three times.
+            componentIndex = 0;
         }
         else
         {

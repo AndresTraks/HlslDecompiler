@@ -296,6 +296,17 @@ public sealed class RegisterState
         string variable = declaration.TypeInfo.NumElements > 1
             ? $"{declaration.Name}[{elementIndex}]"
             : declaration.Name;
+        // A matrix member takes a row, or every row of it names the whole matrix -
+        // `dot(position, lights[1].shadowMatrix)` four times over. Stored by
+        // column, the register is a column, which is a row of the transpose.
+        if (TryGetMemberAccessAtOffset(declaration.TypeInfo, variable, target, 0, out StructMemberAccess access)
+            && access.IsMatrix)
+        {
+            int row = (target - access.StartOffset) / 4;
+            element = $"transpose({access.Name})[{row}]";
+            memberWidth = access.TypeInfo.Rows;
+            return true;
+        }
         return TryGetMemberAtOffset(declaration.TypeInfo, variable, target, out element, out memberWidth);
     }
 

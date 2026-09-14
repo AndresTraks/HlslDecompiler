@@ -74,17 +74,13 @@ public class RoundTripCostTests
             + "each its own mova rather than packing two into one, which is two "
             + "instructions. The lookups themselves are right, which they were not "
             + "before - all three used to read the same element."),
-        ["ps_4_0/shadow_pcf"] = (50,
-            "Four instructions. Three from the division by w being written once per "
-            + "component where the original divides the vector and from the loop "
-            + "bounds being recovered as a comparison rather than a count. The "
-            + "fourth is the price of the y offsets being right: the original keeps "
-            + "-1.0f and 1.0f in a register and multiplies them by the offset inside "
-            + "each loop, and the decompiled source folds them into `t0.y - bias.w` "
-            + "and `t0.y + bias.w`, two adds hoisted above two loops, where fxc "
-            + "used to fold the two bit-pattern immediates into one mad. Was 49 "
-            + "while those immediates printed as integers and the shader computed "
-            + "the wrong thing."),
+        ["ps_4_0/shadow_pcf"] = (47,
+            "Two instructions, from the loop bounds being recovered as a comparison "
+            + "rather than a count and the y offsets folded into `t0.y - bias.w` and "
+            + "`t0.y + bias.w` above their loops. Was 50 before the two projected "
+            + "components divided by w as a float2 rather than one at a time, and 49 "
+            + "while the offsets printed as integers and the shader computed the "
+            + "wrong thing."),
         ["ps_4_0/packed_cbuffer"] = (34,
             "One instruction, from the two normal maps being sampled and combined in "
             + "a different association than the original, so fxc folds one fewer mad."),
@@ -126,16 +122,12 @@ public class RoundTripCostTests
             + "into the address register. The bones are the right ones, which they "
             + "were not when the element stride was taken from the matrix's row "
             + "count."),
-        ["vs_4_0/skinning"] = (21,
-            "The per bone blend does not group. Each component is a weighted sum of two "
-            + "dots and the weights are applied before the components could be, so the "
-            + "matrix multiply is nested inside something the grouper stops at: "
-            + "CanGroupComponents refuses two dot products outright, under a FIXME about "
-            + "unrelated matrix rows. Letting two group when their operands group gives "
-            + "`dot(dot(transpose(bones[0])[0], i.position), i.blendweight.xy)`, which is "
-            + "not an expression at all - the two bone matrices merge as though they "
-            + "were rows of one. The guard is doing real work and wants replacing with "
-            + "something that knows a matrix from a row, not loosening."),
+        ["vs_4_0/skinning"] = (15,
+            "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
+            + "viewProj)`, which is the source, and fxc orders the two blends the "
+            + "other way about from the original and folds one fewer mad. Was 21 "
+            + "while two dot products could not be components of anything - they "
+            + "are, when they are rows of one matrix against one vector."),
         ["ps_3_0/temp_assignment"] = (27,
             "The final cmp writes r1 + (1, 0, 3, 4). AddZeroTemplate folds the zero out "
             + "of the y component, so y is t1.y where its siblings are t1.x + 1, and the "
@@ -156,15 +148,14 @@ public class RoundTripCostTests
             + "help either. Correct, and the four instructions are the cost of saying "
             + "it as one expression."),
 
-        ["ps_4_0/resource_swizzle"] = (31,
-            "Correct now that the resource return swizzle is honoured. The eight over "
-            + "are a matrix multiply that cannot reform: the original does "
-            + "mul(clip, invViewProj) and then divides by w, so the w component is "
-            + "wanted on its own and takes a temp of its own, and the other three each "
-            + "fold the divide into themselves. The four dot products end up in four "
-            + "statements and never meet as components of one thing. Naming the vector "
-            + "would fix it, but the vector is not a node - each dot has one consumer, "
-            + "so there is no shared subexpression to name."),
+        ["ps_4_0/resource_swizzle"] = (23,
+            "One instruction. The three dot products against invViewProj now group "
+            + "as rows of one matrix, so the light vector is a float3, its length a "
+            + "length and the lighting a dot against it, where each component used "
+            + "to fold the divide by w into itself. They are three rows of a four row "
+            + "matrix, which the multiplication grouper does not take as a whole, so "
+            + "they are three dots in a constructor rather than one mul with a cast, "
+            + "and that is the instruction. Was 31 with the dots in four statements."),
 
 
         // fxc's doing: the output is right and it compiles it differently.

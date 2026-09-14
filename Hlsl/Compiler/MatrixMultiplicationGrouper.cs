@@ -238,6 +238,33 @@ public class MatrixMultiplicationGrouper
         return null;
     }
 
+    /// <summary>
+    /// Whether two dot products are rows of one matrix - the same declaration and,
+    /// in an array, the same element - against the same vector: two components of
+    /// one matrix multiply, and the only way two dot products are components of
+    /// anything. In no particular order; the whole is checked at compile time.
+    /// </summary>
+    public bool AreRowsOfOneMatrix(DotProductOperation a, DotProductOperation b)
+    {
+        IList<HlslTreeNode> rowA = TryGetMatrixRow(a, a, 0);
+        IList<HlslTreeNode> rowB = TryGetMatrixRow(b, b, 0);
+        if (rowA == null || rowB == null)
+        {
+            return false;
+        }
+        var registerA = (RegisterInputNode)rowA[0];
+        var registerB = (RegisterInputNode)rowB[0];
+        ConstantDeclaration matrix = _registers.FindConstant(registerA);
+        if (matrix == null || matrix != _registers.FindConstant(registerB)
+            || GetElementIndex(matrix, registerA) != GetElementIndex(matrix, registerB))
+        {
+            return false;
+        }
+        IList<HlslTreeNode> vectorA = a.X.Inputs == rowA ? a.Y.Inputs : a.X.Inputs;
+        IList<HlslTreeNode> vectorB = b.X.Inputs == rowB ? b.Y.Inputs : b.X.Inputs;
+        return NodeGrouper.AreNodesEquivalent(vectorA, vectorB);
+    }
+
     private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
     {
         if (dot.X.Inputs[0] is RegisterInputNode constantRegister)

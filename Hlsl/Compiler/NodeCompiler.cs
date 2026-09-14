@@ -99,6 +99,15 @@ public sealed class NodeCompiler
             {
                 return _matrixMultiplicationCompiler.Compile(multiplication);
             }
+            // Dot products group only as rows of one matrix multiply. A run of them
+            // the multiplication grouper does not take whole - two rows of a four
+            // row matrix, say - has no vector form, and is written one by one.
+            if (components.All(c => c is DotProductOperation)
+                && components.Distinct(ReferenceEqualityComparer.Instance).Count() > 1)
+            {
+                return CompileVectorConstructor(components,
+                    [.. components.Select(c => (IList<HlslTreeNode>)[c])]);
+            }
 
             var normalize = _nodeGrouper.NormalizeGrouper.TryGetContext(components);
             if (normalize != null)

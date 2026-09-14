@@ -136,8 +136,16 @@ public class NodeGrouper
 
         if (node1 is DotProductOperation)
         {
-            // FIXME: prevent grouping unrelated matrix rows
-            return false;
+            // Two dot products are components of one thing only when they are two
+            // rows of one matrix against one vector - a matrix multiply. Anything
+            // looser groups unrelated rows, and two bone matrices merged as though
+            // they were rows of one. Recognising the pair here is what lets a per
+            // bone blend - `mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y` - group
+            // at all. Whether the rows then make a whole matrix in order is for the
+            // multiplication grouper at compile time; a run it does not take is
+            // written dot by dot.
+            return node2 is DotProductOperation dot2
+                && MatrixMultiplicationGrouper.AreRowsOfOneMatrix((DotProductOperation)node1, dot2);
         }
 
         if (node1 is TempAssignmentNode assignment1 && node2 is TempAssignmentNode assignment2)

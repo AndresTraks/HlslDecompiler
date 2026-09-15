@@ -19,12 +19,12 @@ PS_OUT main(float2 texcoord : TEXCOORD)
 	float3 r1;
 	r0 = tex.Sample(samp, texcoord.xy);
 	r1.x = asfloat((r0.w < threshold) ? -1 : 0);
-	clip(r1.x);
+	if (asint(r1.x) != 0) discard;
 	r1.x = asfloat((0.5 < r0.x) ? -1 : 0);
 	r1.y = r0.x + r0.x;
 	r1.z = -(nearDepth) + farDepth;
 	r1.y = r1.y * r1.z + nearDepth;
-	o.sv_depth = (r1.x != 0) ? nearDepth : r1.y;
+	o.sv_depth = (asint(r1.x) != 0) ? nearDepth : r1.y;
 	o.sv_target = r0;
 
 	return o;

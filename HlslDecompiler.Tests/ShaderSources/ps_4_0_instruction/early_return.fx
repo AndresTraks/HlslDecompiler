@@ -6,7 +6,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 
 	float r0;
 	r0 = asfloat((k < texcoord.x) ? -1 : 0);
-	if (r0.x != 0) {
+	if (asint(r0.x) != 0) {
 		o = float4(0, 0, 0, 0);
 		return o;
 	}

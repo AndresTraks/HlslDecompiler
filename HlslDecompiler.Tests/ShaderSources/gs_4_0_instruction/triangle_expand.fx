@@ -26,7 +26,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 	[loop]
 	while (true) {
 		r0.y = (r0.x >= 3) ? -1 : 0;
-		if (r0.y != 0) break;
+		if (asint(r0.y) != 0) break;
 		r1 = i[r0.x].sv_position * k.x + k;
 		r0.yzw = k.xyz + i[r0.x].normal.xyz;
 		r2.x = dot(r0.yzw, r0.yzw);
@@ -44,7 +44,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 	[loop]
 	while (true) {
 		r0.y = (r0.x < 0) ? -1 : 0;
-		if (r0.y != 0) break;
+		if (asint(r0.y) != 0) break;
 		r1 = -(k) + i[r0.x].sv_position;
 		r0.yz = k.xy + i[r0.x].texcoord.xy;
 		o.sv_position = r1;

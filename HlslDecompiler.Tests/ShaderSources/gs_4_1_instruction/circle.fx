@@ -26,7 +26,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	[loop]
 	while (true) {
 		r1.y = (17 < r1.x) ? -1 : 0;
-		if (r1.y != 0) break;
+		if (asint(r1.y) != 0) break;
 		r1.y = (float)(int)r1.x;
 		r1.y = r1.y * 0.392699093;
 		r2.x = sin(r1.y);

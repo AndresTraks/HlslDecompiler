@@ -22,9 +22,9 @@ void main(CS_IN i)
 	[loop]
 	while (true) {
 		r0.y = (0 >= r0.x) ? -1 : 0;
-		if (r0.y != 0) break;
+		if (asint(r0.y) != 0) break;
 		r0.y = (i.sv_groupindex.x < r0.x) ? -1 : 0;
-		if (r0.y != 0) {
+		if (asint(r0.y) != 0) {
 			r0.y = r0.x + i.sv_groupindex.x;
 			r0.y = g0[r0.y];
 			r0.z = g0[i.sv_groupindex.x];

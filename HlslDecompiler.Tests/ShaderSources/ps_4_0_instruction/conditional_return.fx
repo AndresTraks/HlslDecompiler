@@ -10,9 +10,9 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float r0;
 	r0 = asfloat((t < texcoord.x) ? -1 : 0);
 	o = a;
-	if (r0.x != 0) return o;
+	if (asint(r0.x) != 0) return o;
 	r0 = asfloat((t < texcoord.y) ? -1 : 0);
-	if (r0.x != 0) {
+	if (asint(r0.x) != 0) {
 		o = b;
 		return o;
 	}

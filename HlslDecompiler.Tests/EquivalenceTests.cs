@@ -162,6 +162,18 @@ public class EquivalenceTests
             Dictionary<string, float[]> expected = Run(original, trial);
             Dictionary<string, float[]> actual = Run(recompiled, trial);
 
+            // A discarded pixel has no outputs to compare, so a decompilation that
+            // fails to discard where the original does - or discards where it does
+            // not - agreed with it on every output it had. Discarding is an outcome.
+            if ((expected.Count == 0) != (actual.Count == 0))
+            {
+                yield return $"The {writer} writer's output differs on trial {trial}: "
+                    + (expected.Count == 0
+                        ? "the original discards the pixel, its decompilation does not."
+                        : "its decompilation discards the pixel, the original does not.");
+                continue;
+            }
+
             foreach (string name in expected.Keys.Intersect(actual.Keys).OrderBy(n => n))
             {
                 float[] left = expected[name];

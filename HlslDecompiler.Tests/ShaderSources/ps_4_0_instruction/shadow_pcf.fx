@@ -32,7 +32,7 @@ float4 main(PS_IN i) : SV_Target
 	[loop]
 	while (true) {
 		r2.y = (1 < r2.x) ? -1 : 0;
-		if (r2.y != 0) break;
+		if (asint(r2.y) != 0) break;
 		r1.x = (float)(int)r2.x;
 		r2.yz = r1.xy * bias.zw + r0.xy;
 		r1.x = shadowMap.SampleCmpLevelZero(shadowSamp, r2.yz, r0.z);
@@ -44,7 +44,7 @@ float4 main(PS_IN i) : SV_Target
 	[loop]
 	while (true) {
 		r2.x = (1 < r1.y) ? -1 : 0;
-		if (r2.x != 0) break;
+		if (asint(r2.x) != 0) break;
 		r1.z = (float)(int)r1.y;
 		r2.xy = r1.zw * bias.zw + r0.xy;
 		r1.z = shadowMap.SampleCmpLevelZero(shadowSamp, r2.xy, r0.z);
@@ -57,7 +57,7 @@ float4 main(PS_IN i) : SV_Target
 	[loop]
 	while (true) {
 		r1.z = (1 < r1.y) ? -1 : 0;
-		if (r1.z != 0) break;
+		if (asint(r1.z) != 0) break;
 		r2.x = (float)(int)r1.y;
 		r1.zw = r2.xy * bias.zw + r0.xy;
 		r1.z = shadowMap.SampleCmpLevelZero(shadowSamp, r1.zw, r0.z);

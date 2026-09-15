@@ -11,8 +11,8 @@ float4 main() : SV_Target
 	r0.x = b ^ a;
 	r0.x = r0.x & -2147483648;
 	r0.yz = max(int2(a, b), -(int2(a, b)));
-	r1 = r0.y / r0.z;
-	r2 = r0.y % r0.z;
+	r1 = (uint)r0.y / (uint)r0.z;
+	r2 = (uint)r0.y % (uint)r0.z;
 	r0.y = -r1.x;
 	r0.x = (r0.x != 0) ? r0.y : r1.x;
 	r0.y = -r2.x;

@@ -11,7 +11,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	[loop]
 	while (true) {
 		r1.y = asfloat((r1.x >= count) ? -1 : 0);
-		if (r1.y != 0) {
+		if (asint(r1.y) != 0) {
 			break;
 		}
 		r0 = r0 + texcoord;

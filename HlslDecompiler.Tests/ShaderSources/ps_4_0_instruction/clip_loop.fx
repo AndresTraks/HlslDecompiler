@@ -10,12 +10,12 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	[loop]
 	while (true) {
 		r0.z = (r0.y >= n) ? -1 : 0;
-		if (r0.z != 0) break;
+		if (asint(r0.z) != 0) break;
 		r0.x = r0.x + texcoord.x;
 		r0.y = r0.y + 1;
 	}
 	r0.x = asfloat((r0.x < 0) ? -1 : 0);
-	clip(r0.x);
+	if (asint(r0.x) != 0) discard;
 	o = a;
 
 	return o;

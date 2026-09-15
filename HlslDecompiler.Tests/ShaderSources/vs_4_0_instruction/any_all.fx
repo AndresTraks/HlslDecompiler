@@ -29,8 +29,8 @@ VS_OUT main(VS_IN i)
 	r0.x = asfloat(asint(r0.y) | asint(r0.x));
 	r0.y = asfloat(asint(r1.y) & asint(r1.x));
 	r1 = i.color * float4(0.5, 0.5, 0.5, 0.5);
-	r1 = (r0.y != 0) ? i.color : r1;
-	o.color = (r0.x != 0) ? r1 : float4(0, 0, 0, 1);
+	r1 = (asint(r0.y) != 0) ? i.color : r1;
+	o.color = (asint(r0.x) != 0) ? r1 : float4(0, 0, 0, 1);
 
 	return o;
 }

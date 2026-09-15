@@ -11,8 +11,8 @@ float4 main() : SV_Target
 	r0.xy = v.xw ^ int2(3, 3);
 	r0.xy = r0.xy & int2(-2147483648, -2147483648);
 	r0.zw = max(v.xw, -(v.xw));
-	r1.xy = r0.zw / int2(3, 3);
-	r0.zw = r0.zw % int2(7, 7);
+	r1.xy = (uint2)r0.zw / int2(3, 3);
+	r0.zw = (uint2)r0.zw % int2(7, 7);
 	r1.zw = -r1.xy;
 	r0.xy = (r0.xy != 0) ? r1.zw : r1.xy;
 	r1.xy = -r0.zw;

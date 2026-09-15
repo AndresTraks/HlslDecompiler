@@ -745,7 +745,7 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.BreakC:
-                WriteLine("if ({0} {1} 0) break;", GetOperandName(instruction, 0), TestOperator(instruction));
+                WriteLine("if ({0}) break;", ZeroTest(instruction, 0));
                 break;
             case D3D10Opcode.Cut:
                 WriteLine("stream.RestartStrip();");
@@ -757,7 +757,10 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = ddy({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Discard:
-                WriteLine("clip({0});", GetOperandName(instruction, 0));
+                // discard_nz tests the bits, like if_nz; clip tests the sign of a
+                // float, and a comparison mask is NaN as a float, which is never
+                // negative - `clip(mask)` never discarded anything.
+                WriteLine("if ({0}) discard;", ZeroTest(instruction, 0));
                 break;
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
@@ -770,7 +773,7 @@ public class HlslSimpleWriter : HlslWriter
             // Control flow was skipped entirely, so a DXBC loop with a guarded break
             // printed as `while (true)` with nothing to end it.
             case D3D10Opcode.If:
-                WriteLine("if ({0} {1} 0) {{", GetOperandName(instruction, 0), TestOperator(instruction));
+                WriteLine("if ({0}) {{", ZeroTest(instruction, 0));
                 indent += "\t";
                 break;
             case D3D10Opcode.Else:
@@ -803,7 +806,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("continue;");
                 break;
             case D3D10Opcode.ContinueC:
-                WriteLine("if ({0} {1} 0) continue;", GetOperandName(instruction, 0), TestOperator(instruction));
+                WriteLine("if ({0}) continue;", ZeroTest(instruction, 0));
                 break;
             case D3D10Opcode.Div:
                 WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
@@ -907,8 +910,8 @@ public class HlslSimpleWriter : HlslWriter
                     Moved(instruction, 1, GetOperandName(instruction, 1)));
                 break;
             case D3D10Opcode.MovC:
-                WriteResult(instruction, "{0} = ({1} != 0) ? {2} : {3};", GetOperandName(instruction, 0),
-                    GetOperandName(instruction, 1),
+                WriteResult(instruction, "{0} = ({1}) ? {2} : {3};", GetOperandName(instruction, 0),
+                    ZeroTest(instruction, 1, true),
                     Moved(instruction, 2, GetOperandName(instruction, 2)),
                     Moved(instruction, 3, GetOperandName(instruction, 3)));
                 break;
@@ -984,20 +987,38 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Ieq:
                 WriteComparison(instruction, "==");
                 break;
+            case D3D10Opcode.Ine:
+                WriteComparison(instruction, "!=");
+                break;
             case D3D10Opcode.And:
                 WriteBitwise(instruction, "&");
                 break;
             case D3D10Opcode.Udiv:
-                // Quotient and remainder, either of which may be null.
-                if (instruction.GetOperandType(0) != OperandType.Null)
                 {
-                    WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                    // Quotient and remainder, either of which may be null. Unsigned,
+                    // and it has to say so: `asint(x) % 5` is a signed modulus, which
+                    // fxc lowers with a sign test of its own, and where the shader had
+                    // already taken the sign off - the abs and the mask of a signed
+                    // modulus lowered once - fxc folded the two together and lost it.
+                    string dividend = AsUint(instruction, 2);
+                    string divisor = AsUint(instruction, 3);
+                    if (instruction.GetOperandType(0) != OperandType.Null)
+                    {
+                        WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), dividend, divisor);
+                    }
+                    if (instruction.GetOperandType(1) != OperandType.Null)
+                    {
+                        // fxc folds `asfloat(u % 5)` - an unsigned remainder by an
+                        // immediate, reinterpreted - to zero, a bug of its own; the
+                        // remainder spelled out as `u - u / 5 * 5` it compiles.
+                        bool reinterpreted = GetDestinationStorage(instruction, 1) == ComponentStorage.Bits;
+                        string remainder = reinterpreted && instruction.GetOperandType(3) == OperandType.Immediate32
+                            ? $"{dividend} - {dividend} / {divisor} * {divisor}"
+                            : $"{dividend} % {divisor}";
+                        WriteResult(instruction, 1, "{0} = {1};", GetOperandName(instruction, 1), remainder);
+                    }
+                    break;
                 }
-                if (instruction.GetOperandType(1) != OperandType.Null)
-                {
-                    WriteResult(instruction, 1, "{0} = {1} % {2};", GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
-                }
-                break;
             case D3D10Opcode.Or:
                 WriteBitwise(instruction, "|");
                 break;
@@ -1064,11 +1085,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                 break;
             case D3D10Opcode.RetC:
-                WriteLine("if ({0} {2} 0) return{1};", GetOperandName(instruction, 0),
+                WriteLine("if ({0}) return{1};", ZeroTest(instruction, 0),
                     _registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
                         ? " o"
-                        : "",
-                    TestOperator(instruction));
+                        : "");
                 break;
             case D3D10Opcode.Ret:
                 // The last ret is the method returning, which is written after the
@@ -1726,10 +1746,53 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
     }
 
-    // if_nz branches when the register is non-zero, if_z when it is zero.
-    private static string TestOperator(D3D10Instruction instruction)
+    // An operand read as an unsigned integer: bits reinterpreted as such, an int
+    // register cast - as wide as the destination, since a bare (uint) over two
+    // components is X3014 - and an immediate as it is.
+    private string AsUint(D3D10Instruction instruction, int operandIndex)
     {
-        return instruction.TestNonZero ? "!=" : "==";
+        string name = GetOperandName(instruction, operandIndex);
+        if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
+        {
+            return name;
+        }
+        if (name.StartsWith("asint("))
+        {
+            return "asuint(" + name["asint(".Length..];
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        return $"(uint{size}){name}";
+    }
+
+    // if_nz branches when the register is non-zero, if_z when it is zero.
+    // A test against zero is of the bits, not the number: if_nz and movc take
+    // -0.0f and a comparison mask as set, and `x != 0` as a float takes neither.
+    // Only a register declared int is tested as it is.
+    private string ZeroTest(D3D10Instruction instruction, int operandIndex, bool nonZero = false)
+    {
+        string name = instruction.GetOperandType(operandIndex) == OperandType.Immediate32
+            ? ImmediateBits(instruction, operandIndex)
+            : GetOperandName(instruction, operandIndex);
+        if (instruction.GetOperandType(operandIndex) != OperandType.Immediate32
+            && GetSourceStorage(instruction, operandIndex) != ComponentStorage.Integer
+            && !IsIntegerConstant(instruction, operandIndex))
+        {
+            name = AsInt(name);
+        }
+        string test = nonZero || instruction.TestNonZero ? "!=" : "==";
+        return $"{name} {test} 0";
+    }
+
+    // A constant declared bool, int or uint holds its integer as one.
+    private bool IsIntegerConstant(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.ConstantBuffer)
+        {
+            return false;
+        }
+        ConstantDeclaration constant = _registers.FindConstant(instruction.GetParamRegisterKey(operandIndex));
+        return constant?.TypeInfo.ParameterType is ParameterType.Bool or ParameterType.Int or ParameterType.Uint;
     }
 
     // The resource operand carries a swizzle saying which channel of the texture

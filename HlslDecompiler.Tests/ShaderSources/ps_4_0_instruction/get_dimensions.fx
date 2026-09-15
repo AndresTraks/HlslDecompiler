@@ -11,7 +11,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	uint4 dimensions0 = 0;
 	tex.GetDimensions(0, dimensions0.x, dimensions0.y, dimensions0.w);
 	r1 = dimensions0;
-	r0.xy = r0.xy % r1.xy;
+	r0.xy = (uint2)r0.xy % (uint2)r1.xy;
 	r0.zw = int2(0, 0);
 	o = tex.Load(r0.xyz);
 

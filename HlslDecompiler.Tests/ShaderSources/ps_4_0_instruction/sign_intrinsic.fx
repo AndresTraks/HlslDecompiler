@@ -19,7 +19,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r1 = texcoord / k.w;
 	r2 = (r1 >= -(r1)) ? -1 : 0;
 	r1 = frac(abs(r1));
-	r1 = (r2 != 0) ? r1 : -(r1);
+	r1 = (asint(r2) != 0) ? r1 : -(r1);
 	r0 = r1 * k.w + r0;
 	r1 = (float4(0, 0, 0, 0) < texcoord) ? -1 : 0;
 	r2 = (texcoord < float4(0, 0, 0, 0)) ? -1 : 0;

@@ -1475,7 +1475,7 @@ public class InstructionParser
     // What the readers of a value agree it is, looking through the nodes that
     // merely carry it - moves, conditional moves, phis, and a sign or absolute
     // modifier - or null where they disagree or there are none.
-    private static bool? GetConsumedType(HlslTreeNode value)
+    internal static bool? GetConsumedType(HlslTreeNode value)
     {
         bool? type = null;
         var visited = HlslTreeNode.NewNodeSet();

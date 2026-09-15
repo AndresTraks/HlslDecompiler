@@ -60,14 +60,6 @@ public class RoundTripCostTests
             + "negation, so neither template recognises them and each is written out "
             + "longhand for fxc to expand again. It computes the right answer now, "
             + "which it did not when this entry was written."),
-        ["ps_4_0/step_mask"] = (27,
-            "One instruction, from the order the terms are summed in, as "
-            + "sign_intrinsic."),
-        ["ps_3_0/shared_subexpression"] = (15,
-            "Naming the shared subexpression is what stops the output exploding, and "
-            + "it also stops fxc folding it back - the original is seven instructions "
-            + "of a tightly nested expression. That is the trade, not a defect. Was "
-            + "twenty until the hoist started naming a whole vector at once."),
         ["vs_3_0/bone_array"] = (13,
             "The original loads two indices in one mova and the third in another, "
             + "and the decompiled source has three separate subscripts. fxc gives "
@@ -109,9 +101,10 @@ public class RoundTripCostTests
             + "original, now that the constructor sits around its addend rather "
             + "than around two halves of it. What remains is ddx(texcoord.x) being "
             + "read twice - inside fwidth and as .x of the addend - without being "
-            + "named, since the statement is under the hoist's size budget, so fxc "
-            + "takes the derivatives once more and packs them with two movs. Was 7 "
-            + "as two half-mads, which was cheaper by one and the wrong shape."),
+            + "named: the text repeats nothing, since the addend writes it as .x of "
+            + "ddx(texcoord), and the hoist names what the text repeats. fxc takes "
+            + "the derivatives once more and packs them with two movs. Was 7 as two "
+            + "half-mads, which was cheaper by one and the wrong shape."),
         ["vs_2_0/matrix_palette"] = (28,
             "Two instructions, the blend index: the input has to be declared float, "
             + "the bytecode not saying otherwise, and fxc floors a float subscript "
@@ -121,10 +114,11 @@ public class RoundTripCostTests
             + "the address register was not a row."),
         ["cs_4_0/tile_blur"] = (21,
             "One instruction. The pixel coordinate, `groupId.xy * 8 + threadId.xy`, "
-            + "is a two wide add read by both buffer addresses, and it is inlined per "
-            + "component since the statement is under the hoist's size budget; the "
-            + "original does it once as a vector and folds y into the imad, where "
-            + "fxc folds one of the decompiled halves and adds the other."),
+            + "is a two wide add read by both buffer addresses, one statement each, "
+            + "and it is inlined in both: the hoist names what one statement repeats, "
+            + "and neither repeats it. The original does it once as a vector and "
+            + "folds y into the imad, where fxc folds one of the decompiled halves "
+            + "and adds the other."),
         ["vs_4_0/skinning"] = (15,
             "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
             + "viewProj)`, which is the source, and fxc orders the two blends the "

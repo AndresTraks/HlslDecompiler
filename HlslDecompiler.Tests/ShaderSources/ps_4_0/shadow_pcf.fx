@@ -14,18 +14,19 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	float3 t0 = float3(float2(0.5, -0.5) * float2(dot(transpose(lightViewProj)[0], i.texcoord), dot(transpose(lightViewProj)[1], i.texcoord)) / dot(transpose(lightViewProj)[3], i.texcoord) + 0.5, dot(transpose(lightViewProj)[2], i.texcoord) / dot(transpose(lightViewProj)[3], i.texcoord) - bias.x);
-	float t1 = 0;
-	for (int t2 = -1; t2 <= 1; t2 = t2 + 1) {
-		t1 = t1 + shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t2 * bias.z + t0.x, t0.y - bias.w), t0.z).x;
+	float t0 = dot(transpose(lightViewProj)[3], i.texcoord);
+	float3 t1 = float3(float2(0.5, -0.5) * float2(dot(transpose(lightViewProj)[0], i.texcoord), dot(transpose(lightViewProj)[1], i.texcoord)) / t0 + 0.5, dot(transpose(lightViewProj)[2], i.texcoord) / t0 - bias.x);
+	float t2 = 0;
+	for (int t3 = -1; t3 <= 1; t3 = t3 + 1) {
+		t2 = t2 + shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t3 * bias.z + t1.x, t1.y - bias.w), t1.z).x;
 	}
-	float t3 = t1;
-	for (int t4 = -1; t4 <= 1; t4 = t4 + 1) {
-		t3 = shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t4 * bias.z + t0.x, t0.y), t0.z).x + t3;
+	float t4 = t2;
+	for (int t5 = -1; t5 <= 1; t5 = t5 + 1) {
+		t4 = shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t5 * bias.z + t1.x, t1.y), t1.z).x + t4;
 	}
-	float t5 = t3;
-	for (int t6 = -1; t6 <= 1; t6 = t6 + 1) {
-		t5 = t5 + shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t6 * bias.z + t0.x, t0.y + bias.w), t0.z).x;
+	float t6 = t4;
+	for (int t7 = -1; t7 <= 1; t7 = t7 + 1) {
+		t6 = t6 + shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t7 * bias.z + t1.x, t1.y + bias.w), t1.z).x;
 	}
-	return 0.111111112 * t5 * albedo.Sample(samp, i.texcoord1);
+	return 0.111111112 * t6 * albedo.Sample(samp, i.texcoord1);
 }

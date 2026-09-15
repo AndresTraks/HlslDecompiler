@@ -5,5 +5,7 @@ float specularPower : register(c2);
 
 float4 main(float4 normal : NORMAL) : POSITION
 {
-	return ambient * lit(dot(lightDir, normal.xyz), dot(halfVector, normal.xyz), specularPower).y + lit(dot(lightDir, normal.xyz), dot(halfVector, normal.xyz), specularPower).z;
+	float t0 = dot(halfVector, normal.xyz);
+	float t1 = dot(lightDir, normal.xyz);
+	return ambient * lit(t1, t0, specularPower).y + lit(t1, t0, specularPower).z;
 }

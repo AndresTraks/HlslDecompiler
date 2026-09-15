@@ -10,6 +10,7 @@ struct CS_IN
 [numthreads(32, 1, 1)]
 void main(CS_IN i)
 {
-	int t0 = (uint)1540483477 * (((uint)src[i.sv_dispatchthreadid.x] >> 13) ^ src[i.sv_dispatchthreadid.x]) >> 15;
-	dst[i.sv_dispatchthreadid.x] = (t0 ^ 1540483477 * (((uint)src[i.sv_dispatchthreadid.x] >> 13) ^ src[i.sv_dispatchthreadid.x])) ^ i.sv_groupid.x;
+	int t0 = src[i.sv_dispatchthreadid.x];
+	int t1 = (uint)1540483477 * (((uint)t0 >> 13) ^ t0) >> 15;
+	dst[i.sv_dispatchthreadid.x] = (t1 ^ 1540483477 * (((uint)t0 >> 13) ^ t0)) ^ i.sv_groupid.x;
 }

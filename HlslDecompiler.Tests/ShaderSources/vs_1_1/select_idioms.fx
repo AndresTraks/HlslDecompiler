@@ -19,8 +19,9 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
+	float t0 = frac(i.texcoord.x);
 	o.position = mul(i.position, wvp);
-	o.color = ((i.color >= threshold) ? 1 : 0) * i.color * scales[((i.texcoord.x < -i.texcoord.x) ? 1 : 0) * ((-frac(i.texcoord.x) < frac(i.texcoord.x)) ? 1 : 0) + i.texcoord.x - frac(i.texcoord.x)] + ((i.color < threshold) ? 1 : 0) * frac(i.color) + exp2(i.color.x) + log2(i.color.y);
+	o.color = ((i.color >= threshold) ? 1 : 0) * i.color * scales[((i.texcoord.x < -i.texcoord.x) ? 1 : 0) * ((-t0 < t0) ? 1 : 0) + i.texcoord.x - t0] + ((i.color < threshold) ? 1 : 0) * frac(i.color) + exp2(i.color.x) + log2(i.color.y);
 
 	return o;
 }

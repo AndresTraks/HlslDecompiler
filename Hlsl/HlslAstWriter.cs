@@ -613,7 +613,7 @@ public class HlslAstWriter : HlslWriter
                 && ReadsAnyOf(node, overwritten))
             {
                 // Named, so nothing inside it is read stale either.
-                assignments.Add([NameSubexpression(node, _compiler.CreateScalarTempVariable())]);
+                assignments.Add([NameSubexpression(node, CreateTempVariables([node])[0])]);
                 continue;
             }
 
@@ -654,17 +654,16 @@ public class HlslAstWriter : HlslWriter
     /// value built on top of a value built on top of a value doubles the output at
     /// every level. Ten instructions of that reach sixty thousand characters.
     ///
-    /// Naming one costs a line, so only the ones big enough to be worth it are named:
-    /// below the threshold the output stays as it was, which is the whole of every
-    /// shader here.
+    /// Naming one costs a line, so only the ones big enough to be worth it are named
+    /// here; the smaller ones are left to the text pass below.
     /// </summary>
     private const int SharedSubexpressionThreshold = 8;
 
     /// <summary>
-    /// How large the expression has to get, written out in full, before any of it is
-    /// worth naming. Naming costs a line and hides the expression from the grouping
-    /// that turns four dot products back into a matrix multiply, so it is only done
-    /// where the alternative is unreadable anyway.
+    /// How large the expression has to get, written out in full, before it is named
+    /// by size. The text pass below measures what is actually repeated, but it has
+    /// to write the expression out to do that, and past this point writing it out
+    /// is what cannot be afforded.
     /// </summary>
     private const int InlinedSizeBudget = 500;
 
@@ -705,7 +704,9 @@ public class HlslAstWriter : HlslWriter
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
 
         // Sharing alone is not a reason to name something - almost every expression
-        // shares a register read. Only an expression that explodes when written out is.
+        // shares a register read. What is worth naming is what the text repeats,
+        // measured on the text; only an expression that explodes when written out
+        // is cut down by size first, so that there is a text to measure.
         var inlinedSize = new Dictionary<HlslTreeNode, long>(ReferenceEqualityComparer.Instance);
         long total = 0;
         foreach (HlslTreeNode root in roots)
@@ -714,7 +715,8 @@ public class HlslAstWriter : HlslWriter
         }
         if (total <= InlinedSizeBudget)
         {
-            return resourceInfo;
+            resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
+            return Renumber(resourceInfo);
         }
 
         // Deepest first, so that a shared node inside another one is named before
@@ -738,7 +740,182 @@ public class HlslAstWriter : HlslWriter
             candidates.Add(node);
         }
         resourceInfo.AddRange(NameCandidates(candidates));
-        return resourceInfo;
+        resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
+        return Renumber(resourceInfo);
+    }
+
+    /// <summary>
+    /// How much of a statement's text has to be a repeat of one expression before
+    /// that expression is named: about what the declaration line costs.
+    /// </summary>
+    private const int RepeatedTextBudget = 24;
+
+    /// <summary>
+    /// Names the expressions the statement's text writes out more than once. Which
+    /// those are cannot be read off the graph: four dot products read by sixteen
+    /// multiplies are one `mul(t0, viewProj)` once the grouper has been at them. So
+    /// the statement is compiled and thrown away, the text of every subexpression
+    /// counted, the one with the most repeated text named, and the statement compiled
+    /// again: the expressions inside the named one are repeated less now, or not at
+    /// all, and are measured afresh.
+    /// </summary>
+    private List<HlslTreeNode[]> NameRepeatedText(
+        IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots)
+    {
+        var assignments = new List<HlslTreeNode[]>();
+        while (true)
+        {
+            IEnumerable<HlslTreeNode[]> groups = registerGroups.Concat(named).Concat(assignments);
+            var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
+            _compiler.Recording = recording;
+            try
+            {
+                foreach (HlslTreeNode[] group in groups)
+                {
+                    // The values, not the assignments: compiling an assignment numbers
+                    // its variable, and the names would come out in the order of the
+                    // measuring rather than of the writing.
+                    _compiler.Compile(group.Select(root =>
+                        root is TempAssignmentNode assignment ? assignment.Value : root));
+                }
+            }
+            finally
+            {
+                _compiler.Recording = null;
+            }
+
+            // Each repeat is the lists of nodes its occurrences were compiled from -
+            // the same nodes, except that a constant may be a separate node at each:
+            // a template that builds one builds one per match, and the 1 in the w of
+            // four dot products is four nodes.
+            List<HlslTreeNode[]> occurrences = recording
+                .GroupBy(r => new NodeList(Broadcast(r.Nodes)))
+                .Select(g => (Occurrences: g.Select(r => Broadcast(r.Nodes)).ToList(),
+                    Repeated: (g.Count() - 1) * g.First().Text.Length))
+                .Where(r => r.Repeated >= RepeatedTextBudget)
+                .Where(r => r.Occurrences[0].All(n => (n is Operation || n is TextureLoadOutputNode || n is ConstantNode) && !roots.Contains(n)))
+                .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))
+                .Where(r => r.Occurrences[0].Distinct(ReferenceEqualityComparer.Instance).Count() == r.Occurrences[0].Length)
+                .OrderByDescending(r => r.Repeated)
+                .Select(r => r.Occurrences)
+                .FirstOrDefault();
+            if (occurrences == null)
+            {
+                return assignments;
+            }
+
+            // Only this statement's readers are given the variable. The graph is
+            // shared with every other statement that reads the value, and one of
+            // those may be outside the block this one is in.
+            HashSet<HlslTreeNode> readers = HlslTreeNode.NewNodeSet();
+            foreach (HlslTreeNode node in Reachable(groups.SelectMany(g => g)))
+            {
+                readers.Add(node);
+            }
+            HlslTreeNode[] candidate = occurrences[0];
+            TempVariableNode[] variables = CreateTempVariables(candidate);
+            foreach (HlslTreeNode[] occurrence in occurrences)
+            {
+                for (int i = 0; i < candidate.Length; i++)
+                {
+                    Rewire(occurrence[i], variables[i], readers);
+                }
+            }
+            assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
+        }
+    }
+
+    /// <summary>
+    /// Numbers the hoisted variables in the order their assignments are written.
+    /// The outermost repeat is named first, and the ones inside it after, so the
+    /// order they were made in is the reverse of the order they are read in.
+    /// </summary>
+    private static List<HlslTreeNode[]> Renumber(List<HlslTreeNode[]> assignments)
+    {
+        List<HlslTreeNode[]> sorted = TempAssignmentOrder.Sort(assignments);
+        List<int> indices = [.. sorted
+            .Select(group => ((TempAssignmentNode)group[0]).TempVariable.DeclarationIndex.Value)
+            .OrderBy(index => index)];
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            foreach (TempAssignmentNode assignment in sorted[i].Cast<TempAssignmentNode>())
+            {
+                assignment.TempVariable.DeclarationIndex = indices[i];
+            }
+        }
+        return sorted;
+    }
+
+    // One node read as every component of an operand - a scalar divisor under a
+    // vector - is written once, and counts as the one node.
+    private static HlslTreeNode[] Broadcast(HlslTreeNode[] nodes)
+    {
+        return nodes.All(n => SameValue(n, nodes[0])) ? [nodes[0]] : nodes;
+    }
+
+    // The same node, or two constants of the same value.
+    private static bool SameValue(HlslTreeNode a, HlslTreeNode b)
+    {
+        return ReferenceEquals(a, b)
+            || (a is ConstantNode ca && b is ConstantNode cb && ca.Value == cb.Value);
+    }
+
+    // The nodes an expression was compiled from, as a grouping key.
+    private readonly struct NodeList(HlslTreeNode[] nodes) : IEquatable<NodeList>
+    {
+        public HlslTreeNode[] Nodes { get; } = nodes;
+
+        public bool Equals(NodeList other)
+        {
+            return Nodes.Length == other.Nodes.Length
+                && Nodes.Zip(other.Nodes).All(pair => SameValue(pair.First, pair.Second));
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is NodeList other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (HlslTreeNode node in Nodes)
+            {
+                hash.Add(node is ConstantNode constant
+                    ? constant.Value.GetHashCode()
+                    : ReferenceEqualityComparer.Instance.GetHashCode(node));
+            }
+            return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>
+    /// A variable for the nodes, typed as an integer where every one of them is. The
+    /// readers know, where they agree - a buffer load feeding a shift is an
+    /// integer; a mov's immediate is whatever reads it - and the node itself
+    /// otherwise: an integer operation gives an integer, a conversion gives what it
+    /// converts to, a constant is what it was parsed as. A vector with a float
+    /// component is a float vector, whatever the 1 in its last component was.
+    /// </summary>
+    private TempVariableNode[] CreateTempVariables(IList<HlslTreeNode> nodes)
+    {
+        TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
+        bool isInteger = nodes.All(IsIntegerValue);
+        foreach (TempVariableNode variable in variables)
+        {
+            variable.IsInteger = isInteger;
+        }
+        return variables;
+    }
+
+    private static bool IsIntegerValue(HlslTreeNode node)
+    {
+        return InstructionParser.GetConsumedType(node) ?? node switch
+        {
+            ConvertOperation convert => convert.TargetType is "int" or "uint",
+            ConstantNode constant => constant.IntegerValue != null,
+            _ => node.ConsumesInteger == true,
+        };
     }
 
     /// <summary>
@@ -830,7 +1007,7 @@ public class HlslAstWriter : HlslWriter
                 }
             }
 
-            TempVariableNode[] variables = _compiler.CreateTempVariables(group.Count);
+            TempVariableNode[] variables = CreateTempVariables(group);
             assignments.Add([.. group.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
         }
         return assignments;
@@ -883,9 +1060,21 @@ public class HlslAstWriter : HlslWriter
 
     private static TempAssignmentNode NameSubexpression(HlslTreeNode node, TempVariableNode variable)
     {
+        Rewire(node, variable);
+        return new TempAssignmentNode(variable, node);
+    }
+
+    // Reads the variable where the node was read - by every reader, or by the
+    // readers among the given ones.
+    private static void Rewire(HlslTreeNode node, TempVariableNode variable, HashSet<HlslTreeNode> among = null)
+    {
         HlslTreeNode[] readers = node.Outputs.ToArray();
         foreach (HlslTreeNode reader in readers)
         {
+            if (among != null && !among.Contains(reader))
+            {
+                continue;
+            }
             for (int i = 0; i < reader.Inputs.Count; i++)
             {
                 if (ReferenceEquals(reader.Inputs[i], node))
@@ -894,9 +1083,8 @@ public class HlslAstWriter : HlslWriter
                     variable.Outputs.Add(reader);
                 }
             }
+            node.Outputs.Remove(reader);
         }
-        node.Outputs.Clear();
-        return new TempAssignmentNode(variable, node);
     }
 
     private static Dictionary<RegisterKey, HlslTreeNode[]> GroupComponents(IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)

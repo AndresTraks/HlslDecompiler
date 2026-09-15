@@ -15,22 +15,14 @@ public sealed class NodeCompiler
     private int _tempAssignmentindexCounter = 0;
 
     /// <summary>
-    /// A variable standing for one shared subexpression rather than for a register.
-    /// It is numbered here because the counter lives here, and it is given its size
-    /// and component up front: the lazy path below numbers a whole register's worth of
-    /// components at once, and would make this one the fourth of four.
-    /// </summary>
-    public TempVariableNode CreateScalarTempVariable()
-    {
-        return CreateTempVariables(1)[0];
-    }
-
-    /// <summary>
-    /// One variable per component of a subexpression that spans several. They share
-    /// a declaration index, which is what makes the writer name them as one vector -
-    /// a value graph holds a four wide operation as four separate nodes, and naming
-    /// each of them on its own turns one instruction into four statements that can
-    /// never be put back together.
+    /// Variables standing for a shared subexpression rather than for a register, one
+    /// per component. They are numbered here because the counter lives here, and
+    /// given their size and component up front: the lazy path below numbers a whole
+    /// register's worth of components at once, and would make a scalar the fourth
+    /// of four. The components share a declaration index, which is what makes the
+    /// writer name them as one vector - a value graph holds a four wide operation as
+    /// four separate nodes, and naming each of them on its own turns one instruction
+    /// into four statements that can never be put back together.
     /// </summary>
     public TempVariableNode[] CreateTempVariables(int size)
     {
@@ -67,7 +59,23 @@ public sealed class NodeCompiler
         return Compile(group.ToList(), promoteToVectorSize);
     }
 
+    /// <summary>
+    /// Set while the writer measures a statement before writing it: every expression
+    /// compiled on the way, with the nodes it was compiled from. Which of them the
+    /// text repeats is not a property of the graph - a node read by sixteen
+    /// multiplies is written once when the grouper makes a matrix multiply of them -
+    /// so the writer compiles first and counts afterwards.
+    /// </summary>
+    public List<(HlslTreeNode[] Nodes, string Text)> Recording { get; set; }
+
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
+    {
+        string compiled = CompileUnrecorded(components, promoteToVectorSize);
+        Recording?.Add(([.. components], compiled));
+        return compiled;
+    }
+
+    private string CompileUnrecorded(List<HlslTreeNode> components, int promoteToVectorSize)
     {
         if (components.Count == 0)
         {

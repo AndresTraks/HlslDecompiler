@@ -9,5 +9,5 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	return float4(normalize(i.normal.yzx * i.texcoord.zxy - i.normal.zxy * i.texcoord.yzx), dot(a.xy, b.xy) + length(a.xyz - b.xyz));
+	return float4(normalize(cross(i.normal, i.texcoord)), dot(a.xy, b.xy) + length(a.xyz - b.xyz));
 }

@@ -11,6 +11,9 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// `(t &lt; 0 ? -1 : 0) - (t &gt; 0 ? -1 : 0)`, which is what the shader does but
 /// not what it says, and fxc does not recognise it as its own expansion coming
 /// back, so it emits the selects rather than folding them away.
+///
+/// Shader model 3 has no comparison that writes a mask, so there it is two slt's,
+/// which write one: `slt(-t, t) - slt(t, -t)`, the positive test first.
 /// </summary>
 public class SignTemplate : NodeTemplate<SubtractOperation>
 {
@@ -29,11 +32,32 @@ public class SignTemplate : NodeTemplate<SubtractOperation>
         HlslTreeNode negative = TryGetComparisonWithZero(subtract.Minuend, IfComparison.LT);
         if (negative == null)
         {
-            return null;
+            return TryGetSignLessValue(subtract);
         }
 
         HlslTreeNode positive = TryGetComparisonWithZero(subtract.Subtrahend, IfComparison.GT);
         return positive != null && ReferenceEquals(negative, positive) ? negative : null;
+    }
+
+    // slt(-t, t) is t > 0 and slt(t, -t) is t < 0, each as 1 or 0.
+    private static HlslTreeNode TryGetSignLessValue(SubtractOperation subtract)
+    {
+        if (subtract.Minuend is not SignLessOperation positive
+            || subtract.Subtrahend is not SignLessOperation negative)
+        {
+            return null;
+        }
+        HlslTreeNode value = positive.Inputs[1];
+        return IsNegationOf(positive.Inputs[0], value)
+            && ReferenceEquals(negative.Inputs[0], value)
+            && IsNegationOf(negative.Inputs[1], value)
+            ? value
+            : null;
+    }
+
+    private static bool IsNegationOf(HlslTreeNode node, HlslTreeNode value)
+    {
+        return node is NegateOperation negate && ReferenceEquals(negate.Value, value);
     }
 
     /// <returns>

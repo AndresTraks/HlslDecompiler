@@ -30,7 +30,7 @@ VS_OUT main(VS_IN i)
 	float t5 = length(t4);
 	o.sv_position = mul(t0, viewProj);
 	o.normal = t4 / t5;
-	o.texcoord = float3(dot(lightDir, t3.zyx), dot(lightDir, t4.yzx / t5 * t3.xzy - t4.zxy / t5 * t3.yxz), dot(lightDir, t4 / t5));
+	o.texcoord = float3(dot(lightDir, t3.zyx), dot(lightDir, cross(t4 / t5, t3.zyx)), dot(lightDir, t4 / t5));
 	o.sv_clipdistance = dot(clipPlane, t0);
 
 	return o;

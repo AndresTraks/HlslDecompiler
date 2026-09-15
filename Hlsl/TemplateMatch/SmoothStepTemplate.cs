@@ -109,7 +109,8 @@ public class SmoothStepTemplate : NodeTemplate<MultiplyOperation>
     /// <summary>
     /// The edges, from the position between them. edge0 has to be the same node in
     /// `x - edge0` and `edge1 - edge0`, or this is a different expression that
-    /// happens to be cubed.
+    /// happens to be cubed. Between 0 and 1 there is no division to fold: the
+    /// position is x itself, clamped.
     /// </summary>
     private static HlslTreeNode TryGetSmoothStep(SaturateOperation position)
     {
@@ -117,7 +118,7 @@ public class SmoothStepTemplate : NodeTemplate<MultiplyOperation>
             || division.Dividend is not SubtractOperation numerator
             || division.Divisor is not SubtractOperation denominator)
         {
-            return null;
+            return new SmoothStepOperation(new ConstantNode(0), new ConstantNode(1), position.Value);
         }
 
         if (!ReferenceEquals(numerator.Subtrahend, denominator.Subtrahend))

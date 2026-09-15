@@ -123,6 +123,12 @@ public sealed class NodeCompiler
                 var vector = Compile(normalize);
                 return $"normalize({vector})";
             }
+
+            var cross = _nodeGrouper.CrossProductGrouper.TryGetContext(components);
+            if (cross != null)
+            {
+                return $"cross({Compile(cross.Value.A)}, {Compile(cross.Value.B)})";
+            }
         }
 
         var first = components[0];

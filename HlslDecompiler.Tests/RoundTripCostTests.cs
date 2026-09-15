@@ -47,12 +47,12 @@ public class RoundTripCostTests
     {
         // The decompiler's doing.
         ["ps_3_0/loop_counter_reuse"] = (53,
-            "A loop over smoothstep, sign, fmod and clamp, none of which reduce on "
-            + "ps_3_0: smoothstep is written there with a reciprocal rather than a "
-            + "divide, and fmod compares against zero rather than against its own "
-            + "negation, so neither template recognises them and each is written out "
-            + "longhand for fxc to expand again. It computes the right answer now, "
-            + "which it did not when this entry was written."),
+            "A loop over smoothstep, sign, fmod and clamp. smoothstep and sign "
+            + "reduce on ps_3_0 now, which moved nothing: fxc expands them to what "
+            + "was there. fmod compares against zero rather than against its own "
+            + "negation, so its template does not recognise it and it is written "
+            + "out longhand for fxc to expand again. It computes the right answer "
+            + "now, which it did not when this entry was written."),
         ["vs_3_0/bone_array"] = (13,
             "The original loads two indices in one mova and the third in another, "
             + "and the decompiled source has three separate subscripts. fxc gives "

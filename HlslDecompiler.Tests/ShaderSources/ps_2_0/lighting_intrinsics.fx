@@ -10,7 +10,7 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	float3 t0 = normalize(i.texcoord).yzx * i.texcoord1.zxy - normalize(i.texcoord).zxy * i.texcoord1.yzx;
+	float3 t0 = cross(normalize(i.texcoord).xyz, i.texcoord1);
 	float t1 = dot(eyeDir, normalize(i.texcoord).xyz);
 	float t2 = (t1 >= 0 ? 0 : -1) + (-t1 >= 0 ? 0 : 1);
 	float t3 = dot(lightDir, normalize(i.texcoord).xyz);

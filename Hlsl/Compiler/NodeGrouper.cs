@@ -12,11 +12,13 @@ public class NodeGrouper
     {
         MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(registers);
         NormalizeGrouper = new NormalizeGrouper();
+        CrossProductGrouper = new CrossProductGrouper();
         _registers = registers;
     }
 
     public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
     public NormalizeGrouper NormalizeGrouper { get; }
+    public CrossProductGrouper CrossProductGrouper { get; }
 
     public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
     {
@@ -51,6 +53,16 @@ public class NodeGrouper
             {
                 List<HlslTreeNode> rest = nodes.Skip(dimension).ToList();
                 groups.AddRange(GroupComponents(rest));
+            }
+            return groups;
+        }
+
+        if (nodes.Count >= 3 && CrossProductGrouper.TryGetContext(nodes.Take(3).ToList()) != null)
+        {
+            groups = [nodes.Take(3).ToList()];
+            if (nodes.Count > 3)
+            {
+                groups.AddRange(GroupComponents(nodes.Skip(3).ToList()));
             }
             return groups;
         }

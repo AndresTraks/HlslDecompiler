@@ -22,6 +22,7 @@ void main(triangle GS_IN i[3], uint sv_primitiveid : SV_PrimitiveID, inout Trian
 	r1.xy = (float2)(int2)r0.yz;
 	r1.zw = float2(0, 1);
 	r0.y = 0;
+	[loop]
 	while (true) {
 		r0.z = (r0.y >= 3) ? -1 : 0;
 		if (r0.z != 0) break;

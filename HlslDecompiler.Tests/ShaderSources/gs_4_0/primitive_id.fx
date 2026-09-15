@@ -17,6 +17,7 @@ void main(triangle GS_IN i[3], uint sv_primitiveid : SV_PrimitiveID, inout Trian
 
 	int t0 = sv_primitiveid & 3;
 	float2 t1 = (float2)(sv_primitiveid & int2(1, 2) ? 1 : 0);
+	[loop]
 	for (int t2 = 0; t2 < 3; t2 = t2 + 1) {
 		o.sv_position = i[t2].sv_position;
 		o.color = float4(t1, 0, 1);

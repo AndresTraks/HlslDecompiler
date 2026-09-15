@@ -14,6 +14,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r0.y = 1 / k.w;
 	r1 = 0;
 	r0.z = 0;
+	[loop]
 	for (int i0 = 0; i0 < 3; i0++) {
 		r2 = texcoord * r0.z + -k.x;
 		r2 = saturate(r0.x * r2);

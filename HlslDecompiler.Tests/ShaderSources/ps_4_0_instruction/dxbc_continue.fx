@@ -6,6 +6,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	int2 r1;
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
+	[loop]
 	while (true) {
 		r1.y = (r1.x >= 8) ? -1 : 0;
 		if (r1.y != 0) break;

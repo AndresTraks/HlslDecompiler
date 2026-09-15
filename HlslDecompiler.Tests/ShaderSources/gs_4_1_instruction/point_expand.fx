@@ -19,6 +19,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	float4 r2;
 	r0.zw = float2(0, 0);
 	r1.x = 0;
+	[loop]
 	while (true) {
 		r1.y = (r1.x >= 4) ? -1 : 0;
 		if (r1.y != 0) break;

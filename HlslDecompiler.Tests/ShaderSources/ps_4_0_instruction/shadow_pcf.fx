@@ -29,6 +29,7 @@ float4 main(PS_IN i) : SV_Target
 	r1.yw = float2(-1, 0);
 	r0.w = 0;
 	r2.x = -1;
+	[loop]
 	while (true) {
 		r2.y = (1 < r2.x) ? -1 : 0;
 		if (r2.y != 0) break;
@@ -40,6 +41,7 @@ float4 main(PS_IN i) : SV_Target
 	}
 	r1.x = r0.w;
 	r1.y = -1;
+	[loop]
 	while (true) {
 		r2.x = (1 < r1.y) ? -1 : 0;
 		if (r2.x != 0) break;
@@ -52,6 +54,7 @@ float4 main(PS_IN i) : SV_Target
 	r2.y = 1;
 	r0.w = r1.x;
 	r1.y = -1;
+	[loop]
 	while (true) {
 		r1.z = (1 < r1.y) ? -1 : 0;
 		if (r1.z != 0) break;

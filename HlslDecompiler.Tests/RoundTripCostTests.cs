@@ -46,13 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_3_0/loop_counter_reuse"] = (53,
-            "A loop over smoothstep, sign, fmod and clamp. smoothstep and sign "
-            + "reduce on ps_3_0 now, which moved nothing: fxc expands them to what "
-            + "was there. fmod compares against zero rather than against its own "
-            + "negation, so its template does not recognise it and it is written "
-            + "out longhand for fxc to expand again. It computes the right answer "
-            + "now, which it did not when this entry was written."),
         ["vs_3_0/bone_array"] = (13,
             "The original loads two indices in one mova and the third in another, "
             + "and the decompiled source has three separate subscripts. fxc gives "
@@ -108,7 +101,6 @@ public class RoundTripCostTests
             + "earning its place and the fix has to be narrower than removing it."),
 
 
-
         ["vs_3_0/partial_overwrite"] = (13,
             "The original computes a lerp over all four components and then overwrites "
             + "y with the height lookup. An expression has nowhere to put that: x and "
@@ -119,10 +111,13 @@ public class RoundTripCostTests
             + "the lerp rather than onto it."),
 
 
-
         // fxc's doing: the output is right and it compiles it differently.
-        ["vs_3_0/loop_repeat_count"] = (8,
-            "fxc unrolls the eight iteration loop the decompiled source spells out."),
+        ["ps_4_0/dxbc_continue"] = (17,
+            "Two instructions, from `[loop]`: with the loop marked, fxc writes "
+            + "`if (t1 >= 8) break;` as an if around a break rather than the "
+            + "breakc it used unmarked. Marked because the bytecode has a loop, and "
+            + "unmarked fxc unrolled loop_counter_reuse three times over and "
+            + "loop_repeat_count eight."),
         ["vs_3_0/vertex_texture"] = (8,
             "The original adds to one component with a swizzle over a def'd constant, "
             + "`mad r0, r0.x, c4.yxyy, v0`. The decompiled float4 construction says the "

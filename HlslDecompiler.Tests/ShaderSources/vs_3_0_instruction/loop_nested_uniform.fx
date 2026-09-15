@@ -18,6 +18,7 @@ float4 main() : POSITION
 	r0.w = (r2.x < n.x) ? 1 : 0;
 	r0.w = r0.w * r0.z;
 	r1 = 0;
+	[loop]
 	for (int i0 = 0; i0 < n; i0++) {
 		r2 = r0.x * m[0] + r1;
 		r2 = r0.y * m[1] + r2;

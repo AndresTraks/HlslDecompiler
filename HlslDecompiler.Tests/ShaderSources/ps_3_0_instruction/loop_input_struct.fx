@@ -13,6 +13,7 @@ float4 main(PS_IN i) : COLOR
 
 	float4 r0;
 	r0 = i.color;
+	[loop]
 	for (int i0 = 0; i0 < n; i0++) {
 		r0 = colour * i.texcoord.x + r0;
 	}

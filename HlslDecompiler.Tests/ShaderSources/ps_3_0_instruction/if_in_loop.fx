@@ -11,6 +11,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r0.x = threshold.x + -texcoord.x;
 	r1 = 0;
 	r0.y = 0;
+	[loop]
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r0.y >= count.x) {
 			if (1 != -1) break;

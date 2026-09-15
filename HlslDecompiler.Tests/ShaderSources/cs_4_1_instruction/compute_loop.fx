@@ -10,6 +10,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.x = sv_dispatchthreadid.x << 2;
 	r1 = float4(0, 0, 0, 0);
 	r0.y = 0;
+	[loop]
 	while (true) {
 		r0.z = (r0.y >= 4) ? -1 : 0;
 		if (r0.z != 0) break;

@@ -18,6 +18,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	x0[3] = r0;
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
+	[loop]
 	while (true) {
 		r1.y = (r1.x >= count) ? -1 : 0;
 		if (r1.y != 0) break;

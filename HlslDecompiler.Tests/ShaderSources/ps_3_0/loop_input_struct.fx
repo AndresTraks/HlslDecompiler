@@ -10,6 +10,7 @@ struct PS_IN
 float4 main(PS_IN i) : COLOR
 {
 	float4 t0 = i.color;
+	[loop]
 	for (int i_ = 0; i_ < n; i_++) {
 		t0 = colour * i.texcoord + t0;
 	}

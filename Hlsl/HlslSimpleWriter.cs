@@ -446,6 +446,7 @@ public class HlslSimpleWriter : HlslWriter
                 int loopRegisterNumber = instruction.GetParamRegisterNumber(1);
                 ConstantIntRegister intRegister = _registers.FindConstantIntRegister(loopRegisterNumber);
                 _loopVariableIndex++;
+                WriteLine("[loop]");
                 string loopVariable = "i" + _loopVariableIndex;
                 if (intRegister == null)
                 {
@@ -516,6 +517,7 @@ public class HlslSimpleWriter : HlslWriter
                     ? loopRegister[0]
                     : _registers.GetRegisterName(
                         new D3D9RegisterKey(RegisterType.ConstInt, repRegisterNumber));
+                WriteLine("[loop]");
                 WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", repCount, "i" + _loopVariableIndex);
                 indent += "\t";
                 break;
@@ -890,6 +892,9 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.Loop:
+                // The bytecode has a loop, so the source says so: left to itself fxc
+                // unrolls a loop it can count, and refuses one it cannot bound.
+                WriteLine("[loop]");
                 WriteLine("while (true) {");
                 indent += "\t";
                 break;

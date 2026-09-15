@@ -255,6 +255,9 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
+        // The bytecode has a loop, so the source says so: left to itself fxc unrolls
+        // a loop it can count, and refuses one it cannot bound.
+        WriteLine("[loop]");
         string loopVariableName = null;
         if (loop.IsCountedLoop)
         {

@@ -766,7 +766,10 @@ public class InstructionParser
             newOutputs[new RegisterComponentKey(destinationKey, component)] =
                 new MultiplyOperation(
                     GetInputComponent(instruction, Factor1Index, component),
-                    GetInputComponent(instruction, Factor2Index, component));
+                    GetInputComponent(instruction, Factor2Index, component))
+                {
+                    ConsumesInteger = true,
+                };
         }
 
         foreach (var output in newOutputs)
@@ -802,8 +805,8 @@ public class InstructionParser
                 HlslTreeNode dividend = GetInputComponent(instruction, DividendIndex, component);
                 HlslTreeNode divisor = GetInputComponent(instruction, DivisorIndex, component);
                 newOutputs[new RegisterComponentKey(destinationKey, component)] = destinationIndex == 0
-                    ? new DivisionOperation(dividend, divisor)
-                    : new ModuloOperation(dividend, divisor);
+                    ? new DivisionOperation(dividend, divisor) { ConsumesInteger = true }
+                    : new ModuloOperation(dividend, divisor) { ConsumesInteger = true };
             }
         }
 
@@ -1433,6 +1436,13 @@ public class InstructionParser
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
                 return false;
+            // A buffer load or store reads its address as an integer, whatever the
+            // buffer holds.
+            case D3D10Opcode.LdStructured:
+            case D3D10Opcode.LdRaw:
+            case D3D10Opcode.StoreStructured:
+            case D3D10Opcode.StoreRaw:
+                return true;
             default:
                 return opcode.IsInteger();
         }

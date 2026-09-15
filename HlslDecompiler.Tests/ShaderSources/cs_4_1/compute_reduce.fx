@@ -11,6 +11,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	for (int t1 = 0; t1 < count; t1 = t1 + 1) {
 		t0 = input[t1] * k + t0;
 	}
-	int t2 = (float)(max(count, 1));
+	float t2 = (float)(max(count, 1));
 	output[sv_dispatchthreadid.x] = t0 / t2;
 }

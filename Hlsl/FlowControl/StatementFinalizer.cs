@@ -243,12 +243,15 @@ public class StatementFinalizer
                 if (doesOutputExitStatement || tempInputAssignment != null)
                 {
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
+                    // Before the readers move to the variable: they are what types it.
+                    bool? isIntegerValue = IsIntegerValue(tempValue);
                     tempValue.Outputs.Clear();
                     TempVariableNode tempVariable = tempInputAssignment?.TempVariable
                         ?? tempInputVariable
                         ?? new TempVariableNode
                         {
-                            IsInteger = _integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true,
+                            IsInteger = isIntegerValue
+                                ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true),
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
@@ -684,6 +687,28 @@ public class StatementFinalizer
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Whether a value is an integer, from the value rather than the register it
+    /// was in: fxc reuses a register, and a float4 of texture offsets was declared
+    /// int4 for the loop counter that took r0.x over after the loop. What reads
+    /// the value decides where the readers agree; the operation that made it
+    /// otherwise - an integer add makes an integer, a conversion what it converts
+    /// to; and null - the register's own type - where neither says, as for a load,
+    /// whose operands are integers whatever it loads, or an immediate nothing reads
+    /// as either.
+    /// </summary>
+    internal static bool? IsIntegerValue(HlslTreeNode value)
+    {
+        return InstructionParser.GetConsumedType(value) ?? value switch
+        {
+            ConvertOperation convert => convert.TargetType is "int" or "uint",
+            ConstantNode constant => constant.IntegerValue != null,
+            LoadStructuredNode => null,
+            Operation operation => operation.ConsumesInteger,
+            _ => null,
+        };
     }
 
     private static bool IsFreeToRead(HlslTreeNode node)

@@ -913,32 +913,20 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// A variable for the nodes, typed as an integer where every one of them is. The
-    /// readers know, where they agree - a buffer load feeding a shift is an
-    /// integer; a mov's immediate is whatever reads it - and the node itself
-    /// otherwise: an integer operation gives an integer, a conversion gives what it
-    /// converts to, a constant is what it was parsed as. A vector with a float
-    /// component is a float vector, whatever the 1 in its last component was.
+    /// A variable for the nodes, typed as an integer where every one of them is,
+    /// the way the finalizer types a register's: by the readers where they agree,
+    /// by the operation otherwise. A vector with a float component is a float
+    /// vector, whatever the 1 in its last component was.
     /// </summary>
     private TempVariableNode[] CreateTempVariables(IList<HlslTreeNode> nodes)
     {
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
-        bool isInteger = nodes.All(IsIntegerValue);
+        bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
         foreach (TempVariableNode variable in variables)
         {
             variable.IsInteger = isInteger;
         }
         return variables;
-    }
-
-    private static bool IsIntegerValue(HlslTreeNode node)
-    {
-        return InstructionParser.GetConsumedType(node) ?? node switch
-        {
-            ConvertOperation convert => convert.TargetType is "int" or "uint",
-            ConstantNode constant => constant.IntegerValue != null,
-            _ => node.ConsumesInteger == true,
-        };
     }
 
     /// <summary>

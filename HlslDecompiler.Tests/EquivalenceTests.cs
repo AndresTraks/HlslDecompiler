@@ -29,6 +29,22 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)> KnownDifferences = new()
     {
+        // The instruction writer keeps a register that fxc reused for integers and
+        // floats as a float4, and reinterprets at every integer use. fxc's optimizer
+        // does not keep faith with that: it folds `asint(asfloat(x & 1))` to zero,
+        // the 1 being a denormal as a float, and `asint(asfloat(x & 0x80000000))`
+        // likewise, -0.0 being zero to it. An integer held in a float register has to
+        // be held as an integer, which is the redesign these three are waiting on.
+        ["ps_4_0/sample_select"] = ("instruction",
+            "The loop's `i & 1` selecting between two offsets is reinterpreted through "
+            + "a float, and fxc folds the test of it to false."),
+        ["ps_4_0/precedence_mix"] = ("instruction",
+            "The sign bit of a signed modulus is reinterpreted through a float, and "
+            + "fxc folds the test of it to false."),
+        ["ps_4_0/int_float_mix"] = ("instruction",
+            "A register holds a comparison mask, an integer and a float in turn, and "
+            + "the writer's one storage for it reads the integer as the float it was "
+            + "converted to."),
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

@@ -345,8 +345,10 @@ public sealed class NodeCompiler
                     string value = CompileOperand(components.Select(g => g.Inputs[0]));
                     // HLSL reads >> as arithmetic or logical from the type of what
                     // is shifted, so ushr has to say it there. As wide as the value,
-                    // since a bare (uint) over two components is X3014.
-                    if (shiftRight.IsUnsigned)
+                    // since a bare (uint) over two components is X3014. Not over a
+                    // value that is already a conversion to uint.
+                    if (shiftRight.IsUnsigned
+                        && shiftRight.Inputs[0] is not ConvertOperation { TargetType: "uint" })
                     {
                         string size = components.Count > 1 ? components.Count.ToString() : "";
                         value = $"(uint{size}){value}";

@@ -12,14 +12,12 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r0 = 0;
 	r1 = 0;
 	r2.x = 3;
-	[loop]
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r2.x >= count.x) {
 			if (1 != -1) break;
 		}
 		r3 = r1;
 		r2.y = 5;
-		[loop]
 		for (int i1 = 0; i1 < 255; i1++) {
 			if (r2.y >= count2.x) {
 				if (1 != -1) break;

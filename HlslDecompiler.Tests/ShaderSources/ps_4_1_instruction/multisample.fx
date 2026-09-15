@@ -12,7 +12,6 @@ float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 	r0.zw = int2(0, 0);
 	r1 = float4(0, 0, 0, 0);
 	r2.x = 0;
-	[loop]
 	while (true) {
 		r2.y = (r2.x >= 4) ? -1 : 0;
 		if (r2.y != 0) break;

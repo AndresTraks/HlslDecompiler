@@ -255,9 +255,10 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
-        // The bytecode has a loop, so the source says so: left to itself fxc unrolls
-        // a loop it can count, and refuses one it cannot bound.
-        WriteLine("[loop]");
+        if (NeedsLoopAttribute(loop))
+        {
+            WriteLine("[loop]");
+        }
         string loopVariableName = null;
         if (loop.IsCountedLoop)
         {
@@ -297,6 +298,54 @@ public class HlslAstWriter : HlslWriter
         _loopDepth--;
         indent = indent.Substring(0, indent.Length - 1);
         WriteLine("}");
+    }
+
+    /// <summary>
+    /// Whether the loop has to be marked [loop] for fxc to compile it at all. A
+    /// sample with implicit derivatives inside a loop fxc cannot count is an error
+    /// unless the loop is marked, so the source it came from was marked; anything
+    /// else is left to fxc, which unrolls what it can count and loops the rest,
+    /// and the attribute stays out of every loop that does not need it.
+    /// </summary>
+    private static bool NeedsLoopAttribute(LoopStatement loop)
+    {
+        if (loop.RepeatCount is uint)
+        {
+            return false;
+        }
+        if (loop.IsCountedLoop
+            && loop.ContinueCondition is ComparisonNode comparison
+            && (comparison.Left is ConstantNode || comparison.Right is ConstantNode))
+        {
+            return false;
+        }
+        var roots = new List<HlslTreeNode>();
+        new StatementVisitor(loop.Body).Visit(statement =>
+        {
+            roots.AddRange(statement.Outputs.Values);
+            roots.AddRange(statement switch
+            {
+                IfStatement @if => @if.Comparison,
+                ClipStatement clip => clip.Values,
+                StoreStructuredStatement store => [store.Address, .. store.Values],
+                IndexableTempStoreStatement store => [store.Index, .. store.Values],
+                BreakStatement @break when @break.Comparison != null => [@break.Comparison],
+                ContinueStatement @continue when @continue.Comparison != null => [@continue.Comparison],
+                ReturnStatement @return when @return.Comparison != null => [@return.Comparison],
+                _ => [],
+            });
+        });
+        return Reachable(roots.Where(r => r != null)).Any(IsGradientOperation);
+    }
+
+    // A sample that takes its mip level from the derivatives of its coordinates,
+    // or a derivative outright.
+    private static bool IsGradientOperation(HlslTreeNode node)
+    {
+        return node is PartialDerivativeXOperation or PartialDerivativeYOperation
+            || (node is TextureLoadOutputNode sample
+                && (sample.Controls & (TextureLoadControls.Lod | TextureLoadControls.Grad
+                    | TextureLoadControls.LevelZero | TextureLoadControls.Gather)) == 0);
     }
 
     // Nested loops must not shadow the enclosing loop's counter, and the first one

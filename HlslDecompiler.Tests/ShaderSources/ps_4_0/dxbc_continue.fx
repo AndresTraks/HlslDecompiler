@@ -2,7 +2,6 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	float4 t0 = 0;
 	int t1 = 0;
-	[loop]
 	while (true) {
 		if (t1 >= 8) {
 			break;

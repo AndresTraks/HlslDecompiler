@@ -4,7 +4,6 @@ int n;
 float4 main() : COLOR
 {
 	float3 t0 = c.xyw;
-	[loop]
 	for (int i = 0; i < n; i++) {
 		t0.y = 2 * t0.y + 1;
 		t0.x = t0.y + c.z;

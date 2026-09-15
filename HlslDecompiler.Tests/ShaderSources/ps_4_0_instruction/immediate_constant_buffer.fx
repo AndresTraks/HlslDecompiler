@@ -21,7 +21,6 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r0.xy = texcoord.xy;
 	r1 = float4(0, 0, 0, 0);
 	r0.w = 0;
-	[loop]
 	while (true) {
 		r2.x = (r0.w >= 4) ? -1 : 0;
 		if (asint(r2.x) != 0) break;

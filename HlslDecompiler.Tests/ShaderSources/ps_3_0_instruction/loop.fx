@@ -8,7 +8,6 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float r1;
 	r0 = 0;
 	r1 = 3;
-	[loop]
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r1.x < count.x) {
 			if (1 != -1) break;

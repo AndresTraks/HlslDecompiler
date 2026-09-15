@@ -8,7 +8,6 @@ float4 main() : SV_Target
 	int4 r0;
 	r0.x = seed;
 	r0.y = 0;
-	[loop]
 	while (true) {
 		r0.z = (r0.y >= count) ? -1 : 0;
 		if (r0.z != 0) break;

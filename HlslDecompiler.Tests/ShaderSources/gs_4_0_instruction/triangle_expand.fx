@@ -23,7 +23,6 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 	float4 r1;
 	float2 r2;
 	r0.x = 0;
-	[loop]
 	while (true) {
 		r0.y = (r0.x >= 3) ? -1 : 0;
 		if (asint(r0.y) != 0) break;
@@ -41,7 +40,6 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 	}
 	stream.RestartStrip();
 	r0.x = 2;
-	[loop]
 	while (true) {
 		r0.y = (r0.x < 0) ? -1 : 0;
 		if (asint(r0.y) != 0) break;

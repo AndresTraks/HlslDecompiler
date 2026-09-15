@@ -4,7 +4,6 @@ uint count;
 float4 main() : SV_Target
 {
 	int t0 = seed;
-	[loop]
 	for (int t1 = 0; t1 < count; t1 = t1 + 1) {
 		t0 = ((uint)t0 >> 16) ^ 1664525 * t0 + 1013904223;
 	}

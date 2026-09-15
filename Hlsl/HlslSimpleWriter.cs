@@ -446,7 +446,10 @@ public class HlslSimpleWriter : HlslWriter
                 int loopRegisterNumber = instruction.GetParamRegisterNumber(1);
                 ConstantIntRegister intRegister = _registers.FindConstantIntRegister(loopRegisterNumber);
                 _loopVariableIndex++;
-                WriteLine("[loop]");
+                if (intRegister == null && LoopSamplesWithGradients(instruction))
+                {
+                    WriteLine("[loop]");
+                }
                 string loopVariable = "i" + _loopVariableIndex;
                 if (intRegister == null)
                 {
@@ -517,7 +520,10 @@ public class HlslSimpleWriter : HlslWriter
                     ? loopRegister[0]
                     : _registers.GetRegisterName(
                         new D3D9RegisterKey(RegisterType.ConstInt, repRegisterNumber));
-                WriteLine("[loop]");
+                if (loopRegister == null && LoopSamplesWithGradients(instruction))
+                {
+                    WriteLine("[loop]");
+                }
                 WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", repCount, "i" + _loopVariableIndex);
                 indent += "\t";
                 break;
@@ -895,9 +901,10 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.Loop:
-                // The bytecode has a loop, so the source says so: left to itself fxc
-                // unrolls a loop it can count, and refuses one it cannot bound.
-                WriteLine("[loop]");
+                if (LoopSamplesWithGradients(instruction))
+                {
+                    WriteLine("[loop]");
+                }
                 WriteLine("while (true) {");
                 indent += "\t";
                 break;
@@ -1763,6 +1770,56 @@ public class HlslSimpleWriter : HlslWriter
         int length = instruction.GetDestinationMaskLength();
         string size = length == 1 ? "" : length.ToString();
         return $"(uint{size}){name}";
+    }
+
+    /// <summary>
+    /// Whether a loop has to be marked [loop] for fxc to compile it at all: a
+    /// sample with implicit derivatives inside a loop fxc cannot count is an error
+    /// unless the loop is marked, so the source it came from was marked. Every
+    /// other loop is left to fxc. A loop fxc can count is one whose first break
+    /// tests a comparison against an immediate - `ige r, r, l(4)` then breakc.
+    /// </summary>
+    private bool LoopSamplesWithGradients(Instruction loop)
+    {
+        int depth = 0;
+        bool samples = false;
+        bool counted = false;
+        D3D10Instruction lastComparison = null;
+        for (int i = _shader.Instructions.IndexOf(loop); i < _shader.Instructions.Count; i++)
+        {
+            Instruction instruction = _shader.Instructions[i];
+            bool opens = instruction is D3D10Instruction { Opcode: D3D10Opcode.Loop }
+                || instruction is D3D9Instruction { Opcode: Opcode.Loop or Opcode.Rep };
+            bool closes = instruction is D3D10Instruction { Opcode: D3D10Opcode.EndLoop }
+                || instruction is D3D9Instruction { Opcode: Opcode.EndLoop or Opcode.EndRep };
+            if (opens)
+            {
+                depth++;
+            }
+            else if (closes && --depth == 0)
+            {
+                break;
+            }
+            else if (instruction is D3D10Instruction { Opcode: D3D10Opcode.Sample or D3D10Opcode.SampleB
+                    or D3D10Opcode.SampleC or D3D10Opcode.DerivRtx or D3D10Opcode.DerivRty }
+                || instruction is D3D9Instruction { Opcode: Opcode.Tex or Opcode.DSX or Opcode.DSY })
+            {
+                samples = true;
+            }
+            else if (depth == 1 && instruction is D3D10Instruction { Opcode: D3D10Opcode.Ige or D3D10Opcode.Ilt
+                or D3D10Opcode.UGE or D3D10Opcode.ULT or D3D10Opcode.Ieq or D3D10Opcode.Ine
+                or D3D10Opcode.GE or D3D10Opcode.LT or D3D10Opcode.Eq or D3D10Opcode.Ne } comparison)
+            {
+                lastComparison = comparison;
+            }
+            else if (depth == 1 && instruction is D3D10Instruction { Opcode: D3D10Opcode.BreakC } && lastComparison != null)
+            {
+                counted |= Enumerable.Range(1, lastComparison.OperandTokens.OperandCount - 1)
+                    .Any(operand => lastComparison.GetOperandType(operand) == OperandType.Immediate32);
+                lastComparison = null;
+            }
+        }
+        return samples && !counted;
     }
 
     // if_nz branches when the register is non-zero, if_z when it is zero.

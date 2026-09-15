@@ -23,7 +23,6 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	stream.Append(o);
 	r0.zw = float2(0.5, 0.5);
 	r1.x = 1;
-	[loop]
 	while (true) {
 		r1.y = (17 < r1.x) ? -1 : 0;
 		if (asint(r1.y) != 0) break;

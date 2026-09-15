@@ -19,7 +19,6 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
 	r0.x = 32;
-	[loop]
 	while (true) {
 		r0.y = (0 >= r0.x) ? -1 : 0;
 		if (asint(r0.y) != 0) break;

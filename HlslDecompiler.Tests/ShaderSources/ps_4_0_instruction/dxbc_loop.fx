@@ -8,7 +8,6 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float2 r1;
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
-	[loop]
 	while (true) {
 		r1.y = asfloat((r1.x >= count) ? -1 : 0);
 		if (asint(r1.y) != 0) {

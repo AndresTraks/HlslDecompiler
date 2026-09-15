@@ -6,7 +6,6 @@ float4 main() : POSITION
 
 	float4 r0;
 	r0 = 0;
-	[loop]
 	for (int i0 = 0; i0 < 8; i0++) {
 		r0 = r0 + floats[i0];
 	}

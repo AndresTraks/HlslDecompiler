@@ -9,7 +9,6 @@ float4 main() : SV_Position
 	int2 r1;
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
-	[loop]
 	while (true) {
 		r1.y = (r1.x >= n) ? -1 : 0;
 		if (r1.y != 0) break;

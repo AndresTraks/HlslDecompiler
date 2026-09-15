@@ -29,7 +29,6 @@ VS_OUT main(VS_IN i)
 	o.position.w = dot(r0, transpose(wvp)[3]);
 	if (doubled) {
 		r0 = i.color;
-		[loop]
 		for (int i0 = 0; i0 < repeats; i0++) {
 			r0 = r0 + r0;
 		}

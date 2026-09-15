@@ -22,7 +22,6 @@ VS_OUT main(VS_IN i)
 	o.position = mul(float4(i.position.x, -2 * flipped * i.position.y + i.position.y, i.position.zw), wvp);
 	if (doubled) {
 		float4 t0 = i.color;
-		[loop]
 		for (int i_ = 0; i_ < repeats; i_++) {
 			t0 = 2 * t0;
 		}

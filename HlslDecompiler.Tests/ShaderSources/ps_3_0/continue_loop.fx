@@ -4,12 +4,10 @@ int n;
 float4 main(float color : COLOR) : COLOR
 {
 	float4 t0 = 0;
-	[loop]
 	for (int i = 0; i < n; i++) {
 		if (color > 0.5) {
 		} else {
 			float4 t1 = t0;
-			[loop]
 			for (int j = 0; j < n; j++) {
 				t1 = t1 + colour;
 			}

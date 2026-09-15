@@ -49,7 +49,9 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             return null;
         }
 
-        if (!ReferenceEquals(quotient.Divisor, divisor)
+        // The divisor is read twice, once as the quotient's and once as the scale,
+        // and a modifier on it - `-k.x` - is a node of its own at each.
+        if (!NodeGrouper.AreNodesEquivalent(quotient.Divisor, divisor)
             || !IsNotNegative(select.Condition, quotient))
         {
             return null;

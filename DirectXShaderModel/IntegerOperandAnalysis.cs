@@ -770,7 +770,7 @@ public sealed class IntegerOperandAnalysis
     {
         return opcode switch
         {
-            D3D10Opcode.Mov => 1,
+            D3D10Opcode.Mov or D3D10Opcode.Not => 1,
             D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor => 2,
             _ => 0,
         };

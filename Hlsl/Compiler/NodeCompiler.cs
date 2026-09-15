@@ -162,6 +162,20 @@ public sealed class NodeCompiler
         throw new NotImplementedException("Unsupported node: " + first.GetType().Name);
     }
 
+    private static bool IsSum(HlslTreeNode node)
+    {
+        return node is AddOperation or SubtractOperation;
+    }
+
+    // A division that is written as one - not the `x / length(x)` that is written
+    // as normalize(x).
+    private bool IsQuotient(IEnumerable<HlslTreeNode> components)
+    {
+        List<HlslTreeNode> list = [.. components];
+        return list[0] is DivisionOperation
+            && (list.Count == 1 || _nodeGrouper.NormalizeGrouper.TryGetContext(list) == null);
+    }
+
     private static bool IsElementwiseAcross(List<HlslTreeNode> components)
     {
         if (components[0] is not Operation first || !IsElementwise(first))
@@ -335,6 +349,14 @@ public sealed class NodeCompiler
                         CompileOperand(components.Select(g => g.Inputs[1])));
                 }
 
+            case BitwiseNotOperation _:
+                {
+                    IEnumerable<HlslTreeNode> input = components.Select(g => g.Inputs[0]);
+                    bool isAssociative = AssociativityTester.TestForMultiplication(input.First());
+                    string value = Compile(input);
+                    return isAssociative ? $"~{value}" : $"~({value})";
+                }
+
             case BitwiseAndOperation _:
             case BitwiseOrOperation _:
             case BitwiseXorOperation _:
@@ -352,16 +374,31 @@ public sealed class NodeCompiler
 
             case AddOperation _:
                 {
+                    var addend1 = components.Select(g => g.Inputs[0]);
+                    var addend2 = components.Select(g => g.Inputs[1]);
+                    // `a + (b + c)` written without the brackets is `(a + b) + c`,
+                    // which sums in another order - a different rounding, and a mad
+                    // chain fxc no longer sees. Addition commutes, so the sum goes
+                    // first: `b + c + a` is the number that was computed.
+                    if (IsSum(addend2.First()) && !IsSum(addend1.First()))
+                    {
+                        (addend1, addend2) = (addend2, addend1);
+                    }
+                    string right = CompileOperand(addend2);
                     return string.Format("{0} + {1}",
-                        CompileOperand(components.Select(g => g.Inputs[0])),
-                        CompileOperand(components.Select(g => g.Inputs[1])));
+                        CompileOperand(addend1),
+                        IsSum(addend2.First()) ? $"({right})" : right);
                 }
 
             case SubtractOperation _:
                 {
+                    var subtrahend = components.Select(g => g.Inputs[1]);
+                    // The subtrahend keeps its brackets: `a - (b + c)` without them
+                    // is `a - b + c`, which adds c rather than taking it away.
+                    string right = CompileOperand(subtrahend);
                     return string.Format("{0} - {1}",
                         CompileOperand(components.Select(g => g.Inputs[0])),
-                        CompileOperand(components.Select(g => g.Inputs[1])));
+                        IsSum(subtrahend.First()) ? $"({right})" : right);
                 }
 
             case MultiplyOperation _:
@@ -376,8 +413,12 @@ public sealed class NodeCompiler
                         multiplicand2 = temp;
                     }
 
+                    // A quotient on the right is kept as one: `a * (b / c)` is what
+                    // was computed, and `a * b / c` rounds differently and shares
+                    // nothing with a `b / c` computed elsewhere.
                     bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
-                    bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First());
+                    bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First())
+                        && !IsQuotient(multiplicand2);
                     string format =
                         (firstIsAssociative ? "{0}" : "({0})") +
                         " * " +
@@ -401,8 +442,12 @@ public sealed class NodeCompiler
                     // The dividend needs them as much as the divisor does: an add or a
                     // subtract binds more loosely than the division, so `(a - b) / c`
                     // written without them is `a - b / c`, which is a different number.
+                    // And a divisor that is itself a product or a quotient needs them
+                    // whatever it is made of: `a / (b * c)` without them is `a / b * c`,
+                    // which is a times c over b.
                     bool dividendIsAssociative = AssociativityTester.TestForMultiplication(dividend.First());
-                    bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor.First());
+                    bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor.First())
+                        && divisor.First() is not MultiplyOperation && !IsQuotient(divisor);
                     string format = (dividendIsAssociative ? "{0}" : "({0})")
                         + " / "
                         + (divisorIsAssociative ? "{1}" : "({1})");
@@ -1061,6 +1106,18 @@ public sealed class NodeCompiler
 
     private string CompileComparison(List<HlslTreeNode> components, ComparisonNode first)
     {
+        // A bool constant tested against zero is the bool itself: `if (flag)` is
+        // what was written, and `flag != 0` compares an int, which costs fxc a movc
+        // to make one of the bool first.
+        if (components.Count == 1
+            && first.Comparison is IfComparison.NE or IfComparison.EQ
+            && first.Right is ConstantNode { Value: 0 }
+            && first.Left is RegisterInputNode register
+            && _registers.FindConstant(register)?.TypeInfo.ParameterType == ParameterType.Bool)
+        {
+            string flag = Compile(first.Left);
+            return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
+        }
         var left = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
         var right = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
         return $"{left} {first.Comparison.ToHlslString()} {right}";

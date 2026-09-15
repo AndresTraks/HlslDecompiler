@@ -784,22 +784,21 @@ public class HlslAstWriter : HlslWriter
                 _compiler.Recording = null;
             }
 
-            // Each repeat is the lists of nodes its occurrences were compiled from -
-            // the same nodes, except that a constant may be a separate node at each:
-            // a template that builds one builds one per match, and the 1 in the w of
-            // four dot products is four nodes.
-            List<HlslTreeNode[]> occurrences = recording
+            // A repeat is the same nodes compiled again - or the same but for a
+            // constant, which may be a node of its own at each: a template that
+            // builds one builds one per match, and the 1 in the w of four dot
+            // products is four nodes.
+            HlslTreeNode[] candidate = recording
                 .GroupBy(r => new NodeList(Broadcast(r.Nodes)))
-                .Select(g => (Occurrences: g.Select(r => Broadcast(r.Nodes)).ToList(),
-                    Repeated: (g.Count() - 1) * g.First().Text.Length))
+                .Select(g => (g.Key.Nodes, Repeated: (g.Count() - 1) * g.First().Text.Length))
                 .Where(r => r.Repeated >= RepeatedTextBudget)
-                .Where(r => r.Occurrences[0].All(n => (n is Operation || n is TextureLoadOutputNode || n is ConstantNode) && !roots.Contains(n)))
-                .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))
-                .Where(r => r.Occurrences[0].Distinct(ReferenceEqualityComparer.Instance).Count() == r.Occurrences[0].Length)
+                .Where(r => r.Nodes.All(n => (n is Operation || n is TextureLoadOutputNode || n is ConstantNode) && !roots.Contains(n)))
+                .Where(r => r.Nodes.Any(n => n is not ConstantNode))
+                .Where(r => r.Nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == r.Nodes.Length)
                 .OrderByDescending(r => r.Repeated)
-                .Select(r => r.Occurrences)
+                .Select(r => r.Nodes)
                 .FirstOrDefault();
-            if (occurrences == null)
+            if (candidate == null)
             {
                 return assignments;
             }
@@ -812,13 +811,37 @@ public class HlslAstWriter : HlslWriter
             {
                 readers.Add(node);
             }
-            HlslTreeNode[] candidate = occurrences[0];
             TempVariableNode[] variables = CreateTempVariables(candidate);
-            foreach (HlslTreeNode[] occurrence in occurrences)
+            for (int i = 0; i < candidate.Length; i++)
             {
-                for (int i = 0; i < candidate.Length; i++)
+                if (candidate[i] is not ConstantNode)
                 {
-                    Rewire(occurrence[i], variables[i], readers);
+                    Rewire(candidate[i], variables[i], readers);
+                }
+            }
+            // A constant's twins: an equal constant read alongside the variable's
+            // other components is that component - not the one node compiled, and
+            // not only the ones compiled, since a matrix multiply compiles one of
+            // its four dots' vectors and the others are never seen.
+            int[] valuePositions = [.. Enumerable.Range(0, candidate.Length).Where(i => candidate[i] is not ConstantNode)];
+            for (int i = 0; i < candidate.Length; i++)
+            {
+                if (candidate[i] is not ConstantNode constant)
+                {
+                    continue;
+                }
+                foreach (ConstantNode twin in readers.OfType<ConstantNode>().Where(c => SameValue(c, constant)).ToList())
+                {
+                    HashSet<HlslTreeNode> alongside = HlslTreeNode.NewNodeSet();
+                    foreach (HlslTreeNode reader in twin.Outputs)
+                    {
+                        if (readers.Contains(reader)
+                            && valuePositions.All(j => reader.Inputs.Any(input => ReferenceEquals(input, variables[j]))))
+                        {
+                            alongside.Add(reader);
+                        }
+                    }
+                    Rewire(twin, variables[i], alongside);
                 }
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);

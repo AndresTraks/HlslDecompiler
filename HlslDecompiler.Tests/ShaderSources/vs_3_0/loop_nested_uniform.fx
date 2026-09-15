@@ -10,7 +10,7 @@ float4 main() : POSITION
 	float t3 = ((lerp(t4, 3, t2) < n) ? 1 : 0) * t2;
 	float4 t5 = 0;
 	for (int i = 0; i < n; i++) {
-		t5 = t3 * m[3] + t2 * m[2] + t1 * m[1] + t0 * m[0] + t5;
+		t5 = t0 * m[0] + t5 + t1 * m[1] + t2 * m[2] + t3 * m[3];
 	}
 	return t5;
 }

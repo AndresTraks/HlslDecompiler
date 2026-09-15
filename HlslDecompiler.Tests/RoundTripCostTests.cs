@@ -46,13 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_4_0/sign_intrinsic"] = (24,
-            "sign, fmod, smoothstep and clamp each compile back to exactly the "
-            + "instructions the original had - the bodies are identical. The one "
-            + "instruction is the order the four terms are summed in: the decompiled "
-            + "expression adds them in the order the graph gives, which is not the "
-            + "order they were written, and fxc folds one fewer multiply into an "
-            + "add as a result."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, none of which reduce on "
             + "ps_3_0: smoothstep is written there with a reciprocal rather than a "
@@ -66,20 +59,6 @@ public class RoundTripCostTests
             + "each its own mova rather than packing two into one, which is two "
             + "instructions. The lookups themselves are right, which they were not "
             + "before - all three used to read the same element."),
-        ["ps_4_0/shadow_pcf"] = (47,
-            "Two instructions, from the loop bounds being recovered as a comparison "
-            + "rather than a count and the y offsets folded into `t0.y - bias.w` and "
-            + "`t0.y + bias.w` above their loops. Was 50 before the two projected "
-            + "components divided by w as a float2 rather than one at a time, and 49 "
-            + "while the offsets printed as integers and the shader computed the "
-            + "wrong thing."),
-        ["ps_4_0/packed_cbuffer"] = (34,
-            "One instruction, from the two normal maps being sampled and combined in "
-            + "a different association than the original, so fxc folds one fewer mad."),
-        ["ps_4_0/packed_interpolator"] = (29,
-            "Three instructions. The blend weights are normalised by a reciprocal "
-            + "the original computes once and the decompiled source writes as three "
-            + "divisions, which fxc does not fold back."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "
@@ -112,13 +91,6 @@ public class RoundTripCostTests
             + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
             + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
             + "the address register was not a row."),
-        ["cs_4_0/tile_blur"] = (21,
-            "One instruction. The pixel coordinate, `groupId.xy * 8 + threadId.xy`, "
-            + "is a two wide add read by both buffer addresses, one statement each, "
-            + "and it is inlined in both: the hoist names what one statement repeats, "
-            + "and neither repeats it. The original does it once as a vector and "
-            + "folds y into the imad, where fxc folds one of the decompiled halves "
-            + "and adds the other."),
         ["vs_4_0/skinning"] = (15,
             "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
             + "viewProj)`, which is the source, and fxc orders the two blends the "
@@ -137,22 +109,15 @@ public class RoundTripCostTests
 
 
 
-        ["vs_3_0/partial_overwrite"] = (15,
+        ["vs_3_0/partial_overwrite"] = (13,
             "The original computes a lerp over all four components and then overwrites "
             + "y with the height lookup. An expression has nowhere to put that: x and "
             + "zw carry the lerp, y carries the lerp plus the lookup, and the shared "
             + "part is three separate nodes rather than one, so naming it would not "
-            + "help either. Correct, and the four instructions are the cost of saying "
-            + "it as one expression."),
+            + "help either. Correct, and the two instructions are the cost of saying "
+            + "it as one expression. Was 15 while the lookup was added in front of "
+            + "the lerp rather than onto it."),
 
-        ["ps_4_0/resource_swizzle"] = (23,
-            "One instruction. The three dot products against invViewProj now group "
-            + "as rows of one matrix, so the light vector is a float3, its length a "
-            + "length and the lighting a dot against it, where each component used "
-            + "to fold the divide by w into itself. They are three rows of a four row "
-            + "matrix, which the multiplication grouper does not take as a whole, so "
-            + "they are three dots in a constructor rather than one mul with a cast, "
-            + "and that is the instruction. Was 31 with the dots in four statements."),
 
 
         // fxc's doing: the output is right and it compiles it differently.
@@ -162,8 +127,6 @@ public class RoundTripCostTests
             "The original adds to one component with a swizzle over a def'd constant, "
             + "`mad r0, r0.x, c4.yxyy, v0`. The decompiled float4 construction says the "
             + "same thing and fxc writes it as an add and a mov."),
-        ["ps_4_0/struct_cbuffer"] = (7,
-            "Fused differently: two mads in the original, mul and mad and add here."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),
@@ -171,14 +134,6 @@ public class RoundTripCostTests
             "The original selects with cmp over def'd constants; the decompiled "
             + "comparison compiles to abs and a compare."),
         ["gs_4_1/circle"] = (20, "One extra move around the stream append."),
-        ["vs_3_0/loop_nested_uniform"] = (18,
-            "One instruction, and fxc's choice. The body sums four weighted matrix "
-            + "rows into the accumulator, and every weight is a loop invariant; the "
-            + "original does that as four mads inside the loop, and fxc hoists the "
-            + "sum out of the decompiled loop - a mul and three mads before it, one "
-            + "add inside - which is one instruction more in total and three fewer "
-            + "per iteration. Was 19 while the invariants were inlined into every "
-            + "use rather than named before the loop."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

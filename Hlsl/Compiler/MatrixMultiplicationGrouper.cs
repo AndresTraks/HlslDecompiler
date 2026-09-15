@@ -150,15 +150,15 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
-        ConstantDeclaration matrix = TryGetMatrixDeclaration(matrixRows);
+        bool matrixByVector = firstMatrixRow
+            .Cast<IHasComponentIndex>()
+            .All(row => row.ComponentIndex == 0);
+
+        ConstantDeclaration matrix = TryGetMatrixDeclaration(matrixRows, matrixByVector);
         if (matrix == null)
         {
             return null;
         }
-
-        bool matrixByVector = firstMatrixRow
-            .Cast<IHasComponentIndex>()
-            .All(row => row.ComponentIndex == 0);
 
         vector = SwizzleVector(vector, firstMatrixRow, matrixByVector);
 
@@ -224,21 +224,79 @@ public class MatrixMultiplicationGrouper
         return registerOffset / matrix.RegistersPerElement;
     }
 
-    private ConstantDeclaration TryGetMatrixDeclaration(IList<HlslTreeNode[]> dotProductNodes)
+    /// <summary>
+    /// The matrix the dot products multiply by: the whole of one, or the rows and
+    /// columns a cast names - `mul((float3x3)world, normal)` is three dots of three
+    /// registers, and `mul(v, (float4x3)m)` three dots of four. A cast takes the
+    /// upper left of the matrix, so anything smaller than the declaration has to
+    /// start at its first register and first component.
+    /// </summary>
+    private ConstantDeclaration TryGetMatrixDeclaration(IList<HlslTreeNode[]> dotProductNodes, bool matrixByVector)
     {
-        int dimension = dotProductNodes.Count;
         var first = dotProductNodes[0];
-        if (IsRow(first[0]))
+        if (!IsRow(first[0]))
         {
-            RowMatrix matrix = GetRowMatrix(first[0]);
-            if (matrix != null
-                && (matrix.MatrixType.Rows == dimension || matrix.MatrixType.Columns == dimension))
-            {
-                return matrix.Declaration;
-            }
+            return null;
+        }
+        RowMatrix matrix = GetRowMatrix(first[0]);
+        if (matrix == null)
+        {
+            return null;
         }
 
-        return null;
+        // In mul(matrix, vector) each dot is a row and its width the columns; in
+        // mul(vector, matrix) each dot is a column and its width the rows.
+        int rows = matrixByVector ? dotProductNodes.Count : first.Length;
+        int columns = matrixByVector ? first.Length : dotProductNodes.Count;
+        if (rows > matrix.MatrixType.Rows || columns > matrix.MatrixType.Columns)
+        {
+            return null;
+        }
+        if (rows == matrix.MatrixType.Rows && columns == matrix.MatrixType.Columns)
+        {
+            return matrix.Declaration;
+        }
+        return IsLeadingRow(matrix, first) ? matrix.Declaration : null;
+    }
+
+    // Whether a row reads the matrix from its first register and component on -
+    // the registers one after another from the matrix's first, or the first
+    // register's components from .x, in any order: a permuted row is a swizzle of
+    // the vector, which SwizzleVector applies.
+    private bool IsLeadingRow(RowMatrix matrix, HlslTreeNode[] row)
+    {
+        RegisterComponentKey firstKey = RowKey(row[0]);
+        int registerOffset = firstKey.RegisterKey is D3D10RegisterKey d3d10Key
+            ? _registers.GetConstantBufferElementOffset(d3d10Key, matrix.Declaration)
+            : ((D3D9RegisterKey)firstKey.RegisterKey).Number - matrix.Declaration.RegisterIndex;
+        if (registerOffset % matrix.Declaration.RegistersPerElement != matrix.StartRegister)
+        {
+            return false;
+        }
+        if (row.Any(node => !IsRow(node) || !ReferenceEquals(RowIndex(node), RowIndex(row[0]))))
+        {
+            return false;
+        }
+        RegisterComponentKey[] keys = [.. row.Select(RowKey)];
+        bool registersOn = keys.Select((key, i) => key.ComponentIndex == 0 && IsRegistersOn(firstKey, key, i)).All(on => on);
+        bool componentsOfFirst = keys.All(key => IsRegistersOn(firstKey, key, 0))
+            && keys.Select(key => key.ComponentIndex).OrderBy(c => c).SequenceEqual(Enumerable.Range(0, row.Length));
+        return registersOn || componentsOfFirst;
+    }
+
+    // Whether a register is so many registers past another of the same kind.
+    private static bool IsRegistersOn(RegisterComponentKey first, RegisterComponentKey key, int count)
+    {
+        if (!first.RegisterKey.TypeEquals(key.RegisterKey))
+        {
+            return false;
+        }
+        if (first.RegisterKey is D3D10RegisterKey firstD3D10 && key.RegisterKey is D3D10RegisterKey d3d10)
+        {
+            return firstD3D10.Number == d3d10.Number
+                && firstD3D10.ConstantBufferOffset + count == d3d10.ConstantBufferOffset;
+        }
+        return first.RegisterKey.Number + count == key.RegisterKey.Number;
     }
 
     /// <summary>
@@ -305,7 +363,7 @@ public class MatrixMultiplicationGrouper
         }
         if (constant.TypeInfo.Rows > 1)
         {
-            return new RowMatrix(constant, constant.TypeInfo, null);
+            return new RowMatrix(constant, constant.TypeInfo, null, 0);
         }
         if (constant.TypeInfo.MemberInfo != null
             && constant.TypeInfo.NumElements > 1
@@ -317,13 +375,15 @@ public class MatrixMultiplicationGrouper
                     out StructMemberAccess member)
                 && member.IsMatrix)
             {
-                return new RowMatrix(constant, member.TypeInfo, member.Name);
+                return new RowMatrix(constant, member.TypeInfo, member.Name, member.StartOffset / 4);
             }
         }
         return null;
     }
 
-    private sealed record RowMatrix(ConstantDeclaration Declaration, ShaderTypeInfo MatrixType, string MemberPath);
+    // A matrix constant, or a matrix member of a struct element, and the register
+    // within the element it starts at.
+    private sealed record RowMatrix(ConstantDeclaration Declaration, ShaderTypeInfo MatrixType, string MemberPath, int StartRegister);
 
     private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
     {

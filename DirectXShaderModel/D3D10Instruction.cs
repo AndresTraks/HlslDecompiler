@@ -171,6 +171,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Dp4:
                 case D3D10Opcode.And:
                 case D3D10Opcode.Xor:
+                case D3D10Opcode.Not:
                 case D3D10Opcode.Div:
                 case D3D10Opcode.Or:
                 case D3D10Opcode.Eq:

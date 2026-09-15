@@ -653,11 +653,30 @@ public class HlslSimpleWriter : HlslWriter
 
     private string Reinterpreted(D3D10Instruction instruction, int operandIndex, bool reinterpret)
     {
+        if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
+        {
+            // A float immediate reinterpreted is its bits, written as the integer
+            // they are. `asint(1)` is not them: a whole float prints without a
+            // decimal point, and HLSL reads that as the integer 1.
+            return reinterpret ? ImmediateBits(instruction, operandIndex) : GetOperandName(instruction, operandIndex);
+        }
         string name = GetOperandName(instruction, operandIndex);
         // Bits storage is read as the integer it holds whatever the destination is.
-        bool bits = instruction.GetOperandType(operandIndex) != OperandType.Immediate32
-            && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits;
+        bool bits = GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits;
         return reinterpret || bits ? AsInt(name) : name;
+    }
+
+    private string ImmediateBits(D3D10Instruction instruction, int operandIndex)
+    {
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        if (registerKey.ImmediateSingle.Length == 1)
+        {
+            return instruction.GetParamInt(operandIndex, 0).ToString(_culture);
+        }
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        int[] components = GetSourceComponents(instruction, operandIndex, swizzle);
+        string[] bits = [.. components.Select(s => instruction.GetParamInt(operandIndex, s).ToString(_culture))];
+        return $"int{components.Length}(" + string.Join(", ", bits) + ")";
     }
 
     private bool IsIntegerDestination(D3D10Instruction instruction)
@@ -979,6 +998,14 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Xor:
                 WriteBitwise(instruction, "^");
+                break;
+            case D3D10Opcode.Not:
+                {
+                    bool reinterpret = !IsIntegerDestination(instruction);
+                    string expression = "~" + Reinterpreted(instruction, 1, reinterpret);
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                        reinterpret ? $"asfloat({expression})" : expression);
+                }
                 break;
             case D3D10Opcode.SinCos:
                 WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));

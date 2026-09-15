@@ -15,7 +15,7 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	float t0 = dot(transpose(lightViewProj)[3], i.texcoord);
-	float3 t1 = float3(float2(0.5, -0.5) * float2(dot(transpose(lightViewProj)[0], i.texcoord), dot(transpose(lightViewProj)[1], i.texcoord)) / t0 + 0.5, dot(transpose(lightViewProj)[2], i.texcoord) / t0 - bias.x);
+	float3 t1 = float3(float2(0.5, -0.5) * (mul(i.texcoord, (float4x2)lightViewProj) / t0) + 0.5, dot(transpose(lightViewProj)[2], i.texcoord) / t0 - bias.x);
 	float t2 = 0;
 	for (int t3 = -1; t3 <= 1; t3 = t3 + 1) {
 		t2 = t2 + shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t3 * bias.z + t1.x, t1.y - bias.w), t1.z).x;

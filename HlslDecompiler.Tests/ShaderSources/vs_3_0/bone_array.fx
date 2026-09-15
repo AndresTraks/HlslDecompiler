@@ -9,5 +9,5 @@ struct VS_IN
 
 float4 main(VS_IN i) : POSITION
 {
-	return mul(bones[i.blendindices.z - frac(i.blendindices.z)] * i.blendweight.z + bones[i.blendindices.x - frac(i.blendindices.x)] * i.blendweight.x + i.blendweight.y * bones[i.blendindices.y - frac(i.blendindices.y)], wvp);
+	return mul(bones[i.blendindices.x - frac(i.blendindices.x)] * i.blendweight.x + i.blendweight.y * bones[i.blendindices.y - frac(i.blendindices.y)] + bones[i.blendindices.z - frac(i.blendindices.z)] * i.blendweight.z, wvp);
 }

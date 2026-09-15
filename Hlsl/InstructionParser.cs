@@ -1543,6 +1543,7 @@ public class InstructionParser
             case D3D10Opcode.Exp:
             case D3D10Opcode.And:
             case D3D10Opcode.Xor:
+            case D3D10Opcode.Not:
             case D3D10Opcode.Div:
             case D3D10Opcode.Eq:
             case D3D10Opcode.Or:
@@ -1615,6 +1616,12 @@ public class InstructionParser
                         case D3D10Opcode.Or:
                         case D3D10Opcode.Xor:
                             return CreateLogicalOperation(instruction.Opcode, inputs);
+                        case D3D10Opcode.Not:
+                            // A not of a comparison mask is the comparison the other way;
+                            // of anything else, the bits flipped.
+                            return inputs[0] is ComparisonNode comparison && comparison.Inverted() != null
+                                ? comparison.Inverted()
+                                : new BitwiseNotOperation(inputs[0]);
                         // Float comparisons, like their integer counterparts, only
                         // ever feed a branch or a movc, so they read as conditions.
                         case D3D10Opcode.LT:
@@ -2323,6 +2330,7 @@ public class InstructionParser
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
             case D3D10Opcode.INeg:
+            case D3D10Opcode.Not:
             case D3D10Opcode.RoundNe:
             case D3D10Opcode.RoundNi:
             case D3D10Opcode.RoundPi:

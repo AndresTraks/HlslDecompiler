@@ -30,7 +30,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r2 = (r3 != 0) ? r2 : -(r2);
 	r0 = r2 * -(k.x) + r0;
 	r2 = asfloat((texcoord >= k.y) ? -1 : 0);
-	r2 = asfloat(asint(r2) & asint(int4(1065353216, 1065353216, 1065353216, 1065353216)));
+	r2 = asfloat(asint(r2) & int4(1065353216, 1065353216, 1065353216, 1065353216));
 	r0 = r0 + r2;
 	o = r1 + r0;
 

@@ -21,7 +21,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 
 	for (int t0 = 0; t0 < 3; t0 = t0 + 1) {
 		o.sv_position = i[t0].sv_position * k.x + k;
-		o.normal = (i[t0].normal + k.xyz) * 1 / length(i[t0].normal + k.xyz);
+		o.normal = normalize(i[t0].normal + k.xyz);
 		o.texcoord = k.zw * i[t0].texcoord;
 		stream.Append(o);
 	}

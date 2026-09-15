@@ -519,6 +519,9 @@ public class AsmWriter
             case D3D10Opcode.Xor:
                 WriteInstruction(instruction, "xor", 3);
                 break;
+            case D3D10Opcode.Not:
+                WriteInstruction(instruction, "not", 2);
+                break;
             case D3D10Opcode.IAdd:
                 WriteInstruction(instruction, "iadd", 3);
                 break;

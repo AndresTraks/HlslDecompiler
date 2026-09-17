@@ -31,7 +31,7 @@ void main(CS_IN i)
 			g0[i.sv_groupindex.x] = r0.y;
 		}
 		GroupMemoryBarrierWithGroupSync();
-		r0.x = (uint)r0.x >> 1;
+		r0.x = (uint)(int)r0.x >> 1;
 	}
 	if (i.sv_groupindex.x == 0) {
 		r0.x = g0[0];

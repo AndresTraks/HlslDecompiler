@@ -166,6 +166,7 @@ public class HlslSimpleWriter : HlslWriter
                 ? ValueKind.Integer
                 : ValueKind.Float,
             D3D10Opcode.LdStructured => _integerOperandAnalysis.GetStructuredElementKind(instruction),
+            D3D10Opcode.LD or D3D10Opcode.LDMS => _integerOperandAnalysis.GetTypedLoadKind(instruction),
             _ => instruction.Opcode.ProducedKind(),
         };
     }
@@ -735,10 +736,10 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.IShl:
-                WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
                 break;
             case D3D10Opcode.IShr:
-                WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
                 break;
             case D3D10Opcode.UShr:
                 {
@@ -747,7 +748,7 @@ public class HlslSimpleWriter : HlslWriter
                     int length = instruction.GetDestinationMaskLength();
                     string size = length == 1 ? "" : length.ToString();
                     WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0),
-                        $"(uint{size}){GetOperandName(instruction, 1)}", GetOperandName(instruction, 2));
+                        $"(uint{size}){ShiftOperand(instruction, 1)}", ShiftOperand(instruction, 2));
                     break;
                 }
             case D3D10Opcode.BreakC:
@@ -1751,6 +1752,26 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
+    }
+
+    // An operand a shift reads. A register that holds an integer as a float holds
+    // the number wanted and not its bits, so it is converted rather than
+    // reinterpreted - and it has to be, since HLSL will not shift a float at all
+    // (X3082). Bits storage is read with asint already, an int register and a
+    // constant declared int need nothing, and the cast is as wide as what is
+    // written, since a bare (int) over two components is X3014.
+    private string ShiftOperand(D3D10Instruction instruction, int operandIndex)
+    {
+        string name = GetOperandName(instruction, operandIndex);
+        if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32
+            || GetSourceStorage(instruction, operandIndex) != ComponentStorage.Numeric
+            || IsIntegerConstant(instruction, operandIndex))
+        {
+            return name;
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        return $"(int{size}){name}";
     }
 
     // An operand read as an unsigned integer: bits reinterpreted as such, an int

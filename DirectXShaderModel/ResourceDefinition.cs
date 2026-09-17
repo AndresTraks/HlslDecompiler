@@ -99,8 +99,19 @@ public class ResourceDefinition
         ResourceDimension.Texture2DmsArray => SampleCount > 0
             ? $"Texture2DMSArray<{ReturnTypeName}, {SampleCount}>"
             : $"Texture2DMSArray<{ReturnTypeName}>",
-        _ => Dimension.ToString(),
+        // Every other texture names its element type only where it holds integers,
+        // which the declaration in the bytecode says. A G-buffer read with ld from
+        // a Texture2D<uint4> was written as holding floats, so the bits packed into
+        // it were anded as floats - X3082 - and the depth stored in it came back as
+        // whatever number those bits are. The width is not asked of a float
+        // texture: the component count comes from the reflection data, which counts
+        // the components the shader reads and not the ones it declared, so a
+        // Texture2D read for its .x alone would be narrowed to Texture2D<float>.
+        _ => IsIntegerReturnType ? $"{Dimension}<{ReturnTypeName}>" : Dimension.ToString(),
     };
+
+    /// <summary>Whether a typed resource returns integers rather than floats.</summary>
+    public bool IsIntegerReturnType => ResourceReturnType is D3DResourceReturnType.SInt or D3DResourceReturnType.UInt;
 
     public override string ToString()
     {

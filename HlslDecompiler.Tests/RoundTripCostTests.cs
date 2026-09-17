@@ -61,6 +61,17 @@ public class RoundTripCostTests
             + "each its own mova rather than packing two into one, which is two "
             + "instructions. The lookups themselves are right, which they were not "
             + "before - all three used to read the same element."),
+        ["ps_4_0/gbuffer_decode"] = (39,
+            "Seven instructions, all downstream of one split. The two halves of a "
+            + "normal packed into a uint are decoded differently - one masks the low "
+            + "sixteen bits, the other shifts down the high ones - so the mad that "
+            + "scales both is written as two scalar statements rather than one two "
+            + "wide. Everything after them stays scalar: the comparison and the "
+            + "select that fix up the octahedral fold were one pair of two wide "
+            + "instructions and are now two pairs, the add after them two rather "
+            + "than one, and the dot product over the result is a mul and two mads "
+            + "where the original had one dp3_sat. Correct throughout - it is the "
+            + "vector shape that is lost, not the arithmetic."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

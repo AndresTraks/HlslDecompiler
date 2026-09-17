@@ -131,6 +131,22 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
+    /// What ld and ldms read: a texel of the type the resource was declared with,
+    /// which for a Texture2D&lt;uint4&gt; is an integer and not the float a texel
+    /// usually is. A G-buffer packs bits into such a texture, and reading them as
+    /// floats loses them.
+    /// </summary>
+    public ValueKind GetTypedLoadKind(D3D10Instruction load)
+    {
+        // The resource is the operand after the address.
+        const int ResourceIndex = 2;
+        ResourceDefinition definition = _shader.ResourceDefinitions?
+            .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.Texture
+                && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
+        return definition?.IsIntegerReturnType == true ? ValueKind.Integer : ValueKind.Float;
+    }
+
+    /// <summary>
     /// What the immediate a mov or movc writes is, by the instructions that go on
     /// to read the register components it writes - the mov itself says nothing.
     /// Unknown where the components' readers disagree, or there are none.
@@ -302,6 +318,10 @@ public sealed class IntegerOperandAnalysis
             else if (instruction.Opcode == D3D10Opcode.LdStructured)
             {
                 produced = GetStructuredElementKind(instruction);
+            }
+            else if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS)
+            {
+                produced = GetTypedLoadKind(instruction);
             }
             else if (instruction.Opcode is D3D10Opcode.IToF or D3D10Opcode.UTof)
             {

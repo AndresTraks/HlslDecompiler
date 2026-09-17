@@ -45,6 +45,10 @@ public class EquivalenceTests
             "A register holds a comparison mask, an integer and a float in turn, and "
             + "the writer's one storage for it reads the integer as the float it was "
             + "converted to."),
+        ["ps_4_0/gbuffer_decode"] = ("instruction",
+            "A normal packed into the low sixteen bits of a uint texel: the mask is "
+            + "a denormal as a float, and fxc folds the asint of it to zero, so the "
+            + "normal comes out constant."),
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

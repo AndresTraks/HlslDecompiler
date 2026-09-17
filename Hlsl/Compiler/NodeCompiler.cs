@@ -871,7 +871,18 @@ public sealed class NodeCompiler
             string sampleIndex = resourceLoad.HasSampleIndex
                 ? $", {Compile(new[] { resourceLoad.SampleIndex })}"
                 : "";
-            return $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
+            string loaded = $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
+            // A texel of a texture of uints is an integer, and is named as one
+            // where its readers read it as one. Read as anything else it is the
+            // bits it holds and not the number they make: a G-buffer packs a depth
+            // into such a texture beside a normal, and converting the depth would
+            // give whatever number its bits happen to be.
+            if (resourceDefinition.IsIntegerReturnType
+                && components.All(c => InstructionParser.GetConsumedType(c) != true))
+            {
+                loaded = $"asfloat({loaded})";
+            }
+            return loaded;
         }
 
         if (first is TextureLoadOutputNode textureLoad)

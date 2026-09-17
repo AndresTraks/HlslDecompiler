@@ -909,6 +909,13 @@ public class InstructionParser
     /// the operand typing made of them: step masks with 0x3f800000, which is 1.0f
     /// and not 1065353216. Against an integer comparison the number is the number.
     /// </summary>
+    // What a condition selects. A constant is the bit pattern of the value wanted
+    // and is read back as that; anything else is already the value.
+    private static HlslTreeNode MaskedValue(HlslTreeNode condition, HlslTreeNode value)
+    {
+        return value is ConstantNode mask ? AsMaskedValue(condition, mask) : value;
+    }
+
     private static ConstantNode AsMaskedValue(HlslTreeNode condition, ConstantNode mask)
     {
         bool isInteger = condition is ComparisonNode comparison && comparison.IsInteger;
@@ -932,9 +939,12 @@ public class InstructionParser
 
     /// <summary>
     /// `and` and `or` combine comparison masks, which a shader may mean in two
-    /// different ways. Two conditions are a logical operator. A condition masked with
-    /// a constant is the `cond ? constant : 0` idiom that step() and friends compile
-    /// to, where the constant is the bit pattern of the wanted value.
+    /// different ways. Two conditions are a logical operator. A condition anded with
+    /// anything else is the `cond ? value : 0` idiom that step() and friends compile
+    /// to - a comparison writes all ones or all zeroes, so anding with it selects
+    /// the value or nothing. Where the value is a constant it is the bit pattern of
+    /// what was wanted and is read back as that; where it is computed it stands as
+    /// it is, and has to, since HLSL will not and a float (X3082).
     /// </summary>
     private static HlslTreeNode CreateLogicalOperation(D3D10Opcode opcode, HlslTreeNode[] inputs)
     {
@@ -947,15 +957,15 @@ public class InstructionParser
 
         if (opcode == D3D10Opcode.And)
         {
-            if (IsCondition(inputs[0]) && inputs[1] is ConstantNode mask1)
+            if (IsCondition(inputs[0]))
             {
                 return new MoveConditionalOperation(
-                    inputs[0], AsMaskedValue(inputs[0], mask1), new ConstantNode(0));
+                    inputs[0], MaskedValue(inputs[0], inputs[1]), new ConstantNode(0));
             }
-            if (IsCondition(inputs[1]) && inputs[0] is ConstantNode mask0)
+            if (IsCondition(inputs[1]))
             {
                 return new MoveConditionalOperation(
-                    inputs[1], AsMaskedValue(inputs[1], mask0), new ConstantNode(0));
+                    inputs[1], MaskedValue(inputs[1], inputs[0]), new ConstantNode(0));
             }
         }
 

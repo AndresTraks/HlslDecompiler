@@ -2053,6 +2053,23 @@ public class HlslSimpleWriter : HlslWriter
     // so its address is one wider still - Load on a Texture2D takes an int3.
     private int? GetSourceLength(D3D10Instruction instruction, int operandIndex)
     {
+        // A dot product reads both its operands as wide as the product and not as
+        // wide as the one component it writes. Sized by the destination, the
+        // immediate of `dp3 r0.w, r0.xyzx, l(0.2125, 0.7154, 0.0721, 0)` came out
+        // as the one component the w mask selects: float1(0), a luminance of zero.
+        if (operandIndex is 1 or 2)
+        {
+            switch (instruction.Opcode)
+            {
+                case D3D10Opcode.Dp2:
+                    return 2;
+                case D3D10Opcode.Dp3:
+                    return 3;
+                case D3D10Opcode.Dp4:
+                    return 4;
+            }
+        }
+
         if (operandIndex != 1)
         {
             return null;

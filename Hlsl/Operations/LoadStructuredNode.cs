@@ -17,5 +17,10 @@ public class LoadStructuredNode : Operation
     // reads out as Load, Load2, Load3 or Load4 rather than a subscript.
     public bool IsRaw { get; init; }
 
+    // The offset within the element, from the instruction rather than from the node
+    // the operand became: what that node is depends on how the graph was reduced,
+    // and this is a fact about the load.
+    public int ElementByteOffset { get; init; }
+
     public override string Mnemonic => IsRaw ? "ld_raw" : "ld_structured";
 }

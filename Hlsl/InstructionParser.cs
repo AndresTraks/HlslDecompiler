@@ -1694,7 +1694,12 @@ public class InstructionParser
                         case D3D10Opcode.RoundZ:
                             return new TruncateOperation(inputs[0]);
                         case D3D10Opcode.LdStructured:
-                            return new LoadStructuredNode(inputs[0], inputs[1], inputs[2]);
+                            return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
+                            {
+                                ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                                    ? instruction.GetParamInt(2, 0)
+                                    : 0,
+                            };
                         case D3D10Opcode.LdRaw:
                             // ld_raw dst, byteOffset, t#: the offset stands where an
                             // element index would, and there is no offset within one.

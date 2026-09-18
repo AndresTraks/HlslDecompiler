@@ -280,6 +280,14 @@ public abstract class HlslWriter
         {
             string scalar = resource.ElementType.ParameterType.ToString().ToLower();
             int width = resource.ElementType.Columns;
+            // A buffer of transforms holds matrices, and a matrix has rows as well
+            // as columns. Taking the columns alone made a StructuredBuffer<float4x4>
+            // of instance transforms into one of float4, where the stride says the
+            // element is four times that.
+            if (resource.ElementType.Rows > 1)
+            {
+                return $"{scalar}{resource.ElementType.Rows}x{width}";
+            }
             return width > 1 ? scalar + width : scalar;
         }
 

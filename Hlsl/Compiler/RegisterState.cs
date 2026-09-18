@@ -21,6 +21,30 @@ public sealed class RegisterState
     public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];
     public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = [];
     public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
+
+    /// <summary>
+    /// A structured buffer whose element is a matrix is loaded a row at a time, and
+    /// the byte offset of the load says which row: `ld_structured ..., l(48), t0` is
+    /// the fourth of a float4x4. Dropped, every row of an instance transform read as
+    /// the first one.
+    ///
+    /// Which way round a row is stored is the same question a constant buffer
+    /// matrix asks, and is answered the same way. A struct element would have the
+    /// offset pick a member, which is not read yet.
+    /// </summary>
+    public string ApplyStructuredElementRow(RegisterKey resourceKey, string element, int byteOffset)
+    {
+        ResourceDefinition resource = ResourceDefinitions.FirstOrDefault(r =>
+            r.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.UavRWStructured
+            && r.BindPoint == resourceKey.Number);
+        if (resource?.ElementType == null || resource.ElementType.Rows <= 1)
+        {
+            return element;
+        }
+        const int BytesPerRow = 16;
+        string matrix = ColumnMajorOrder ? $"transpose({element})" : element;
+        return $"{matrix}[{byteOffset / BytesPerRow}]";
+    }
     public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
 
     public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();

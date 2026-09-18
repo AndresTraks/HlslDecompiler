@@ -921,9 +921,16 @@ public class HlslSimpleWriter : HlslWriter
                 WriteConversion(instruction, null, "uint");
                 break;
             case D3D10Opcode.LdStructured:
-                // TODO: consider offset
-                WriteResult(instruction, "{0} = {3}[{1}];", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
-                break;
+                {
+                    // The byte offset picks a row where the element is a matrix. A
+                    // struct element would pick a member, which is not read yet.
+                    string element = $"{GetOperandName(instruction, 3)}[{GetOperandName(instruction, 1)}]";
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                        _registers.ApplyStructuredElementRow(
+                            instruction.GetParamRegisterKey(3), element,
+                            instruction.GetParamInt(2, 0)));
+                    break;
+                }
             case D3D10Opcode.LdRaw:
                 {
                     // As many dwords as the highest component asked for, at the byte

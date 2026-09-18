@@ -6,10 +6,11 @@ RWStructuredBuffer<uint> data : register(u0);
 [numthreads(32, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	int2 t0 = int2(sv_dispatchthreadid.x * stride, sv_dispatchthreadid.x * stride + stride);
-	int t1;
-	if (t0.y < n) {
-		t1 = data[t0.y];
-		data[t0.y] = data[t0.x] + t1;
+	int t0 = sv_dispatchthreadid.x * stride;
+	int2 t1 = int2(t0, t0 + stride);
+	int t2;
+	if (t1.y < n) {
+		t2 = data[t1.y];
+		data[t1.y] = data[t1.x] + t2;
 	}
 }

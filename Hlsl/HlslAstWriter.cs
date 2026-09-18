@@ -937,10 +937,20 @@ public class HlslAstWriter : HlslWriter
                 .OrderByDescending(r => r.Repeated)
                 .Select(r => r.Nodes)
                 .FirstOrDefault();
-            if (candidate == null)
+            // Only once nothing is repeated by the nodes: a value the bytecode
+            // computes twice is two subtrees, which read alike because they are
+            // alike, and neither is a repeat to the grouping above. Left to last so
+            // that it takes nothing away from it - naming what is inside a nest
+            // before the nest leaves the expression around it written out at every
+            // use, and the counts these merge are exactly the ones that would.
+            List<HlslTreeNode[]> occurrences = candidate != null
+                ? [candidate]
+                : TextRepeats(recording, roots);
+            if (occurrences == null)
             {
                 return assignments;
             }
+            candidate = occurrences[0];
 
             // Only this statement's readers are given the variable. The graph is
             // shared with every other statement that reads the value, and one of
@@ -950,13 +960,22 @@ public class HlslAstWriter : HlslWriter
             {
                 readers.Add(node);
             }
-            candidate = WithSiblingComponents(candidate, readers, roots);
-            TempVariableNode[] variables = CreateTempVariables(candidate);
-            for (int i = 0; i < candidate.Length; i++)
+            // The components beside a subtree are its own, so taking them leaves the
+            // others behind: the extension is for the one occurrence there is.
+            if (occurrences.Count == 1)
             {
-                if (candidate[i] is not ConstantNode)
+                candidate = WithSiblingComponents(candidate, readers, roots);
+                occurrences = [candidate];
+            }
+            TempVariableNode[] variables = CreateTempVariables(candidate);
+            foreach (HlslTreeNode[] occurrence in occurrences)
+            {
+                for (int i = 0; i < candidate.Length; i++)
                 {
-                    Rewire(candidate[i], variables[i], readers);
+                    if (occurrence[i] is not ConstantNode)
+                    {
+                        Rewire(occurrence[i], variables[i], readers);
+                    }
                 }
             }
             // A constant's twins: an equal constant read alongside the variable's
@@ -1050,6 +1069,30 @@ public class HlslAstWriter : HlslWriter
             or NormalizeOutputNode
             or LitOutputNode
             or ConstantNode;
+    }
+
+    /// <summary>
+    /// The subtrees one expression's text was written from, where the text repeats
+    /// past the budget and the nodes do not: every occurrence of the one expression,
+    /// to be named together, or null where there is none.
+    /// </summary>
+    private List<HlslTreeNode[]> TextRepeats(
+        List<(HlslTreeNode[] Nodes, string Text)> recording, HashSet<HlslTreeNode> roots)
+    {
+        return recording
+            .GroupBy(r => r.Text)
+            .Select(g => (Occurrences: g.Select(r => new NodeList(Broadcast(r.Nodes)))
+                    .Distinct().Select(n => n.Nodes).ToList(),
+                Repeated: (g.Count() - 1) * g.Key.Length))
+            .Where(r => r.Occurrences.Count > 1)
+            .Where(r => r.Repeated >= RepeatedTextBudget)
+            .Where(r => r.Occurrences.All(nodes => nodes.All(n => IsNameable(n) && !roots.Contains(n))))
+            .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))
+            .Where(r => r.Occurrences.All(nodes =>
+                nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length))
+            .OrderByDescending(r => r.Repeated)
+            .Select(r => r.Occurrences)
+            .FirstOrDefault();
     }
 
     /// <summary>

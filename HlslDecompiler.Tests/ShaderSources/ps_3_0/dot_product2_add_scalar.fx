@@ -2,5 +2,6 @@ float4 c;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-	return float4(dot(texcoord.ww, texcoord.xx), dot(texcoord.ww, texcoord.xx), dot(texcoord.ww, texcoord.xx), dot(texcoord.ww, texcoord.xx)) + c.w;
+	float t0 = dot(texcoord.ww, texcoord.xx);
+	return t0 + c.w;
 }

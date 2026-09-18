@@ -877,7 +877,7 @@ public class HlslAstWriter : HlslWriter
                 .GroupBy(r => new NodeList(Broadcast(r.Nodes)))
                 .Select(g => (g.Key.Nodes, Repeated: (g.Count() - 1) * g.First().Text.Length))
                 .Where(r => r.Repeated >= RepeatedTextBudget)
-                .Where(r => r.Nodes.All(n => (n is Operation || n is TextureLoadOutputNode || n is ConstantNode) && !roots.Contains(n)))
+                .Where(r => r.Nodes.All(n => IsNameable(n) && !roots.Contains(n)))
                 .Where(r => r.Nodes.Any(n => n is not ConstantNode))
                 .Where(r => r.Nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == r.Nodes.Length)
                 .OrderByDescending(r => r.Repeated)
@@ -931,6 +931,21 @@ public class HlslAstWriter : HlslWriter
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
         }
+    }
+
+    /// <summary>
+    /// Whether a value can be given a variable of its own. An operation can, and so
+    /// can the multi output nodes - a texture load, a normalize, a lit - which are
+    /// not operations but are written as one call all the same. A register read and a
+    /// variable already have names; a group, a phi and an assignment are not values.
+    /// </summary>
+    private static bool IsNameable(HlslTreeNode node)
+    {
+        return node is Operation
+            or TextureLoadOutputNode
+            or NormalizeOutputNode
+            or LitOutputNode
+            or ConstantNode;
     }
 
     /// <summary>

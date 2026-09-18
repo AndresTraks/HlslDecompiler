@@ -11,8 +11,9 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterComponentKey> _maskRegisters;
     private HashSet<RegisterKey> _integerDeclaredRegisters;
     private HashSet<RegisterComponentKey> _integerOutputSignatures;
-    private HashSet<RegisterKey> _bitsDeclaredRegisters;
     private HashSet<RegisterComponentKey> _convertedToFloat;
+    private HashSet<RegisterComponentKey> _floatReadRegisters;
+    private HashSet<RegisterComponentKey> _floatMovedRegisters;
 
     /// <summary>How many moves a value is followed through before giving up. Real
     /// chains are one or two; the bound is there so a shader full of them cannot
@@ -47,13 +48,13 @@ public sealed class IntegerOperandAnalysis
     /// <summary>
     /// How the instruction writer keeps a temp register component. Registers are
     /// declared once each, and fxc reuses them freely, so one component can carry
-    /// a loop counter, a comparison mask and a float in turn. A register is
-    /// declared int only when nothing float ever touches any component it writes;
-    /// otherwise it is a float, and a component in it holds either its values -
-    /// an integer as the float of the same value, converted on the way in and out
-    /// - or, once a comparison or a bitwise operator has had it, its bits, which
-    /// the integer instructions then read with asint and write with asfloat.
-    /// Reinterpreting rather than converting is what keeps a mask a mask.
+    /// a loop counter, a comparison mask and a float in turn. A register any of
+    /// whose components ever holds bits is declared int, and the floats in it are
+    /// held as their bits - asfloat to read one, asint to write one. The other way
+    /// about does not survive fxc: it does not read asfloat as a reinterpretation
+    /// but as producing a float, and flushes a denormal to zero, so the bits of a
+    /// small integer put through one come back as zero. A float's bits put through
+    /// an asfloat are the float, which is a number fxc keeps.
     /// </summary>
     public ComponentStorage GetStorage(RegisterComponentKey registerComponent)
     {
@@ -61,21 +62,135 @@ public sealed class IntegerOperandAnalysis
         {
             return IsIntegerRegister(registerComponent) ? ComponentStorage.Integer : ComponentStorage.Numeric;
         }
-        if (IsIntegerDeclaredRegister(registerComponent.RegisterKey))
+        return IsIntegerDeclaredRegister(registerComponent.RegisterKey)
+            ? ComponentStorage.Integer
+            : ComponentStorage.Numeric;
+    }
+
+    /// <summary>
+    /// Whether the component carries bits rather than a number: a bitwise operator
+    /// reads or writes it, or a comparison wrote the mask into it and it is not an
+    /// integer's otherwise. A mask that only tests, branches and integer arithmetic
+    /// read is -1 or 0 as a number just as well.
+    /// </summary>
+    private bool HoldsBits(RegisterComponentKey registerComponent)
+    {
+        return IsBitsTouched(registerComponent)
+            || (IsMask(registerComponent) && !IsIntegerRegister(registerComponent));
+    }
+
+    /// <summary>
+    /// Whether an int register's component holds a float, which it can only hold as
+    /// the float's bits: written by a float instruction, converted into one by an
+    /// itof, or read by one, which says as much about what is there as writing it
+    /// does and covers a load whose element type is a mix. A float instruction
+    /// reading such a component wants the float those bits are, and not the number
+    /// they make. An integer the shader takes apart bitwise is not this: bits are
+    /// what an int variable holds anyway, and a loop counter sharing the register
+    /// with both is a plain number too.
+    /// </summary>
+    public bool HoldsFloatBits(RegisterComponentKey registerComponent)
+    {
+        return registerComponent.RegisterKey.IsTempRegister
+            && IsIntegerDeclaredRegister(registerComponent.RegisterKey)
+            && (IsFloatTouched(registerComponent)
+                || IsConvertedToFloat(registerComponent)
+                || IsFloatRead(registerComponent)
+                || IsFloatMoved(registerComponent));
+    }
+
+    /// <summary>
+    /// Whether a mov carries a float into the component. A mov says nothing about
+    /// what it carries, so what it came from has to: a float register, a float
+    /// input or constant, or another component a float reached the same way.
+    /// </summary>
+    private bool IsFloatMoved(RegisterComponentKey registerComponent)
+    {
+        _floatMovedRegisters ??= FindFloatMovedRegisters();
+        return _floatMovedRegisters.Contains(registerComponent);
+    }
+
+    private HashSet<RegisterComponentKey> FindFloatMovedRegisters()
+    {
+        var moved = new HashSet<RegisterComponentKey>();
+        bool changed;
+        do
         {
-            return ComponentStorage.Integer;
+            changed = false;
+            foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+            {
+                if (instruction.Opcode is not (D3D10Opcode.Mov or D3D10Opcode.MovC)
+                    || instruction.GetOperandType(0) != OperandType.Temp)
+                {
+                    continue;
+                }
+                int writeMask = instruction.GetDestinationWriteMask();
+                int firstValue = instruction.Opcode == D3D10Opcode.Mov ? 1 : 2;
+                for (int component = 0; component < 4; component++)
+                {
+                    if ((writeMask & (1 << component)) == 0)
+                    {
+                        continue;
+                    }
+                    var destination = new RegisterComponentKey(
+                        instruction.GetParamRegisterKey(0), component);
+                    for (int operand = firstValue; operand < instruction.OperandTokens.OperandCount; operand++)
+                    {
+                        if (instruction.GetOperandType(operand) == OperandType.Immediate32)
+                        {
+                            continue;
+                        }
+                        var source = new RegisterComponentKey(
+                            instruction.GetParamRegisterKey(operand),
+                            instruction.GetSourceSwizzleComponents(operand)[component]);
+                        bool sourceIsFloat = instruction.GetOperandType(operand) switch
+                        {
+                            OperandType.Temp => IsFloatTouched(source)
+                                || IsConvertedToFloat(source)
+                                || moved.Contains(source)
+                                || !IsIntegerDeclaredRegister(source.RegisterKey),
+                            OperandType.IndexableTemp =>
+                                !IsIntegerIndexableTemp(source.RegisterKey.Number),
+                            _ => !IsIntegerRegister(source),
+                        };
+                        if (sourceIsFloat)
+                        {
+                            changed |= moved.Add(destination);
+                        }
+                    }
+                }
+            }
         }
-        // A comparison mask that only tests, branches and integer arithmetic read
-        // is -1 or 0 as a number just as well, and stays a number - so long as
-        // the component is otherwise an integer's. One nothing integer ever touches
-        // is kept as bits, as it always was, since -1.0f anded with the bits of 8.0f
-        // is not 8.
-        if (IsBitsTouched(registerComponent)
-            || (IsMask(registerComponent) && !IsIntegerRegister(registerComponent)))
+        while (changed);
+        return moved;
+    }
+
+    /// <summary>Whether a float instruction reads the component.</summary>
+    private bool IsFloatRead(RegisterComponentKey registerComponent)
+    {
+        _floatReadRegisters ??= FindFloatReadRegisters();
+        return _floatReadRegisters.Contains(registerComponent);
+    }
+
+    private HashSet<RegisterComponentKey> FindFloatReadRegisters()
+    {
+        var read = new HashSet<RegisterComponentKey>();
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
         {
-            return ComponentStorage.Bits;
+            if (instruction.Opcode.IsDeclaration() || instruction.Opcode.ConsumedKind() != ValueKind.Float)
+            {
+                continue;
+            }
+            for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+            {
+                if (instruction.GetOperandType(operand) == OperandType.Temp
+                    && !instruction.IsDestinationOperand(operand))
+                {
+                    AddReadComponents(instruction, operand, read);
+                }
+            }
         }
-        return ComponentStorage.Numeric;
+        return read;
     }
 
     /// <summary>Whether a comparison writes the component.</summary>
@@ -381,7 +496,7 @@ public sealed class IntegerOperandAnalysis
     {
         return [.. FindWrittenTempComponents()
             .Where(r => r.Value.All(c => IsIntegerRegister(c) && !IsFloatTouched(c))
-                || r.Value.All(IsBitsOnly))
+                || r.Value.Any(HoldsBits))
             .Select(r => r.Key)];
     }
 
@@ -423,37 +538,16 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether a temp register holds bits and nothing else, so that it is declared
-    /// int and what it holds is read back with asfloat rather than converted. A
-    /// register of loop counters is declared int too and is not this: the number
-    /// in it is what a float instruction reading it wants.
-    /// </summary>
-    public bool IsBitsRegister(RegisterKey registerKey)
-    {
-        _bitsDeclaredRegisters ??= FindBitsDeclaredRegisters();
-        return _bitsDeclaredRegisters.Contains(registerKey);
-    }
-
-    private HashSet<RegisterKey> FindBitsDeclaredRegisters()
-    {
-        return [.. FindWrittenTempComponents()
-            .Where(r => r.Value.All(IsBitsOnly))
-            .Select(r => r.Key)];
-    }
-
-    /// <summary>
-    /// Whether a component holds bits and nothing else. A register all of whose
-    /// components are such is declared int rather than float, which is not a
-    /// nicety: kept in a float and reinterpreted at every use, the bits do not
-    /// survive recompilation at all. fxc reads asfloat as producing a float and
-    /// flushes a denormal to zero, so a mask of the low bits of anything - every
-    /// step of its own f32tof16, a packed G-buffer, an index anded with 1 - comes
-    /// back as zero. In an int variable there is no asfloat to flush.
+    /// Whether a component holds bits and nothing else. Kept in a float register
+    /// and reinterpreted at every use, bits do not survive recompilation at all:
+    /// fxc reads asfloat as producing a float and flushes a denormal to zero, so a
+    /// mask of the low bits of anything - every step of its own f32tof16, a packed
+    /// G-buffer, an index anded with 1 - comes back as zero. In an int variable
+    /// there is no asfloat to flush.
     ///
-    /// Only where no float instruction writes the component. One that carries a
-    /// float for part of the shader and bits for the rest has to go on being a
-    /// float register with the bits reinterpreted, since the float would not
-    /// survive the other way round.
+    /// A register with such a component is declared int whatever its other
+    /// components hold; this says which of them are only ever bits, for the
+    /// declaration rule that has nothing else to go on.
     /// </summary>
     private bool IsBitsOnly(RegisterComponentKey registerComponent)
     {
@@ -748,6 +842,14 @@ public sealed class IntegerOperandAnalysis
         // The resource is the last operand of a load and the first of a store.
         int ResourceIndex = load.Opcode == D3D10Opcode.StoreStructured ? 0 : 3;
         OperandType type = load.GetOperandType(ResourceIndex);
+        // Groupshared memory has no reflection data; the stores into it say what it
+        // holds, and the same rule declares the array.
+        if (type == OperandType.ThreadGroupSharedMemory)
+        {
+            return IsIntegerThreadGroupSharedMemory(load.GetParamRegisterNumber(ResourceIndex))
+                ? StoredType.Integer
+                : StoredType.Float;
+        }
         D3DShaderInputType inputType = type switch
         {
             OperandType.Resource => D3DShaderInputType.Structured,
@@ -1166,10 +1268,9 @@ public sealed class IntegerOperandAnalysis
 /// <see cref="IntegerOperandAnalysis.GetStorage"/>.</summary>
 public enum ComponentStorage
 {
-    /// <summary>In a register declared int.</summary>
+    /// <summary>In a register declared int: integers as themselves, floats as their
+    /// bits, with asfloat to read one and asint to write one.</summary>
     Integer,
     /// <summary>In a float register, as its value: an integer as the float equal to it.</summary>
     Numeric,
-    /// <summary>In a float register, as its bits: an integer with asint and asfloat around it.</summary>
-    Bits,
 }

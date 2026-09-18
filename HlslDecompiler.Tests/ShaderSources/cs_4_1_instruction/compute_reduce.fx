@@ -20,7 +20,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 		r1.x = r1.x + 1;
 	}
 	r1.x = max(count, 1);
-	r1.x = (float)(uint)r1.x;
-	r0 = r0 / r1.x;
+	r1.x = asint((float)(uint)r1.x);
+	r0 = r0 / asfloat(r1.x);
 	output[sv_dispatchthreadid.x] = r0;
 }

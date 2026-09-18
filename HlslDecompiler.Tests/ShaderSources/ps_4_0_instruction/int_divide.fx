@@ -18,8 +18,8 @@ float4 main() : SV_Target
 	r0.y = -r2.x;
 	r0.z = a & -2147483648;
 	r0.y = (r0.z != 0) ? r0.y : r2.x;
-	r0.xy = (float2)(int2)r0.xy;
-	o = r0.y + r0.x;
+	r0.xy = asint((float2)r0.xy);
+	o = asfloat(r0.y) + asfloat(r0.x);
 
 	return o;
 }

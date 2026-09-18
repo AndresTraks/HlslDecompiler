@@ -17,7 +17,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.y = ~i.texcoord.w;
 	r0.y = r0.y & bounds.w;
 	r0.x = -(r0.y) + r0.x;
-	o.y = (float)(int)r0.x;
+	o.y = (float)r0.x;
 	r0.x = min(i.texcoord1.y, scale);
 	r0.x = i.texcoord1.x * scale + r0.x;
 	o.z = (float)(uint)r0.x;
@@ -26,7 +26,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.z = max(i.texcoord.y, bounds.y);
 	r0.x = (r0.x != 0) ? r0.y : r0.z;
 	r0.y = r0.z + r0.y;
-	o.xw = (float2)(int2)r0.yx;
+	o.xw = (float2)r0.yx;
 
 	return o;
 }

@@ -6,7 +6,7 @@ float4 main() : SV_Target
 	float4 o;
 
 	int4 r0;
-	r0.x = seed;
+	r0.x = (int)seed;
 	r0.y = 0;
 	while (true) {
 		r0.z = (r0.y >= count) ? -1 : 0;
@@ -17,13 +17,13 @@ float4 main() : SV_Target
 		r0.y = r0.y + 1;
 	}
 	r0.y = r0.x & 255;
-	r0.y = (float)(uint)r0.y;
-	o.x = r0.y * 0.00392156886;
+	r0.y = asint((float)(uint)r0.y);
+	o.x = asfloat(r0.y) * 0.00392156886;
 	r0.y = (uint)r0.x >> 8;
 	r0.z = (uint)r0.x >> 16;
 	r0.xy = r0.yz & int2(255, 255);
-	r0.xy = (float2)(uint2)r0.xy;
-	o.yz = r0.xy * float2(0.00392156886, 0.00392156886);
+	r0.xy = asint((float2)(uint2)r0.xy);
+	o.yz = asfloat(r0.xy) * float2(0.00392156886, 0.00392156886);
 	o.w = 1;
 
 	return o;

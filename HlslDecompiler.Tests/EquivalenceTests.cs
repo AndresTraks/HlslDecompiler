@@ -30,63 +30,6 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-        // All five are one cause, narrowed to what is left of it. fxc does not read
-        // asfloat as a reinterpretation: it reads it as producing a float and
-        // flushes a denormal to zero, so the bits of any small integer put through
-        // one come back as zero. A register the decompiler keeps as a float, whose
-        // bits an integer instruction reads, therefore loses them.
-        //
-        // A register that holds nothing but bits is declared int now and has no
-        // asfloat in it at all. What is left is a register fxc uses for a float in
-        // one place and for bits in another - a mantissa here, a coordinate there -
-        // which is one variable and cannot be both. Per-component storage, with a
-        // statement split where one instruction writes components of each, is what
-        // that wants; it is not a per-register decision.
-        ["ps_4_0/sample_select"] = [
-            ("instruction",
-                "The loop's `i & 1` selecting between two offsets is reinterpreted through "
-                + "a float, and fxc folds the test of it to false."),
-        ],
-        ["ps_4_0/precedence_mix"] = [
-            ("instruction",
-                "The sign bit of a signed modulus is reinterpreted through a float, and "
-                + "fxc folds the test of it to false."),
-        ],
-        ["ps_4_0/int_float_mix"] = [
-            ("instruction",
-                "A register holds a comparison mask, an integer and a float in turn, and "
-                + "the writer's one storage for it reads the integer as the float it was "
-                + "converted to."),
-        ],
-        ["ps_4_0/half_packing"] = [
-            ("instruction",
-                "fxc's own f32tof16, whose every step holds a mantissa or an exponent "
-                + "in a float register: each is a denormal as a float, and fxc folds "
-                + "the whole shader to a constant."),
-        ],
-        ["vs_4_0/particle_draw"] = [
-            ("instruction",
-                "A corner index anded out of the vertex id chooses between 1 and -1, "
-                + "and those pass through a float register: each is a denormal as a "
-                + "float and fxc flushes it, so every corner lands at the centre."),
-        ],
-        ["cs_4_1/groupshared_struct"] = [
-            ("instruction",
-                "A loop counter and a group index added and masked to 63, through a "
-                + "float register: the mask is a denormal as a float and fxc flushes "
-                + "it, so every thread reads element zero."),
-        ],
-        ["ps_4_1/sample_index"] = [
-            ("instruction",
-                "The sample index plus one, masked to 3, through a float register - "
-                + "the same flush, so both loads read the same sample."),
-        ],
-        ["ps_4_0/gbuffer_decode"] = [
-            ("instruction",
-                "A normal packed into the low sixteen bits of a uint texel: the mask is "
-                + "a denormal as a float, and fxc folds the asint of it to zero, so the "
-                + "normal comes out constant."),
-        ],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

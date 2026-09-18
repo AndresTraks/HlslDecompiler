@@ -19,11 +19,11 @@ float4 main() : SV_Target
 	r1.zw = v.xw & int2(-2147483648, -2147483648);
 	r0.zw = (r1.zw != 0) ? r1.xy : r0.zw;
 	r0.xy = r0.xy + r0.zw;
-	o.zw = (float2)(int2)r0.xy;
+	o.zw = (float2)r0.xy;
 	r0.x = a << 3;
 	r0.y = a >> 2;
 	r0.x = r0.y | r0.x;
-	o.x = (float)(int)r0.x;
+	o.x = (float)r0.x;
 	r0.x = (uint)b >> 1;
 	r0.x = r0.x & 15;
 	o.y = (float)(uint)r0.x;

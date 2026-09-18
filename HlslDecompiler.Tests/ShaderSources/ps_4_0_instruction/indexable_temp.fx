@@ -17,12 +17,12 @@ float4 main(nointerpolation uint4 texcoord : TEXCOORD) : SV_Target
 	r0.y = x0[r0.x].x;
 	r0.y = r0.y + 5;
 	x0[r0.x].x = r0.y;
-	o.xw = (float2)(int2)r0.yx;
+	o.xw = (float2)r0.yx;
 	r0.y = r0.x + 1;
 	r0.x = r0.y & 3;
 	r0.x = x0[r0.x].x;
 	r0.y = x0[3].x;
-	o.yz = (float2)(int2)r0.yx;
+	o.yz = (float2)r0.yx;
 
 	return o;
 }

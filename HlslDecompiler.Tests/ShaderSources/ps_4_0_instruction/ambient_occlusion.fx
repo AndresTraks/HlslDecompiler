@@ -18,14 +18,14 @@ float4 main(PS_IN i) : SV_Target
 
 	float4 r0;
 	float4 r1;
-	float4 r2;
+	int4 r2;
 	float4 r3;
 	float4 r4;
 	r0 = depthMap.Sample(samp, i.texcoord.xy);
 	r0.yzw = r0.xxx * i.texcoord1.xyz;
 	r1 = normalMap.Sample(samp, i.texcoord.xy);
 	r1.xyz = r1.xyz * float3(2, 2, 2) + float3(-1, -1, -1);
-	r2.w = 1;
+	r2.w = 1065353216;
 	r1.w = 0;
 	r3.x = 0;
 	while (true) {
@@ -37,20 +37,20 @@ float4 main(PS_IN i) : SV_Target
 		r3.y = -(r3.z) + r3.y;
 		r3.y = (float)(int)r3.y;
 		r3.yzw = r3.yyy * kernel[r3.x].xyz;
-		r2.xyz = r3.yzw * occlusion.xxx + r0.yzw;
-		r4.x = dot(r2, transpose(projection)[0]);
-		r4.y = dot(r2, transpose(projection)[1]);
-		r2.x = dot(r2, transpose(projection)[3]);
-		r2.xy = r4.xy / r2.xx;
-		r2.xy = r2.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
-		r4 = depthMap.Sample(samp, r2.xy);
-		r2.x = r4.x * occlusion.y;
-		r2.y = i.texcoord1.z * r0.x + -(r2.x);
-		r2.y = saturate(occlusion.x / abs(r2.y));
-		r2.z = r2.z + occlusion.z;
-		r2.x = asfloat((r2.x >= r2.z) ? -1 : 0);
-		r2.x = asfloat(asint(r2.y) & asint(r2.x));
-		r1.w = r1.w + r2.x;
+		r2.xyz = asint(r3.yzw * occlusion.xxx + r0.yzw);
+		r4.x = dot(asfloat(r2), transpose(projection)[0]);
+		r4.y = dot(asfloat(r2), transpose(projection)[1]);
+		r2.x = asint(dot(asfloat(r2), transpose(projection)[3]));
+		r2.xy = asint(r4.xy / asfloat(r2.xx));
+		r2.xy = asint(asfloat(r2.xy) * float2(0.5, -0.5) + float2(0.5, 0.5));
+		r4 = depthMap.Sample(samp, asfloat(r2.xy));
+		r2.x = asint(r4.x * occlusion.y);
+		r2.y = asint(i.texcoord1.z * r0.x + -(asfloat(r2.x)));
+		r2.y = asint(saturate(occlusion.x / abs(asfloat(r2.y))));
+		r2.z = asint(asfloat(r2.z) + occlusion.z);
+		r2.x = (asfloat(r2.x) >= asfloat(r2.z)) ? -1 : 0;
+		r2.x = r2.y & r2.x;
+		r1.w = r1.w + asfloat(r2.x);
 		r3.x = r3.x + 1;
 	}
 	o = -(r1.w) * float4(0.0833333358, 0.0833333358, 0.0833333358, 0.0833333358) + float4(1, 1, 1, 1);

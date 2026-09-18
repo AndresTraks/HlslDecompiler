@@ -102,6 +102,13 @@ public class RoundTripCostTests
             + "comparisons selecting one of four components, and the decompiled "
             + "source says that chain rather than the subscript it came from - fxc "
             + "has no subscript to put back and compiles the chain it is given."),
+        ["ps_4_0/loop_continue_acc"] = (26,
+            "Two instructions, and both from the sample being written twice - once "
+            + "for the accumulation and once in the condition that decides whether "
+            + "to count it. The hoist names what a statement's text repeats, and "
+            + "these are two statements, so it sees no repetition. The loop itself "
+            + "is right: the continue carries the accumulator out with it, which is "
+            + "what this shader was written to check."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and the registers holding them are declared "

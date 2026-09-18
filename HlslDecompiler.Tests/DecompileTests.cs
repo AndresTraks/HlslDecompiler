@@ -56,6 +56,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "loop_input_struct")]
     [TestCase("ps_3_0", "loop_nested")]
     [TestCase("ps_3_0", "loop_accumulate")]
+    [TestCase("ps_3_0", "sm3_break_acc")]
     [TestCase("ps_3_0", "loop_two_vars")]
     [TestCase("ps_3_0", "if_in_loop")]
     [TestCase("ps_3_0", "if_else_in_loop")]

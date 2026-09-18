@@ -388,7 +388,11 @@ public abstract class HlslWriter
         WriteLine("{");
         indent = "\t";
         IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
-        if (_shader.MajorVersion == 1)
+        // Shader model 3 declares its outputs, so the order they were found in is the
+        // order the shader wrote them down. Before that the output registers are fixed
+        // ones - oPos, oT0, oFog - and are never declared, so a field's place in the
+        // struct would otherwise be whichever of them fxc happened to write to first.
+        if (_shader.MajorVersion <= 2)
         {
             outputs = outputs.OrderBy(o => o.Semantic).ToList();
         }

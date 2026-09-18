@@ -133,6 +133,12 @@ public class HlslSimpleWriter : HlslWriter
         return storage;
     }
 
+    private bool IsBitsRegister(D3D10Instruction instruction, int operandIndex)
+    {
+        return instruction.GetOperandType(operandIndex) == OperandType.Temp
+            && _integerOperandAnalysis.IsBitsRegister(instruction.GetParamRegisterKey(operandIndex));
+    }
+
     private ComponentStorage GetDestinationStorage(D3D10Instruction instruction, int operandIndex)
     {
         if (instruction.GetOperandType(operandIndex) != OperandType.Temp)
@@ -664,15 +670,22 @@ public class HlslSimpleWriter : HlslWriter
     {
         if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
         {
-            // A float immediate reinterpreted is its bits, written as the integer
-            // they are. `asint(1)` is not them: a whole float prints without a
-            // decimal point, and HLSL reads that as the integer 1.
-            return reinterpret ? ImmediateBits(instruction, operandIndex) : GetOperandName(instruction, operandIndex);
+            // What a bitwise operator ands is the immediate's bits, whatever the
+            // register holding the other operand is declared as, and they are
+            // written as the integer they are. `asint(1)` is not them: a whole
+            // float prints without a decimal point, and HLSL reads that as the
+            // integer 1.
+            return ImmediateBits(instruction, operandIndex);
         }
         string name = GetOperandName(instruction, operandIndex);
+        ComponentStorage storage = GetSourceStorage(instruction, operandIndex);
+        // An int register holds the integer already, whatever the destination is.
+        if (storage == ComponentStorage.Integer)
+        {
+            return name;
+        }
         // Bits storage is read as the integer it holds whatever the destination is.
-        bool bits = GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits;
-        return reinterpret || bits ? AsInt(name) : name;
+        return reinterpret || storage == ComponentStorage.Bits ? AsInt(name) : name;
     }
 
     private string ImmediateBits(D3D10Instruction instruction, int operandIndex)
@@ -1773,6 +1786,16 @@ public class HlslSimpleWriter : HlslWriter
                 && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Bits)
             {
                 return ApplyModifier(modifier, AsInt(string.Format("{0}{1}", registerName, writeMaskName)));
+            }
+            // A register declared int because it holds nothing but bits: what a
+            // float instruction reading it wants is the float those bits are, and
+            // not the number they make. A register of loop counters is declared int
+            // too and is the other way about, which is why the two are told apart.
+            if (GetConsumedKind(instruction, operandIndex) == ValueKind.Float
+                && IsBitsRegister(instruction, operandIndex))
+            {
+                return ApplyModifier(modifier,
+                    $"asfloat({string.Format("{0}{1}", registerName, writeMaskName)})");
             }
         }
 

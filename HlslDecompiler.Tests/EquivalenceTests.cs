@@ -29,12 +29,18 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)> KnownDifferences = new()
     {
-        // The instruction writer keeps a register that fxc reused for integers and
-        // floats as a float4, and reinterprets at every integer use. fxc's optimizer
-        // does not keep faith with that: it folds `asint(asfloat(x & 1))` to zero,
-        // the 1 being a denormal as a float, and `asint(asfloat(x & 0x80000000))`
-        // likewise, -0.0 being zero to it. An integer held in a float register has to
-        // be held as an integer, which is the redesign these three are waiting on.
+        // All five are one cause, narrowed to what is left of it. fxc does not read
+        // asfloat as a reinterpretation: it reads it as producing a float and
+        // flushes a denormal to zero, so the bits of any small integer put through
+        // one come back as zero. A register the decompiler keeps as a float, whose
+        // bits an integer instruction reads, therefore loses them.
+        //
+        // A register that holds nothing but bits is declared int now and has no
+        // asfloat in it at all. What is left is a register fxc uses for a float in
+        // one place and for bits in another - a mantissa here, a coordinate there -
+        // which is one variable and cannot be both. Per-component storage, with a
+        // statement split where one instruction writes components of each, is what
+        // that wants; it is not a per-register decision.
         ["ps_4_0/sample_select"] = ("instruction",
             "The loop's `i & 1` selecting between two offsets is reinterpreted through "
             + "a float, and fxc folds the test of it to false."),

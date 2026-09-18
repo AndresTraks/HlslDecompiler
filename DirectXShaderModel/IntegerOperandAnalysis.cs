@@ -11,6 +11,8 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterComponentKey> _maskRegisters;
     private HashSet<RegisterKey> _integerDeclaredRegisters;
     private HashSet<RegisterComponentKey> _integerOutputSignatures;
+    private HashSet<RegisterKey> _bitsDeclaredRegisters;
+    private HashSet<RegisterComponentKey> _convertedToFloat;
 
     /// <summary>How many moves a value is followed through before giving up. Real
     /// chains are one or two; the bound is there so a shader full of them cannot
@@ -377,6 +379,16 @@ public sealed class IntegerOperandAnalysis
 
     private HashSet<RegisterKey> FindIntegerDeclaredRegisters()
     {
+        return [.. FindWrittenTempComponents()
+            .Where(r => r.Value.All(c => IsIntegerRegister(c) && !IsFloatTouched(c))
+                || r.Value.All(IsBitsOnly))
+            .Select(r => r.Key)];
+    }
+
+    /// <summary>Every temp register any instruction writes, with the components
+    /// written.</summary>
+    private Dictionary<RegisterKey, HashSet<RegisterComponentKey>> FindWrittenTempComponents()
+    {
         var written = new Dictionary<RegisterKey, HashSet<RegisterComponentKey>>();
         foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
         {
@@ -407,9 +419,74 @@ public sealed class IntegerOperandAnalysis
                 }
             }
         }
-        return [.. written
-            .Where(r => r.Value.All(c => IsIntegerRegister(c) && !IsFloatTouched(c)))
+        return written;
+    }
+
+    /// <summary>
+    /// Whether a temp register holds bits and nothing else, so that it is declared
+    /// int and what it holds is read back with asfloat rather than converted. A
+    /// register of loop counters is declared int too and is not this: the number
+    /// in it is what a float instruction reading it wants.
+    /// </summary>
+    public bool IsBitsRegister(RegisterKey registerKey)
+    {
+        _bitsDeclaredRegisters ??= FindBitsDeclaredRegisters();
+        return _bitsDeclaredRegisters.Contains(registerKey);
+    }
+
+    private HashSet<RegisterKey> FindBitsDeclaredRegisters()
+    {
+        return [.. FindWrittenTempComponents()
+            .Where(r => r.Value.All(IsBitsOnly))
             .Select(r => r.Key)];
+    }
+
+    /// <summary>
+    /// Whether a component holds bits and nothing else. A register all of whose
+    /// components are such is declared int rather than float, which is not a
+    /// nicety: kept in a float and reinterpreted at every use, the bits do not
+    /// survive recompilation at all. fxc reads asfloat as producing a float and
+    /// flushes a denormal to zero, so a mask of the low bits of anything - every
+    /// step of its own f32tof16, a packed G-buffer, an index anded with 1 - comes
+    /// back as zero. In an int variable there is no asfloat to flush.
+    ///
+    /// Only where no float instruction writes the component. One that carries a
+    /// float for part of the shader and bits for the rest has to go on being a
+    /// float register with the bits reinterpreted, since the float would not
+    /// survive the other way round.
+    /// </summary>
+    private bool IsBitsOnly(RegisterComponentKey registerComponent)
+    {
+        return (IsBitsTouched(registerComponent)
+                || (IsMask(registerComponent) && !IsIntegerRegister(registerComponent)))
+            && !IsFloatTouched(registerComponent)
+            && !IsConvertedToFloat(registerComponent);
+    }
+
+    /// <summary>
+    /// Whether itof or utof writes the component. Those are left out of the float
+    /// instructions on purpose - an integer register holds the whole number they
+    /// write without loss - but what they write is a number and not bits, so a
+    /// component they write is not one of these.
+    /// </summary>
+    private bool IsConvertedToFloat(RegisterComponentKey registerComponent)
+    {
+        _convertedToFloat ??= FindConvertedToFloat();
+        return _convertedToFloat.Contains(registerComponent);
+    }
+
+    private HashSet<RegisterComponentKey> FindConvertedToFloat()
+    {
+        var converted = new HashSet<RegisterComponentKey>();
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (instruction.Opcode is D3D10Opcode.IToF or D3D10Opcode.UTof
+                && instruction.GetOperandType(0) == OperandType.Temp)
+            {
+                AddWrittenComponents(instruction, 0, converted);
+            }
+        }
+        return converted;
     }
 
     // The components a float instruction writes, or a bitwise operator reads or

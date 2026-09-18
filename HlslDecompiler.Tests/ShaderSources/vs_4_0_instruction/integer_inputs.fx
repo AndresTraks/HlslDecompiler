@@ -23,7 +23,7 @@ VS_OUT main(VS_IN i)
 	o.sv_position.y = dot(i.position, transpose(wvp)[1]);
 	o.sv_position.z = dot(i.position, transpose(wvp)[2]);
 	o.sv_position.w = dot(i.position, transpose(wvp)[3]);
-	r0.x = asfloat(asint(i.blendindices.y) & 255);
+	r0.x = asfloat(i.blendindices.y & 255);
 	r0.x = (float)asint(r0.x);
 	r0.x = r0.x * 0.00392156886;
 	r0.y = asfloat((uint)i.blendindices.x >> 4);

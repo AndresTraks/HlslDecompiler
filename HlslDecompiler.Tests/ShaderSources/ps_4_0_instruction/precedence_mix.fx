@@ -10,12 +10,12 @@ float4 main(PS_IN i) : SV_Target
 
 	float4 r0;
 	float3 r1;
-	r0.x = asfloat(asint(i.texcoord1.y) & asint(i.texcoord1.x));
-	r0.x = asfloat(asint(r0.x) | asint(i.texcoord1.z));
+	r0.x = asfloat(i.texcoord1.y & i.texcoord1.x);
+	r0.x = asfloat(asint(r0.x) | i.texcoord1.z);
 	r0.y = asfloat(i.texcoord1.w << 2);
 	r0.x = asfloat(asint(r0.y) ^ asint(r0.x));
-	r0.y = asfloat(~asint(i.texcoord1.x));
-	r0.y = asfloat(asint(r0.y) & asint(i.texcoord1.y));
+	r0.y = asfloat(~i.texcoord1.x);
+	r0.y = asfloat(asint(r0.y) & i.texcoord1.y);
 	r0.x = asfloat(asint(r0.y) + asint(r0.x));
 	o.z = (float)asint(r0.x);
 	r0.x = asfloat(i.texcoord1.y + i.texcoord1.x);

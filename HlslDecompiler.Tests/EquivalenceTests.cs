@@ -24,10 +24,11 @@ public class EquivalenceTests
 {
     /// <summary>
     /// Shaders whose decompilation computes something else, by which writer, and
-    /// why. The other writer is still held to computing the same. A writer that
-    /// starts agreeing fails the test so that its entry gets removed from here.
+    /// why. A writer not listed is still held to computing the same, and a listed
+    /// one that starts agreeing fails the test so that its entry gets removed from
+    /// here. Both writers can be listed, on different causes.
     /// </summary>
-    private static readonly Dictionary<string, (string Writer, string Reason)> KnownDifferences = new()
+    private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
         // All five are one cause, narrowed to what is left of it. fxc does not read
         // asfloat as a reinterpretation: it reads it as producing a float and
@@ -41,24 +42,46 @@ public class EquivalenceTests
         // which is one variable and cannot be both. Per-component storage, with a
         // statement split where one instruction writes components of each, is what
         // that wants; it is not a per-register decision.
-        ["ps_4_0/sample_select"] = ("instruction",
-            "The loop's `i & 1` selecting between two offsets is reinterpreted through "
-            + "a float, and fxc folds the test of it to false."),
-        ["ps_4_0/precedence_mix"] = ("instruction",
-            "The sign bit of a signed modulus is reinterpreted through a float, and "
-            + "fxc folds the test of it to false."),
-        ["ps_4_0/int_float_mix"] = ("instruction",
-            "A register holds a comparison mask, an integer and a float in turn, and "
-            + "the writer's one storage for it reads the integer as the float it was "
-            + "converted to."),
-        ["ps_4_0/half_packing"] = ("instruction",
-            "fxc's own f32tof16, whose every step holds a mantissa or an exponent "
-            + "in a float register: each is a denormal as a float, and fxc folds "
-            + "the whole shader to a constant."),
-        ["ps_4_0/gbuffer_decode"] = ("instruction",
-            "A normal packed into the low sixteen bits of a uint texel: the mask is "
-            + "a denormal as a float, and fxc folds the asint of it to zero, so the "
-            + "normal comes out constant."),
+        ["ps_4_0/sample_select"] = [
+            ("instruction",
+                "The loop's `i & 1` selecting between two offsets is reinterpreted through "
+                + "a float, and fxc folds the test of it to false."),
+        ],
+        ["ps_4_0/precedence_mix"] = [
+            ("instruction",
+                "The sign bit of a signed modulus is reinterpreted through a float, and "
+                + "fxc folds the test of it to false."),
+        ],
+        ["ps_4_0/int_float_mix"] = [
+            ("instruction",
+                "A register holds a comparison mask, an integer and a float in turn, and "
+                + "the writer's one storage for it reads the integer as the float it was "
+                + "converted to."),
+        ],
+        ["ps_4_0/half_packing"] = [
+            ("instruction",
+                "fxc's own f32tof16, whose every step holds a mantissa or an exponent "
+                + "in a float register: each is a denormal as a float, and fxc folds "
+                + "the whole shader to a constant."),
+            // The AST writer's half of the same question, and the half it can answer
+            // properly: it has values rather than registers, so nothing has to hold
+            // two things at once. What it has not got is bits as a property of a
+            // value. A value it types an integer and a float reader reads is
+            // converted, where a packed half float pair wants reinterpreting; and
+            // an integer sum of two such is a float's bits and not a number. Telling
+            // the two apart is what an integer register and a bits register already
+            // are on the other side.
+            ("ast",
+                "A packed pair of half floats is returned through a conversion "
+                + "rather than a reinterpretation, since a value carries no mark "
+                + "saying its integer is a float's bits."),
+        ],
+        ["ps_4_0/gbuffer_decode"] = [
+            ("instruction",
+                "A normal packed into the low sixteen bits of a uint texel: the mask is "
+                + "a denormal as a float, and fxc folds the asint of it to zero, so the "
+                + "normal comes out constant."),
+        ],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>
@@ -132,20 +155,26 @@ public class EquivalenceTests
 
         string key = $"{profile}/{baseFilename}";
         List<string> unexpected = [.. differences.Select(d => d.Message)];
-        if (KnownDifferences.TryGetValue(key, out (string Writer, string Reason) known))
+        if (KnownDifferences.TryGetValue(key, out (string Writer, string Reason)[] known))
         {
-            Assert.That(differences.Any(d => d.Writer == known.Writer), Is.True,
-                $"The {known.Writer} writer's output for {key} now computes the same. "
-                + $"Remove it from {nameof(KnownDifferences)}.");
-            unexpected = [.. differences.Where(d => d.Writer != known.Writer).Select(d => d.Message)];
+            foreach ((string writer, _) in known)
+            {
+                Assert.That(differences.Any(d => d.Writer == writer), Is.True,
+                    $"The {writer} writer's output for {key} now computes the same. "
+                    + $"Remove it from {nameof(KnownDifferences)}.");
+            }
+            unexpected = [.. differences
+                .Where(d => !known.Any(k => k.Writer == d.Writer))
+                .Select(d => d.Message)];
         }
 
         Assert.That(unexpected, Is.Empty,
             string.Join(Environment.NewLine, unexpected));
 
-        if (known.Reason != null)
+        if (known != null)
         {
-            Assert.Ignore($"Known difference in the {known.Writer} writer: {known.Reason}");
+            Assert.Ignore(string.Join(" ",
+                known.Select(k => $"Known difference in the {k.Writer} writer: {k.Reason}")));
         }
     }
 

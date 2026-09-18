@@ -1510,8 +1510,15 @@ public class InstructionParser
                 {
                     continue;
                 }
+                // A bitwise operator says nothing about what it was given either -
+                // it carries the bits along - so the type comes from whatever reads
+                // what it made. Stopping at one left the zero branch of a movc two
+                // ands away from its readers untyped, and it printed as 0.000000 in
+                // an expression of integers.
                 bool carries = reader is MoveOperation or MoveConditionalOperation or PhiNode
-                    or NegateOperation or AbsoluteOperation;
+                    or NegateOperation or AbsoluteOperation
+                    or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+                    or BitwiseNotOperation;
                 if (reader is MoveConditionalOperation && ReferenceEquals(reader.Inputs[0], node))
                 {
                     // The condition, not a value carried through.

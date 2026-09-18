@@ -706,6 +706,12 @@ public class StatementFinalizer
             ConvertOperation convert => convert.TargetType is "int" or "uint",
             ConstantNode constant => constant.IntegerValue != null,
             LoadStructuredNode => null,
+            // A bitwise operator says nothing about what it was given - it carries
+            // bits along - but what it makes is an integer whatever went in: HLSL
+            // has no other type it could be. Left saying nothing, four masks came
+            // out as a float4, and every integer use of them stopped compiling.
+            BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+                or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation => true,
             Operation operation => operation.ConsumesInteger,
             _ => null,
         };

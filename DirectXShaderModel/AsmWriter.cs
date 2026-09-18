@@ -1024,7 +1024,8 @@ public class AsmWriter
         }
         else if (operandType == OperandType.Immediate32)
         {
-            bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction);
+            bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction)
+                || IsBufferAddressOperand(instruction, index);
             var componentSelection = instruction.GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand1Component)
             {
@@ -1142,6 +1143,20 @@ public class AsmWriter
 
     // The return type token holds four nibbles, one per component, each a
     // D3D_RESOURCE_RETURN_TYPE: (float,float,float,float), (uint,uint,uint,uint).
+    // The element index and the byte offset of a buffer access are addresses
+    // whatever the buffer holds, so they are integers however the instruction is
+    // typed: an offset of 28 read as a float is a denormal and printed as 0.000000
+    // where fxc prints l(28).
+    private static bool IsBufferAddressOperand(D3D10Instruction instruction, int index)
+    {
+        return instruction.Opcode switch
+        {
+            D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured => index is 1 or 2,
+            D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw => index == 1,
+            _ => false,
+        };
+    }
+
     private static string GetResourceReturnTypes(D3D10Instruction instruction)
     {
         int token = instruction.GetResourceReturnTypeToken();

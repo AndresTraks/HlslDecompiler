@@ -9,6 +9,18 @@ public class ConstantFormatter
 
     public static string Format(float value)
     {
+        // A decimal holds no NaN and no infinity, and parsing their names threw.
+        // The bits of the integer -1 are a NaN as a float, so an immediate of -1
+        // read as one was enough to bring the assembly writer down. fxc prints
+        // these the way it prints any other float that is not a number.
+        if (float.IsNaN(value))
+        {
+            return "NaN";
+        }
+        if (float.IsInfinity(value))
+        {
+            return float.IsPositive(value) ? "INF" : "-INF";
+        }
         decimal exactValue = decimal.Parse(SingleConverter.ToExactString(value), _culture);
         return Round(exactValue).ToString(_culture);
     }

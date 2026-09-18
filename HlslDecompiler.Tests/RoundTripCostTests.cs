@@ -81,6 +81,15 @@ public class RoundTripCostTests
             + "length(float3(...)), and fxc has no vector to take it over. Was 27 "
             + "while the cos of a half angle kept the whole range reduction fxc "
             + "wrote in front of it, which fxc then reduced again."),
+        ["cs_4_0/particle_update"] = (13,
+            "Two instructions, and the price of naming the members. The original "
+            + "loads the whole particle in two sixteen byte loads, writes it back in "
+            + "two stores, and reads each member out of the registers in between. "
+            + "Written a member at a time - which is what the source said, and what "
+            + "makes it readable - fxc reloads the two members that are read after a "
+            + "store to a different member of the same element. Correct, and the "
+            + "alternative is a struct shaped temporary the writer has no way to "
+            + "know was there."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and the registers holding them are declared "

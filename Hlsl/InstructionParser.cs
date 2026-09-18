@@ -352,7 +352,13 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
-                        InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs));
+                        InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs)
+                        {
+                            ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                                ? instruction.GetParamInt(2, 0)
+                                : 0,
+                            Components = [.. destinationKeys.Select(k => k.ComponentIndex)],
+                        });
                         break;
                     }
                 case D3D10Opcode.StoreRaw:

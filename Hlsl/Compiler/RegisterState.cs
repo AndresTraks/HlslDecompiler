@@ -32,11 +32,107 @@ public sealed class RegisterState
     /// matrix asks, and is answered the same way. A struct element would have the
     /// offset pick a member, which is not read yet.
     /// </summary>
-    public string ApplyStructuredElementRow(RegisterKey resourceKey, string element, int byteOffset)
+    /// <summary>The structured buffer a load or a store names, or null.</summary>
+    public ResourceDefinition FindStructuredBuffer(RegisterKey resourceKey)
     {
-        ResourceDefinition resource = ResourceDefinitions.FirstOrDefault(r =>
+        return ResourceDefinitions.FirstOrDefault(r =>
             r.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.UavRWStructured
             && r.BindPoint == resourceKey.Number);
+    }
+
+    /// <summary>
+    /// Names the members a load or a store reaches. An element that is a struct is
+    /// addressed by a byte offset and nothing else, so `ld_structured ..., l(0), u0`
+    /// over a struct of a float3 and a float reads two members at once and has to be
+    /// written as both. Null where the element is not a struct.
+    /// </summary>
+    /// <param name="components">Which components of the element are read, in the
+    /// order they are written.</param>
+    public string NameStructuredMembers(
+        RegisterKey resourceKey, string element, int byteOffset, IList<int> components)
+    {
+        IList<ShaderStructMemberInfo> members = FindStructuredBuffer(resourceKey)?.ElementType?.MemberInfo;
+        if (members == null || members.Count == 0 || components.Count == 0)
+        {
+            return null;
+        }
+
+        IList<(string Name, int[] Values)> runs = FindStructuredMemberRuns(resourceKey, byteOffset, components);
+        if (runs == null)
+        {
+            return null;
+        }
+        List<string> named = [.. runs.Select(r => $"{element}.{r.Name}")];
+        return named.Count == 1
+            ? named[0]
+            : $"float{components.Count}({string.Join(", ", named)})";
+    }
+
+    /// <summary>
+    /// The members a load or a store reaches, each named with the swizzle that
+    /// selects the part of it touched, and with which of the components handed in
+    /// go there. One run per member, in the order the components come. Null where
+    /// the element is not a struct.
+    /// </summary>
+    public IList<(string Name, int[] Values)> FindStructuredMemberRuns(
+        RegisterKey resourceKey, int byteOffset, IList<int> components)
+    {
+        IList<ShaderStructMemberInfo> members = FindStructuredBuffer(resourceKey)?.ElementType?.MemberInfo;
+        if (members == null || members.Count == 0 || components.Count == 0)
+        {
+            return null;
+        }
+
+        var runs = new List<(ShaderStructMemberInfo Member, List<int> InMember, List<int> Values)>();
+        for (int i = 0; i < components.Count; i++)
+        {
+            ShaderStructMemberInfo member = FindStructuredMember(members, byteOffset + components[i] * 4);
+            if (member == null)
+            {
+                return null;
+            }
+            int inMember = (byteOffset + components[i] * 4 - member.ByteOffset) / 4;
+            if (runs.Count != 0 && ReferenceEquals(runs[^1].Member, member))
+            {
+                runs[^1].InMember.Add(inMember);
+                runs[^1].Values.Add(i);
+            }
+            else
+            {
+                runs.Add((member, [inMember], [i]));
+            }
+        }
+
+        return [.. runs.Select(run =>
+        {
+            int width = run.Member.TypeInfo.Columns;
+            string swizzle = width > 1 && !(run.InMember.Count == width
+                    && run.InMember.SequenceEqual(Enumerable.Range(0, width)))
+                ? "." + string.Concat(run.InMember.Select(c => "xyzw"[c]))
+                : "";
+            return (run.Member.Name + swizzle, run.Values.ToArray());
+        })];
+    }
+
+    private static ShaderStructMemberInfo FindStructuredMember(
+        IList<ShaderStructMemberInfo> members, int byteAddress)
+    {
+        foreach (ShaderStructMemberInfo member in members)
+        {
+            int size = member.TypeInfo.Rows > 1
+                ? member.TypeInfo.Rows * 16
+                : member.TypeInfo.Columns * 4;
+            if (byteAddress >= member.ByteOffset && byteAddress < member.ByteOffset + size)
+            {
+                return member;
+            }
+        }
+        return null;
+    }
+
+    public string ApplyStructuredElementRow(RegisterKey resourceKey, string element, int byteOffset)
+    {
+        ResourceDefinition resource = FindStructuredBuffer(resourceKey);
         if (resource?.ElementType == null || resource.ElementType.Rows <= 1)
         {
             return element;

@@ -925,10 +925,18 @@ public class HlslSimpleWriter : HlslWriter
                     // The byte offset picks a row where the element is a matrix. A
                     // struct element would pick a member, which is not read yet.
                     string element = $"{GetOperandName(instruction, 3)}[{GetOperandName(instruction, 1)}]";
+                    RegisterKey buffer = instruction.GetParamRegisterKey(3);
+                    int offset = instruction.GetParamInt(2, 0);
+                    // Which components of the element are read, in the order the
+                    // destination mask writes them.
+                    byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
+                    int writeMask = instruction.GetDestinationWriteMask();
+                    List<int> read = [.. Enumerable.Range(0, 4)
+                        .Where(c => (writeMask & (1 << c)) != 0)
+                        .Select(c => (int)elementSwizzle[c])];
                     WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
-                        _registers.ApplyStructuredElementRow(
-                            instruction.GetParamRegisterKey(3), element,
-                            instruction.GetParamInt(2, 0)));
+                        _registers.NameStructuredMembers(buffer, element, offset, read)
+                            ?? _registers.ApplyStructuredElementRow(buffer, element, offset));
                     break;
                 }
             case D3D10Opcode.LdRaw:
@@ -1094,9 +1102,31 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.StoreStructured:
-                // TODO: consider offset
-                WriteLine("{0}[{1}] = {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
-                break;
+                {
+                    // A struct element is written a member at a time: one store of
+                    // sixteen bytes over a struct of a float3 and a float is both
+                    // of them, and writing it as one assignment kept only the last.
+                    RegisterKey buffer = instruction.GetParamRegisterKey(0);
+                    string element = $"{GetOperandName(instruction, 0)}[{GetOperandName(instruction, 1)}]";
+                    int writeMask = instruction.GetWriteMask(0);
+                    List<int> written = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
+                    IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
+                        buffer, instruction.GetParamInt(2, 0), written);
+                    if (runs == null)
+                    {
+                        WriteLine("{0} = {1};", element, GetOperandName(instruction, 3));
+                        break;
+                    }
+                    byte[] valueSwizzle = instruction.GetSourceSwizzleComponents(3);
+                    foreach ((string name, int[] values) in runs)
+                    {
+                        string picked = "." + string.Concat(
+                            values.Select(v => "xyzw"[valueSwizzle[written[v]]]));
+                        WriteLine("{0}.{1} = {2}{3};", element, name,
+                            GetOperandName(instruction, 3).Split('.')[0], picked);
+                    }
+                    break;
+                }
             case D3D10Opcode.StoreRaw:
                 {
                     int width = instruction.GetDestinationMaskLength();

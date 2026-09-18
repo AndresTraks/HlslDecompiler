@@ -439,8 +439,21 @@ public class D3D10Machine
             }
             return;
         }
-        _stored.Add(new KeyValuePair<string, uint[]>(
-            $"STORE{resource}[{element}][{offset}]", value));
+        // Each dword by where it went, the way store_raw beside this one is
+        // recorded, and for the same reason: one store of four components and four
+        // stores of one are the same writes, and comparing whole registers made
+        // them differ on components the shader never wrote. A structured buffer of
+        // a struct is written a member at a time, so that is the ordinary case.
+        int uavWriteMask = instruction.GetDestinationWriteMask();
+        for (int component = 0, written = 0; component < 4; component++)
+        {
+            if ((uavWriteMask & (1 << component)) != 0)
+            {
+                _stored.Add(new KeyValuePair<string, uint[]>(
+                    $"STORE{resource}[{element}][{offset + 4 * written++}]",
+                    [value[component], 0, 0, 0]));
+            }
+        }
     }
 
     // store_raw u0.xy, byteOffset, value: the dwords the mask names, from the byte
@@ -686,7 +699,22 @@ public class D3D10Machine
                         byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
                         return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
                     }
-                    return Pack(Named($"buffer{resource}[{element}][{offset}]"));
+                    // A dword at a time, named by where it is in the element rather
+                    // than by the offset the load names. Read the other way, the
+                    // fourth dword of a load at offset zero and a load at offset
+                    // twelve were two different made up numbers, so a shader reading
+                    // a struct member at a time disagreed with one reading four at
+                    // once - and a struct member at a time is how it reads now.
+                    var element4 = new float[4];
+                    for (int component = 0; component < 4; component++)
+                    {
+                        element4[component] = Named(
+                            $"buffer{resource}[{element}][{offset + 4 * component}]")[0];
+                    }
+                    byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
+                    return Pack([
+                        element4[elementSwizzle[0]], element4[elementSwizzle[1]],
+                        element4[elementSwizzle[2]], element4[elementSwizzle[3]]]);
                 }
             case D3D10Opcode.LdRaw:
                 {

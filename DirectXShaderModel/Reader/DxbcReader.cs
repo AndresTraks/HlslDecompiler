@@ -298,11 +298,16 @@ public class DxbcReader : BinaryReader
                 BaseStream.Position = chunkOffset + firstMemberOffset + member * 12 + 8;
                 int memberNameOffset = ReadInt32();
                 int memberTypeOffset = ReadInt32();
+                // The third word of the member record, which was being strided
+                // past: where the member starts within the structure. A load from
+                // a structured buffer names a byte offset and nothing else, so
+                // this is what says which member it reads.
+                int memberByteOffset = ReadInt32();
 
                 BaseStream.Position = chunkOffset + memberNameOffset + 8;
                 string memberName = ReadStringNullTerminated();
                 memberInfo.Add(new ShaderStructMemberInfo(
-                    memberName, ReadShaderTypeInfo(chunkOffset, memberTypeOffset)));
+                    memberName, ReadShaderTypeInfo(chunkOffset, memberTypeOffset), memberByteOffset));
             }
         }
 

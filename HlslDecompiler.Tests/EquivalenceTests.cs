@@ -64,6 +64,12 @@ public class EquivalenceTests
                 + "in a float register: each is a denormal as a float, and fxc folds "
                 + "the whole shader to a constant."),
         ],
+        ["vs_4_0/particle_draw"] = [
+            ("instruction",
+                "A corner index anded out of the vertex id chooses between 1 and -1, "
+                + "and those pass through a float register: each is a denormal as a "
+                + "float and fxc flushes it, so every corner lands at the centre."),
+        ],
         ["ps_4_0/gbuffer_decode"] = [
             ("instruction",
                 "A normal packed into the low sixteen bits of a uint texel: the mask is "

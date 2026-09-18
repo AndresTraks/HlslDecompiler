@@ -231,6 +231,21 @@ public class HlslAstWriter : HlslWriter
             WriteLine($"{compiledDestination}.{method}({compiledAddress}, {compiledValue});");
             return;
         }
+        // A struct element is written a member at a time: one store of sixteen
+        // bytes over a struct of a float3 and a float is both of them, and writing
+        // it as one assignment kept only the last.
+        RegisterKey bufferKey = ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
+        IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
+            bufferKey, storeStructured.ElementByteOffset, storeStructured.Components);
+        if (runs != null)
+        {
+            foreach ((string name, int[] values) in runs)
+            {
+                string run = _compiler.Compile(values.Select(v => Reduce(storeStructured.Values[v])));
+                WriteLine($"{compiledDestination}[{compiledAddress}].{name} = {run};");
+            }
+            return;
+        }
         WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
     }
 

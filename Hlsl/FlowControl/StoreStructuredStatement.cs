@@ -14,6 +14,12 @@ public class StoreStructuredStatement : IStatement
     public HlslTreeNode[] Values { get; }
     // store_raw: the address is a byte offset, written with Store, Store2 and so on.
     public bool IsRaw { get; init; }
+
+    // The offset within the element, and which of its components are written. A
+    // struct element is addressed by the offset alone, so these are what say which
+    // members the store reaches.
+    public int ElementByteOffset { get; init; }
+    public int[] Components { get; init; } = [];
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

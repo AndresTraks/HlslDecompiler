@@ -119,6 +119,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "static_struct_matrix")]
     [TestCase("vs_4_0", "bitwise")]
     [TestCase("vs_4_0", "skinning")]
+    [TestCase("vs_4_0", "particle_draw")]
     [TestCase("vs_4_0", "instance_buffer")]
     [TestCase("vs_4_0", "dynamic_index")]
     [TestCase("vs_4_0", "loop_array")]
@@ -149,6 +150,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "integer_multiply")]
     [TestCase("cs_4_1", "groupshared_reduce")]
     [TestCase("cs_4_0", "raw_buffer")]
+    [TestCase("cs_4_0", "particle_update")]
     [TestCase("cs_4_0", "tile_blur")]
     public void DecompileTest(string profile, string baseFilename)
     {

@@ -672,10 +672,15 @@ public sealed class NodeCompiler
                     string swizzle = GetAstSourceSwizzleName(
                         components.Select(g => (IHasComponentIndex)g.Inputs[2]),
                         _registers.GetRegisterMaskedLength(resourceKey));
-                    // The byte offset picks a row where the element is a matrix.
+                    // The byte offset picks a row where the element is a matrix and
+                    // a member where it is a struct.
                     string element = $"{_registers.GetRegisterName(resourceKey)}[{address}]";
-                    return _registers.ApplyStructuredElementRow(resourceKey, element,
-                        load.ElementByteOffset) + swizzle;
+                    string members = _registers.NameStructuredMembers(resourceKey, element,
+                        load.ElementByteOffset,
+                        [.. components.Select(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex)]);
+                    return members
+                        ?? _registers.ApplyStructuredElementRow(resourceKey, element,
+                            load.ElementByteOffset) + swizzle;
                 }
             case LogicalAndOperation _:
             case LogicalOrOperation _:

@@ -185,6 +185,25 @@ public abstract class HlslWriter
 
         if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
         {
+            // A structured buffer whose element is a struct needs that struct named
+            // before the buffer that holds it. The reflection data has the members
+            // but no name for the type, so one is made from the buffer's.
+            var elementCompiler = new ConstantDeclarationCompiler();
+            foreach (var resource in _registers.ResourceDefinitions
+                .Where(r => r.ElementType?.MemberInfo != null && r.ElementType.MemberInfo.Count != 0))
+            {
+                WriteLine($"struct {GetStructuredElementTypeName(resource)}");
+                WriteLine("{");
+                indent = "	";
+                foreach (ShaderStructMemberInfo member in resource.ElementType.MemberInfo)
+                {
+                    WriteLine(elementCompiler.Compile(member));
+                }
+                indent = "";
+                WriteLine("};");
+                WriteLine();
+            }
+
             foreach (var resource in _registers.ResourceDefinitions)
             {
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
@@ -274,8 +293,20 @@ public abstract class HlslWriter
         }
     }
 
+    /// <summary>The name given to a structured buffer's struct element. The
+    /// reflection data names the members and not the type, so the buffer names
+    /// it.</summary>
+    private static string GetStructuredElementTypeName(ResourceDefinition resource)
+    {
+        return char.ToUpperInvariant(resource.Name[0]) + resource.Name[1..] + "Element";
+    }
+
     private string GetStructuredElementType(ResourceDefinition resource)
     {
+        if (resource.ElementType?.MemberInfo != null && resource.ElementType.MemberInfo.Count != 0)
+        {
+            return GetStructuredElementTypeName(resource);
+        }
         if (resource.ElementType != null)
         {
             string scalar = resource.ElementType.ParameterType.ToString().ToLower();

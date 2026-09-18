@@ -817,6 +817,13 @@ public sealed class IntegerOperandAnalysis
             {
                 return StoredType.Integer;
             }
+            // A bitwise operator says nothing about what went into it and everything
+            // about what came out: bits, which is what an int variable holds.
+            if (writer.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
+                or D3D10Opcode.Not)
+            {
+                return StoredType.Integer;
+            }
             switch (writer.Opcode)
             {
                 case D3D10Opcode.Mov:

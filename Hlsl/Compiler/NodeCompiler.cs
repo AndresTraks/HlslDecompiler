@@ -279,6 +279,24 @@ public sealed class NodeCompiler
             : compiled;
     }
 
+    /// <summary>
+    /// Whether a register holds floats, from the declaration that names it: a
+    /// constant buffer variable by its own type, an input by the component type its
+    /// signature gives, and a thread id by neither, being a uint.
+    /// </summary>
+    private bool IsFloatRegister(RegisterInputNode register)
+    {
+        RegisterComponentKey key = register.RegisterComponentKey;
+        ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+        if (constant != null)
+        {
+            return constant.TypeInfo.ParameterType is not (ParameterType.Int
+                or ParameterType.Uint or ParameterType.Bool);
+        }
+        return _registers.RegisterDeclarations.TryGetValue(key.RegisterKey, out RegisterDeclaration declaration)
+            && !declaration.TypeName.Contains("int");
+    }
+
     // An operand a bitwise operator or a shift reads. Where the value is a float -
     // a temp declared as one, or an operation that computes one - the integer
     // wanted is its bits and not its number, so it is reinterpreted rather than
@@ -294,11 +312,12 @@ public sealed class NodeCompiler
 
     // Whether a value is a float, from the value itself rather than from what reads
     // it: the readers of one of these are integer instructions by construction.
-    private static bool IsFloatValued(HlslTreeNode node)
+    private bool IsFloatValued(HlslTreeNode node)
     {
         return node switch
         {
             TempVariableNode temp => !temp.IsInteger,
+            RegisterInputNode register => IsFloatRegister(register),
             ConvertOperation convert => convert.TargetType is not ("int" or "uint"),
             // The half conversions read one type and make the other, so the
             // ConsumesInteger test below answers the wrong question for them: an

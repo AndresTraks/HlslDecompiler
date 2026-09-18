@@ -774,13 +774,9 @@ public class HlslSimpleWriter : HlslWriter
             return ImmediateBits(instruction, operandIndex);
         }
         string name = GetOperandName(instruction, operandIndex);
-        ComponentStorage storage = GetSourceStorage(instruction, operandIndex);
-        // An int register holds the integer already, whatever the destination is.
-        if (storage == ComponentStorage.Integer)
-        {
-            return name;
-        }
-        return reinterpret ? AsInt(name) : name;
+        // An integer is one already; a float has to be reinterpreted, HLSL not
+        // applying a bitwise operator to one at all (X3082).
+        return HoldsInteger(instruction, operandIndex) ? name : AsInt(name);
     }
 
     private string ImmediateBits(D3D10Instruction instruction, int operandIndex)
@@ -2117,10 +2113,16 @@ public class HlslSimpleWriter : HlslWriter
     {
         string name = GetOperandName(instruction, operandIndex);
         if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32
-            || GetSourceStorage(instruction, operandIndex) != ComponentStorage.Numeric
-            || IsIntegerConstant(instruction, operandIndex))
+            || HoldsInteger(instruction, operandIndex))
         {
             return name;
+        }
+        // A temp holding an integer as a float holds the number wanted, and is
+        // converted; a register the declaration says is a float holds a float, and
+        // what a shift wants of one is its bits.
+        if (!instruction.GetParamRegisterKey(operandIndex).IsTempRegister)
+        {
+            return AsInt(name);
         }
         int length = instruction.GetDestinationMaskLength();
         string size = length == 1 ? "" : length.ToString();
@@ -2224,6 +2226,29 @@ public class HlslSimpleWriter : HlslWriter
         }
         ConstantDeclaration constant = _registers.FindConstant(instruction.GetParamRegisterKey(operandIndex));
         return constant?.TypeInfo.ParameterType is ParameterType.Bool or ParameterType.Int or ParameterType.Uint;
+    }
+
+    /// <summary>
+    /// Whether an operand holds an integer rather than a float. A temp by its
+    /// register's declaration, which the register rule decides; anything else by
+    /// the declaration that names it - a constant buffer variable by its own type,
+    /// an input by the component type its signature gives. The register rule is no
+    /// use for those: a float input read by nothing but a shift looks like an
+    /// integer to it, and the shift is reading its bits.
+    /// </summary>
+    private bool HoldsInteger(D3D10Instruction instruction, int operandIndex)
+    {
+        RegisterKey key = instruction.GetParamRegisterKey(operandIndex);
+        if (key.IsTempRegister)
+        {
+            return GetSourceStorage(instruction, operandIndex) == ComponentStorage.Integer;
+        }
+        if (IsIntegerConstant(instruction, operandIndex))
+        {
+            return true;
+        }
+        return _registers.RegisterDeclarations.TryGetValue(key, out RegisterDeclaration declaration)
+            && declaration.TypeName.Contains("int");
     }
 
     // The resource operand carries a swizzle saying which channel of the texture

@@ -83,6 +83,36 @@
     <None Update="CompiledShaders\ps_4_0\subtract_sum.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="CompiledShaders\ps_4_0\bit_field.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\vs_2_0\distance_falloff.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_3_0\sample_variants_d3d9.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\vs_3_0\bool_branches.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\index_and_scale.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\vs_4_0\attribute_divide.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\cs_4_1\shared_float_int_index.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\ps_4_0\mixed_register.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\cs_4_0\atomic_free_sum.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CompiledShaders\vs_4_0\packed_colour.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="CompiledShaders\ps_4_0\precedence_mix.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -1634,6 +1664,36 @@
     <None Update="ShaderAssembly\ps_4_0\subtract_sum.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderAssembly\ps_4_0\bit_field.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_2_0\distance_falloff.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_3_0\sample_variants_d3d9.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_3_0\bool_branches.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\index_and_scale.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\attribute_divide.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\cs_4_1\shared_float_int_index.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\ps_4_0\mixed_register.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\cs_4_0\atomic_free_sum.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderAssembly\vs_4_0\packed_colour.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderAssembly\ps_4_0\precedence_mix.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -2231,6 +2291,36 @@
     <None Update="ShaderSources\ps_4_0\subtract_sum.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="ShaderSources\ps_4_0\bit_field.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_2_0\distance_falloff.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0\sample_variants_d3d9.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0\bool_branches.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\index_and_scale.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\attribute_divide.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\cs_4_1\shared_float_int_index.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0\mixed_register.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\cs_4_0\atomic_free_sum.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0\packed_colour.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Update="ShaderSources\ps_4_0\precedence_mix.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -2301,6 +2391,36 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0_instruction\subtract_sum.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\bit_field.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_2_0_instruction\distance_falloff.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_3_0_instruction\sample_variants_d3d9.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_3_0_instruction\bool_branches.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\index_and_scale.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0_instruction\attribute_divide.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\cs_4_1_instruction\shared_float_int_index.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\ps_4_0_instruction\mixed_register.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\cs_4_0_instruction\atomic_free_sum.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ShaderSources\vs_4_0_instruction\packed_colour.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="ShaderSources\ps_4_0_instruction\precedence_mix.fx">

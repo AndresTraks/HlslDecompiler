@@ -46,6 +46,31 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["vs_2_0/distance_falloff"] = (27,
+            "One instruction. `dst(d * d, d)` is one instruction in the original and "
+            + "the decompiled source writes out the products it computes, with the "
+            + "length given to it at each - six times in the one statement. The hoist "
+            + "names what a statement's text repeats and groups by the nodes an "
+            + "expression came from, so it names neither: it ran on this statement, "
+            + "and six copies of a ten character text went unnamed, which they could "
+            + "not have done were they the one node. The same limitation as "
+            + "ps_4_0/mixed_register and cs_4_0/atomic_free_sum."),
+        ["ps_4_0/mixed_register"] = (21,
+            "One instruction. `accumulator / max((float)taken, 1)` is computed twice "
+            + "in the original - once for the average and once for the saturate of it "
+            + "- so the graph holds two divisions, and the hoist names what a "
+            + "statement's text repeats by the nodes it came from. Two subtrees that "
+            + "read alike but are not the same nodes are not a repeat to it."),
+        ["cs_4_0/atomic_free_sum"] = (23,
+            "Two instructions, and the same cause. The buffer load is read twice - "
+            + "once shifted, once not - across two statements, and the hoist is per "
+            + "statement, so neither sees a repetition. fxc loads it twice."),
+        ["ps_4_0/bit_field"] = (28,
+            "One instruction. The exponent is masked out of the bits and shifted back "
+            + "in, and the decompiled source says that as two statements over a named "
+            + "temp where the original kept it in one register, so fxc folds one fewer "
+            + "shift. The AST writer's reading of this shader is recorded in "
+            + "EquivalenceTests.KnownDifferences as well."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

@@ -3,3 +3,5 @@ obj
 packages
 .vs
 /Properties/launchSettings.json
+
+/.vscode/

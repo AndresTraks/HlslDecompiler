@@ -30,6 +30,20 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
+        ["ps_4_0/bit_field"] = [
+            ("ast",
+                "A float taken apart and put back together bit by bit. The pieces are "
+                + "integers and the whole is a float's bits, and the AST writer's rule "
+                + "for which is which - a bitwise operator reading a float makes bits, "
+                + "and everything under it is bits too - cannot see the difference: an "
+                + "exponent masked out of the bits is a number, and the mantissa "
+                + "shifted back in with it is a float. Stamping every register read "
+                + "with its declared type makes the rule fire, and then it fires on "
+                + "the exponent as well, which comes out as `(float)asfloat(t0)` where "
+                + "the shader converts. What tells them apart is what reads the value, "
+                + "which is the question the instruction writer answers per component "
+                + "and this writer answers per variable."),
+        ],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

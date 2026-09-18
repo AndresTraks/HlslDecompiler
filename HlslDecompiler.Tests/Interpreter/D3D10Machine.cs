@@ -293,6 +293,18 @@ public class D3D10Machine
                     StoreRaw(instruction);
                     pc++;
                     continue;
+                case D3D10Opcode.AtomicIAdd:
+                case D3D10Opcode.AtomicAnd:
+                case D3D10Opcode.AtomicOr:
+                case D3D10Opcode.AtomicXor:
+                case D3D10Opcode.AtomicIMax:
+                case D3D10Opcode.AtomicIMin:
+                case D3D10Opcode.AtomicUMax:
+                case D3D10Opcode.AtomicUMin:
+                case D3D10Opcode.AtomicCmpStore:
+                    Atomic(instruction);
+                    pc++;
+                    continue;
                 case D3D10Opcode.Sync:
                     pc++;
                     continue;
@@ -454,6 +466,59 @@ public class D3D10Machine
                     [value[component], 0, 0, 0]));
             }
         }
+    }
+
+    /// <summary>
+    /// An interlocked operation that keeps no result. One thread is being run, so
+    /// there is nothing to serialise and the operation is its arithmetic.
+    ///
+    /// Groupshared memory is a real array here and the shader reads it back, so the
+    /// operation is applied to it. A UAV is not - a store into one is recorded by
+    /// where it went rather than kept - so an atomic over one is recorded the same
+    /// way: two programs that perform the same operations at the same addresses with
+    /// the same values have done the same thing, which is what the comparison is
+    /// about.
+    /// </summary>
+    private void Atomic(D3D10Instruction instruction)
+    {
+        const int ResourceIndex = 0;
+        const int AddressIndex = 1;
+        int resource = instruction.GetParamRegisterNumber(ResourceIndex);
+        int[] address = Ints(instruction, AddressIndex);
+        bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
+        uint value = Source(instruction, isCompareStore ? 3 : 2)[0];
+        uint compare = isCompareStore ? Source(instruction, 2)[0] : 0;
+
+        if (instruction.GetOperandType(ResourceIndex) == OperandType.ThreadGroupSharedMemory)
+        {
+            (int stride, uint[] words) = _threadGroupSharedMemory[resource];
+            int word = SharedMemoryWord(stride, words, address[0], address[1]);
+            if (word < words.Length)
+            {
+                words[word] = ApplyAtomic(instruction.Opcode, words[word], value, compare);
+            }
+            return;
+        }
+        _stored.Add(new KeyValuePair<string, uint[]>(
+            $"ATOMIC{instruction.Opcode}{resource}[{address[0]}][{address[1]}]",
+            [value, compare, 0, 0]));
+    }
+
+    private static uint ApplyAtomic(D3D10Opcode opcode, uint held, uint value, uint compare)
+    {
+        return opcode switch
+        {
+            D3D10Opcode.AtomicIAdd => held + value,
+            D3D10Opcode.AtomicAnd => held & value,
+            D3D10Opcode.AtomicOr => held | value,
+            D3D10Opcode.AtomicXor => held ^ value,
+            D3D10Opcode.AtomicIMax => (uint)Math.Max((int)held, (int)value),
+            D3D10Opcode.AtomicIMin => (uint)Math.Min((int)held, (int)value),
+            D3D10Opcode.AtomicUMax => Math.Max(held, value),
+            D3D10Opcode.AtomicUMin => Math.Min(held, value),
+            D3D10Opcode.AtomicCmpStore => held == compare ? value : held,
+            _ => throw new UnsupportedException($"opcode {opcode}"),
+        };
     }
 
     // store_raw u0.xy, byteOffset, value: the dwords the mask names, from the byte

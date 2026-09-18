@@ -494,6 +494,7 @@ public class StatementFinalizer
         if (lastStatement is ReturnStatement
             || lastStatement is AppendStatement
             || lastStatement is StoreStructuredStatement
+            || lastStatement is AtomicStatement
             || lastStatement is IndexableTempStoreStatement
             || lastStatement is RestartStripStatement
             || lastStatement is SyncStatement)

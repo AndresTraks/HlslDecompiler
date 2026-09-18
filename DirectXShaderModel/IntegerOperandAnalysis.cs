@@ -648,6 +648,16 @@ public sealed class IntegerOperandAnalysis
     {
         const int ValueIndex = 3;
         var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        // An interlocked operation over the array settles it on its own: there is no
+        // atomic over a float, so an array one reaches holds integers whatever the
+        // stores into it look like. A histogram's bins are cleared with a store of
+        // l(0), whose bits say nothing either way.
+        if (instructions.Any(instruction => instruction.Opcode.IsAtomic()
+            && instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory
+            && instruction.GetParamRegisterNumber(0) == register))
+        {
+            return true;
+        }
         bool anyInteger = false;
         for (int i = 0; i < instructions.Count; i++)
         {
@@ -1115,8 +1125,22 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMul:
             case D3D10Opcode.Ine:
+            // An interlocked operation reads an address and a value, both integers.
+            // Without these the uint a structured buffer load put in a register was
+            // not known to be one, and the register was declared float: the value
+            // went into the atomic through a conversion each way and came out as the
+            // float its bits spell.
+            case D3D10Opcode.AtomicIAdd:
+            case D3D10Opcode.AtomicAnd:
+            case D3D10Opcode.AtomicOr:
+            case D3D10Opcode.AtomicXor:
+            case D3D10Opcode.AtomicIMax:
+            case D3D10Opcode.AtomicIMin:
+            case D3D10Opcode.AtomicUMax:
+            case D3D10Opcode.AtomicUMin:
                 return 2;
             case D3D10Opcode.IMad:
+            case D3D10Opcode.AtomicCmpStore:
                 return 3;
             default:
                 return 0;

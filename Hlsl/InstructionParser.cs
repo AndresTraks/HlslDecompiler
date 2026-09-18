@@ -361,6 +361,44 @@ public class InstructionParser
                         });
                         break;
                     }
+                case D3D10Opcode.AtomicIAdd:
+                case D3D10Opcode.AtomicAnd:
+                case D3D10Opcode.AtomicOr:
+                case D3D10Opcode.AtomicXor:
+                case D3D10Opcode.AtomicIMax:
+                case D3D10Opcode.AtomicIMin:
+                case D3D10Opcode.AtomicUMax:
+                case D3D10Opcode.AtomicUMin:
+                case D3D10Opcode.AtomicCmpStore:
+                    {
+                        // atomic_iadd u0, address, value, and atomic_cmp_store with a
+                        // compare between the two. The destination is the resource
+                        // itself and carries no write mask, so there are no
+                        // destination keys to walk - one statement, not one per
+                        // component.
+                        var resourceKey = new RegisterComponentKey(
+                            instruction.GetParamRegisterKey(0), 0);
+                        var destination = new RegisterInputNode(resourceKey);
+                        bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
+                        // A structured resource addresses an element and a byte offset
+                        // within it, both components of the one operand; a byte address
+                        // one has only the offset.
+                        HlslTreeNode address = GetInputs(instruction, 0)[0];
+                        HlslTreeNode elementByteOffset = _registerState.IsRawResource(resourceKey.RegisterKey)
+                            ? null
+                            : GetInputs(instruction, 1)[0];
+                        InsertStatement(new AtomicStatement(
+                            destination,
+                            address,
+                            GetInputs(instruction, 0)[isCompareStore ? 2 : 1],
+                            instruction.Opcode.AtomicMethodName(),
+                            ActiveOutputs)
+                        {
+                            ElementByteOffset = elementByteOffset,
+                            Compare = isCompareStore ? GetInputs(instruction, 0)[1] : null,
+                        });
+                        break;
+                    }
                 case D3D10Opcode.StoreRaw:
                     {
                         // store_raw u0.xy, byteOffset, value: a byte offset in place of
@@ -2411,12 +2449,22 @@ public class InstructionParser
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:
                 return 2;
+            case D3D10Opcode.AtomicIAdd:
+            case D3D10Opcode.AtomicAnd:
+            case D3D10Opcode.AtomicOr:
+            case D3D10Opcode.AtomicXor:
+            case D3D10Opcode.AtomicIMax:
+            case D3D10Opcode.AtomicIMin:
+            case D3D10Opcode.AtomicUMax:
+            case D3D10Opcode.AtomicUMin:
+                return 2;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:
             case D3D10Opcode.MovC:
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
+            case D3D10Opcode.AtomicCmpStore:
                 return 3;
             case D3D10Opcode.LDMS:
                 return 3;

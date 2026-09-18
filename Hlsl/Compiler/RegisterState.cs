@@ -50,6 +50,24 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// Whether the resource is addressed by a byte offset alone rather than by an
+    /// element and an offset within it - a ByteAddressBuffer either way round. An
+    /// atomic does not say which kind it is in its opcode, unlike a store, so what
+    /// the address operand means has to be read off the declaration.
+    /// </summary>
+    public bool IsRawResource(RegisterKey resourceKey)
+    {
+        D3DShaderInputType rawType = (resourceKey as D3D10RegisterKey)?.OperandType switch
+        {
+            OperandType.Resource => D3DShaderInputType.ByteAddress,
+            OperandType.UnorderedAccessView => D3DShaderInputType.UavRWByteAddress,
+            _ => (D3DShaderInputType)(-1),
+        };
+        return ResourceDefinitions.Any(r =>
+            r.ShaderInputType == rawType && r.BindPoint == resourceKey.Number);
+    }
+
+    /// <summary>
     /// Names the members a load or a store reaches. An element that is a struct is
     /// addressed by a byte offset and nothing else, so `ld_structured ..., l(0), u0`
     /// over a struct of a float3 and a float reads two members at once and has to be

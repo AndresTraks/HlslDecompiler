@@ -84,6 +84,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteIndexableTempStoreStatement(indexableTempStore);
         }
+        else if (statement is AtomicStatement atomic)
+        {
+            WriteAtomicStatement(atomic);
+        }
         else if (statement is ClipStatement clip)
         {
             WriteClipStatement(clip);
@@ -247,6 +251,48 @@ public class HlslAstWriter : HlslWriter
             return;
         }
         WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
+    }
+
+    private void WriteAtomicStatement(AtomicStatement atomic)
+    {
+        RegisterKey resourceKey =
+            ((RegisterInputNode)atomic.Destination).RegisterComponentKey.RegisterKey;
+        string resource = _registers.GetRegisterName(resourceKey);
+        string address = _compiler.Compile(Reduce(atomic.Address));
+        string value = _compiler.Compile(Reduce(atomic.Value));
+        string compare = atomic.Compare == null
+            ? null
+            : _compiler.Compile(Reduce(atomic.Compare));
+
+        // A byte address buffer has the interlocked operations as methods on itself,
+        // taking the byte offset. Everything else - a structured buffer, a typed
+        // UAV, groupshared memory - has them as free functions over the destination,
+        // which is the element rather than the resource.
+        if (atomic.ElementByteOffset == null)
+        {
+            WriteLine(compare == null
+                ? $"{resource}.{atomic.MethodName}({address}, {value});"
+                : $"{resource}.{atomic.MethodName}({address}, {compare}, {value});");
+            return;
+        }
+
+        string element = $"{resource}[{address}]";
+        IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
+            resourceKey, GetElementByteOffset(atomic), [0]);
+        if (runs != null && runs.Count == 1)
+        {
+            element += "." + runs[0].Name;
+        }
+        WriteLine(compare == null
+            ? $"{atomic.MethodName}({element}, {value});"
+            : $"{atomic.MethodName}({element}, {compare}, {value});");
+    }
+
+    private static int GetElementByteOffset(AtomicStatement atomic)
+    {
+        return atomic.ElementByteOffset is ConstantNode constant && constant.IntegerValue.HasValue
+            ? constant.IntegerValue.Value
+            : 0;
     }
 
     private void WriteIndexableTempStoreStatement(IndexableTempStoreStatement store)

@@ -1202,6 +1202,35 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     break;
                 }
+            case D3D10Opcode.AtomicIAdd:
+            case D3D10Opcode.AtomicAnd:
+            case D3D10Opcode.AtomicOr:
+            case D3D10Opcode.AtomicXor:
+            case D3D10Opcode.AtomicIMax:
+            case D3D10Opcode.AtomicIMin:
+            case D3D10Opcode.AtomicUMax:
+            case D3D10Opcode.AtomicUMin:
+            case D3D10Opcode.AtomicCmpStore:
+                {
+                    // A byte address buffer takes the interlocked operations as its
+                    // own methods over a byte offset; everything else takes them as
+                    // free functions over the element.
+                    string method = instruction.Opcode.AtomicMethodName();
+                    string resource = GetOperandName(instruction, 0);
+                    string address = GetOperandName(instruction, 1);
+                    bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
+                    string value = GetOperandName(instruction, isCompareStore ? 3 : 2);
+                    string arguments = isCompareStore
+                        ? $"{GetOperandName(instruction, 2)}, {value}"
+                        : value;
+                    if (_registers.IsRawResource(instruction.GetParamRegisterKey(0)))
+                    {
+                        WriteLine("{0}.{1}({2}, {3});", resource, method, address, arguments);
+                        break;
+                    }
+                    WriteLine("{0}({1}[{2}], {3});", method, resource, address, arguments);
+                    break;
+                }
             case D3D10Opcode.StoreRaw:
                 {
                     int width = instruction.GetDestinationMaskLength();
@@ -1871,7 +1900,8 @@ public class HlslSimpleWriter : HlslWriter
         // said by the method - Load2, Store - and the register's own mask.
         if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
-            || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0))
+            || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
+            || (instruction.Opcode.IsAtomic() && operandIndex == 0))
         {
             writeMaskName = "";
         }
@@ -2270,6 +2300,14 @@ public class HlslSimpleWriter : HlslWriter
         // wide as the one component it writes. Sized by the destination, the
         // immediate of `dp3 r0.w, r0.xyzx, l(0.2125, 0.7154, 0.0721, 0)` came out
         // as the one component the w mask selects: float1(0), a luminance of zero.
+        // An interlocked operation reads one component from each of its operands. The
+        // address is a whole operand rather than the two a store splits it into, so
+        // its second component is the byte offset within the element and is not part
+        // of the subscript.
+        if (instruction.Opcode.IsAtomic() && operandIndex != 0)
+        {
+            return 1;
+        }
         if (operandIndex is 1 or 2)
         {
             switch (instruction.Opcode)

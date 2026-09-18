@@ -259,6 +259,50 @@ public static class D3D10OpcodeExtensions
         }
     }
 
+    /// <summary>
+    /// The interlocked operations that keep no result. The ones that do -
+    /// imm_atomic_iadd and its family - name a destination register as well and are
+    /// not read yet.
+    /// </summary>
+    public static bool IsAtomic(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.AtomicIAdd:
+            case D3D10Opcode.AtomicAnd:
+            case D3D10Opcode.AtomicOr:
+            case D3D10Opcode.AtomicXor:
+            case D3D10Opcode.AtomicIMax:
+            case D3D10Opcode.AtomicIMin:
+            case D3D10Opcode.AtomicUMax:
+            case D3D10Opcode.AtomicUMin:
+            case D3D10Opcode.AtomicCmpStore:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// The HLSL intrinsic an interlocked operation is written as. The unsigned and
+    /// the signed minimum and maximum share one name each - the operands say which,
+    /// the way they do for umin and imin themselves.
+    /// </summary>
+    public static string AtomicMethodName(this D3D10Opcode opcode)
+    {
+        return opcode switch
+        {
+            D3D10Opcode.AtomicIAdd => "InterlockedAdd",
+            D3D10Opcode.AtomicAnd => "InterlockedAnd",
+            D3D10Opcode.AtomicOr => "InterlockedOr",
+            D3D10Opcode.AtomicXor => "InterlockedXor",
+            D3D10Opcode.AtomicIMax or D3D10Opcode.AtomicUMax => "InterlockedMax",
+            D3D10Opcode.AtomicIMin or D3D10Opcode.AtomicUMin => "InterlockedMin",
+            D3D10Opcode.AtomicCmpStore => "InterlockedCompareStore",
+            _ => throw new NotImplementedException(opcode.ToString()),
+        };
+    }
+
     public static bool IsInteger(this D3D10Opcode opcode)
     {
         switch (opcode)
@@ -291,6 +335,18 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.INeg:
             case D3D10Opcode.IMax:
             case D3D10Opcode.Discard:
+            // Every operand of an interlocked operation is an integer - the address,
+            // the value and the one it compares against - since there is no atomic
+            // over anything else.
+            case D3D10Opcode.AtomicIAdd:
+            case D3D10Opcode.AtomicAnd:
+            case D3D10Opcode.AtomicOr:
+            case D3D10Opcode.AtomicXor:
+            case D3D10Opcode.AtomicIMax:
+            case D3D10Opcode.AtomicIMin:
+            case D3D10Opcode.AtomicUMax:
+            case D3D10Opcode.AtomicUMin:
+            case D3D10Opcode.AtomicCmpStore:
                 return true;
             default:
                 return false;

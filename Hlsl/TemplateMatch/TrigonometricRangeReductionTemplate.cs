@@ -57,7 +57,30 @@ public class TrigonometricRangeReductionTemplate : INodeTemplate
         }
 
         HlslTreeNode shifted = TryRemoveAddend(fraction.Value, 0.5f);
-        return shifted == null ? null : TryRemoveFactor(shifted, OverTwoPi);
+        if (shifted is not MultiplyOperation inner)
+        {
+            return null;
+        }
+
+        // One over two pi where the angle is used as it is, and a multiple of that
+        // where fxc folded a scale into the reduction: cos(x * 0.5) reduces with
+        // 0.5 over two pi, in the same mad as the sin of x beside it. Left to the
+        // exact constant, the half angle came out as the whole reduction written
+        // longhand, which fxc then reduces again.
+        ConstantNode scale = inner.Factor1 as ConstantNode ?? inner.Factor2 as ConstantNode;
+        if (scale == null)
+        {
+            return null;
+        }
+        HlslTreeNode angle = ReferenceEquals(scale, inner.Factor1) ? inner.Factor2 : inner.Factor1;
+        float factor = scale.Value / OverTwoPi;
+        if (!float.IsFinite(factor) || factor == 0)
+        {
+            return null;
+        }
+        return Math.Abs(factor - 1) < Tolerance
+            ? angle
+            : new MultiplyOperation(new ConstantNode(factor), angle);
     }
 
     /// <returns>The other side of the sum, or null if this is not that sum.</returns>

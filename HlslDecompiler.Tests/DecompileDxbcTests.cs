@@ -74,6 +74,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "packed_cbuffer")]
     [TestCase("ps_4_0", "packed_interpolator")]
     [TestCase("ps_4_0", "shadow_pcf")]
+    [TestCase("ps_4_0", "half_packing")]
     [TestCase("ps_4_0", "ambient_occlusion")]
     [TestCase("ps_4_0", "colour_grade")]
     [TestCase("ps_4_0", "parallax_occlusion")]

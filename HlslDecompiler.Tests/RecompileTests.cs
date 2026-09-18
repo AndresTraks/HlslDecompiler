@@ -27,6 +27,17 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
+        // The AST writer has one type per variable and no way to say that a value
+        // is a float whose bits are the integer wanted. Where the readers agree the
+        // variable is typed by them and the assignment reinterprets; where they
+        // disagree - fxc's f32tof16 holds a mantissa, a mask and a comparison in
+        // one register - it is typed a float and every integer use of it is X3082.
+        // Reinterpreting at each use, rather than once at the assignment, is what
+        // it wants; the instruction writer's storage rule is the same question
+        // answered for registers.
+        ["ps_4_0/half_packing"] =
+            "A register fxc uses for a float and for that float's bits in turn: the "
+            + "variable is one or the other, and the bitwise operators reject the float.",
     };
 
     private static readonly Lazy<string> Fxc = new(FindFxc);

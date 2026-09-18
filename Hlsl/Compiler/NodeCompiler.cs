@@ -241,6 +241,33 @@ public sealed class NodeCompiler
             : compiled;
     }
 
+    // An operand a bitwise operator or a shift reads. Where the value is a float -
+    // a temp declared as one, or an operation that computes one - the integer
+    // wanted is its bits and not its number, so it is reinterpreted rather than
+    // converted. It has to be reinterpreted somehow: HLSL will not apply either
+    // operator to a float at all (X3082).
+    private string CompileIntegerOperand(IEnumerable<HlslTreeNode> components)
+    {
+        List<HlslTreeNode> list = components.ToList();
+        return IsFloatValued(list[0])
+            ? $"asint({Compile(list)})"
+            : CompileOperand(list);
+    }
+
+    // Whether a value is a float, from the value itself rather than from what reads
+    // it: the readers of one of these are integer instructions by construction.
+    private static bool IsFloatValued(HlslTreeNode node)
+    {
+        return node switch
+        {
+            TempVariableNode temp => !temp.IsInteger,
+            ConvertOperation convert => convert.TargetType is not ("int" or "uint"),
+            ComparisonNode => false,
+            Operation operation => operation.ConsumesInteger == false,
+            _ => false,
+        };
+    }
+
     /// <summary>
     /// Set while compiling the value of an assignment to an integer variable. A
     /// vector constructor has no idea what it is being assigned to, and
@@ -336,13 +363,13 @@ public sealed class NodeCompiler
                             1 << (int)shift.Value);
                     }
                     return string.Format("{0} << {1}",
-                        CompileOperand(components.Select(g => g.Inputs[0])),
+                        CompileIntegerOperand(components.Select(g => g.Inputs[0])),
                         CompileOperand(amount));
                 }
 
             case ShiftRightOperation shiftRight:
                 {
-                    string value = CompileOperand(components.Select(g => g.Inputs[0]));
+                    string value = CompileIntegerOperand(components.Select(g => g.Inputs[0]));
                     // HLSL reads >> as arithmetic or logical from the type of what
                     // is shifted, so ushr has to say it there. As wide as the value,
                     // since a bare (uint) over two components is X3014. Not over a
@@ -376,8 +403,8 @@ public sealed class NodeCompiler
                         _ => "^",
                     };
                     return string.Format("{0} " + bitwise + " {1}",
-                        CompileOperand(components.Select(g => g.Inputs[0])),
-                        CompileOperand(components.Select(g => g.Inputs[1])));
+                        CompileIntegerOperand(components.Select(g => g.Inputs[0])),
+                        CompileIntegerOperand(components.Select(g => g.Inputs[1])));
                 }
 
             case AddOperation _:
@@ -1005,6 +1032,14 @@ public sealed class NodeCompiler
             {
                 _assigningToInteger = wasAssigningToInteger;
             }
+            // A variable its readers type as an integer, holding a value that is a
+            // float: the integer they read is its bits, so the assignment
+            // reinterprets rather than converts. Converting rounded a bit pattern
+            // to the number nearest it, which is not the same bits at all.
+            if (tempAssignment.TempVariable.IsInteger && IsFloatValued(tempAssignment.Value))
+            {
+                compiled = $"asint({compiled})";
+            }
             return $"{type}{variableCompiled} = {compiled};";
         }
 
@@ -1137,8 +1172,12 @@ public sealed class NodeCompiler
             string flag = Compile(first.Left);
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
         }
-        var left = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
-        var right = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
+        // Through CompileOperand, since a comparison binds tighter than the bitwise
+        // operators and the conditional: `(x & 0x7f800000) == 0x7f800000` is a bit
+        // test, and written without the brackets it is `x & (a == b)`, which is a
+        // different expression and not one HLSL will even accept on a float.
+        string left = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Left));
+        string right = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Right));
         return $"{left} {first.Comparison.ToHlslString()} {right}";
     }
 

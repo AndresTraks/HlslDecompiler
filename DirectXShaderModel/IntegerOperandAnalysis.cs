@@ -10,6 +10,12 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterComponentKey> _bitsRegisters;
     private HashSet<RegisterComponentKey> _maskRegisters;
     private HashSet<RegisterKey> _integerDeclaredRegisters;
+    private HashSet<RegisterComponentKey> _integerOutputSignatures;
+
+    /// <summary>How many moves a value is followed through before giving up. Real
+    /// chains are one or two; the bound is there so a shader full of them cannot
+    /// make the search exponential.</summary>
+    private const int MaximumCarryDepth = 8;
     private readonly ShaderModel _shader;
 
     public IntegerOperandAnalysis(ShaderModel shader)
@@ -131,6 +137,40 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
+    /// Whether the output signature types a register component as an integer.
+    /// IsIntegerRegister answers the same question of the instructions as well,
+    /// and an integer instruction writing a float output is exactly the case that
+    /// has to be told apart: what it writes there is a float's bits.
+    /// </summary>
+    public bool IsIntegerOutputSignature(RegisterComponentKey registerComponent)
+    {
+        _integerOutputSignatures ??= FindIntegerOutputSignatures();
+        return _integerOutputSignatures.Contains(registerComponent);
+    }
+
+    private HashSet<RegisterComponentKey> FindIntegerOutputSignatures()
+    {
+        const int UInt32ComponentType = 1;
+        const int SInt32ComponentType = 2;
+        var integers = new HashSet<RegisterComponentKey>();
+        foreach (RegisterSignature signature in _shader.OutputSignatures)
+        {
+            if (signature.ComponentType != UInt32ComponentType && signature.ComponentType != SInt32ComponentType)
+            {
+                continue;
+            }
+            for (int component = 0; component < 4; component++)
+            {
+                if ((signature.Mask & (1 << component)) != 0)
+                {
+                    integers.Add(new RegisterComponentKey(signature.RegisterKey, component));
+                }
+            }
+        }
+        return integers;
+    }
+
+    /// <summary>
     /// What ld and ldms read: a texel of the type the resource was declared with,
     /// which for a Texture2D&lt;uint4&gt; is an integer and not the float a texel
     /// usually is. A G-buffer packs bits into such a texture, and reading them as
@@ -178,6 +218,12 @@ public sealed class IntegerOperandAnalysis
     /// </summary>
     public ValueKind[] GetImmediateKindsByReaders(D3D10Instruction instruction)
     {
+        return GetImmediateKindsByReaders(instruction, []);
+    }
+
+    private ValueKind[] GetImmediateKindsByReaders(
+        D3D10Instruction instruction, HashSet<D3D10Instruction> visited)
+    {
         var kinds = new ValueKind[4];
         var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
         int start = instructions.IndexOf(instruction);
@@ -211,6 +257,11 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
+            // An instruction reads its sources before it writes its destination, so
+            // what it overwrites is taken away only once its own reads are counted:
+            // `movc r1.xy, c, r1.wz, r1.xy` reads r1.y and writes it, and killing
+            // the component first lost the read.
+            int overwritten = 0;
             for (int operand = 0; operand < reader.OperandTokens.OperandCount; operand++)
             {
                 if (reader.GetOperandType(operand) != OperandType.Temp
@@ -222,7 +273,7 @@ public sealed class IntegerOperandAnalysis
                 {
                     if (depth <= 0)
                     {
-                        live &= ~reader.GetWriteMask(operand);
+                        overwritten |= reader.GetWriteMask(operand);
                     }
                     continue;
                 }
@@ -233,6 +284,19 @@ public sealed class IntegerOperandAnalysis
                 }
                 if (consumed != ValueKind.Integer && consumed != ValueKind.Float)
                 {
+                    // A mov or a movc reads nothing of its own; it carries the
+                    // value on, and what the value is comes from whatever reads
+                    // the register it lands in. Stopping here left the constants
+                    // of `movc r2.xy, c, l(8, 12), l(0, 4)` typed as floats, where
+                    // the iadd that reads them through a second movc says they are
+                    // integers - and 8 as a float is a denormal that prints as 0.
+                    // A movc's first source is the condition it tests, not a value
+                    // it carries.
+                    if (reader.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC
+                        && !(reader.Opcode == D3D10Opcode.MovC && operand == 1))
+                    {
+                        CarryKindsOnward(reader, operand, live, kinds, disagree, visited);
+                    }
                     continue;
                 }
                 foreach (byte component in reader.GetSourceSwizzleComponents(operand).Distinct())
@@ -250,8 +314,65 @@ public sealed class IntegerOperandAnalysis
                     kinds[component] = consumed;
                 }
             }
+            live &= ~overwritten;
         }
         return kinds;
+    }
+
+    /// <summary>
+    /// Takes what reads the destination of a carrying move and applies it to the
+    /// components that move reads, so an immediate two moves away from the
+    /// instruction that gives it a type still gets one.
+    /// </summary>
+    private void CarryKindsOnward(
+        D3D10Instruction move,
+        int operand,
+        int live,
+        ValueKind[] kinds,
+        bool[] disagree,
+        HashSet<D3D10Instruction> visited)
+    {
+        int? destinationIndex = move.GetDestinationParamIndex();
+        if (destinationIndex == null
+            || move.GetOperandType(destinationIndex.Value) != OperandType.Temp
+            || visited.Count >= MaximumCarryDepth
+            || !visited.Add(move))
+        {
+            return;
+        }
+        // The set is the path and not everything seen: a move carries each of its
+        // sources on, and leaving it in would let the first of them stop the rest.
+        ValueKind[] onward;
+        try
+        {
+            onward = GetImmediateKindsByReaders(move, visited);
+        }
+        finally
+        {
+            visited.Remove(move);
+        }
+        byte[] swizzle = move.GetSourceSwizzleComponents(operand);
+        int writeMask = move.GetWriteMask(destinationIndex.Value);
+        for (int destination = 0; destination < 4; destination++)
+        {
+            if ((writeMask & (1 << destination)) == 0
+                || onward[destination] == ValueKind.Unknown)
+            {
+                continue;
+            }
+            int component = swizzle[destination];
+            if ((live & (1 << component)) == 0 || disagree[component])
+            {
+                continue;
+            }
+            if (kinds[component] != ValueKind.Unknown && kinds[component] != onward[destination])
+            {
+                kinds[component] = ValueKind.Unknown;
+                disagree[component] = true;
+                continue;
+            }
+            kinds[component] = onward[destination];
+        }
     }
 
     private HashSet<RegisterKey> FindIntegerDeclaredRegisters()

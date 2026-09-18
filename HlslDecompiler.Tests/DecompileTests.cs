@@ -81,6 +81,7 @@ public class DecompileTests
     [TestCase("vs_1_1", "vector4_matrix44_multiply")]
     [TestCase("vs_3_0", "const_array")]
     [TestCase("vs_3_0", "bone_array")]
+    [TestCase("vs_3_0", "grass_wave")]
     [TestCase("vs_3_0", "constant")]
     [TestCase("vs_3_0", "constant_struct")]
     [TestCase("vs_3_0", "dot_product")]

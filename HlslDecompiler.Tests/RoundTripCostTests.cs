@@ -72,6 +72,15 @@ public class RoundTripCostTests
             + "than one, and the dot product over the result is a mul and two mads "
             + "where the original had one dp3_sat. Correct throughout - it is the "
             + "vector shape that is lost, not the arithmetic."),
+        ["vs_3_0/grass_wave"] = (24,
+            "Two instructions, and the same cause as ps_4_0/gbuffer_decode. The "
+            + "position the length is taken of has two components computed by a mad "
+            + "and one read straight from the input, and a component built by a "
+            + "different expression from its neighbour does not group with it - so "
+            + "the dp3 is written as three multiplies and two adds rather than as "
+            + "length(float3(...)), and fxc has no vector to take it over. Was 27 "
+            + "while the cos of a half angle kept the whole range reduction fxc "
+            + "wrote in front of it, which fxc then reduced again."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and they print as 1 and 8 because a whole "

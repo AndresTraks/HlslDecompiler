@@ -717,14 +717,39 @@ public class HlslSimpleWriter : HlslWriter
             format = $"{assignment}saturate({expression});";
         }
         // An integer result into bits storage keeps its bits, so that whatever
-        // reads them as an integer next gets them back with asint.
+        // reads them as an integer next gets them back with asint. An output
+        // register the signature types as a float holds bits the same way: a
+        // shader packing two half floats ends with `iadd o0.x, ...`, and that is
+        // a float's bit pattern and not the number the bits add up to.
         if (GetProducedKind(instruction) == ValueKind.Integer
-            && GetDestinationStorage(instruction, destinationIndex) == ComponentStorage.Bits)
+            && (GetDestinationStorage(instruction, destinationIndex) == ComponentStorage.Bits
+                || IsFloatOutput(instruction, destinationIndex)))
         {
             string expression = format[assignment.Length..^1];
             format = $"{assignment}asfloat({expression});";
         }
         WriteLine(format, args);
+    }
+
+    // Whether the destination is an output register the signature does not type as
+    // an integer - so a float, whose bits an integer instruction writes.
+    private bool IsFloatOutput(D3D10Instruction instruction, int destinationIndex)
+    {
+        if (instruction.GetOperandType(destinationIndex) != OperandType.Output)
+        {
+            return false;
+        }
+        int writeMask = instruction.GetWriteMask(destinationIndex);
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                return !_integerOperandAnalysis.IsIntegerOutputSignature(
+                    new RegisterComponentKey(registerKey, component));
+            }
+        }
+        return false;
     }
 
     private void WriteInstruction(D3D10Instruction instruction)

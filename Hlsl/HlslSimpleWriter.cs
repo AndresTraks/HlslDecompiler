@@ -1176,6 +1176,21 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Sqrt:
                 WriteResult(instruction, "{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
+            case D3D10Opcode.CountBits:
+                WriteResult(instruction, "{0} = countbits({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.FirstBitLo:
+                WriteResult(instruction, "{0} = firstbitlow({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.BFRev:
+                WriteResult(instruction, "{0} = reversebits({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.F32ToF16:
+                WriteResult(instruction, "{0} = f32tof16({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.F16ToF32:
+                WriteResult(instruction, "{0} = f16tof32({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
             case D3D10Opcode.StoreStructured:
                 {
                     // A struct element is written a member at a time: one store of
@@ -2343,6 +2358,15 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction.Opcode is D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw)
         {
             // One byte offset.
+            return 1;
+        }
+        // One element and one byte offset within it, however many components the
+        // element has. Sized by the destination, `ld_structured r0.xy,
+        // vThreadID.x, l(0), t0` subscripted the buffer with `i.xx`, which fxc
+        // refuses: an index is a scalar.
+        if (instruction.Opcode is D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured
+            && operandIndex is 1 or 2)
+        {
             return 1;
         }
         return null;

@@ -230,6 +230,11 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
                 case D3D10Opcode.StoreStructured:
+                case D3D10Opcode.CountBits:
+                case D3D10Opcode.FirstBitLo:
+                case D3D10Opcode.BFRev:
+                case D3D10Opcode.F32ToF16:
+                case D3D10Opcode.F16ToF32:
                     return true;
                 default:
                     return false;

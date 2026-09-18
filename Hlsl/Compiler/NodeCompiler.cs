@@ -300,6 +300,12 @@ public sealed class NodeCompiler
         {
             TempVariableNode temp => !temp.IsInteger,
             ConvertOperation convert => convert.TargetType is not ("int" or "uint"),
+            // The half conversions read one type and make the other, so the
+            // ConsumesInteger test below answers the wrong question for them: an
+            // f32tof16 assigned to an integer variable was reinterpreted rather than
+            // left alone, and `asint` around half float bits says nothing true.
+            FloatToHalfOperation => false,
+            HalfToFloatOperation => true,
             ComparisonNode => false,
             Operation operation => operation.ConsumesInteger == false,
             _ => false,
@@ -777,6 +783,27 @@ public sealed class NodeCompiler
         try
         {
             return Compile(index);
+        }
+        finally
+        {
+            _assigningToInteger = wasAssigningToInteger;
+        }
+    }
+
+    /// <summary>
+    /// Compiles a value standing where an integer is wanted - the element of a
+    /// buffer of integers. A vector constructor has no idea what it is being
+    /// assigned to, so `countbits(x)` and its neighbours came out inside a float4
+    /// on the way into a RWStructuredBuffer&lt;uint4&gt;, which is a conversion each
+    /// way and loses everything above what a float holds exactly.
+    /// </summary>
+    public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
+    {
+        bool wasAssigningToInteger = _assigningToInteger;
+        _assigningToInteger = true;
+        try
+        {
+            return Compile(group);
         }
         finally
         {

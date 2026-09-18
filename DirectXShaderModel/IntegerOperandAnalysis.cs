@@ -866,6 +866,9 @@ public sealed class IntegerOperandAnalysis
         {
             if (instruction.Opcode != D3D10Opcode.IToF
                 && instruction.Opcode != D3D10Opcode.UTof
+                // f16tof32 unpacks a half float into a float, so what it writes is
+                // no more an integer than what itof writes.
+                && instruction.Opcode != D3D10Opcode.F16ToF32
                 && GetSourceCount(instruction.Opcode) != 0)
             {
                 AddDestinationComponents(instruction, integerRegisters);
@@ -882,6 +885,9 @@ public sealed class IntegerOperandAnalysis
             // an integer component but the source is not.
             if (instruction.Opcode != D3D10Opcode.Ftoi
                 && instruction.Opcode != D3D10Opcode.Ftou
+                // f32tof16 packs a float into a half float, so what it reads is a
+                // float the way what ftou reads is.
+                && instruction.Opcode != D3D10Opcode.F32ToF16
                 && GetSourceCount(instruction.Opcode) != 0)
             {
                 AddSourceComponents(instruction, integerRegisters);
@@ -1111,6 +1117,14 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
             case D3D10Opcode.INeg:
+            // The bit instructions read an integer and write one. f32tof16 and
+            // f16tof32 are here for the half they touch, and are kept off the wrong
+            // side of the conversion by the two tests below, the way ftou is.
+            case D3D10Opcode.CountBits:
+            case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.BFRev:
+            case D3D10Opcode.F32ToF16:
+            case D3D10Opcode.F16ToF32:
                 return 1;
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:

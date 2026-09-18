@@ -347,6 +347,11 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
             case D3D10Opcode.AtomicCmpStore:
+            // The bit instructions read an integer and count or reorder its bits.
+            case D3D10Opcode.CountBits:
+            case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.BFRev:
+            case D3D10Opcode.F16ToF32:
                 return true;
             default:
                 return false;
@@ -388,6 +393,8 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Integer;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
+            // The float it takes the bits of the nearest half float to.
+            case D3D10Opcode.F32ToF16:
                 return ValueKind.Float;
             default:
                 return opcode.IsInteger() ? ValueKind.Integer : ValueKind.Float;
@@ -429,9 +436,12 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Bits;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
+            // Half float bits, which are an integer however they got there.
+            case D3D10Opcode.F32ToF16:
                 return ValueKind.Integer;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
+            case D3D10Opcode.F16ToF32:
             // A texel, whatever address it was read at.
             case D3D10Opcode.LD:
             case D3D10Opcode.LDMS:

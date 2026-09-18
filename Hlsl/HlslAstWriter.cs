@@ -226,7 +226,13 @@ public class HlslAstWriter : HlslWriter
         string compiledDestination = _registers.GetRegisterName(
             ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey);
         string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
-        string compiledValue = _compiler.Compile(storeStructured.Values.Select(Reduce));
+        HlslTreeNode[] storedValues = [.. storeStructured.Values.Select(Reduce)];
+        // Into a buffer of integers as integers. A vector constructor is typed by
+        // what it is being assigned to and there is nothing else here to say so.
+        bool storesIntegers = storedValues.All(v => StatementFinalizer.IsIntegerValue(v) == true);
+        string compiledValue = storesIntegers
+            ? _compiler.CompileAsInteger(storedValues)
+            : _compiler.Compile(storedValues);
         if (storeStructured.IsRaw)
         {
             // Store, Store2, Store3 or Store4 at the byte offset, by how many dwords
@@ -245,7 +251,9 @@ public class HlslAstWriter : HlslWriter
         {
             foreach ((string name, int[] values) in runs)
             {
-                string run = _compiler.Compile(values.Select(v => Reduce(storeStructured.Values[v])));
+                string run = storesIntegers
+                    ? _compiler.CompileAsInteger(values.Select(v => storedValues[v]))
+                    : _compiler.Compile(values.Select(v => storedValues[v]));
                 WriteLine($"{compiledDestination}[{compiledAddress}].{name} = {run};");
             }
             return;

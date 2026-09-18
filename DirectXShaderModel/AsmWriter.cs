@@ -742,6 +742,21 @@ public class AsmWriter
             case D3D10Opcode.Sqrt:
                 WriteInstruction(instruction, "sqrt", 2);
                 break;
+            case D3D10Opcode.CountBits:
+                WriteInstruction(instruction, "countbits", 2);
+                break;
+            case D3D10Opcode.FirstBitLo:
+                WriteInstruction(instruction, "firstbit_lo", 2);
+                break;
+            case D3D10Opcode.BFRev:
+                WriteInstruction(instruction, "bfrev", 2);
+                break;
+            case D3D10Opcode.F32ToF16:
+                WriteInstruction(instruction, "f32tof16", 2);
+                break;
+            case D3D10Opcode.F16ToF32:
+                WriteInstruction(instruction, "f16tof32", 2);
+                break;
             case D3D10Opcode.AtomicIAdd:
                 WriteInstruction(instruction, "atomic_iadd", 3);
                 break;

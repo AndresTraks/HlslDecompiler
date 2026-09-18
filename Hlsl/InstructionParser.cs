@@ -1489,7 +1489,11 @@ public class InstructionParser
                 return true;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
+            // The float whose nearest half float it takes the bits of.
+            case D3D10Opcode.F32ToF16:
                 return false;
+            case D3D10Opcode.F16ToF32:
+                return true;
             // A buffer load or store reads its address as an integer, whatever the
             // buffer holds.
             case D3D10Opcode.LdStructured:
@@ -1657,6 +1661,11 @@ public class InstructionParser
             case D3D10Opcode.Mul:
             case D3D10Opcode.Rsq:
             case D3D10Opcode.Sqrt:
+            case D3D10Opcode.CountBits:
+            case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.BFRev:
+            case D3D10Opcode.F32ToF16:
+            case D3D10Opcode.F16ToF32:
                 {
                     HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                     switch (instruction.Opcode)
@@ -1773,6 +1782,16 @@ public class InstructionParser
                             return new ReciprocalSquareRootOperation(inputs[0]);
                         case D3D10Opcode.Sqrt:
                             return new SquareRootOperation(inputs[0]);
+                        case D3D10Opcode.CountBits:
+                            return new BitCountOperation(inputs[0]);
+                        case D3D10Opcode.FirstBitLo:
+                            return new FirstBitLowOperation(inputs[0]);
+                        case D3D10Opcode.BFRev:
+                            return new ReverseBitsOperation(inputs[0]);
+                        case D3D10Opcode.F32ToF16:
+                            return new FloatToHalfOperation(inputs[0]);
+                        case D3D10Opcode.F16ToF32:
+                            return new HalfToFloatOperation(inputs[0]);
                         default:
                             throw new NotImplementedException();
                     }
@@ -2434,6 +2453,11 @@ public class InstructionParser
             case D3D10Opcode.Rsq:
             case D3D10Opcode.Sqrt:
             case D3D10Opcode.SinCos:
+            case D3D10Opcode.CountBits:
+            case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.BFRev:
+            case D3D10Opcode.F32ToF16:
+            case D3D10Opcode.F16ToF32:
                 return 1;
             case D3D10Opcode.Add:
             case D3D10Opcode.Dp2:

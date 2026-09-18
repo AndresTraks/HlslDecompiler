@@ -737,6 +737,12 @@ public class StatementFinalizer
         return value switch
         {
             ConvertOperation convert => convert.TargetType is "int" or "uint",
+            // Conversions too, and for the same reason: what they read and what they
+            // make are opposite, so the operation's own ConsumesInteger below would
+            // answer the wrong question. f16tof32 unpacking two halves into a
+            // float2 had them written as an int2, which truncates them.
+            FloatToHalfOperation => true,
+            HalfToFloatOperation => false,
             ConstantNode constant => constant.IntegerValue != null,
             LoadStructuredNode => null,
             // A bitwise operator says nothing about what it was given - it carries

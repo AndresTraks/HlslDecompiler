@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -691,6 +692,19 @@ public class D3D10Machine
                 return Bits(instruction, Math.Max);
             case D3D10Opcode.INeg:
                 return MapInt(instruction, v => -v);
+            case D3D10Opcode.CountBits:
+                return MapUInt(instruction, v => (uint)BitOperations.PopCount(v));
+            case D3D10Opcode.FirstBitLo:
+                // 0xffffffff where no bit is set, which is what the instruction
+                // answers and what TrailingZeroCount does not.
+                return MapUInt(instruction, v => v == 0 ? 0xFFFFFFFF : (uint)BitOperations.TrailingZeroCount(v));
+            case D3D10Opcode.BFRev:
+                return MapUInt(instruction, ReverseBits);
+            case D3D10Opcode.F32ToF16:
+                return [.. Floats(instruction, 1).Select(v => (uint)(ushort)BitConverter.HalfToUInt16Bits((Half)v))];
+            case D3D10Opcode.F16ToF32:
+                return [.. Ints(instruction, 1).Select(v =>
+                    BitConverter.SingleToUInt32Bits((float)BitConverter.UInt16BitsToHalf((ushort)v)))];
             case D3D10Opcode.Ieq:
                 return CompareInt(instruction, (a, b) => a == b);
             case D3D10Opcode.Ine:
@@ -927,6 +941,21 @@ public class D3D10Machine
     private uint[] MapFloat(D3D10Instruction instruction, Func<float, float> transform)
     {
         return Pack(Floats(instruction, 1).Select(transform));
+    }
+
+    private uint[] MapUInt(D3D10Instruction instruction, Func<uint, uint> transform)
+    {
+        return [.. Ints(instruction, 1).Select(v => transform(unchecked((uint)v)))];
+    }
+
+    private static uint ReverseBits(uint value)
+    {
+        uint reversed = 0;
+        for (int bit = 0; bit < 32; bit++)
+        {
+            reversed = (reversed << 1) | ((value >> bit) & 1);
+        }
+        return reversed;
     }
 
     private uint[] MapInt(D3D10Instruction instruction, Func<int, int> transform)

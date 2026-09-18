@@ -46,12 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_4_0/mixed_register"] = (21,
-            "One instruction. `accumulator / max((float)taken, 1)` is computed twice "
-            + "in the original - once for the average and once for the saturate of it "
-            + "- so the graph holds two divisions, and the hoist names what a "
-            + "statement's text repeats by the nodes it came from. Two subtrees that "
-            + "read alike but are not the same nodes are not a repeat to it."),
         ["cs_4_0/atomic_free_sum"] = (23,
             "Two instructions, and the same cause. The buffer load is read twice - "
             + "once shifted, once not - across two statements, and the hoist is per "

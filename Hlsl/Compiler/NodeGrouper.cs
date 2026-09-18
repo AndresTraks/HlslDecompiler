@@ -166,6 +166,15 @@ public class NodeGrouper
             {
                 return false;
             }
+            // Variables that disagree about their type do not share a declaration.
+            // Before they are numbered two temp variables compare equal, so without
+            // this a running sum and a count of the samples it took are declared as
+            // one float2 and the count is carried as a float.
+            if (assignment1.TempVariable.IsInteger != assignment2.TempVariable.IsInteger
+                || assignment1.TempVariable.IsBits != assignment2.TempVariable.IsBits)
+            {
+                return false;
+            }
             return CanGroupComponents(assignment1.TempVariable, assignment2.TempVariable);
         }
 

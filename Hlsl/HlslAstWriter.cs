@@ -896,6 +896,7 @@ public class HlslAstWriter : HlslWriter
             {
                 readers.Add(node);
             }
+            candidate = WithSiblingComponents(candidate, readers, roots);
             TempVariableNode[] variables = CreateTempVariables(candidate);
             for (int i = 0; i < candidate.Length; i++)
             {
@@ -931,6 +932,55 @@ public class HlslAstWriter : HlslWriter
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
         }
+    }
+
+    /// <summary>
+    /// The other components of the same instruction, where the candidate is one of
+    /// them. One texture load is four nodes, and a component that repeats often
+    /// enough on its own is named on its own: a terrain shader reading three
+    /// channels of a blend map named each of them and wrote the sample out three
+    /// times, once per declaration. Named together they are one read and one
+    /// variable.
+    ///
+    /// Only the components this statement reads, and only the ones the grouper would
+    /// write as one swizzle anyway. That is the test rather than input identity: the
+    /// components of one sample do not share their coordinate nodes - each is read
+    /// into its own - so what says they are one instruction is that they group.
+    /// </summary>
+    private HlslTreeNode[] WithSiblingComponents(
+        HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
+    {
+        if (candidate.Length == 0
+            || candidate[0] is Operation or ConstantNode
+            || candidate[0] is not IHasComponentIndex
+            || candidate[0].Inputs.Count == 0)
+        {
+            return candidate;
+        }
+
+        var components = new List<HlslTreeNode>(candidate);
+        var indices = new HashSet<int>(candidate.OfType<IHasComponentIndex>().Select(c => c.ComponentIndex));
+        if (indices.Count != candidate.Length)
+        {
+            return candidate;
+        }
+        foreach (HlslTreeNode sibling in candidate[0].Inputs[0].Outputs)
+        {
+            if (sibling is not IHasComponentIndex component
+                || sibling.GetType() != candidate[0].GetType()
+                || indices.Contains(component.ComponentIndex)
+                || !readers.Contains(sibling)
+                || roots.Contains(sibling)
+                || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false))
+            {
+                continue;
+            }
+            indices.Add(component.ComponentIndex);
+            components.Add(sibling);
+        }
+        return components.Count == candidate.Length
+            ? candidate
+            : [.. components.OrderBy(c => ((IHasComponentIndex)c).ComponentIndex)];
     }
 
     /// <summary>

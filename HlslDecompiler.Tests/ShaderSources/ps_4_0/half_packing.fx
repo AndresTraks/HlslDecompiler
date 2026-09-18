@@ -5,12 +5,12 @@ Texture2D source;
 
 float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
-	int t0 = asint(source.Sample(samp, texcoord).y * packing.x);
-	float t1 = source.Sample(samp, texcoord).x;
-	int4 t2 = int4(t0 & int2(8388607, 2147483647), asint(t1 * packing.x) & int2(8388607, 2147483647));
-	int t3 = asint(t1 * packing.x);
-	int2 t4 = 113 - (int2(((uint)t0 >> 23) & 255, ((uint)t3 >> 23) & 255));
-	int t5 = ((((uint)t0 >> 16) & 32768) + (((t0 & 2139095040) == 2139095040 ? t2.x ? ((t0 | (((uint)t0 >> 13) | ((uint)t0 >> 3))) & 1023) + 31744 : 31744 : t2.y > 1207951360 ? 31743 : t2.y < 947912704 ? (uint)(t4.x < 24 ? (uint)t2.x + 8388608 >> t4.x : 0) >> 13 : (uint)t2.y - 939524096 >> 13) & 32767)) * 65536;
+	float2 t0 = source.Sample(samp, texcoord).xy;
+	int t1 = asint(t0.y * packing.x);
+	int4 t2 = int4(t1 & int2(8388607, 2147483647), asint(t0.x * packing.x) & int2(8388607, 2147483647));
+	int t3 = asint(t0.x * packing.x);
+	int2 t4 = 113 - (int2(((uint)t1 >> 23) & 255, ((uint)t3 >> 23) & 255));
+	int t5 = ((((uint)t1 >> 16) & 32768) + (((t1 & 2139095040) == 2139095040 ? t2.x ? ((t1 | (((uint)t1 >> 13) | ((uint)t1 >> 3))) & 1023) + 31744 : 31744 : t2.y > 1207951360 ? 31743 : t2.y < 947912704 ? (uint)(t4.x < 24 ? (uint)t2.x + 8388608 >> t4.x : 0) >> 13 : (uint)t2.y - 939524096 >> 13) & 32767)) * 65536;
 	int t6 = (uint)t5 >> 16;
 	int2 t7 = t6 & int2(31744, 1023);
 	int t8 = (t6 * 8192) & 8380416;

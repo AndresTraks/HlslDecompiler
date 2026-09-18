@@ -1026,6 +1026,19 @@ public class AsmWriter
         {
             bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction)
                 || IsBufferAddressOperand(instruction, index);
+            // A mov or a movc uses its immediate for nothing itself, so what it is
+            // comes from whatever reads the register it lands in - the same question
+            // the HLSL writer asks of the same operand. Left to the instruction, the
+            // 1 and -1 a movc selects between printed as floats, where they are a
+            // denormal and a NaN, and fxc prints l(1,1,0,0) and l(-1,-1,0,0).
+            if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC)
+            {
+                ValueKind readAs = _integerOperandAnalysis.GetImmediateKindByReaders(instruction);
+                if (readAs != ValueKind.Unknown)
+                {
+                    isInteger = readAs == ValueKind.Integer;
+                }
+            }
             var componentSelection = instruction.GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand1Component)
             {

@@ -66,7 +66,7 @@ ishl r0.x, r0.x, l(16)
 and r1.xyz, r0.zzz, l(65535, 31744, 1023, 0)
 mul o0.z, r0.z, cb0[0].y
 ushr r0.z, r1.z, l(8)
-movc r2.xy, r0.zz, l(0.000000, 0.000000, 0, 0), l(0, 0.000000, 0, 0)
+movc r2.xy, r0.zz, l(8, 12, 0, 0), l(0, 4, 0, 0)
 movc r0.z, r0.z, r0.z, r1.z
 ushr r0.w, r0.z, l(4)
 movc r0.z, r0.w, r0.w, r0.z
@@ -79,7 +79,7 @@ ushr r0.z, r0.z, l(1)
 iadd r1.w, r0.w, l(1)
 movc r0.z, r0.z, r1.w, r0.w
 iadd r0.z, -r0.z, l(10)
-movc r0.z, r1.z, r0.z, l(0.000000)
+movc r0.z, r1.z, r0.z, l(11)
 ishl r0.w, r1.z, r0.z
 ishl r0.z, r0.z, l(23)
 iadd r0.z, -r0.z, l(947912704)
@@ -103,7 +103,7 @@ iadd o0.x, r0.x, r0.z
 ushr r0.x, r0.y, l(16)
 and r0.yzw, r0.yxx, l(0, -2147483648, 31744, 1023)
 ushr r1.x, r0.w, l(8)
-movc r1.yz, r1.xx, l(0, 0.000000, 0.000000, 0), l(0, 0, 0.000000, 0)
+movc r1.yz, r1.xx, l(0, 8, 12, 0), l(0, 0, 4, 0)
 movc r1.x, r1.x, r1.x, r0.w
 ushr r1.w, r1.x, l(4)
 movc r1.xy, r1.ww, r1.wz, r1.xy
@@ -114,7 +114,7 @@ ushr r1.x, r1.x, l(1)
 iadd r1.z, r1.y, l(1)
 movc r1.x, r1.x, r1.z, r1.y
 iadd r1.x, -r1.x, l(10)
-movc r1.x, r0.w, r1.x, l(0.000000)
+movc r1.x, r0.w, r1.x, l(11)
 ishl r1.y, r0.w, r1.x
 ishl r1.x, r1.x, l(23)
 iadd r1.x, -r1.x, l(947912704)

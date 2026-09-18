@@ -15,7 +15,7 @@ dp4 r0.w, v1, cb0[3]
 div r0.xyz, r0.xyz, r0.www
 mad r0.xy, r0.xy, l(0.5, -0.5, 0, 0), l(0.5, 0.5, 0, 0)
 add r0.z, r0.z, -cb0[4].x
-mov r1.yw, l(0, -1082130432, 0, 0)
+mov r1.yw, l(0, -1, 0, 0)
 mov r0.w, l(0)
 mov r2.x, l(-1)
 loop
@@ -38,7 +38,7 @@ sample_c_lz r1.z, r2.x, t0.x, s0, r0.z
 add r1.x, r1.z, r1.x
 iadd r1.y, r1.y, l(1)
 endloop
-mov r2.y, l(1065353216)
+mov r2.y, l(1)
 mov r0.w, r1.x
 mov r1.y, l(-1)
 loop

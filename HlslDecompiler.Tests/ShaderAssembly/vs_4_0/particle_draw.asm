@@ -8,7 +8,7 @@ dcl_output o1.xy
 dcl_output o1.z
 dcl_temps 3
 and r0.xy, v0.xx, l(1, 2, 0, 0)
-movc r0.xy, r0.xy, l(0.000000, 0.000000, 0, 0), l(NaN, NaN, 0, 0)
+movc r0.xy, r0.xy, l(1, 1, 0, 0), l(-1, -1, 0, 0)
 itof r0.xy, r0.xy
 ushr r0.z, v0.x, l(2)
 ld_structured r1.x, r0.z, l(28), t0.x

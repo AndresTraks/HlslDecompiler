@@ -1962,17 +1962,31 @@ public class InstructionParser
         }
     }
 
+    /// <summary>
+    /// Says of a node that it reads floats. CreateInstructionTree types the tree's
+    /// root by the opcode and nothing below it, which is enough while an instruction
+    /// makes one node. A dot product makes a sum of products, and the products are
+    /// what read the operands: left saying nothing, they left their operands typed
+    /// by the register those were in, and fxc reuses registers. A texture load into
+    /// the r0 that had held a thread id came out as an int2, which truncates it.
+    /// </summary>
+    private static T ReadingFloats<T>(T node) where T : HlslTreeNode
+    {
+        node.ConsumesInteger ??= false;
+        return node;
+    }
+
     private HlslTreeNode CreateDotProduct2AddNode(Instruction instruction)
     {
         var vector1 = GetInputComponents(instruction, 1, 2);
         var vector2 = GetInputComponents(instruction, 2, 2);
         var add = GetInputComponents(instruction, 3, 1)[0];
 
-        var dp2 = new AddOperation(
-            new MultiplyOperation(vector1[0], vector2[0]),
-            new MultiplyOperation(vector1[1], vector2[1]));
+        var dp2 = ReadingFloats(new AddOperation(
+            ReadingFloats(new MultiplyOperation(vector1[0], vector2[0])),
+            ReadingFloats(new MultiplyOperation(vector1[1], vector2[1]))));
 
-        return new AddOperation(dp2, add);
+        return ReadingFloats(new AddOperation(dp2, add));
     }
 
     private HlslTreeNode CreateDotProductNode(D3D9Instruction instruction)
@@ -1982,11 +1996,12 @@ public class InstructionParser
         for (int component = 0; component < numComponents; component++)
         {
             IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
-            var multiply = new MultiplyOperation(componentInput[0], componentInput[1]);
+            var multiply = ReadingFloats(new MultiplyOperation(componentInput[0], componentInput[1]));
             addends.Add(multiply);
         }
 
-        return addends.Aggregate((addition, addend) => new AddOperation(addition, addend));
+        return addends.Aggregate((addition, addend) =>
+            ReadingFloats(new AddOperation(addition, addend)));
     }
 
     private HlslTreeNode CreateDotProductNode(D3D10Instruction instruction)
@@ -2002,11 +2017,12 @@ public class InstructionParser
         for (int component = 0; component < numComponents; component++)
         {
             IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
-            var multiply = new MultiplyOperation(componentInput[0], componentInput[1]);
+            var multiply = ReadingFloats(new MultiplyOperation(componentInput[0], componentInput[1]));
             addends.Add(multiply);
         }
 
-        return addends.Aggregate((addition, addend) => new AddOperation(addition, addend));
+        return addends.Aggregate((addition, addend) =>
+            ReadingFloats(new AddOperation(addition, addend)));
     }
 
     // `lit src` reads n.l from x, n.h from y and the specular power from w, whatever

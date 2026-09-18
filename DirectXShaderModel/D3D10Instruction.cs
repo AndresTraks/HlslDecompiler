@@ -308,6 +308,37 @@ public class D3D10Instruction : Instruction
         return FormatWriteMask(GetWriteMask(operandIndex), destinationLength);
     }
 
+    /// <summary>
+    /// The same over part of what the instruction writes. One instruction can write
+    /// two things that have to be said separately - two output semantics packed
+    /// into one register - and each statement names only its own components.
+    /// </summary>
+    public string GetWriteMaskName(int operandIndex, int destinationLength, int mask)
+    {
+        return FormatWriteMask(mask, destinationLength);
+    }
+
+    /// <summary>The source swizzle for a given set of destination components,
+    /// rather than for all of them.</summary>
+    public string GetSourceSwizzleNameForMask(int srcIndex, int destinationMask)
+    {
+        if (GetOperandComponentSelection(srcIndex) is D3D10OperandNumComponents.Operand0Component
+            or D3D10OperandNumComponents.Operand1Component)
+        {
+            return "";
+        }
+        byte[] swizzle = GetSourceSwizzleComponents(srcIndex);
+        string swizzleName = "";
+        for (int i = 0; i < 4; i++)
+        {
+            if ((destinationMask & (1 << i)) != 0)
+            {
+                swizzleName += "xyzw"[swizzle[i]];
+            }
+        }
+        return swizzleName.Length == 0 ? "" : "." + swizzleName;
+    }
+
     public int GetWriteMask(int operandIndex)
     {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);

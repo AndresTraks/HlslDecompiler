@@ -13,7 +13,8 @@ StructuredBuffer<ParticlesElement> particles : register(t0);
 struct VS_OUT
 {
 	float4 sv_position : SV_Position;
-	float3 texcoord : TEXCOORD;
+	float2 texcoord : TEXCOORD;
+	float texcoord1 : TEXCOORD1;
 };
 
 VS_OUT main(uint sv_vertexid : SV_VertexID)
@@ -33,7 +34,8 @@ VS_OUT main(uint sv_vertexid : SV_VertexID)
 	r0.z = 0;
 	r1.xyz = r0.xyz + r2.xyz;
 	r0.w = saturate(r2.w);
-	o.texcoord = r0.xyw;
+	o.texcoord = r0.xy;
+	o.texcoord1 = r0.w;
 	r1.w = 1;
 	o.sv_position.x = dot(r1, transpose(viewProjection)[0]);
 	o.sv_position.y = dot(r1, transpose(viewProjection)[1]);

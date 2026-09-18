@@ -765,7 +765,82 @@ public class HlslSimpleWriter : HlslWriter
         return false;
     }
 
+    /// <summary>
+    /// Set while one instruction is written as more than one statement, to the
+    /// components this statement is for. One instruction can write two things that
+    /// have to be said separately - `mov o1.xyz, r0.xyw` over a TEXCOORD at o1.xy
+    /// and a TEXCOORD1 at o1.z is two assignments - and naming it once wrote the
+    /// whole of it into the first field and left the second unwritten.
+    /// </summary>
+    private int? _destinationMaskOverride;
+
+    private static int FirstComponent(int mask)
+    {
+        return Enumerable.Range(0, 4).First(c => (mask & (1 << c)) != 0);
+    }
+
+    /// <summary>
+    /// The components an instruction writes, grouped by the output declaration each
+    /// belongs to, or null where they are all one declaration's - which is every
+    /// instruction but the few that write a packed output across both.
+    /// </summary>
+    private int[] SplitPackedOutputMasks(D3D10Instruction instruction)
+    {
+        int? destinationIndex = instruction.GetDestinationParamIndex();
+        if (destinationIndex == null)
+        {
+            return null;
+        }
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex.Value);
+        if (!registerKey.IsOutput)
+        {
+            return null;
+        }
+        int writeMask = instruction.GetWriteMask(destinationIndex.Value);
+        var masks = new List<int>();
+        string last = null;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            string semantic = _registers
+                .GetOutputDeclaration(new RegisterComponentKey(registerKey, component))
+                .Semantic;
+            if (semantic != last)
+            {
+                masks.Add(0);
+                last = semantic;
+            }
+            masks[^1] |= 1 << component;
+        }
+        return masks.Count > 1 ? [.. masks] : null;
+    }
+
     private void WriteInstruction(D3D10Instruction instruction)
+    {
+        int[] split = SplitPackedOutputMasks(instruction);
+        if (split == null)
+        {
+            WriteInstructionStatement(instruction);
+            return;
+        }
+        foreach (int mask in split)
+        {
+            _destinationMaskOverride = mask;
+            try
+            {
+                WriteInstructionStatement(instruction);
+            }
+            finally
+            {
+                _destinationMaskOverride = null;
+            }
+        }
+    }
+
+    private void WriteInstructionStatement(D3D10Instruction instruction)
     {
         switch (instruction.Opcode)
         {
@@ -1770,6 +1845,18 @@ public class HlslSimpleWriter : HlslWriter
             isPackedScalar = _registers.IsPackedInputComponent(inputComponentKey)
                 && _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
         }
+        else if (registerKey.IsOutput && instruction.IsDestinationOperand(operandIndex))
+        {
+            // fxc packs two outputs into one register as readily as two inputs, so
+            // which field is written depends on the component. Named by the register
+            // alone, both writes went to the first of them.
+            int outputMask = _destinationMaskOverride ?? instruction.GetWriteMask(operandIndex);
+            var outputComponentKey = new RegisterComponentKey(registerKey,
+                Enumerable.Range(0, 4).First(c => (outputMask & (1 << c)) != 0));
+            registerName = _registers.GetRegisterName(outputComponentKey);
+            isPackedScalar = _registers.IsPackedOutputComponent(outputComponentKey)
+                && _registers.GetRegisterMaskedLength(outputComponentKey) == 1;
+        }
         else
         {
             registerName = _registers.GetRegisterName(registerKey);
@@ -1785,8 +1872,14 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (instruction.IsDestinationOperand(operandIndex))
         {
-            writeMaskName = instruction.GetWriteMaskName(
-                operandIndex, _registers.GetRegisterMaskedLength(registerKey));
+            writeMaskName = _destinationMaskOverride == null
+                ? instruction.GetWriteMaskName(
+                    operandIndex, _registers.GetRegisterMaskedLength(registerKey))
+                : instruction.GetWriteMaskName(
+                    operandIndex,
+                    _registers.GetRegisterMaskedLength(new RegisterComponentKey(
+                        registerKey, FirstComponent(_destinationMaskOverride.Value))),
+                    _destinationMaskOverride.Value);
         }
         else
         {
@@ -1798,6 +1891,14 @@ public class HlslSimpleWriter : HlslWriter
                 || registerKey.OperandType == OperandType.Sampler)
             {
                 return ApplyModifier(modifier, registerName);
+            }
+
+            // One statement of a split instruction reads only the components it
+            // writes, so the source swizzle follows that statement's mask.
+            if (_destinationMaskOverride != null && GetSourceLength(instruction, operandIndex) == null)
+            {
+                return ApplyModifier(modifier, registerName
+                    + instruction.GetSourceSwizzleNameForMask(operandIndex, _destinationMaskOverride.Value));
             }
 
             int? maskedLength = GetSourceLength(instruction, operandIndex);

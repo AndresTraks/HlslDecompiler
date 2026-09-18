@@ -181,7 +181,7 @@ public class HlslAstWriter : HlslWriter
         // Skip output registers the statement merely carries forward unchanged, the
         // same way temps are filtered above. Without this every statement re-emits
         // every output, which shows up as duplicated writes after a stream append.
-        Dictionary<RegisterKey, HlslTreeNode[]> outputs =
+        Dictionary<RegisterComponentKey, HlslTreeNode[]> outputs =
             GroupComponents(assignmentStatement.Outputs
                     .Where(o => o.Key.RegisterKey.IsOutput)
                     .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
@@ -199,15 +199,15 @@ public class HlslAstWriter : HlslWriter
         {
             writes.Add((group, [], () => WriteLine(_compiler.Compile(group))));
         }
-        foreach (var rootGroup in outputs.OrderBy(o => o.Key.Number))
+        foreach (var rootGroup in outputs.OrderBy(o => o.Key.RegisterKey.Number).ThenBy(o => o.Key.ComponentIndex))
         {
-            RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
+            RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
             HlslTreeNode[] nodes = rootGroup.Value;
             TempAssignmentNode[] wants = [.. assignmentStatement.OutputDependsOnNewValueOf
-                .Where(o => o.Key.RegisterKey.Equals(rootGroup.Key))
+                .Where(o => o.Key.RegisterKey.Equals(rootGroup.Key.RegisterKey))
                 .SelectMany(o => o.Value)
                 .Distinct()];
-            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {CompileOutput(rootGroup.Key, nodes)};")));
+            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {
@@ -508,7 +508,7 @@ public class HlslAstWriter : HlslWriter
         // the position computed above it in each of them. A single output has no
         // struct and is returned as the expression, wherever it was computed.
         bool hasOutputStruct = _registers.MethodOutputRegisters.Count > 1;
-        Dictionary<RegisterKey, HlslTreeNode[]> outputs =
+        Dictionary<RegisterComponentKey, HlslTreeNode[]> outputs =
             GroupComponents(returnStatement.Outputs
                     .Where(o => o.Key.RegisterKey.IsOutput)
                     .Where(o => !(hasOutputStruct
@@ -527,7 +527,7 @@ public class HlslAstWriter : HlslWriter
         if (!hasOutputStruct)
         {
             var single = outputs.Single();
-            string compiled = CompileOutput(single.Key, single.Value);
+            string compiled = CompileOutput(single.Key.RegisterKey, single.Value);
             WriteLine(condition == null
                 ? $"return {compiled};"
                 : $"if ({condition}) return {compiled};");
@@ -541,10 +541,11 @@ public class HlslAstWriter : HlslWriter
         else
         {
             foreach (var rootGroup in TempAssignmentOrder.Sort(
-                outputs.OrderBy(o => o.Key.Number), o => o.Value))
+                outputs.OrderBy(o => o.Key.RegisterKey.Number).ThenBy(o => o.Key.ComponentIndex),
+                o => o.Value))
             {
-                RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
-                string compiled = CompileOutput(rootGroup.Key, rootGroup.Value);
+                RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
+                string compiled = CompileOutput(rootGroup.Key.RegisterKey, rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
             }
             if (outputs.Count != 0)
@@ -1177,12 +1178,19 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    private static Dictionary<RegisterKey, HlslTreeNode[]> GroupComponents(IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
+    /// <summary>
+    /// The components of each output, keyed by the first of them. By the
+    /// declaration rather than by the register: fxc packs two outputs into one -
+    /// TEXCOORD0 at o1.xy and TEXCOORD1 at o1.z - and one assignment covering both
+    /// writes the second into the first and leaves the second unwritten.
+    /// </summary>
+    private Dictionary<RegisterComponentKey, HlslTreeNode[]> GroupComponents(
+        IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
     {
         return outputsByComponent
-            .GroupBy(o => o.Key.RegisterKey)
+            .GroupBy(o => (o.Key.RegisterKey, _registers.GetOutputDeclaration(o.Key).Semantic))
             .ToDictionary(
-                o => o.Key,
+                o => o.OrderBy(c => c.Key.ComponentIndex).First().Key,
                 o => o
                     .OrderBy(o => o.Key.ComponentIndex)
                     .Select(o => o.Value)

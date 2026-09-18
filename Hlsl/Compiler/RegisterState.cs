@@ -180,6 +180,13 @@ public sealed class RegisterState
     // reading float3 dir does not need a .xyz spelling it out.
     public int GetRegisterMaskedLength(RegisterComponentKey registerComponentKey)
     {
+        // A packed output is as wide as its own declaration, not as the register
+        // both of them share.
+        if (registerComponentKey.RegisterKey.IsOutput
+            && IsPackedOutputComponent(registerComponentKey))
+        {
+            return GetOutputDeclaration(registerComponentKey).MaskedLength;
+        }
         if (registerComponentKey.RegisterKey is D3D10RegisterKey d3d10RegisterKey)
         {
             ConstantDeclaration declaration = FindConstant(
@@ -222,6 +229,51 @@ public sealed class RegisterState
     {
         return MethodInputRegisters.FirstOrDefault(d =>
             d.RegisterKey.Equals(registerKey) && (d.WriteMask & (1 << componentIndex)) != 0);
+    }
+
+    // The same for an output: fxc packs o1.xy and o1.z as readily as it packs
+    // inputs, each with its own dcl_output.
+    private RegisterDeclaration FindOutputDeclaration(RegisterKey registerKey, int componentIndex)
+    {
+        return MethodOutputRegisters.FirstOrDefault(d =>
+            d.RegisterKey.Equals(registerKey) && (d.WriteMask & (1 << componentIndex)) != 0);
+    }
+
+    /// <summary>Whether another declaration shares this output component's
+    /// register.</summary>
+    public bool IsPackedOutputComponent(RegisterComponentKey registerComponentKey)
+    {
+        return registerComponentKey.RegisterKey.IsOutput
+            && MethodOutputRegisters.Count(d => d.RegisterKey.Equals(registerComponentKey.RegisterKey)) > 1;
+    }
+
+    /// <summary>Which component of its register a packed output starts at, so that
+    /// the swizzle naming it is rebased onto the field rather than the
+    /// register.</summary>
+    public int GetOutputComponentBase(RegisterComponentKey registerComponentKey)
+    {
+        RegisterDeclaration declaration = !registerComponentKey.RegisterKey.IsOutput
+            ? null
+            : FindOutputDeclaration(registerComponentKey.RegisterKey, registerComponentKey.ComponentIndex);
+        if (declaration == null)
+        {
+            return 0;
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            if ((declaration.WriteMask & (1 << i)) != 0)
+            {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>The output declaration covering a component, for naming it.</summary>
+    public RegisterDeclaration GetOutputDeclaration(RegisterComponentKey registerComponentKey)
+    {
+        return FindOutputDeclaration(registerComponentKey.RegisterKey, registerComponentKey.ComponentIndex)
+            ?? RegisterDeclarations[registerComponentKey.RegisterKey];
     }
 
     // True only when another declaration actually shares this component's register -
@@ -613,6 +665,17 @@ public sealed class RegisterState
                 return MethodInputRegisters.Count == 1
                     ? inputDeclaration.Name
                     : "i." + inputDeclaration.Name;
+            }
+        }
+        if (registerComponentKey.RegisterKey.IsOutput)
+        {
+            RegisterDeclaration outputDeclaration = FindOutputDeclaration(
+                registerComponentKey.RegisterKey, registerComponentKey.ComponentIndex);
+            if (outputDeclaration != null)
+            {
+                return MethodOutputRegisters.Count == 1
+                    ? OutputVariableName
+                    : OutputVariableName + "." + outputDeclaration.Name;
             }
         }
         return GetRegisterName(registerComponentKey.RegisterKey);
@@ -1242,7 +1305,10 @@ public sealed class RegisterState
                     // Only widen the existing field when this dcl names the same thing;
                     // otherwise it is a second field sharing the register, and needs a
                     // declaration - and an input struct field - of its own.
-                    RegisterDeclaration candidate = registerKey.OperandType == OperandType.Input
+                    // Outputs pack the same way and were left out of this, so a
+                    // vertex shader writing TEXCOORD0 to o1.xy and TEXCOORD1 to o1.z
+                    // declared one float3 and lost the second semantic.
+                    RegisterDeclaration candidate = registerKey.OperandType is OperandType.Input or OperandType.Output
                         ? CreateRegisterDeclarationFromD3D10Dcl(instruction, registerKey)
                         : null;
                     if (candidate != null && candidate.Semantic != existingDeclaration.Semantic)
@@ -1251,7 +1317,19 @@ public sealed class RegisterState
                         // highest-bit-plus-one width would count the other
                         // declaration's components as its own.
                         candidate.MaskedLengthOverride = CountSetBits(candidate.WriteMask);
-                        MethodInputRegisters.Add(candidate);
+                        // And the one already there is as wide as its own components
+                        // too: a write of o2.xy covering both would otherwise widen
+                        // the first of them over the second.
+                        existingDeclaration.MaskedLengthOverride =
+                            CountSetBits(existingDeclaration.WriteMask);
+                        if (registerKey.OperandType == OperandType.Input)
+                        {
+                            MethodInputRegisters.Add(candidate);
+                        }
+                        else
+                        {
+                            MethodOutputRegisters.Add(candidate);
+                        }
                     }
                     else
                     {
@@ -1300,7 +1378,15 @@ public sealed class RegisterState
     {
         if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
         {
-            existingDeclaration.WriteMask |= writeMask;
+            // Not where the register carries more than one declaration: a write of
+            // o2.xy covering a SV_ClipDistance at x and a SV_CullDistance at y would
+            // widen the first over the second, and every component would then be
+            // found in the first.
+            if (!registerKey.IsOutput
+                || MethodOutputRegisters.Count(d => d.RegisterKey.Equals(registerKey)) <= 1)
+            {
+                existingDeclaration.WriteMask |= writeMask;
+            }
         }
         else
         {

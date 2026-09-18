@@ -1925,6 +1925,28 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return ApplyModifier(modifier, AsInt(string.Format("{0}{1}", registerName, writeMaskName)));
             }
+            // An integer instruction whose result is reinterpreted has to compute in
+            // integers. A register holding the number 3 as a float, added to 4 as a
+            // float, gives the float 7 - and the bits of 7.0f are not 7, so the
+            // asfloat that stores the sum and the asint that reads it back give
+            // something else entirely. `(i + 1) & 63` over a loop counter is the
+            // ordinary way to meet this.
+            if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
+                && instruction.HasDestination
+                // Only where the result really is reinterpreted, which is the same
+                // test WriteResult makes before wrapping it in asfloat. A load's
+                // address is read as an integer too and has nothing to do with what
+                // the texel it fetches is kept as.
+                && GetProducedKind(instruction) == ValueKind.Integer
+                && GetDestinationStorage(instruction, instruction.GetDestinationParamIndex() ?? 0)
+                    == ComponentStorage.Bits)
+            {
+                int length = instruction.GetDestinationMaskLength();
+                string size = length == 1 ? "" : length.ToString();
+                return ApplyModifier(modifier,
+                    $"(int{size}){string.Format("{0}{1}", registerName, writeMaskName)}");
+            }
             // A register declared int because it holds nothing but bits: what a
             // float instruction reading it wants is the float those bits are, and
             // not the number they make. A register of loop counters is declared int

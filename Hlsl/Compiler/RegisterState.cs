@@ -35,9 +35,18 @@ public sealed class RegisterState
     /// <summary>The structured buffer a load or a store names, or null.</summary>
     public ResourceDefinition FindStructuredBuffer(RegisterKey resourceKey)
     {
+        // By what kind of register it is as well as by its number. Groupshared
+        // memory is g0 and a structured buffer t0, both number zero, so a load
+        // from the first was finding the element type of the second and naming
+        // members of a float4 array.
+        D3DShaderInputType inputType = (resourceKey as D3D10RegisterKey)?.OperandType switch
+        {
+            OperandType.Resource => D3DShaderInputType.Structured,
+            OperandType.UnorderedAccessView => D3DShaderInputType.UavRWStructured,
+            _ => (D3DShaderInputType)(-1),
+        };
         return ResourceDefinitions.FirstOrDefault(r =>
-            r.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.UavRWStructured
-            && r.BindPoint == resourceKey.Number);
+            r.ShaderInputType == inputType && r.BindPoint == resourceKey.Number);
     }
 
     /// <summary>

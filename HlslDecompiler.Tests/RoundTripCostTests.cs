@@ -90,6 +90,18 @@ public class RoundTripCostTests
             + "store to a different member of the same element. Correct, and the "
             + "alternative is a struct shaped temporary the writer has no way to "
             + "know was there."),
+        ["cs_4_1/groupshared_struct"] = (20,
+            "One instruction. The groupshared array holds a struct, and the original "
+            + "keeps the whole element in one register between the load and the two "
+            + "members it reads out; written as `g0[i].colour` and `g0[i].weight` it "
+            + "reads the element twice and fxc keeps one of them in a register of "
+            + "its own."),
+        ["vs_4_0/skin_buffer"] = (39,
+            "Three instructions, and the shape of the source rather than its "
+            + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
+            + "comparisons selecting one of four components, and the decompiled "
+            + "source says that chain rather than the subscript it came from - fxc "
+            + "has no subscript to put back and compiles the chain it is given."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and the registers holding them are declared "

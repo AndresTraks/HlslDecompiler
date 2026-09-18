@@ -15,7 +15,7 @@ float4 main(PS_IN i) : SV_Target
 	r1 = -i.texcoord1.xyw;
 	r0.y = (asint(r0.y) != 0) ? r1.y : i.texcoord1.y;
 	r0.zw = asfloat(max(r1.xz, i.texcoord1.xw));
-	r0.x = asfloat(r0.y + asint(r0.x));
+	r0.x = asfloat((int)r0.y + asint(r0.x));
 	r0.x = (float)asint(r0.x);
 	r0.y = frac(i.texcoord.x);
 	r1.x = (float)(int)i.texcoord1.z;
@@ -37,7 +37,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.x = asfloat((int)r0.x);
 	r0.x = asfloat(asint(r0.x) + i.texcoord1.y);
 	o.x = (float)asint(r0.x);
-	r0.x = asfloat(-r0.y);
+	r0.x = asfloat(-(int)r0.y);
 	r0.z = asfloat(i.texcoord1.x ^ 2);
 	r0.z = asfloat(asint(r0.z) & -2147483648);
 	r0.x = (asint(r0.z) != 0) ? r0.x : r0.y;

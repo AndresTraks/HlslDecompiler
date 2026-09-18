@@ -70,6 +70,17 @@ public class EquivalenceTests
                 + "and those pass through a float register: each is a denormal as a "
                 + "float and fxc flushes it, so every corner lands at the centre."),
         ],
+        ["cs_4_1/groupshared_struct"] = [
+            ("instruction",
+                "A loop counter and a group index added and masked to 63, through a "
+                + "float register: the mask is a denormal as a float and fxc flushes "
+                + "it, so every thread reads element zero."),
+        ],
+        ["ps_4_1/sample_index"] = [
+            ("instruction",
+                "The sample index plus one, masked to 3, through a float register - "
+                + "the same flush, so both loads read the same sample."),
+        ],
         ["ps_4_0/gbuffer_decode"] = [
             ("instruction",
                 "A normal packed into the low sixteen bits of a uint texel: the mask is "

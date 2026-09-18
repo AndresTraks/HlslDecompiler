@@ -207,7 +207,7 @@ public class HlslAstWriter : HlslWriter
                 .Where(o => o.Key.RegisterKey.Equals(rootGroup.Key))
                 .SelectMany(o => o.Value)
                 .Distinct()];
-            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {_compiler.Compile(nodes)};")));
+            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {CompileOutput(rootGroup.Key, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {
@@ -511,7 +511,8 @@ public class HlslAstWriter : HlslWriter
 
         if (!hasOutputStruct)
         {
-            string compiled = _compiler.Compile(outputs.Single().Value);
+            var single = outputs.Single();
+            string compiled = CompileOutput(single.Key, single.Value);
             WriteLine(condition == null
                 ? $"return {compiled};"
                 : $"if ({condition}) return {compiled};");
@@ -528,7 +529,7 @@ public class HlslAstWriter : HlslWriter
                 outputs.OrderBy(o => o.Key.Number), o => o.Value))
             {
                 RegisterDeclaration outputRegister = _registers.RegisterDeclarations[rootGroup.Key];
-                string compiled = _compiler.Compile(rootGroup.Value);
+                string compiled = CompileOutput(rootGroup.Key, rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
             }
             if (outputs.Count != 0)
@@ -537,6 +538,15 @@ public class HlslAstWriter : HlslWriter
             }
             WriteLine($"return {_registers.OutputVariableName};");
         }
+    }
+
+    // An output the signature types as a float takes a float, so bits reaching one
+    // are reinterpreted. One it types as an integer takes the integer as it is.
+    private string CompileOutput(RegisterKey outputKey, IEnumerable<HlslTreeNode> nodes)
+    {
+        return _registers.RegisterDeclarations[outputKey].TypeName.Contains("int")
+            ? _compiler.Compile(nodes)
+            : _compiler.CompileAsFloat(nodes);
     }
 
     private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)
@@ -974,9 +984,11 @@ public class HlslAstWriter : HlslWriter
     {
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
         bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
+        bool isBits = nodes.All(node => StatementFinalizer.IsBitsVariable(node, isInteger));
         foreach (TempVariableNode variable in variables)
         {
             variable.IsInteger = isInteger;
+            variable.IsBits = isBits;
         }
         return variables;
     }

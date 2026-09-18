@@ -69,7 +69,8 @@ public class TemplateMatcher
 
     private int _reductionsLeft;
 
-    public HlslTreeNode Reduce(HlslTreeNode node)
+    public HlslTreeNode Reduce(HlslTreeNode node)
+
     {
         // The memo is per call: the graph is rewritten as it reduces, so what a node
         // reduces to only holds for this pass over it.
@@ -96,6 +97,20 @@ public class TemplateMatcher
     // remembered instead: without that, a subexpression read in two places is reduced
     // once per path that reaches it, and the work triples with every instruction that
     // builds on the one before.
+    /// <summary>
+    /// A rewritten node stands for the value the old one did, so it says the same
+    /// thing about what that value is. iadd and add are both an AddOperation and
+    /// are told apart by this alone, so a template that rebuilt one left the sum of
+    /// two bit patterns looking like a sum of floats.
+    /// </summary>
+    private static void CarryValueType(HlslTreeNode node, HlslTreeNode replacement)
+    {
+        if (replacement is Operation && replacement.ConsumesInteger == null)
+        {
+            replacement.ConsumesInteger = node.ConsumesInteger;
+        }
+    }
+
     private HlslTreeNode ReduceDepthFirst(HlslTreeNode node, HashSet<HlslTreeNode> onPath,
         Dictionary<HlslTreeNode, HlslTreeNode> reduced)
     {
@@ -127,6 +142,7 @@ public class TemplateMatcher
                 {
                     CountReduction(template.GetType().Name);
                     var replacement = template.Reduce(node);
+                    CarryValueType(node, replacement);
                     Replace(node, replacement);
                     HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
                     reduced[node] = result;
@@ -140,6 +156,7 @@ public class TemplateMatcher
                 {
                     CountReduction(template.GetType().Name);
                     var replacement = template.Reduce(node, groupContext);
+                    CarryValueType(node, replacement);
                     Replace(node, replacement);
                     HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
                     reduced[node] = result;

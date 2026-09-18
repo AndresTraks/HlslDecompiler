@@ -68,6 +68,26 @@ public sealed class NodeCompiler
     /// </summary>
     public List<(HlslTreeNode[] Nodes, string Text)> Recording { get; set; }
 
+    /// <summary>
+    /// Compiles a value standing where a float is wanted - an output, or a return.
+    /// Bits reaching one of those are reinterpreted, the same as bits reaching the
+    /// operand of a float operation; the writer has to say so because an output is
+    /// not an operation and carries no type of its own into here.
+    /// </summary>
+    public string CompileAsFloat(IEnumerable<HlslTreeNode> group)
+    {
+        bool wasReadingAsFloat = _readingAsFloat;
+        _readingAsFloat = true;
+        try
+        {
+            return Compile(group);
+        }
+        finally
+        {
+            _readingAsFloat = wasReadingAsFloat;
+        }
+    }
+
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
     {
         string compiled = CompileUnrecorded(components, promoteToVectorSize);
@@ -80,6 +100,24 @@ public sealed class NodeCompiler
         if (components.Count == 0)
         {
             throw new ArgumentOutOfRangeException(nameof(components));
+        }
+
+        // An integer that is a float's bits, standing where a float is wanted: the
+        // bits are the value, and converting them gives the number they happen to
+        // make - a packed pair of half floats came back as three thousand million.
+        // Every component, so that a constructor whose components are not all bits
+        // is left to reinterpret them one at a time.
+        if (_readingAsFloat && components.All(StatementFinalizer.IsBitsValue))
+        {
+            _readingAsFloat = false;
+            try
+            {
+                return $"asfloat({CompileUnrecorded(components, promoteToVectorSize)})";
+            }
+            finally
+            {
+                _readingAsFloat = true;
+            }
         }
 
         if (components.Count > 1)
@@ -312,7 +350,39 @@ public sealed class NodeCompiler
         return _constantCompiler.Compile(constantComponents);
     }
 
+    /// <summary>
+    /// Set while the operands of a float operation are compiled. A bits value read
+    /// there is the float those bits are and gets an asfloat; one an integer
+    /// operation reads, or a move carries on, is left as it is.
+    /// </summary>
+    private bool _readingAsFloat;
+
     private string CompileOperation(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
+    {
+        bool wasReadingAsFloat = _readingAsFloat;
+        // From what the operation makes rather than from the flag it was built
+        // with: a template that rebuilds an add or a multiply makes a node with no
+        // flag on it, and an operation that makes an integer reads integers. The
+        // operators that read bits, and the moves that carry them, are named
+        // separately because they make an integer out of whatever they are given.
+        _readingAsFloat = operation switch
+        {
+            BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+                or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
+                or MoveOperation or MoveConditionalOperation => false,
+            _ => StatementFinalizer.IsIntegerValue(operation) != true,
+        };
+        try
+        {
+            return CompileOperationOperands(operation, components, promoteToVectorSize);
+        }
+        finally
+        {
+            _readingAsFloat = wasReadingAsFloat;
+        }
+    }
+
+    private string CompileOperationOperands(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
     {
         switch (operation)
         {

@@ -246,12 +246,14 @@ public class StatementFinalizer
                     // Before the readers move to the variable: they are what types it.
                     bool? isIntegerValue = IsIntegerValue(tempValue);
                     tempValue.Outputs.Clear();
+                    bool isInteger = isIntegerValue
+                        ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
                     TempVariableNode tempVariable = tempInputAssignment?.TempVariable
                         ?? tempInputVariable
                         ?? new TempVariableNode
                         {
-                            IsInteger = isIntegerValue
-                                ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true),
+                            IsInteger = isInteger,
+                            IsBits = IsBitsVariable(tempValue, isInteger),
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
@@ -701,7 +703,24 @@ public class StatementFinalizer
     /// </summary>
     internal static bool? IsIntegerValue(HlslTreeNode value)
     {
-        return InstructionParser.GetConsumedType(value) ?? value switch
+        // Bits are an integer and nothing else could be meant, so they are not put
+        // to the readers: an integer add of two packed half floats read by a float
+        // multiply was typed by the multiply and then computed in floats.
+        if (IsBitsValue(value))
+        {
+            return true;
+        }
+        return InstructionParser.GetConsumedType(value) ?? MadeType(value);
+    }
+
+    /// <summary>
+    /// What the operation that made a value makes, from that operation alone. Null
+    /// where it does not say - a move, a phi, an immediate - which is where the
+    /// readers are the only thing that knows.
+    /// </summary>
+    private static bool? MadeType(HlslTreeNode value)
+    {
+        return value switch
         {
             ConvertOperation convert => convert.TargetType is "int" or "uint",
             ConstantNode constant => constant.IntegerValue != null,
@@ -715,6 +734,72 @@ public class StatementFinalizer
             Operation operation => operation.ConsumesInteger,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// Whether an integer value is a float's bits rather than a number. The two
+    /// are the same type and want opposite things of a float reader: a loop
+    /// counter is converted, a packed pair of half floats is reinterpreted, and
+    /// nothing in the type says which.
+    ///
+    /// Bits enter the graph one way - an integer operation reading a float, which
+    /// is where the decompiler writes an asint - and spread from there through the
+    /// integer operations that carry them. A constant is not bits: `x &amp; 255` is
+    /// bits because x is, not because 255 is.
+    /// </summary>
+    internal static bool IsBitsValue(HlslTreeNode value)
+    {
+        return IsBitsValue(value, HlslTreeNode.NewNodeSet());
+    }
+
+    private static bool IsBitsValue(HlslTreeNode value, HashSet<HlslTreeNode> visited)
+    {
+        if (value is TempVariableNode temp)
+        {
+            return temp.IsBits;
+        }
+        // Asked of the operation rather than of the readers, so that this can be
+        // what the readers are answered with.
+        if (MadeType(value) != true || !visited.Add(value))
+        {
+            return false;
+        }
+        // Bits enter the graph through a bitwise operator or a shift reading a
+        // float, and nowhere else - that read is the asint the writer puts there.
+        // An integer add or a conversion reading one converts it, and the integer
+        // that comes out is a number: `(int)(16 * x)` is an address, and
+        // `3 * n - 7` is arithmetic on a uniform. A constant is never the source
+        // of either, whatever type it was given.
+        bool reinterprets = value is BitwiseAndOperation or BitwiseOrOperation
+            or BitwiseXorOperation or BitwiseNotOperation
+            or ShiftLeftOperation or ShiftRightOperation;
+        foreach (HlslTreeNode input in value.Inputs)
+        {
+            if (input is ConstantNode)
+            {
+                continue;
+            }
+            if ((reinterprets && IsFloatMade(input)) || IsBitsValue(input, visited))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsFloatMade(HlslTreeNode value)
+    {
+        return value is TempVariableNode temp ? !temp.IsInteger : MadeType(value) == false;
+    }
+
+    /// <summary>
+    /// Whether the variable a value is assigned to holds bits: it is an integer
+    /// variable, and either the value is bits already or it is a float being
+    /// reinterpreted on the way in.
+    /// </summary>
+    internal static bool IsBitsVariable(HlslTreeNode value, bool isInteger)
+    {
+        return isInteger && (IsBitsValue(value) || IsFloatMade(value));
     }
 
     private static bool IsFreeToRead(HlslTreeNode node)

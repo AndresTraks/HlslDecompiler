@@ -63,18 +63,6 @@ public class EquivalenceTests
                 "fxc's own f32tof16, whose every step holds a mantissa or an exponent "
                 + "in a float register: each is a denormal as a float, and fxc folds "
                 + "the whole shader to a constant."),
-            ("ast",
-                "The sign bit of the second of two packed half floats is taken from "
-                + "the half that was not shifted into place, and fxc drops the term "
-                + "as always zero."),
-            // Not the bits question any more - the AST writer knows bits from
-            // numbers now, and the first of the two packed halves round trips
-            // exactly. What is left is the sign bit of the second: the two halves
-            // are both shifted left sixteen and then read again, and the signs
-            // come out swapped, so o0.y takes its sign from the half that is not
-            // shifted. fxc can see that value's top bit is always clear and drops
-            // the term. A register read after it has been overwritten, which is
-            // its own family.
         ],
         ["ps_4_0/gbuffer_decode"] = [
             ("instruction",

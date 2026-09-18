@@ -428,8 +428,14 @@ public sealed class NodeCompiler
                         && shift.Value >= 0 && shift.Value < 31
                         && shift.Value == (int)shift.Value)
                     {
+                        // Parenthesised where a multiplication would not bind the
+                        // whole of it: `(a + b) << 16` written as `a + b * 65536`
+                        // shifts only the second addend. The sign bit of a packed
+                        // half float sat in the first.
+                        var shifted = components.Select(g => g.Inputs[0]).ToList();
+                        string value = CompileOperand(shifted);
                         return string.Format("{0} * {1}",
-                            CompileOperand(components.Select(g => g.Inputs[0])),
+                            IsSum(shifted[0]) ? $"({value})" : value,
                             1 << (int)shift.Value);
                     }
                     return string.Format("{0} << {1}",

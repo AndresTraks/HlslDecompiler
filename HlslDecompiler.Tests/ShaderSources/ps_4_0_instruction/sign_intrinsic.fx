@@ -8,7 +8,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	float4 r1;
 	float4 r2;
 	r0.x = -(k.x) + k.y;
-	r0.x = float1(1) / r0.x;
+	r0.x = 1 / r0.x;
 	r1 = texcoord + -(k.x);
 	r0 = saturate(r0.x * r1);
 	r1 = r0 * float4(-2, -2, -2, -2) + float4(3, 3, 3, 3);

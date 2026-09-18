@@ -1794,7 +1794,12 @@ public class HlslSimpleWriter : HlslWriter
                     ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
             string immediateType = isInteger ? "int" : "float";
-            string vector = $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
+            // One component is a scalar, not a one wide vector. `int1(0)` is legal
+            // HLSL almost everywhere and not as a subscript, where fxc wants a
+            // scalar: `bounds[int1(0)]` is an invalid index.
+            string vector = components.Length == 1
+                ? constant[0]
+                : $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
             return asBits ? $"asfloat({vector})" : vector;
         }
 

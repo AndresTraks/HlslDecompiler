@@ -29,7 +29,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.zw = ddx(i.texcoord.xy);
 	r1.xy = ddy(i.texcoord.xy);
 	r2 = heightMap.SampleGrad(samp, i.texcoord.xy, r0.zwzz, r1.xyxx);
-	r1.z = float1(1) / parallax.y;
+	r1.z = 1 / parallax.y;
 	r2.yz = i.texcoord.xy;
 	r1.w = 1;
 	r3.x = r2.x;

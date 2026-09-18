@@ -28,7 +28,7 @@ float4 main(PS_IN i) : SV_Target
 	}
 	r1.x = -(fade.x) + fade.y;
 	r1.y = i.texcoord1 + -(fade.x);
-	r1.x = float1(1) / r1.x;
+	r1.x = 1 / r1.x;
 	r1.x = saturate(r1.x * r1.y);
 	r1.y = r1.x * -2 + 3;
 	r1.x = r1.x * r1.x;

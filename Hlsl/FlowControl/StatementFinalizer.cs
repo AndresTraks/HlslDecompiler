@@ -642,6 +642,19 @@ public class StatementFinalizer
             {
                 holders.Add(statement);
             }
+            // A break or a continue carries the values of the moment out of the
+            // loop, and holds them the same way a store does: nothing in the value
+            // graph reads them, because the reader is the loop's exit rather than a
+            // node. fxc copies a loop carried value into its register before a break
+            // and again at the end of the body; the second is read by the phi that
+            // closes the loop and the first by nothing, so the first was removed as
+            // dead and a ray march lost its last step.
+            else if (node is MoveOperation
+                && statement is BreakStatement or ContinueStatement
+                && statement.Outputs.Values.Contains(node))
+            {
+                holders.Add(statement);
+            }
         });
         return [.. holders];
     }
@@ -810,6 +823,7 @@ public class StatementFinalizer
 
     private void RemoveAnyAssignment(HlslTreeNode node)
     {
+
         new StatementVisitor(_statements).Visit(statement =>
         {
             if (statement.Inputs.Values.Contains(node))

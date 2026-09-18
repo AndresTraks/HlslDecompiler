@@ -20,6 +20,8 @@ float4 main(PS_IN i) : SV_Target
 		float3 t6 = t5 * (1 - t3) * march.z + t2;
 		float t7 = t5 * (1 - t3) + t3;
 		if (march.w < t7) {
+			t2 = t6;
+			t3 = t7;
 			break;
 		}
 		t1 = t0 * march.x + t1;

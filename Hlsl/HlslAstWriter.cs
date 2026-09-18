@@ -524,7 +524,14 @@ public class HlslAstWriter : HlslWriter
             ? null
             : _compiler.Compile(Reduce(returnStatement.Comparison));
 
-        if (!hasOutputStruct)
+        // A compute or geometry shader returns nothing, so an early ret leaves with
+        // no value at all. Asking for the one output there threw, and a `return;`
+        // guarding the rest of a compute shader is how every one of them starts.
+        if (_registers.MethodOutputRegisters.Count == 0)
+        {
+            WriteLine(condition == null ? "return;" : $"if ({condition}) return;");
+        }
+        else if (!hasOutputStruct)
         {
             var single = outputs.Single();
             string compiled = CompileOutput(single.Key.RegisterKey, single.Value);

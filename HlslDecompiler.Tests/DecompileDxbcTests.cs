@@ -76,6 +76,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "packed_cbuffer")]
     [TestCase("ps_4_0", "packed_interpolator")]
     [TestCase("ps_4_0", "shadow_pcf")]
+    [TestCase("ps_4_0", "volume_march")]
     [TestCase("ps_4_0", "half_packing")]
     [TestCase("ps_4_0", "ambient_occlusion")]
     [TestCase("ps_4_0", "colour_grade")]
@@ -153,6 +154,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "groupshared_reduce")]
     [TestCase("cs_4_1", "groupshared_struct")]
     [TestCase("cs_4_0", "raw_buffer")]
+    [TestCase("cs_4_0", "bitpack")]
     [TestCase("cs_4_0", "particle_update")]
     [TestCase("cs_4_0", "tile_blur")]
     public void DecompileTest(string profile, string baseFilename)

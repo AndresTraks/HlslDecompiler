@@ -81,6 +81,22 @@ public class EquivalenceTests
                 "The sample index plus one, masked to 3, through a float register - "
                 + "the same flush, so both loads read the same sample."),
         ],
+        // Not the denormal fold - this one is the AST writer, and it is a flow
+        // control bug rather than a typing one. fxc copies a loop carried value
+        // into its register twice, once before a break and once at the end of the
+        // body, and the parser treats a mov as a rename rather than as a statement.
+        // The copies at the end of the body reach ActiveOutputs and the ones before
+        // the break do not: at the break, Outputs maps the source registers to the
+        // new values and has no entry for the loop variables at all, so the writer
+        // has nothing to emit and the break leaves with the previous iteration's
+        // value. The instruction writer, which renames nothing, has it right.
+        ["ps_4_0/volume_march"] = [
+            ("ast",
+                "A ray march accumulating into a colour and an alpha: the break that "
+                + "ends it early leaves before the accumulation is assigned, so the "
+                + "last step is lost - and the whole result where the break fires on "
+                + "the first step."),
+        ],
         ["ps_4_0/gbuffer_decode"] = [
             ("instruction",
                 "A normal packed into the low sixteen bits of a uint texel: the mask is "

@@ -342,7 +342,13 @@ public sealed class NodeCompiler
     {
         UngroupConstantGroups(componentGroups);
 
-        string type = _assigningToInteger ? "int" : "float";
+        // Assigning to an integer does not make the components integers. Where one
+        // of them computes a float - a constructor inside the float half of an
+        // integer assignment, `dot(levels.xyz, float3(...))` under a cast to uint -
+        // an int constructor truncates it before the arithmetic that wanted it.
+        string type = _assigningToInteger && !components.Any(IsFloatValued)
+            ? "int"
+            : "float";
         IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
         return $"{type}{components.Count}({string.Join(", ", compiledConstructorParts)})";
     }

@@ -45,6 +45,17 @@ public class DotProduct2Template : IGroupTemplate
                     // If one of the arguments is a matrix, allow the other argument to be arbitrary.
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
                 }
+                if (_templateMatcher.CanGroupComponents(x, y, allowMatrixColumn)
+                    && a is not DotProductOperation
+                    && b is not DotProductOperation)
+                {
+                    // The other side is components of one register, so this side may be
+                    // arbitrary - a vector with a different expression per component is
+                    // still the vector the dot was taken over. Dots are left out of it:
+                    // they group as rows of one matrix multiply, and taking them here
+                    // costs a mul that the multiplication grouper would have kept.
+                    return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
+                }
                 return null;
             }
             Swap(ref b, ref y);

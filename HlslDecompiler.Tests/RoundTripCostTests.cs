@@ -46,15 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["vs_2_0/distance_falloff"] = (27,
-            "One instruction. `dst(d * d, d)` is one instruction in the original and "
-            + "the decompiled source writes out the products it computes, with the "
-            + "length given to it at each - six times in the one statement. The hoist "
-            + "names what a statement's text repeats and groups by the nodes an "
-            + "expression came from, so it names neither: it ran on this statement, "
-            + "and six copies of a ten character text went unnamed, which they could "
-            + "not have done were they the one node. The same limitation as "
-            + "ps_4_0/mixed_register and cs_4_0/atomic_free_sum."),
         ["ps_4_0/mixed_register"] = (21,
             "One instruction. `accumulator / max((float)taken, 1)` is computed twice "
             + "in the original - once for the average and once for the saturate of it "
@@ -86,17 +77,19 @@ public class RoundTripCostTests
             + "each its own mova rather than packing two into one, which is two "
             + "instructions. The lookups themselves are right, which they were not "
             + "before - all three used to read the same element."),
-        ["ps_4_0/gbuffer_decode"] = (39,
-            "Seven instructions, all downstream of one split. The two halves of a "
+        ["ps_4_0/gbuffer_decode"] = (35,
+            "Three instructions, all downstream of one split. The two halves of a "
             + "normal packed into a uint are decoded differently - one masks the low "
             + "sixteen bits, the other shifts down the high ones - so the mad that "
             + "scales both is written as two scalar statements rather than one two "
             + "wide. Everything after them stays scalar: the comparison and the "
             + "select that fix up the octahedral fold were one pair of two wide "
-            + "instructions and are now two pairs, the add after them two rather "
-            + "than one, and the dot product over the result is a mul and two mads "
-            + "where the original had one dp3_sat. Correct throughout - it is the "
-            + "vector shape that is lost, not the arithmetic."),
+            + "instructions and are now two pairs, and the add after them two "
+            + "rather than one. Correct throughout - it is the vector shape that is "
+            + "lost, not the arithmetic. Was 39 while the dot product over the "
+            + "result was a mul and two mads; it is the dp3_sat the original had, "
+            + "now that a dot takes a side whose components are each their own "
+            + "expression."),
         ["vs_3_0/grass_wave"] = (24,
             "Two instructions, and the same cause as ps_4_0/gbuffer_decode. The "
             + "position the length is taken of has two components computed by a mad "

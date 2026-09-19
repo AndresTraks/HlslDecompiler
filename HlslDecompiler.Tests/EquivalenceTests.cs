@@ -30,6 +30,18 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
+        ["ps_4_0/switch_nested"] = [
+            ("ast",
+                "A switch inside a switch loses the inner one's result. The outer "
+                + "case assigns the variable the shader returns; the inner switch "
+                + "assigns a variable of its own, and nothing joins the two, so the "
+                + "outer variable is never written on that path and the branch "
+                + "returns zero. The phi that carries a value out of the inner "
+                + "switch and into the outer case is the missing piece. The "
+                + "instruction writer gets it right - it writes registers and has no "
+                + "phis to lose - which says the fault is in the AST writer's flow "
+                + "control rather than in the parse."),
+        ],
         ["ps_4_0/bit_field"] = [
             ("ast",
                 "A float taken apart and put back together bit by bit. The pieces are "

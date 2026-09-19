@@ -79,7 +79,7 @@ public abstract class HlslWriter
             WriteInputStructureDeclaration();
         }
 
-        if (_registers.MethodOutputRegisters.Count > 1)
+        if (HasOutputStruct)
         {
             WriteOutputStructureDeclaration();
         }
@@ -419,9 +419,20 @@ public abstract class HlslWriter
         };
     }
 
+    /// <summary>
+    /// Whether the outputs are written through a struct rather than returned as the
+    /// one expression. A geometry shader always is: it writes its vertices through
+    /// the stream, so the body says `o.member` however few members there are.
+    /// </summary>
+    protected bool HasOutputStruct =>
+        _registers.MethodOutputRegisters.Count > 1 || _shader.Type == ShaderType.Geometry;
+
     private string GetMethodSemantic()
     {
-        if (_registers.MethodOutputRegisters.Count == 1)
+        // `void main(...) : SV_Position` is an error - X3076, a void function cannot
+        // have a semantic - and a geometry or compute shader returns void whatever
+        // its one output register might have suggested.
+        if (GetMethodReturnType() != "void" && _registers.MethodOutputRegisters.Count == 1)
         {
             string semantic = _registers.MethodOutputRegisters.First().Semantic;
             return $" : {semantic}";

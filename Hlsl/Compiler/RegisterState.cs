@@ -7,7 +7,6 @@ namespace HlslDecompiler.Hlsl;
 
 public sealed class RegisterState
 {
-    public readonly bool ColumnMajorOrder = true;
 
     public ICollection<ConstantRegister> ConstantDefinitions = [];
     /// <summary>
@@ -165,7 +164,7 @@ public sealed class RegisterState
             return element;
         }
         const int BytesPerRow = 16;
-        string matrix = ColumnMajorOrder ? $"transpose({element})" : element;
+        string matrix = $"transpose({element})";
         return $"{matrix}[{byteOffset / BytesPerRow}]";
     }
     public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
@@ -372,7 +371,7 @@ public sealed class RegisterState
                 // A matrix stored column-major puts a column in each register, so
                 // the register is as wide as the matrix is tall: a float4x3's is a
                 // float4, and reading three of its components is a swizzle.
-                return constant.TypeInfo.Rows > 1 && ColumnMajorOrder
+                return constant.TypeInfo.Rows > 1
                     ? constant.TypeInfo.Rows
                     : constant.TypeInfo.Columns;
             }
@@ -700,9 +699,9 @@ public sealed class RegisterState
                 registerComponentKey.RegisterKey, registerComponentKey.ComponentIndex);
             if (outputDeclaration != null)
             {
-                return MethodOutputRegisters.Count == 1
-                    ? OutputVariableName
-                    : OutputVariableName + "." + outputDeclaration.Name;
+                return HasOutputStruct
+                    ? OutputVariableName + "." + outputDeclaration.Name
+                    : OutputVariableName;
             }
         }
         return GetRegisterName(registerComponentKey.RegisterKey);
@@ -716,6 +715,14 @@ public sealed class RegisterState
     /// read of one of its members stopped compiling.
     /// </summary>
     public string OutputVariableName => _outputVariableName ??= UnusedName("o");
+
+    /// <summary>
+    /// Whether the outputs are written through a struct rather than as the one value
+    /// the method returns. A geometry shader always is: it writes its vertices
+    /// through the stream, so `o` is a GS_OUT however few members it has.
+    /// </summary>
+    public bool HasOutputStruct =>
+        MethodOutputRegisters.Count > 1 || _shaderModel.Type == ShaderType.Geometry;
 
     private string _inputVariableName;
 
@@ -746,9 +753,9 @@ public sealed class RegisterState
         if (registerKey.IsOutput)
         {
             var decl = RegisterDeclarations[registerKey];
-            return (MethodOutputRegisters.Count == 1)
-                ? OutputVariableName
-                : (OutputVariableName + "." + decl.Name);
+            return HasOutputStruct
+                ? OutputVariableName + "." + decl.Name
+                : OutputVariableName;
         }
         if (registerKey is D3D9RegisterKey d3D9RegisterKey)
         {
@@ -779,13 +786,8 @@ public sealed class RegisterState
                         }
                         return constDecl.Name;
                     }
-                    if (ColumnMajorOrder)
-                    {
-                        int column = registerKey.Number - constDecl.RegisterIndex;
-                        return $"transpose({constDecl.Name})[{column}]";
-                    }
-                    string row = (registerKey.Number - constDecl.RegisterIndex).ToString();
-                    return constDecl.Name + $"[{row}]";
+                    int column = registerKey.Number - constDecl.RegisterIndex;
+                    return $"transpose({constDecl.Name})[{column}]";
                 case RegisterType.Temp:
                     return "r" + registerKey.Number;
                 case RegisterType.Sampler:
@@ -832,9 +834,7 @@ public sealed class RegisterState
                         matrixName += $"[{registerOffset / rowsPerElement}]";
                         rowIndex = registerOffset % rowsPerElement;
                     }
-                    return ColumnMajorOrder
-                        ? $"transpose({matrixName})[{rowIndex}]"
-                        : $"{matrixName}[{rowIndex}]";
+                    return $"transpose({matrixName})[{rowIndex}]";
                 case OperandType.Immediate32:
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:

@@ -1002,12 +1002,8 @@ public sealed class NodeCompiler
                         if (member.IsMatrix)
                         {
                             int row = (elementOffset % stride) - member.StartOffset / 4;
-                            string matrix = _registers.ColumnMajorOrder
-                                ? $"transpose({member.Name})"
-                                : member.Name;
-                            int rowWidth = _registers.ColumnMajorOrder
-                                ? member.TypeInfo.Rows
-                                : member.TypeInfo.Columns;
+                            string matrix = $"transpose({member.Name})";
+                            int rowWidth = member.TypeInfo.Rows;
                             swizzle = GetAstSourceSwizzleName(componentsWithIndices, rowWidth, promoteToVectorSize);
                             return $"{matrix}[{row}]{swizzle}";
                         }
@@ -1025,9 +1021,7 @@ public sealed class NodeCompiler
                     // gives dot(float4, float4x4).
                     string matrixElement = CompileRegisterIndexAsElement(
                         relativeAddress.Index, constantBufferArray.RegistersPerElement);
-                    string matrixName = _registers.ColumnMajorOrder
-                        ? $"transpose({arrayName}[{matrixElement}])"
-                        : $"{arrayName}[{matrixElement}]";
+                    string matrixName = $"transpose({arrayName}[{matrixElement}])";
                     return $"{matrixName}[{elementOffset}]{swizzle}";
                 }
                 if (elementOffset != 0)
@@ -1048,9 +1042,7 @@ public sealed class NodeCompiler
                     // index over the row count and the row is the constant left over.
                     string element = CompileRegisterIndexAsElement(
                         relativeAddress.Index, array.RegistersPerElement);
-                    string matrix = _registers.ColumnMajorOrder
-                        ? $"transpose({arrayName}[{element}])"
-                        : $"{arrayName}[{element}]";
+                    string matrix = $"transpose({arrayName}[{element}])";
                     return $"{matrix}[{registerOffset}]{swizzle}";
                 }
                 if (registerOffset != 0)

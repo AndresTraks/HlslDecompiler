@@ -22,7 +22,7 @@ public class HlslAstWriter : HlslWriter
 
     protected override void WriteMethodBody()
     {
-        if (_registers.MethodOutputRegisters.Count > 1)
+        if (HasOutputStruct)
         {
             string outputStructType = _shader.Type switch
             {
@@ -470,7 +470,7 @@ public class HlslAstWriter : HlslWriter
         // parameter is named after its semantic and there is no struct called i.
         bool inputInScope = _registers.MethodInputRegisters.Count > 1
             || _shader.Type == ShaderType.Geometry;
-        bool outputInScope = _registers.MethodOutputRegisters.Count > 1;
+        bool outputInScope = HasOutputStruct;
 
         string name = depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
         while ((inputInScope && name == _registers.InputVariableName)
@@ -605,7 +605,7 @@ public class HlslAstWriter : HlslWriter
         // was last written: an if whose both branches return would otherwise repeat
         // the position computed above it in each of them. A single output has no
         // struct and is returned as the expression, wherever it was computed.
-        bool hasOutputStruct = _registers.MethodOutputRegisters.Count > 1;
+        bool hasOutputStruct = HasOutputStruct;
         Dictionary<RegisterComponentKey, HlslTreeNode[]> outputs =
             GroupComponents(returnStatement.Outputs
                     .Where(o => o.Key.RegisterKey.IsOutput)

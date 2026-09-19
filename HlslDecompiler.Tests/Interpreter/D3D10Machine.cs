@@ -41,11 +41,13 @@ public class D3D10Machine
     private readonly Dictionary<(int Vertex, int Register), uint[]> _vertexInputs = [];
     private readonly Dictionary<string, uint[]> _results = [];
     private uint[] _depth = new uint[4];
+    private readonly uint[] _coverage = new uint[4];
     // What a geometry shader put on its stream and what a compute shader wrote,
     // which are the results those two have instead of a return value.
     private readonly List<KeyValuePair<string, uint[]>> _emitted = [];
     private readonly List<KeyValuePair<string, uint[]>> _stored = [];
     private bool _wroteDepth;
+    private bool _wroteCoverage;
 
     /// <summary>Set by discard: the pixel is thrown away, whatever was written.</summary>
     public bool Discarded { get; private set; }
@@ -88,6 +90,14 @@ public class D3D10Machine
         if (machine._wroteDepth)
         {
             results["DEPTH"] = machine._depth.Select(BitConverter.UInt32BitsToSingle).ToArray();
+        }
+        // The mask as the number it is rather than as the float its bits make. A
+        // mask of 15 read as a float is a denormal, and the comparison holds two
+        // values within a thousandth of each other to be the same, so every mask
+        // would have equalled every other and the check would have proved nothing.
+        if (machine._wroteCoverage)
+        {
+            results["COVERAGE"] = [.. machine._coverage.Select(bits => (float)bits)];
         }
         foreach (var entry in machine._emitted.Concat(machine._stored))
         {
@@ -1203,6 +1213,10 @@ public class D3D10Machine
             case OperandType.OutputDepthLessEqual:
                 destination = _depth;
                 _wroteDepth = true;
+                break;
+            case OperandType.OutputCoverageMask:
+                destination = _coverage;
+                _wroteCoverage = true;
                 break;
             case OperandType.Null:
                 return;

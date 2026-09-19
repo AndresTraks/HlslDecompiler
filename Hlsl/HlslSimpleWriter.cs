@@ -164,7 +164,10 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
-        if (instruction.GetOperandType(operandIndex) != OperandType.Temp)
+        // oMask joins the temps because the analysis has a type for it - a uint -
+        // where a register outside them usually holds whatever number it is given.
+        if (instruction.GetOperandType(operandIndex)
+            is not (OperandType.Temp or OperandType.OutputCoverageMask))
         {
             return ComponentStorage.Numeric;
         }

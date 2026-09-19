@@ -386,8 +386,14 @@ public class D3D10Instruction : Instruction
         else if (componentSelection == D3D10OperandNumComponents.Operand0Component)
         {
             // dcl_input vThreadIDInGroupFlattened declares SV_GroupIndex with no
-            // components at all - it is a scalar, and every read of it is .x.
-            return IsThreadRegister(GetOperandType(operandIndex)) ? 1 : 0;
+            // components at all - it is a scalar, and every read of it is .x. So is
+            // oMask, which fxc writes bare for the same reason; an empty mask left
+            // the instruction writer with no component to ask the type of, and it
+            // cast a uint coverage mask to float.
+            OperandType operandType = GetOperandType(operandIndex);
+            return IsThreadRegister(operandType) || operandType == OperandType.OutputCoverageMask
+                ? 1
+                : 0;
         }
         throw new NotImplementedException();
     }
@@ -604,13 +610,15 @@ public class D3D10Instruction : Instruction
             OperandType.OutputDepth => "SV_Depth",
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
+            OperandType.OutputCoverageMask => "SV_Coverage",
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
         if (!IsThreadRegister(operandType)
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
-            && operandType != OperandType.OutputDepthLessEqual)
+            && operandType != OperandType.OutputDepthLessEqual
+            && operandType != OperandType.OutputCoverageMask)
         {
             int numberIndex = (_isGeometryShader && operandType == OperandType.Input) ? 2 : 1;
             int declIndex = (int) GetParamIndexImmediate32(destIndex, numberIndex);

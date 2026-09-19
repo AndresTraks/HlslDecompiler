@@ -51,7 +51,8 @@ public class AsmWriter
 
     private static int GetDestinationSemanticSize(D3D10Instruction instruction)
     {
-        if (instruction.GetOperandType(instruction.GetDestinationParamIndex().Value) == OperandType.OutputDepth)
+        OperandType operandType = instruction.GetOperandType(instruction.GetDestinationParamIndex().Value);
+        if (operandType is OperandType.OutputDepth or OperandType.OutputCoverageMask)
         {
             return 1;
         }
@@ -1162,6 +1163,7 @@ public class AsmWriter
             OperandType.OutputDepth => "oDepth",
             OperandType.OutputDepthGreaterEqual => "oDepthGE",
             OperandType.OutputDepthLessEqual => "oDepthLE",
+            OperandType.OutputCoverageMask => "oMask",
             OperandType.Null => "null",
             _ => throw new NotImplementedException(operandType.ToString()),
         };

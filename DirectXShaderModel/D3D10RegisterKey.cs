@@ -47,7 +47,8 @@ public class D3D10RegisterKey : RegisterKey
         OperandType == OperandType.Output ||
         OperandType == OperandType.OutputDepth ||
         OperandType == OperandType.OutputDepthGreaterEqual ||
-        OperandType == OperandType.OutputDepthLessEqual;
+        OperandType == OperandType.OutputDepthLessEqual ||
+        OperandType == OperandType.OutputCoverageMask;
     public bool IsConstant =>
         OperandType == OperandType.ConstantBuffer ||
         OperandType == OperandType.Immediate32 ||

@@ -33,6 +33,17 @@ public sealed class IntegerOperandAnalysis
             return true;
         }
 
+        // A coverage mask is a uint whatever writes it. The move rule below cannot
+        // say so - a movc carries its sources rather than typing them, and what
+        // usually settles one is whatever reads the register afterwards, which for
+        // oMask is nothing.
+        int? coverageDestination = instruction.GetDestinationParamIndex();
+        if (coverageDestination != null
+            && instruction.GetOperandType(coverageDestination.Value) == OperandType.OutputCoverageMask)
+        {
+            return true;
+        }
+
         _integerRegisters ??= FindIntegerRegisters(_shader);
         return IsIntegerMove(instruction);
     }
@@ -955,12 +966,17 @@ public sealed class IntegerOperandAnalysis
         // The registers a shader is given rather than declared - thread and group
         // indices, the primitive id - are unsigned integers by definition, whatever
         // reads them: `and r0.xyz, vPrim, l(3, 1, 2, 0)` says nothing about its
-        // operands' type, and would have left the id a float.
+        // operands' type, and would have left the id a float. A coverage mask is
+        // one of them for a different reason: the signature does type it uint, but
+        // keys it to register -1, which matches no operand, so the mask a
+        // `mov oMask, r0.y` carries out was cast to float on the way.
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
             for (int operand = 0; operand < instruction.OperandTokens.Count; operand++)
             {
-                if (D3D10Instruction.IsThreadRegister(instruction.GetOperandType(operand)))
+                OperandType operandType = instruction.GetOperandType(operand);
+                if (D3D10Instruction.IsThreadRegister(operandType)
+                    || operandType == OperandType.OutputCoverageMask)
                 {
                     RegisterKey key = instruction.GetParamRegisterKey(operand);
                     for (int component = 0; component < 4; component++)

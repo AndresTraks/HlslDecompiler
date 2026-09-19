@@ -1388,6 +1388,8 @@ public sealed class RegisterState
                         case OperandType.OutputDepth:
                         case OperandType.OutputDepthGreaterEqual:
                         case OperandType.OutputDepthLessEqual:
+                        // And a coverage mask names none either.
+                        case OperandType.OutputCoverageMask:
                             MethodOutputRegisters.Add(registerDeclaration);
                             break;
                     }
@@ -1544,9 +1546,17 @@ public sealed class RegisterState
         bool isScalar = registerKey.OperandType == OperandType.OutputDepth
             || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
+            || registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID;
         int writeMask = isScalar ? 1 : 4;
-        return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask);
+        // SV_Coverage is a uint. The signature says so too, but keys it to register
+        // -1, which is why the lookup above did not find it.
+        const int UInt32ComponentType = 1;
+        int componentType = registerKey.OperandType == OperandType.OutputCoverageMask ? UInt32ComponentType : 0;
+        return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask)
+        {
+            ComponentType = componentType,
+        };
     }
 }

@@ -17,5 +17,5 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	} else {
 		t1 = float4(1, 0, 3, 4);
 	}
-	return float4(-texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).x + t1.x : t1.x + 1, -texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).y + t1.y : t1.y, -texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy).zw + t1.zw : t1.zw + float2(3, 4));
+	return -texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy) + t1 : t1 + float4(1, 0, 3, 4);
 }

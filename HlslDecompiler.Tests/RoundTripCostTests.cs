@@ -126,25 +126,6 @@ public class RoundTripCostTests
             + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
             + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
             + "the address register was not a row."),
-        ["ps_3_0/temp_assignment"] = (27,
-            "The final cmp writes r1 + (1, 0, 3, 4). AddZeroTemplate folds the zero out "
-            + "of the y component, so y is t1.y where its siblings are t1.x + 1, and the "
-            + "four no longer group: the return comes out as three conditionals over the "
-            + "same texture read instead of one. fxc folds the read but has to carry "
-            + "t1.zw in a register of its own, which is the `mov r2.xy, r1.zwzw` in each "
-            + "branch. Confirmed by disabling AddZeroTemplate, which collapses the return "
-            + "to one expression - and breaks twelve other fixtures, so the template is "
-            + "earning its place and the fix has to be narrower than removing it. "
-            + "Measured: the return written as the one conditional it wants to be, "
-            + "`-texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy) + t1 : t1 + "
-            + "float4(1, 0, 3, 4)`, costs 22, which is the original - so all five "
-            + "instructions are this and nothing else. What makes it hard is that a "
-            + "template sees one node: the zero's siblings are separate nodes in "
-            + "another part of the graph, and a ConstantNode carries a value and no "
-            + "register, so there is nothing in the zero itself that says it came "
-            + "from a def beside a 1, a 3 and a 4. Keeping it would have to be "
-            + "decided where the components meet, which is the grouper and the "
-            + "compiler rather than the template."),
 
 
         ["vs_3_0/partial_overwrite"] = (13,
@@ -182,9 +163,10 @@ public class RoundTripCostTests
             + "three movs. Writing it by hand as one four wide mad does not recover "
             + "it either - fxc splits `* float4(0.5, 0.5, 0, 0)` into a mul and an "
             + "add, the original's shape depending on a 0.5 it had hoisted into a "
-            + "register outside the loop, which source cannot ask for. The same "
-            + "family as ps_3_0/temp_assignment: the zero addend that would make "
-            + "the components group is what AddZeroTemplate folds away."),
+            + "register outside the loop, which source cannot ask for. A folded zero "
+            + "is behind it, as it was behind ps_3_0/temp_assignment - but that one "
+            + "was an addend, which the grouper puts back, and this is a multiplier "
+            + "in a mad, which it does not."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

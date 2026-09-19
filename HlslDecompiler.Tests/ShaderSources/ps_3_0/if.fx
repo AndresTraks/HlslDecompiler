@@ -11,6 +11,6 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	if (texcoord.x <= 0) {
 		return t0 + tex2D(sampler0, texcoord.xy);
 	} else {
-		return float4(t0.x + 1, t0.y, t0.zw + float2(3, 4));
+		return t0 + float4(1, 0, 3, 4);
 	}
 }

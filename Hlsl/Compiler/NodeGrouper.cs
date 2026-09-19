@@ -101,6 +101,16 @@ public class NodeGrouper
             return true;
         }
 
+        // A component whose constant addend was folded away is still a component of
+        // the same instruction. `def c, 1, 0, 3, 4` added to a register writes four
+        // components with one add; the zero is arithmetic to AddZeroTemplate and
+        // nothing in a ConstantNode says it was holding the four together, so the
+        // sibling that lost it is recognised here instead.
+        if (GroupsWithFoldedAddend(node1, node2) || GroupsWithFoldedAddend(node2, node1))
+        {
+            return true;
+        }
+
         if (node1.GetType() != node2.GetType())
         {
             return false;
@@ -216,6 +226,33 @@ public class NodeGrouper
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether an add of a constant is the sibling of a bare node that the same add
+    /// would have covered, had its constant not been zero.
+    /// </summary>
+    private bool GroupsWithFoldedAddend(HlslTreeNode node1, HlslTreeNode node2)
+    {
+        if (node1 is not AddOperation add || node2 is AddOperation)
+        {
+            return false;
+        }
+        // Only where the sibling is a plain read. The shape being recovered is a
+        // constant added to a whole register - `add r, c, v` - and there the
+        // component that lost its zero is a register or a variable. Where it is an
+        // expression, grouping buys nothing and the zero costs an instruction:
+        // screen_position's `(int)x + 1` beside `(int)y` went from 14 to 15 as a
+        // two wide add of int2(1, 0).
+        if (node2 is not (TempVariableNode or RegisterInputNode))
+        {
+            return false;
+        }
+        if (add.Addend2 is ConstantNode)
+        {
+            return CanGroupComponents(add.Addend1, node2);
+        }
+        return add.Addend1 is ConstantNode && CanGroupComponents(add.Addend2, node2);
     }
 
     public bool SharesMatrixColumnOrRow(RegisterInputNode input1, RegisterInputNode input2)

@@ -169,6 +169,29 @@ public sealed class NodeCompiler
             }
         }
 
+        // The other half of the grouper seeing through a folded zero: the components
+        // that kept their constant and the ones that lost it are written back into
+        // the one add, `t1 + float4(1, 0, 3, 4)` rather than a constructor of three
+        // conditionals. Saying they group and then compiling them apart is what
+        // reads Inputs[1] of a node that has none.
+        if (components.Count > 1
+            && components.Any(c => c is AddOperation)
+            && components.Any(c => c is not AddOperation)
+            && components.All(c => c is not AddOperation add || HasConstantAddend(add)))
+        {
+            // The zero takes the type of the constants beside it. Written as a float
+            // among integers it makes the whole vector a float2, and an integer
+            // expression that was three instructions becomes six.
+            bool integer = components
+                .OfType<AddOperation>()
+                .Select(add => AddendOfFoldedAdd(add))
+                .All(addend => addend is ConstantNode constant && constant.IntegerValue != null);
+            List<HlslTreeNode> bases = [.. components.Select(BaseOfFoldedAdd)];
+            List<HlslTreeNode> addends = [.. components.Select(
+                c => AddendOfFoldedAdd(c, integer))];
+            return $"{Compile(bases, promoteToVectorSize)} + {Compile(addends, addends.Count)}";
+        }
+
         var first = components[0];
 
         if (first is ConstantNode)
@@ -337,6 +360,28 @@ public sealed class NodeCompiler
     /// `int2 t0 = float2(a, b)` sends both components through a float on the way.
     /// </summary>
     private bool _assigningToInteger;
+
+    private static bool HasConstantAddend(AddOperation add)
+    {
+        return add.Addend1 is ConstantNode || add.Addend2 is ConstantNode;
+    }
+
+    // What the add was of, or the whole node where the add was folded away.
+    private static HlslTreeNode BaseOfFoldedAdd(HlslTreeNode node)
+    {
+        return node is not AddOperation add
+            ? node
+            : add.Addend1 is ConstantNode ? add.Addend2 : add.Addend1;
+    }
+
+    // What was added, or the zero that was folded out. A fresh node rather than one
+    // of the graph's: nothing reads it, and the compiler runs over and over.
+    private static HlslTreeNode AddendOfFoldedAdd(HlslTreeNode node, bool integer = false)
+    {
+        return node is not AddOperation add
+            ? (integer ? new ConstantNode(0) : new ConstantNode(0f))
+            : add.Addend1 is ConstantNode ? add.Addend1 : add.Addend2;
+    }
 
     private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)
     {

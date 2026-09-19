@@ -290,6 +290,7 @@ public sealed class NodeCompiler
             or FractionalOperation or FloorOperation or CeilingOperation or RoundOperation
             or TruncateOperation or SquareRootOperation or ReciprocalOperation
             or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
+            or NaturalExponentialOperation or NaturalLogarithmOperation
             or PowerOperation or SineOperation or CosineOperation or SignOperation
             or FloatingModuloOperation;
     }

@@ -44,6 +44,8 @@ public class TemplateMatcher
             new SignTemplate(),
             new FloorTemplate(),
             new PowerTemplate(),
+            new NaturalExponentialTemplate(),
+            new NaturalLogarithmTemplate(),
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
             new ClampTemplate()

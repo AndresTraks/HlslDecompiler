@@ -134,7 +134,17 @@ public class RoundTripCostTests
             + "t1.zw in a register of its own, which is the `mov r2.xy, r1.zwzw` in each "
             + "branch. Confirmed by disabling AddZeroTemplate, which collapses the return "
             + "to one expression - and breaks twelve other fixtures, so the template is "
-            + "earning its place and the fix has to be narrower than removing it."),
+            + "earning its place and the fix has to be narrower than removing it. "
+            + "Measured: the return written as the one conditional it wants to be, "
+            + "`-texcoord.x >= 0 ? tex2D(sampler0, t2 + t1.xy) + t1 : t1 + "
+            + "float4(1, 0, 3, 4)`, costs 22, which is the original - so all five "
+            + "instructions are this and nothing else. What makes it hard is that a "
+            + "template sees one node: the zero's siblings are separate nodes in "
+            + "another part of the graph, and a ConstantNode carries a value and no "
+            + "register, so there is nothing in the zero itself that says it came "
+            + "from a def beside a 1, a 3 and a 4. Keeping it would have to be "
+            + "decided where the components meet, which is the grouper and the "
+            + "compiler rather than the template."),
 
 
         ["vs_3_0/partial_overwrite"] = (13,

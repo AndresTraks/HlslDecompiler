@@ -2,10 +2,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	float4 t0 = 0;
 	int t1 = 0;
-	while (true) {
-		if (t1 >= 8) {
-			break;
-		}
+	while (t1 < 8) {
 		if (t1 == 3) {
 			t1 = 4;
 			continue;

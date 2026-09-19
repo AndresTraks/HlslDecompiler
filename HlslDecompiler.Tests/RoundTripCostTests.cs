@@ -46,10 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["cs_4_0/atomic_free_sum"] = (23,
-            "Two instructions, and the same cause. The buffer load is read twice - "
-            + "once shifted, once not - across two statements, and the hoist is per "
-            + "statement, so neither sees a repetition. fxc loads it twice."),
         ["ps_4_0/bit_field"] = (28,
             "One instruction. The exponent is masked out of the bits and shifted back "
             + "in, and the decompiled source says that as two statements over a named "
@@ -108,19 +104,13 @@ public class RoundTripCostTests
             + "members it reads out; written as `g0[i].colour` and `g0[i].weight` it "
             + "reads the element twice and fxc keeps one of them in a register of "
             + "its own."),
-        ["vs_4_0/skin_buffer"] = (39,
-            "Three instructions, and the shape of the source rather than its "
+        ["vs_4_0/skin_buffer"] = (37,
+            "One instruction, and the shape of the source rather than its "
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
             + "comparisons selecting one of four components, and the decompiled "
             + "source says that chain rather than the subscript it came from - fxc "
-            + "has no subscript to put back and compiles the chain it is given."),
-        ["ps_4_0/loop_continue_acc"] = (26,
-            "Two instructions, and both from the sample being written twice - once "
-            + "for the accumulation and once in the condition that decides whether "
-            + "to count it. The hoist names what a statement's text repeats, and "
-            + "these are two statements, so it sees no repetition. The loop itself "
-            + "is right: the continue carries the accumulator out with it, which is "
-            + "what this shader was written to check."),
+            + "has no subscript to put back and compiles the chain it is given. Was "
+            + "39 while the loop's exit test was an if around a break."),
         ["ps_4_0/comparison_mask"] = (8,
             "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
             + "bits of 1.0f and 8.0f, and the registers holding them are declared "
@@ -145,8 +135,13 @@ public class RoundTripCostTests
             + "read twice - inside fwidth and as .x of the addend - without being "
             + "named: the text repeats nothing, since the addend writes it as .x of "
             + "ddx(texcoord), and the hoist names what the text repeats. fxc takes "
-            + "the derivatives once more and packs them with two movs. Was 7 as two "
-            + "half-mads, which was cheaper by one and the wrong shape."),
+            + "the derivatives once more and packs them with two movs. Measured: "
+            + "naming the two derivatives by hand costs 6, which is what the "
+            + "original costs, so this is the whole of the difference and the only "
+            + "shader left that shows the limitation. Naming them is what the hoist "
+            + "would have to do, and fifteen characters of repeat is under the "
+            + "budget that decides a name is worth a line. Was 7 as two half-mads, "
+            + "which was cheaper by one and the wrong shape."),
         ["vs_2_0/matrix_palette"] = (28,
             "Two instructions, the blend index: the input has to be declared float, "
             + "the bytecode not saying otherwise, and fxc floors a float subscript "

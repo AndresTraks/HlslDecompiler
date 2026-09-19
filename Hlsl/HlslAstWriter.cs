@@ -329,6 +329,7 @@ public class HlslAstWriter : HlslWriter
             WriteLine("[loop]");
         }
         string loopVariableName = null;
+        IList<IStatement> body = loop.Body;
         if (loop.IsCountedLoop)
         {
             // The initializer and increment compile as statements; the for header
@@ -351,6 +352,16 @@ public class HlslAstWriter : HlslWriter
                 loopVariableName = variableName;
             }
         }
+        else if (TryGetExitTest(loop, out HlslTreeNode continueCondition, out IStatement exitTest))
+        {
+            // The bytecode tests and breaks at the top of the body, and written
+            // that way fxc compiles it as if_nz, break, endif where the original
+            // had one breakc_nz. As the loop's own condition it is that one
+            // instruction again, and the loop reads as the loop it is.
+            string condition = _compiler.Compile(Reduce(continueCondition));
+            WriteLine($"while ({condition}) {{");
+            body = [.. loop.Body.Where(statement => !ReferenceEquals(statement, exitTest))];
+        }
         else
         {
             WriteLine("while (true) {");
@@ -362,11 +373,44 @@ public class HlslAstWriter : HlslWriter
         {
             _compiler.LoopVariableName = loopVariableName;
         }
-        WriteStatements(loop.Body);
+        WriteStatements(body);
         _compiler.LoopVariableName = enclosingLoopVariable;
         _loopDepth--;
         indent = indent.Substring(0, indent.Length - 1);
         WriteLine("}");
+    }
+
+    /// <summary>
+    /// The condition a loop whose body opens by breaking on a test can carry in its
+    /// header instead, and the statement it came from. The phi assignments that
+    /// carry values round the loop write nothing and are stepped over; anything
+    /// else in front of the break is code that has to run before the test, and the
+    /// loop stays as it is.
+    /// </summary>
+    private static bool TryGetExitTest(
+        LoopStatement loop, out HlslTreeNode continueCondition, out IStatement exitTest)
+    {
+        continueCondition = null;
+        exitTest = null;
+        foreach (IStatement statement in loop.Body)
+        {
+            if (statement is AssignmentStatement assignment
+                && assignment.Outputs.Values.All(value => value is PhiNode))
+            {
+                continue;
+            }
+            if (statement is not BreakStatement breakStatement
+                || breakStatement.Comparison is not ComparisonNode comparison
+                || ConstantMatcher.TryEvaluateComparison(comparison) != null
+                || comparison.Inverted() is not ComparisonNode opposite)
+            {
+                return false;
+            }
+            continueCondition = opposite;
+            exitTest = statement;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>

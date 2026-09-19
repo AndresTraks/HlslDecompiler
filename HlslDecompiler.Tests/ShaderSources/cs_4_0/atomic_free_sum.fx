@@ -19,10 +19,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	int t1 = 0;
 	t0 = 0;
-	while (true) {
-		if (t0 >= 8) {
-			break;
-		}
+	while (t0 < 8) {
 		t1 = (g0[t0 + i.sv_groupindex & 63] & 255) + t1;
 		t0 = t0 + 1;
 	}

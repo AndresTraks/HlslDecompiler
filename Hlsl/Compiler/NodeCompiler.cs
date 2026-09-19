@@ -175,6 +175,17 @@ public sealed class NodeCompiler
         // conditionals. Saying they group and then compiling them apart is what
         // reads Inputs[1] of a node that has none.
         if (components.Count > 1
+            && components.Any(c => c is MultiplyOperation)
+            && components.Any(c => c is not MultiplyOperation)
+            && components.All(c => c is not MultiplyOperation multiply
+                || multiply.Factor1 is ConstantNode || multiply.Factor2 is ConstantNode))
+        {
+            List<HlslTreeNode> multiplied = [.. components.Select(FactoredOfFoldedMultiply)];
+            List<HlslTreeNode> factors = [.. components.Select(FactorOfFoldedMultiply)];
+            return $"{Compile(multiplied, promoteToVectorSize)} * {Compile(factors, factors.Count)}";
+        }
+
+        if (components.Count > 1
             && components.Any(c => c is AddOperation)
             && components.Any(c => c is not AddOperation)
             && components.All(c => c is not AddOperation add || HasConstantAddend(add)))
@@ -360,6 +371,22 @@ public sealed class NodeCompiler
     /// `int2 t0 = float2(a, b)` sends both components through a float on the way.
     /// </summary>
     private bool _assigningToInteger;
+
+    // What the multiply was of, or the whole node where the one was folded away.
+    private static HlslTreeNode FactoredOfFoldedMultiply(HlslTreeNode node)
+    {
+        return node is not MultiplyOperation multiply
+            ? node
+            : multiply.Factor1 is ConstantNode ? multiply.Factor2 : multiply.Factor1;
+    }
+
+    // What it was multiplied by, or the one that was folded out.
+    private static HlslTreeNode FactorOfFoldedMultiply(HlslTreeNode node)
+    {
+        return node is not MultiplyOperation multiply
+            ? new ConstantNode(1f)
+            : multiply.Factor1 is ConstantNode ? multiply.Factor1 : multiply.Factor2;
+    }
 
     private static bool HasConstantAddend(AddOperation add)
     {

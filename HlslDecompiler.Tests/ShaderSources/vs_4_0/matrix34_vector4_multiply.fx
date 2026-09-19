@@ -15,7 +15,7 @@ VS_OUT main(float4 position : POSITION)
 	o.position = float4(mul(matrix_3x4, position), 1);
 	o.position1 = mul(matrix_3x4, position.yxzw);
 	o.position2 = mul(matrix_3x4, abs(position.yxzw));
-	o.position3 = mul(matrix_3x4, float4(2 * position.x, position.y, 3 * position.z, 1));
+	o.position3 = mul(matrix_3x4, float4(position.xyz * float3(2, 1, 3), 1));
 
 	return o;
 }

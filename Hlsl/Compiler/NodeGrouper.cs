@@ -106,7 +106,8 @@ public class NodeGrouper
         // components with one add; the zero is arithmetic to AddZeroTemplate and
         // nothing in a ConstantNode says it was holding the four together, so the
         // sibling that lost it is recognised here instead.
-        if (GroupsWithFoldedAddend(node1, node2) || GroupsWithFoldedAddend(node2, node1))
+        if (GroupsWithFoldedAddend(node1, node2) || GroupsWithFoldedAddend(node2, node1)
+            || GroupsWithFoldedFactor(node1, node2) || GroupsWithFoldedFactor(node2, node1))
         {
             return true;
         }
@@ -253,6 +254,26 @@ public class NodeGrouper
             return CanGroupComponents(add.Addend1, node2);
         }
         return add.Addend1 is ConstantNode && CanGroupComponents(add.Addend2, node2);
+    }
+
+    /// <summary>
+    /// The same for a multiply, where the one that MultiplyOneTemplate folded away
+    /// is what held the components together. `mul r, c, v` with a 1 in one
+    /// component of c writes the whole register in one instruction.
+    /// </summary>
+    private bool GroupsWithFoldedFactor(HlslTreeNode node1, HlslTreeNode node2)
+    {
+        if (node1 is not MultiplyOperation multiply
+            || node2 is MultiplyOperation
+            || node2 is not (TempVariableNode or RegisterInputNode))
+        {
+            return false;
+        }
+        if (multiply.Factor2 is ConstantNode)
+        {
+            return CanGroupComponents(multiply.Factor1, node2);
+        }
+        return multiply.Factor1 is ConstantNode && CanGroupComponents(multiply.Factor2, node2);
     }
 
     public bool SharesMatrixColumnOrRow(RegisterInputNode input1, RegisterInputNode input2)

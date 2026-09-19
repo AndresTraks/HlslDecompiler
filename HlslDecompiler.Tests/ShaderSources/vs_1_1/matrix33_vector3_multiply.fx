@@ -15,7 +15,7 @@ VS_OUT main(float4 position : POSITION)
 	o.position = float4(mul(matrix_3x3, position.xyz), 1);
 	o.texcoord1 = mul(matrix_3x3, position.yxz);
 	o.texcoord2 = mul(matrix_3x3, abs(position.yxz));
-	o.texcoord3 = mul(matrix_3x3, float3(2 * position.x, position.y, 3 * position.z));
+	o.texcoord3 = mul(matrix_3x3, position.xyz * float3(2, 1, 3));
 
 	return o;
 }

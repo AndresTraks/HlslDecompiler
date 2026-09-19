@@ -87,6 +87,7 @@ public class DecompileTests
     [TestCase("vs_3_0", "constant_struct")]
     [TestCase("vs_3_0", "dot_product")]
     [TestCase("vs_3_0", "length")]
+    [TestCase("vs_3_0", "matrix_layout")]
     [TestCase("vs_3_0", "matrix22_vector2_multiply")]
     [TestCase("vs_3_0", "matrix23_vector2_multiply")]
     [TestCase("vs_3_0", "matrix33_vector3_multiply")]

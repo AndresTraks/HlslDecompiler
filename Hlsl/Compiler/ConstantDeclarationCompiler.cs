@@ -98,8 +98,13 @@ public sealed class ConstantDeclarationCompiler
                 // one used to throw rather than be named.
                 return GetScalarTypeName(typeInfo.ParameterType) + typeInfo.Columns;
             case ParameterClass.MatrixColumns:
-            case ParameterClass.MatrixRows:
                 return $"{GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}";
+            // The constant table records which way a matrix was packed and HLSL
+            // packs column major unless told otherwise, so a row major one has to
+            // say so. Declared without it, the registers holding its rows are read
+            // back as columns and every use of it is transposed.
+            case ParameterClass.MatrixRows:
+                return $"row_major {GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}";
             case ParameterClass.Object:
                 return typeInfo.ParameterType switch
                 {

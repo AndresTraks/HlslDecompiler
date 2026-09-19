@@ -10,5 +10,7 @@ float3 ambient;
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {
-	return lights[0].colour * saturate(dot(normal, -lights[0].dir)) + float4(ambient, 1) + lights[1].colour * saturate(dot(normal, -lights[1].dir));
+	float t0 = saturate(dot(normal, -lights[1].dir));
+	float t1 = saturate(dot(normal, -lights[0].dir));
+	return lights[0].colour * t1 + float4(ambient, 1) + lights[1].colour * t0;
 }

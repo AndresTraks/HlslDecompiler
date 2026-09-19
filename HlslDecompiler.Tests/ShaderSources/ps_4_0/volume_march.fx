@@ -17,16 +17,17 @@ float4 main(PS_IN i) : SV_Target
 	float t3 = 0;
 	for (int t4 = 0; t4 < 32; t4 = t4 + 1) {
 		float t5 = volume.SampleLevel(samp, t1, 0).x * march.y;
-		float3 t6 = t5 * (1 - t3) * march.z + t2;
-		float t7 = t5 * (1 - t3) + t3;
-		if (march.w < t7) {
-			t2 = t6;
-			t3 = t7;
+		float t6 = t5 * (1 - t3);
+		float3 t7 = t6 * march.z + t2;
+		float t8 = t5 * (1 - t3) + t3;
+		if (march.w < t8) {
+			t2 = t7;
+			t3 = t8;
 			break;
 		}
 		t1 = t0 * march.x + t1;
-		t2 = t6;
-		t3 = t7;
+		t2 = t7;
+		t3 = t8;
 	}
 	return float4(t2, t3);
 }

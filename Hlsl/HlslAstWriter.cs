@@ -842,14 +842,6 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private const int SharedSubexpressionThreshold = 8;
 
-    /// <summary>
-    /// How large the expression has to get, written out in full, before it is named
-    /// by size. The text pass below measures what is actually repeated, but it has
-    /// to write the expression out to do that, and past this point writing it out
-    /// is what cannot be afforded.
-    /// </summary>
-    private const int InlinedSizeBudget = 500;
-
     private List<HlslTreeNode[]> HoistSharedSubexpressions(
         IList<HlslTreeNode[]> registerGroups)
     {
@@ -887,20 +879,18 @@ public class HlslAstWriter : HlslWriter
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
 
         // Sharing alone is not a reason to name something - almost every expression
-        // shares a register read. What is worth naming is what the text repeats,
-        // measured on the text; only an expression that explodes when written out
-        // is cut down by size first, so that there is a text to measure.
-        var inlinedSize = new Dictionary<HlslTreeNode, long>(ReferenceEqualityComparer.Instance);
-        long total = 0;
-        foreach (HlslTreeNode root in roots)
-        {
-            total += InlinedSize(root, order, inlinedSize);
-        }
-        if (total <= InlinedSizeBudget)
-        {
-            resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
-            return Renumber(resourceInfo);
-        }
+        // shares a register read. What is worth naming is a subexpression of some
+        // size that the compiler writes more than once, and then whatever text
+        // still repeats after those have been taken out.
+        //
+        // This used to run only on statements whose inlined size passed a budget,
+        // on the reading that a short statement has nothing worth cutting. The
+        // budget turned itself off exactly where it was wanted: recovering an idiom
+        // makes a statement shorter, so a lerp or a normalize put colour_grade
+        // under the line and took its two names away with it, and the sample they
+        // held came back per component. Twenty-one fixtures name more now, their
+        // longest lines a good deal shorter for it, and not one costs an
+        // instruction more.
 
         // What the compiler writes, rather than what the graph shares. A length
         // inside a normalize has a consumer per component and is written none of
@@ -1507,26 +1497,6 @@ public class HlslAstWriter : HlslWriter
     // The node count of the expression as it would be written out, where a node read
     // twice counts twice. Memoised over the shared graph, so measuring the explosion
     // does not take exponential time itself.
-    private static long InlinedSize(
-        HlslTreeNode root, IList<HlslTreeNode> order, Dictionary<HlslTreeNode, long> sizes)
-    {
-        for (int i = order.Count - 1; i >= 0; i--)
-        {
-            HlslTreeNode node = order[i];
-            long size = 1;
-            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
-            {
-                size += sizes.TryGetValue(input, out long inputSize) ? inputSize : 1;
-                if (size > int.MaxValue)
-                {
-                    size = int.MaxValue;
-                }
-            }
-            sizes[node] = size;
-        }
-        return sizes.TryGetValue(root, out long rootSize) ? rootSize : 1;
-    }
-
     private static int CountReachable(HlslTreeNode node)
     {
         var seen = HlslTreeNode.NewNodeSet();

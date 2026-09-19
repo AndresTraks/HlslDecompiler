@@ -14,5 +14,6 @@ struct2 o;
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {
-	return o.b * dot(o.a.v, normal) + o.a.s;
+	float t0 = dot(o.a.v, normal);
+	return o.b * t0 + o.a.s;
 }

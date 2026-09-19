@@ -20,9 +20,10 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
+	float t0 = dot(planeA, i.position);
 	o.position = mul(i.position, worldViewProj);
 	o.texcoord = cross(i.normal.xyz, axis);
-	o.texcoord1 = float4(sign(dot(planeA, i.position)), sign(dot(planeB, i.position)), length(i.position.xyz - axis), smoothstep(0, 1, dot(planeA, i.position)));
+	o.texcoord1 = float4(sign(t0), sign(dot(planeB, i.position)), length(i.position.xyz - axis), smoothstep(0, 1, t0));
 
 	return o;
 }

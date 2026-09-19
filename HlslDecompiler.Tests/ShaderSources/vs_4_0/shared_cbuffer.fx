@@ -11,5 +11,6 @@ struct VS_IN
 
 float4 main(VS_IN i) : SV_Position
 {
-	return mul(float4((right * i.texcoord.x + i.texcoord.y * up) * size + i.position.xyz, 1), viewProj);
+	float3 t0 = (right * i.texcoord.x + i.texcoord.y * up) * size + i.position.xyz;
+	return mul(float4(t0, 1), viewProj);
 }

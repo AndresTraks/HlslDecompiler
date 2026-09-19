@@ -19,7 +19,8 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float t0 = sin(i.position.x * wave.x + wave.y);
-	o.position = mul(float4(i.position.x, t0 * wave.z + i.position.y, i.position.zw), worldViewProjection);
+	float t1 = t0 * wave.z + i.position.y;
+	o.position = mul(float4(i.position.x, t1, i.position.zw), worldViewProjection);
 	o.texcoord = i.texcoord.xy;
 	o.texcoord1 = t0 * wave.z * wave.w;
 

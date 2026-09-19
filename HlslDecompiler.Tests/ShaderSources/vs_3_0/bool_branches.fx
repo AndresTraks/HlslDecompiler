@@ -21,7 +21,8 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float3 t0 = useOffset * offset.xyz + i.position.xyz;
-	o.position = mul(float4(useScale * (t0 * scale - t0) + t0, useOffset * offset.w + i.position.w), worldViewProj);
+	float3 t1 = useScale * (t0 * scale - t0) + t0;
+	o.position = mul(float4(t1, useOffset * offset.w + i.position.w), worldViewProj);
 	o.color = useOffset * (i.color - i.color.wzyx) + i.color.wzyx;
 
 	return o;

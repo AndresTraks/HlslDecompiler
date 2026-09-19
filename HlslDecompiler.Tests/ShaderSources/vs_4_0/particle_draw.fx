@@ -23,7 +23,8 @@ VS_OUT main(uint sv_vertexid : SV_VertexID)
 
 	int t0 = (uint)sv_vertexid >> 2;
 	float2 t1 = (float2)(sv_vertexid & int2(1, 2) ? 1 : -1);
-	o.sv_position = mul(float4(t1 * particles[t0].size + particles[t0].position.xy, particles[t0].position.z, 1), viewProjection);
+	float2 t2 = t1 * particles[t0].size + particles[t0].position.xy;
+	o.sv_position = mul(float4(t2, particles[t0].position.z, 1), viewProjection);
 	o.texcoord = t1 * particles[t0].size;
 	o.texcoord1 = saturate(particles[t0].life);
 

@@ -162,6 +162,12 @@ public sealed class NodeCompiler
                 return $"normalize({vector})";
             }
 
+            var reflect = _nodeGrouper.ReflectGrouper.TryGetContext(components);
+            if (reflect != null)
+            {
+                return $"reflect({Compile(reflect.Value.Incident)}, {Compile(reflect.Value.Normal)})";
+            }
+
             var cross = _nodeGrouper.CrossProductGrouper.TryGetContext(components);
             if (cross != null)
             {

@@ -13,12 +13,14 @@ public class NodeGrouper
         MatrixMultiplicationGrouper = new MatrixMultiplicationGrouper(registers);
         NormalizeGrouper = new NormalizeGrouper();
         CrossProductGrouper = new CrossProductGrouper();
+        ReflectGrouper = new ReflectGrouper();
         _registers = registers;
     }
 
     public MatrixMultiplicationGrouper MatrixMultiplicationGrouper { get; }
     public NormalizeGrouper NormalizeGrouper { get; }
     public CrossProductGrouper CrossProductGrouper { get; }
+    public ReflectGrouper ReflectGrouper { get; }
 
     public IList<IList<HlslTreeNode>> GroupComponents(List<HlslTreeNode> nodes)
     {

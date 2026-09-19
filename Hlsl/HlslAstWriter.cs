@@ -1129,6 +1129,13 @@ public class HlslAstWriter : HlslWriter
                     .Distinct().Select(n => n.Nodes).ToList(),
                 Repeated: (g.Count() - 1) * g.Key.Length))
             .Where(r => r.Occurrences.Count > 1)
+            // All of one width. The occurrences are named together, against the
+            // components of the first, so a narrower one has nothing at the
+            // positions the others are rewired at. Two can differ: Broadcast takes
+            // an occurrence whose components are all the one value down to a single
+            // node, and a scalar promoted to a vector writes the same text as the
+            // vector does.
+            .Where(r => r.Occurrences.All(nodes => nodes.Length == r.Occurrences[0].Length))
             .Where(r => r.Repeated >= RepeatedTextBudget)
             .Where(r => r.Occurrences.All(nodes => nodes.All(n => IsNameable(n) && !roots.Contains(n))))
             .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))

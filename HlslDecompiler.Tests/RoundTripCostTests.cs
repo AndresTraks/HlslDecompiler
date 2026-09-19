@@ -97,13 +97,19 @@ public class RoundTripCostTests
             + "makes it readable - fxc reloads the two members that are read after a "
             + "store to a different member of the same element. Correct, and the "
             + "alternative is a struct shaped temporary the writer has no way to "
-            + "know was there."),
+            + "know was there. Measured, that temporary costs 10, which is one "
+            + "under what the original costs - so it is not only available to a "
+            + "writer that could see it, it is the better shape. The element is "
+            + "read in five statements and the hoist is per statement."),
         ["cs_4_1/groupshared_struct"] = (20,
             "One instruction. The groupshared array holds a struct, and the original "
-            + "keeps the whole element in one register between the load and the two "
-            + "members it reads out; written as `g0[i].colour` and `g0[i].weight` it "
-            + "reads the element twice and fxc keeps one of them in a register of "
-            + "its own."),
+            + "keeps the whole element in one register between the load and the "
+            + "members it reads out; the decompiled source reads `g0[t3]` three "
+            + "times across two statements and fxc keeps one of them in a register "
+            + "of its own. Measured: naming the element by hand costs 19, which is "
+            + "what the original costs. A load is an Operation and so is nameable, "
+            + "but the repeat is under the text budget and spans two statements, "
+            + "and the hoist is per statement."),
         ["vs_4_0/skin_buffer"] = (37,
             "One instruction, and the shape of the source rather than its "
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
@@ -149,12 +155,6 @@ public class RoundTripCostTests
             + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
             + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
             + "the address register was not a row."),
-        ["vs_4_0/skinning"] = (15,
-            "One instruction: `mul(mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y, "
-            + "viewProj)`, which is the source, and fxc orders the two blends the "
-            + "other way about from the original and folds one fewer mad. Was 21 "
-            + "while two dot products could not be components of anything - they "
-            + "are, when they are rows of one matrix against one vector."),
         ["ps_3_0/temp_assignment"] = (27,
             "The final cmp writes r1 + (1, 0, 3, 4). AddZeroTemplate folds the zero out "
             + "of the y component, so y is t1.y where its siblings are t1.x + 1, and the "

@@ -162,7 +162,19 @@ public class RoundTripCostTests
         ["ps_3_0/dynamic_index"] = (6,
             "The original selects with cmp over def'd constants; the decompiled "
             + "comparison compiles to abs and a compare."),
-        ["gs_4_1/circle"] = (20, "One extra move around the stream append."),
+        ["gs_4_1/circle"] = (20,
+            "One instruction, and it is the position's components not grouping. "
+            + "The original writes `mad r2.xyzw, r0.xyzw, l(0.5, 0.5, 0, 0), "
+            + "v[0][0].xyzw` and one `mov o0.xyzw` after it: the multiplier's zw "
+            + "are zero, so z and w pass the input through and all four components "
+            + "are one instruction. In the decompiled source x and y are mads and "
+            + "zw is a read, which do not group, so fxc writes two scalar mads and "
+            + "three movs. Writing it by hand as one four wide mad does not recover "
+            + "it either - fxc splits `* float4(0.5, 0.5, 0, 0)` into a mul and an "
+            + "add, the original's shape depending on a 0.5 it had hoisted into a "
+            + "register outside the loop, which source cannot ask for. The same "
+            + "family as ps_3_0/temp_assignment: the zero addend that would make "
+            + "the components group is what AddZeroTemplate folds away."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

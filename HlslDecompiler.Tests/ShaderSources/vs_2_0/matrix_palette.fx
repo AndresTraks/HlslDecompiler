@@ -20,10 +20,8 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float3 t0 = mul(i.position, bones[i.blendindices.x]) * i.blendweight.x + mul(i.position, bones[i.blendindices.y]) * i.blendweight.y;
-	float3 t1 = mul(i.normal.xyz, (float3x3)bones[i.blendindices.x]) * i.blendweight.x + mul(i.normal.xyz, (float3x3)bones[i.blendindices.y]) * i.blendweight.y;
-	float t2 = length(t1);
 	o.position = mul(float4(t0, 1), vp);
-	o.texcoord = t1 / t2;
+	o.texcoord = normalize(mul(i.normal.xyz, (float3x3)bones[i.blendindices.x]) * i.blendweight.x + mul(i.normal.xyz, (float3x3)bones[i.blendindices.y]) * i.blendweight.y);
 
 	return o;
 }

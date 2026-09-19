@@ -61,7 +61,7 @@ public class RoundTripCostTests
             + "and it is written out longhand, which fxc expands again inside each "
             + "unrolled copy. It computes the right answer now, which it did not "
             + "when this entry was written."),
-        ["ps_4_0/gbuffer_decode"] = (35,
+        ["ps_4_0/gbuffer_decode"] = (36,
             "Three instructions, all downstream of one split. The two halves of a "
             + "normal packed into a uint are decoded differently - one masks the low "
             + "sixteen bits, the other shifts down the high ones - so the mad that "
@@ -73,7 +73,12 @@ public class RoundTripCostTests
             + "lost, not the arithmetic. Was 39 while the dot product over the "
             + "result was a mul and two mads; it is the dp3_sat the original had, "
             + "now that a dot takes a side whose components are each their own "
-            + "expression."),
+            + "expression. Was 35 while `t8 / length(t8)` was a division by a named "
+            + "length; it is `normalize(t8)` now, which fxc takes the length for "
+            + "again rather than sharing the one the saturate above it already "
+            + "computes. One instruction for the word, paid knowingly - five "
+            + "shaders read `normalize(v)` where they read a division by a length "
+            + "on a line of its own."),
         ["vs_3_0/grass_wave"] = (24,
             "Two instructions, and the same cause as ps_4_0/gbuffer_decode. The "
             + "position the length is taken of has two components computed by a mad "

@@ -24,8 +24,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	float4 t0 = mul(i.position * instances[i.sv_instanceid].scale, instances[i.sv_instanceid].world);
-	o.sv_position = mul(t0, viewProj);
+	o.sv_position = mul(mul(i.position * instances[i.sv_instanceid].scale, instances[i.sv_instanceid].world), viewProj);
 	o.color = instances[i.sv_instanceid].tint;
 
 	return o;

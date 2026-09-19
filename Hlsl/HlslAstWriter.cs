@@ -902,6 +902,15 @@ public class HlslAstWriter : HlslWriter
             return Renumber(resourceInfo);
         }
 
+        // What the compiler writes, rather than what the graph shares. A length
+        // inside a normalize has a consumer per component and is written none of
+        // those times - the grouper takes the divisions whole and the length with
+        // them - so naming it by consumer count put a variable where the grouper
+        // looks for a LengthOperation, and cost the normalize. The same reading the
+        // text pass below is built on: what a node costs in a statement cannot be
+        // had off the graph, only by compiling it and looking.
+        Dictionary<HlslTreeNode, int> written = WrittenCounts(registerGroups);
+
         // Deepest first, so that a shared node inside another one is named before
         // the node containing it stops being reachable from here.
         var candidates = new List<HlslTreeNode>();
@@ -916,6 +925,10 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
+            if (!written.TryGetValue(node, out int writtenCount) || writtenCount < 2)
+            {
+                continue;
+            }
             if (CountReachable(node) <= SharedSubexpressionThreshold)
             {
                 continue;
@@ -925,6 +938,41 @@ public class HlslAstWriter : HlslWriter
         resourceInfo.AddRange(NameCandidates(candidates));
         resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
         return Renumber(resourceInfo);
+    }
+
+    /// <summary>
+    /// How many times each node is written, from compiling the statement once and
+    /// throwing it away. A node appears here when it is a component of a group the
+    /// compiler wrote; one the grouper absorbed - a normalize's length, a matrix
+    /// multiply's dot products - appears not at all, however many readers it has.
+    /// </summary>
+    private Dictionary<HlslTreeNode, int> WrittenCounts(IEnumerable<HlslTreeNode[]> groups)
+    {
+        var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
+        _compiler.Recording = recording;
+        try
+        {
+            foreach (HlslTreeNode[] group in groups)
+            {
+                // The values, not the assignments, for the reason NameRepeatedText
+                // gives: compiling an assignment numbers its variable.
+                _compiler.Compile(group.Select(root =>
+                    root is TempAssignmentNode assignment ? assignment.Value : root));
+            }
+        }
+        finally
+        {
+            _compiler.Recording = null;
+        }
+        var counts = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
+        foreach ((HlslTreeNode[] nodes, _) in recording)
+        {
+            foreach (HlslTreeNode node in nodes)
+            {
+                counts[node] = counts.TryGetValue(node, out int count) ? count + 1 : 1;
+            }
+        }
+        return counts;
     }
 
     /// <summary>

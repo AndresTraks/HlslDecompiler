@@ -43,6 +43,7 @@ public class TemplateMatcher
             new SignedDivideTemplate(),
             new SignTemplate(),
             new FloorTemplate(),
+            new PowerTemplate(),
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
             new ClampTemplate()

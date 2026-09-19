@@ -61,12 +61,6 @@ public class RoundTripCostTests
             + "and it is written out longhand, which fxc expands again inside each "
             + "unrolled copy. It computes the right answer now, which it did not "
             + "when this entry was written."),
-        ["vs_3_0/bone_array"] = (13,
-            "The original loads two indices in one mova and the third in another, "
-            + "and the decompiled source has three separate subscripts. fxc gives "
-            + "each its own mova rather than packing two into one, which is two "
-            + "instructions. The lookups themselves are right, which they were not "
-            + "before - all three used to read the same element."),
         ["ps_4_0/gbuffer_decode"] = (35,
             "Three instructions, all downstream of one split. The two halves of a "
             + "normal packed into a uint are decoded differently - one masks the low "

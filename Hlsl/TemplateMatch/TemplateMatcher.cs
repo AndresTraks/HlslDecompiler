@@ -42,6 +42,7 @@ public class TemplateMatcher
             new TrigonometricRangeReductionTemplate(),
             new SignedDivideTemplate(),
             new SignTemplate(),
+            new FloorTemplate(),
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
             new ClampTemplate()

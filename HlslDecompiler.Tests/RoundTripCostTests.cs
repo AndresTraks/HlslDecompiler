@@ -62,7 +62,7 @@ public class RoundTripCostTests
             + "unrolled copy. It computes the right answer now, which it did not "
             + "when this entry was written."),
         ["ps_4_0/gbuffer_decode"] = (36,
-            "Three instructions, all downstream of one split. The two halves of a "
+            "Four instructions, three of them downstream of one split. The two halves of a "
             + "normal packed into a uint are decoded differently - one masks the low "
             + "sixteen bits, the other shifts down the high ones - so the mad that "
             + "scales both is written as two scalar statements rather than one two "
@@ -99,7 +99,13 @@ public class RoundTripCostTests
             + "know was there. Measured, that temporary costs 10, which is one "
             + "under what the original costs - so it is not only available to a "
             + "writer that could see it, it is the better shape. The element is "
-            + "read in five statements and the hoist is per statement."),
+            + "read in five statements and the hoist is per statement. Naming the "
+            + "four members separately instead, which wants no struct typed "
+            + "variable and no new kind of declaration, costs 12: it takes one of "
+            + "the two instructions and leaves the other, because fxc loads four "
+            + "members where the original loaded the element twice. The cheap "
+            + "version is not enough, which is the thing to know before trying "
+            + "it."),
         ["vs_4_0/skin_buffer"] = (37,
             "One instruction, and the shape of the source rather than its "
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "

@@ -6,11 +6,11 @@ namespace HlslDecompiler.Hlsl.FlowControl;
 
 public class ContinueStatement : IStatement
 {
-    public HlslTreeNode? Comparison { get; }
+    public HlslTreeNode Comparison { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
-    public ContinueStatement(HlslTreeNode? comparison, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
+    public ContinueStatement(HlslTreeNode comparison, IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
     {
         Comparison = comparison;
         Inputs = inputs.ToDictionary();

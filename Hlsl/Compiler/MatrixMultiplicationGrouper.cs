@@ -21,8 +21,6 @@ public class MatrixMultiplicationGrouper
     // Note: mul(float2xM, floatN) is compiled as mul((float2xN)float2xM, floatN)
     public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> components)
     {
-        const bool allowMatrix = true;
-
         if (components.All(c => c is AddOperation))
         {
             HlslTreeNode[] submatrixNodes = components.Select(g => g.Inputs[0]).ToArray();

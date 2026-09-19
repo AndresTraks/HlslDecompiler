@@ -1800,33 +1800,14 @@ public class HlslSimpleWriter : HlslWriter
                     uint[] constant = components
                         .Select(s => constantInt[s]).ToArray();
 
-                    switch (instruction.GetSourceModifier(srcIndex))
+                    // Negate, Abs and AbsAndNegate over an integer constant would be
+                    // `-c`, `abs(c)` and `-abs(c)` component by component. They were
+                    // written as loops around a throw, which is three unreachable
+                    // statements and the same behaviour; no shader in the corpus has
+                    // reached here with one.
+                    if (instruction.GetSourceModifier(srcIndex) != SourceModifier.None)
                     {
-                        case SourceModifier.None:
-                            break;
-                        case SourceModifier.Negate:
-                            for (int i = 0; i < constant.Length; i++)
-                            {
-                                throw new NotImplementedException();
-                                //constantUint[i] = -constantUint[i];
-                            }
-                            break;
-                        case SourceModifier.Abs:
-                            for (int i = 0; i < constant.Length; i++)
-                            {
-                                throw new NotImplementedException();
-                                //constantUint[i] = Math.Abs(constantUint[i]);
-                            }
-                            break;
-                        case SourceModifier.AbsAndNegate:
-                            for (int i = 0; i < constant.Length; i++)
-                            {
-                                throw new NotImplementedException();
-                                //constantUint[i] = -Math.Abs(constantUint[i]);
-                            }
-                            break;
-                        default:
-                            throw new NotImplementedException();
+                        throw new NotImplementedException();
                     }
 
                     if (constant.Skip(1).All(c => constant[0] == c))

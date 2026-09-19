@@ -182,7 +182,7 @@ public sealed class RegisterState
     /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
     public RegisterDeclaration PrimitiveIdDeclaration { get; set; }
     public int? MaxOutputVertexCount { get; set; }
-    public int[]? NumThreads { get; set; }
+    public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
 

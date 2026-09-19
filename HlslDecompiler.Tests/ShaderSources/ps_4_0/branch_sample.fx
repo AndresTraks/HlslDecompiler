@@ -19,5 +19,5 @@ float4 main(PS_IN i) : SV_Target
 	} else {
 		t0 = albedo.Sample(samp, i.texcoord);
 	}
-	return smoothstep(fade.x, fade.y, i.texcoord1) * (float4(0.5, 0.5, 0.5, 1) - t0) + t0;
+	return lerp(t0, float4(0.5, 0.5, 0.5, 1), smoothstep(fade.x, fade.y, i.texcoord1));
 }

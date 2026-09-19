@@ -19,7 +19,7 @@ PS_OUT main(float2 texcoord : TEXCOORD)
 	if (t0.w < threshold) {
 		discard;
 	}
-	o.sv_depth = t0.x > 0.5 ? nearDepth : 2 * t0.x * (farDepth - nearDepth) + nearDepth;
+	o.sv_depth = t0.x > 0.5 ? nearDepth : lerp(nearDepth, farDepth, 2 * t0.x);
 	o.sv_target = t0;
 
 	return o;

@@ -19,7 +19,7 @@ float4 main(PS_IN i) : SV_Target
 		float t5 = volume.SampleLevel(samp, t1, 0).x * march.y;
 		float t6 = t5 * (1 - t3);
 		float3 t7 = t6 * march.z + t2;
-		float t8 = t5 * (1 - t3) + t3;
+		float t8 = lerp(t3, 1, t5);
 		if (march.w < t8) {
 			t2 = t7;
 			t3 = t8;

@@ -4,5 +4,5 @@ float t;
 
 float4 main(float texcoord : TEXCOORD) : COLOR
 {
-	return saturate(texcoord * t) * (b - a) + a;
+	return lerp(a, b, saturate(texcoord * t));
 }

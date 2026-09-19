@@ -46,6 +46,7 @@ public class TemplateMatcher
             new PowerTemplate(),
             new NaturalExponentialTemplate(),
             new NaturalLogarithmTemplate(),
+            new LinearInterpolateTemplate(),
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
             new ClampTemplate()

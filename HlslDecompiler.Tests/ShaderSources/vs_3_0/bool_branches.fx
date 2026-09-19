@@ -21,9 +21,9 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float3 t0 = useOffset * offset.xyz + i.position.xyz;
-	float3 t1 = useScale * (t0 * scale - t0) + t0;
+	float3 t1 = lerp(t0, t0 * scale, useScale);
 	o.position = mul(float4(t1, useOffset * offset.w + i.position.w), worldViewProj);
-	o.color = useOffset * (i.color - i.color.wzyx) + i.color.wzyx;
+	o.color = lerp(i.color.wzyx, i.color, useOffset);
 
 	return o;
 }

@@ -11,5 +11,5 @@ float4 main(PS_IN i) : COLOR
 {
 	float4 t0 = tex2D(samp, i.texcoord);
 	clip(t0.w - cutoff >= 0 ? 0 : -1);
-	return t0.w * (float4(sin(i.texcoord1), cos(i.texcoord1), ddx(i.texcoord.x), ddy(i.texcoord.y)) - t0) + t0;
+	return lerp(t0, float4(sin(i.texcoord1), cos(i.texcoord1), ddx(i.texcoord.x), ddy(i.texcoord.y)), t0.w);
 }

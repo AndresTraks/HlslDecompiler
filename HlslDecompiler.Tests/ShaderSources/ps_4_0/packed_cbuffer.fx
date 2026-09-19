@@ -24,7 +24,5 @@ float4 main(PS_IN i) : SV_Target
 	float t4 = t3 * t3;
 	float t5 = 0.899999976 * t4 * t4 * t3 + 0.100000001;
 	float2 t6 = 0.5 * (i.texcoord1.xy / i.texcoord1.w) + 0.5;
-	float2 t7 = 0.0199999996 * -t2 + t6;
-	float3 t8 = refraction.Sample(samp, t7).xyz;
-	return float4((t5 * (reflection.Sample(samp, 0.0299999993 * t2 + t6).xyz - t8) + t8) * tint.xyz, 1);
+	return float4(lerp(refraction.Sample(samp, 0.0199999996 * -t2 + t6).xyz, reflection.Sample(samp, 0.0299999993 * t2 + t6).xyz, t5) * tint.xyz, 1);
 }

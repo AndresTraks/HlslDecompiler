@@ -31,6 +31,9 @@ float4 main(PS_IN i) : SV_Target
 	float2 t4 = mul(float4(i.texcoord, 1), (float4x2)cascadeTransform[t2]) / t3;
 	float2 t5 = float2(0.5, -0.5) * t4 + 0.5;
 	float t6 = dot(float4(i.texcoord, 1), transpose(cascadeTransform[t2])[2]) / t3 - (shadowParameters.x * (1 - saturate(i.normal.y)) + shadowParameters.y);
-	float t7 = saturate(i.normal.y) * (cascades.SampleCmpLevelZero(shadowSampler, float3(0.5 * t4.x + 0.5 + shadowParameters.z, 0.5 + -0.5 * t4.y, (float)t2), t6).x + cascades.SampleCmpLevelZero(shadowSampler, float3(t5, (float)t2), t6).x + cascades.SampleCmpLevelZero(shadowSampler, float3(t5.x - shadowParameters.z, t5.y, (float)t2), t6).x);
-	return 0.333333343 * t7;
+	float t7 = cascades.SampleCmpLevelZero(shadowSampler, float3(t5, (float)t2), t6).x;
+	float t8 = cascades.SampleCmpLevelZero(shadowSampler, float3(0.5 * t4.x + 0.5 + shadowParameters.z, 0.5 + -0.5 * t4.y, (float)t2), t6).x;
+	float t9 = cascades.SampleCmpLevelZero(shadowSampler, float3(t5.x - shadowParameters.z, t5.y, (float)t2), t6).x;
+	float t10 = saturate(i.normal.y) * (t8 + t7 + t9);
+	return 0.333333343 * t10;
 }

@@ -1228,6 +1228,11 @@ public class HlslAstWriter : HlslWriter
     {
         HlslTreeNode chosen = readers
             .Where(node => CostsAnInstruction(node) && !roots.Contains(node))
+            // Not one that has been named already. Counting over the instruction
+            // rather than the node means naming a component does not bring its own
+            // count down - every component still answers for all of them - so
+            // without this the pass names the same sample round after round.
+            .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode))
             .Select(node => (Node: node, Read: CountExpressions(node, readers)))
             .Where(node => node.Read > 1)
             .OrderByDescending(node => node.Read)
@@ -1245,7 +1250,8 @@ public class HlslAstWriter : HlslWriter
     private int CountExpressions(HlslTreeNode node, HashSet<HlslTreeNode> readers)
     {
         var expressions = new List<HlslTreeNode>();
-        foreach (HlslTreeNode reader in node.Outputs)
+        foreach (HlslTreeNode component in InstructionComponents(node, readers))
+        foreach (HlslTreeNode reader in component.Outputs)
         {
             if (!readers.Contains(reader)
                 || expressions.Any(e => _templateMatcher.CanGroupComponents(e, reader, false)))
@@ -1255,6 +1261,26 @@ public class HlslAstWriter : HlslWriter
             expressions.Add(reader);
         }
         return expressions.Count;
+    }
+
+    private static IEnumerable<HlslTreeNode> InstructionComponents(
+        HlslTreeNode node, HashSet<HlslTreeNode> readers)
+    {
+        yield return node;
+        if (node is not IHasComponentIndex || node.Inputs.Count == 0)
+        {
+            yield break;
+        }
+        foreach (HlslTreeNode sibling in node.Inputs[0].Outputs)
+        {
+            if (!ReferenceEquals(sibling, node)
+                && sibling.GetType() == node.GetType()
+                && sibling is IHasComponentIndex
+                && readers.Contains(sibling))
+            {
+                yield return sibling;
+            }
+        }
     }
 
     /// <summary>

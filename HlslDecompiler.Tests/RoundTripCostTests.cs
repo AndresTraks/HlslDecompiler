@@ -101,15 +101,6 @@ public class RoundTripCostTests
             + "under what the original costs - so it is not only available to a "
             + "writer that could see it, it is the better shape. The element is "
             + "read in five statements and the hoist is per statement."),
-        ["cs_4_1/groupshared_struct"] = (20,
-            "One instruction. The groupshared array holds a struct, and the original "
-            + "keeps the whole element in one register between the load and the "
-            + "members it reads out; the decompiled source reads `g0[t3]` three "
-            + "times across two statements and fxc keeps one of them in a register "
-            + "of its own. Measured: naming the element by hand costs 19, which is "
-            + "what the original costs. A load is an Operation and so is nameable, "
-            + "but the repeat is under the text budget and spans two statements, "
-            + "and the hoist is per statement."),
         ["vs_4_0/skin_buffer"] = (37,
             "One instruction, and the shape of the source rather than its "
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
@@ -134,20 +125,6 @@ public class RoundTripCostTests
             + "wrong as well as an instruction dearer. What is left is the naming "
             + "itself: fxc has no reason to keep a variable the shader never asked "
             + "for, and the two statements do not fold back into one cmp."),
-        ["ps_4_0/derivatives"] = (8,
-            "Two instructions. The mad is one four wide mad again, as in the "
-            + "original, now that the constructor sits around its addend rather "
-            + "than around two halves of it. What remains is ddx(texcoord.x) being "
-            + "read twice - inside fwidth and as .x of the addend - without being "
-            + "named: the text repeats nothing, since the addend writes it as .x of "
-            + "ddx(texcoord), and the hoist names what the text repeats. fxc takes "
-            + "the derivatives once more and packs them with two movs. Measured: "
-            + "naming the two derivatives by hand costs 6, which is what the "
-            + "original costs, so this is the whole of the difference and the only "
-            + "shader left that shows the limitation. Naming them is what the hoist "
-            + "would have to do, and fifteen characters of repeat is under the "
-            + "budget that decides a name is worth a line. Was 7 as two half-mads, "
-            + "which was cheaper by one and the wrong shape."),
         ["vs_2_0/matrix_palette"] = (28,
             "Two instructions, the blend index: the input has to be declared float, "
             + "the bytecode not saying otherwise, and fxc floors a float subscript "

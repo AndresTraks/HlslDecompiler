@@ -981,21 +981,6 @@ public class HlslAstWriter : HlslWriter
                 .OrderByDescending(r => r.Repeated)
                 .Select(r => r.Nodes)
                 .FirstOrDefault();
-            // Only once nothing is repeated by the nodes: a value the bytecode
-            // computes twice is two subtrees, which read alike because they are
-            // alike, and neither is a repeat to the grouping above. Left to last so
-            // that it takes nothing away from it - naming what is inside a nest
-            // before the nest leaves the expression around it written out at every
-            // use, and the counts these merge are exactly the ones that would.
-            List<HlslTreeNode[]> occurrences = candidate != null
-                ? [candidate]
-                : TextRepeats(recording, roots);
-            if (occurrences == null)
-            {
-                return assignments;
-            }
-            candidate = occurrences[0];
-
             // Only this statement's readers are given the variable. The graph is
             // shared with every other statement that reads the value, and one of
             // those may be outside the block this one is in.
@@ -1004,6 +989,24 @@ public class HlslAstWriter : HlslWriter
             {
                 readers.Add(node);
             }
+
+            // The two below run only once nothing is repeated by the nodes. A value
+            // the bytecode computes twice is two subtrees, which read alike because
+            // they are alike, and neither is a repeat to the grouping above; an
+            // instruction read by two expressions is one subtree and not a repeat
+            // either. Both are left to last so that they take nothing away from it -
+            // naming what is inside a nest before the nest leaves the expression
+            // around it written out at every use, and the counts the text pass
+            // merges are exactly the ones that would.
+            List<HlslTreeNode[]> occurrences = candidate != null
+                ? [candidate]
+                : TextRepeats(recording, roots) ?? SplitRead(readers, roots);
+            if (occurrences == null)
+            {
+                return assignments;
+            }
+            candidate = occurrences[0];
+
             // The components beside a subtree are its own, so taking them leaves the
             // others behind: the extension is for the one occurrence there is.
             if (occurrences.Count == 1)
@@ -1067,9 +1070,15 @@ public class HlslAstWriter : HlslWriter
     private HlslTreeNode[] WithSiblingComponents(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
     {
-        if (candidate.Length == 0
-            || candidate[0] is Operation or ConstantNode
-            || candidate[0] is not IHasComponentIndex
+        if (candidate.Length == 0 || candidate[0] is ConstantNode)
+        {
+            return candidate;
+        }
+        if (candidate[0] is Operation)
+        {
+            return WithSiblingOperations(candidate, readers, roots);
+        }
+        if (candidate[0] is not IHasComponentIndex
             || candidate[0].Inputs.Count == 0)
         {
             return candidate;
@@ -1098,6 +1107,129 @@ public class HlslAstWriter : HlslWriter
         return components.Count == candidate.Length
             ? candidate
             : [.. components.OrderBy(c => ((IHasComponentIndex)c).ComponentIndex)];
+    }
+
+    /// <summary>
+    /// The other components of the same instruction, where the instruction is an
+    /// operation. A texture load's components are one node apiece over the one
+    /// input and differ by ComponentIndex; `ddx(texcoord.x)` and `ddx(texcoord.y)`
+    /// are two nodes over two inputs, and what says they are one instruction is
+    /// that they group - the same test the other search ends on. Ordered by the
+    /// component their input reads, so the variable's components come out in the
+    /// order a swizzle of it wants them.
+    /// </summary>
+    private HlslTreeNode[] WithSiblingOperations(
+        HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
+    {
+        if (candidate.Length != 1 || ComponentOrder(candidate[0]) is not int order)
+        {
+            return candidate;
+        }
+        var byOrder = new SortedDictionary<int, HlslTreeNode> { [order] = candidate[0] };
+        foreach (HlslTreeNode sibling in readers)
+        {
+            if (ReferenceEquals(sibling, candidate[0])
+                || roots.Contains(sibling)
+                || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false)
+                || ComponentOrder(sibling) is not int siblingOrder
+                || byOrder.ContainsKey(siblingOrder))
+            {
+                continue;
+            }
+            byOrder[siblingOrder] = sibling;
+        }
+        return byOrder.Count == 1 ? candidate : [.. byOrder.Values];
+    }
+
+    /// <summary>
+    /// Which component of its register an expression reads, for ordering the
+    /// components of one instruction against each other. The first one found: an
+    /// operation over one register's component answers with that component.
+    /// </summary>
+    private static int? ComponentOrder(HlslTreeNode node)
+    {
+        return ComponentOrder(node, HlslTreeNode.NewNodeSet());
+    }
+
+    private static int? ComponentOrder(HlslTreeNode node, HashSet<HlslTreeNode> visited)
+    {
+        if (!visited.Add(node))
+        {
+            return null;
+        }
+        if (node is IHasComponentIndex indexed)
+        {
+            return indexed.ComponentIndex;
+        }
+        foreach (HlslTreeNode input in node.Inputs)
+        {
+            if (ComponentOrder(input, visited) is int order)
+            {
+                return order;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// One instruction read by more than one expression. `ddx(texcoord)` inside an
+    /// fwidth and again as a component of a constructor is written out at each,
+    /// and fxc takes the derivative twice; named once, both read the variable.
+    ///
+    /// The readers are the test, not the widths the recording holds. A node inside
+    /// a constructor is recorded both as its own component and as part of the
+    /// group, so being written at two widths is the ordinary case and says
+    /// nothing. Two readers is a value computed once and written twice.
+    ///
+    /// Only the nodes that cost an instruction to compute again. A few characters
+    /// of arithmetic written out twice cost nothing, and there are hundreds of
+    /// those: naming them would be a declaration apiece for no instruction saved.
+    /// </summary>
+    private List<HlslTreeNode[]> SplitRead(
+        HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
+    {
+        HlslTreeNode chosen = readers
+            .Where(node => CostsAnInstruction(node) && !roots.Contains(node))
+            .Select(node => (Node: node, Read: CountExpressions(node, readers)))
+            .Where(node => node.Read > 1)
+            .OrderByDescending(node => node.Read)
+            .Select(node => node.Node)
+            .FirstOrDefault();
+        return chosen == null ? null : [[chosen]];
+    }
+
+    /// <summary>
+    /// How many expressions read a node, counting the components of one instruction
+    /// as the one reader they are written as. A sample's four output nodes all read
+    /// its coordinate and the coordinate is written once; without this every input
+    /// of a multi output instruction looks read four times over.
+    /// </summary>
+    private int CountExpressions(HlslTreeNode node, HashSet<HlslTreeNode> readers)
+    {
+        var expressions = new List<HlslTreeNode>();
+        foreach (HlslTreeNode reader in node.Outputs)
+        {
+            if (!readers.Contains(reader)
+                || expressions.Any(e => _templateMatcher.CanGroupComponents(e, reader, false)))
+            {
+                continue;
+            }
+            expressions.Add(reader);
+        }
+        return expressions.Count;
+    }
+
+    /// <summary>
+    /// Whether computing this node again is an instruction rather than free. A
+    /// load, a texture read and a derivative are; an add of two registers fxc
+    /// folds away, and naming one would be a line for nothing.
+    /// </summary>
+    private static bool CostsAnInstruction(HlslTreeNode node)
+    {
+        return node is LoadStructuredNode
+            or TextureLoadOutputNode
+            or PartialDerivativeXOperation
+            or PartialDerivativeYOperation;
     }
 
     /// <summary>

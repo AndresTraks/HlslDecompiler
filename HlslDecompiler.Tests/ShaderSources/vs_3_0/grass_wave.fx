@@ -20,11 +20,10 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float t0 = sin(i.texcoord1.x + wind.w) * cos(0.5 * (i.texcoord1.x + wind.w)) * wind.z * i.texcoord.y;
-	float t1 = i.position.x + i.texcoord1.y + wind.x * t0;
-	float t2 = i.position.z + i.texcoord1.z + wind.y * t0;
-	o.position = mul(float4(t1, i.position.y, t2, i.position.w), worldViewProjection);
+	float2 t1 = i.position.xz + i.texcoord1.yz + wind.xy * t0;
+	o.position = mul(float4(t1.x, i.position.y, t1.y, i.position.w), worldViewProjection);
 	o.texcoord = i.texcoord.xy;
-	o.fog = saturate(sqrt(t1 * t1 + i.position.y * i.position.y + t2 * t2) * -i.texcoord1.w + 1);
+	o.fog = saturate(sqrt(t1.x * t1.x + i.position.y * i.position.y + t1.y * t1.y) * -i.texcoord1.w + 1);
 
 	return o;
 }

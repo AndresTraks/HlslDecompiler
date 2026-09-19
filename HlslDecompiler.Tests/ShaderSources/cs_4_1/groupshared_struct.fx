@@ -30,8 +30,9 @@ void main(CS_IN i)
 	float t1 = 0;
 	for (int t2 = 0; t2 < 4; t2 = t2 + 1) {
 		int t3 = t2 + i.sv_groupindex & 63;
-		t0 = g0[t3].xyz * g0[t3].w + t0;
-		t1 = t1 + g0[t3].w;
+		float t4 = g0[t3].w;
+		t0 = g0[t3].xyz * t4 + t0;
+		t1 = t1 + t4;
 	}
 	result[i.sv_dispatchthreadid.x].colour = t0 / max(t1, 0.0000999999975);
 	result[i.sv_dispatchthreadid.x].weight = t1;

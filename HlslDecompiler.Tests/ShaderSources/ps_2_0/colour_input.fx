@@ -9,5 +9,6 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	return lerp(tex2D(s0, i.texcoord), i.color, k.x) * k + saturate(tex2D(s0, i.texcoord) - i.color);
+	float4 t0 = tex2D(s0, i.texcoord);
+	return lerp(t0, i.color, k.x) * k + saturate(t0 - i.color);
 }

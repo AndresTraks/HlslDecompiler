@@ -485,10 +485,96 @@ public class StatementFinalizer
             }
         }
 
+        // A case whose body ends in a switch or an if of its own carries a phi out
+        // of it: that statement joined its own branches onto a variable of its own,
+        // and the break after it still holds the join. The variable is what the case
+        // assigns, and taking the phi for nothing left the register unwritten on
+        // that path, so the case read as zero - the nested switch bug.
+        //
+        // After the plain assignments, not among them, because the variable the
+        // enclosing scope goes on to read is one of theirs. Letting a variable
+        // created inside the nested statement own the register instead left the
+        // switch carrying one variable and the return reading another.
+        foreach (SwitchCase switchCase in switchStatement.Cases)
+        {
+            if (switchCase.Body.Count == 0)
+            {
+                continue;
+            }
+            foreach (var caseOutput in switchCase.Body.Last().Outputs)
+            {
+                if (caseOutput.Value is not PhiNode
+                    || VariableAssignedInBody(switchCase.Body, caseOutput.Key)
+                        is not TempVariableNode nested)
+                {
+                    continue;
+                }
+                if (variableByRegister.TryGetValue(caseOutput.Key, out var owner))
+                {
+                    Reassign(switchCase.Body, nested, owner);
+                }
+                else
+                {
+                    variableByRegister[caseOutput.Key] = nested;
+                }
+            }
+        }
+
         foreach (var entry in variableByRegister)
         {
             switchStatement.Outputs[entry.Key] = entry.Value;
         }
+    }
+
+    /// <summary>
+    /// The variable the case last put the register in, looking back past the break
+    /// to the statement that did the assigning.
+    /// </summary>
+    private static TempVariableNode VariableAssignedInBody(
+        IList<IStatement> body, RegisterComponentKey key)
+    {
+        for (int i = body.Count - 1; i >= 0; i--)
+        {
+            if (!body[i].Outputs.TryGetValue(key, out HlslTreeNode output))
+            {
+                continue;
+            }
+            if (output is TempVariableNode variable)
+            {
+                return variable;
+            }
+            if (output is TempAssignmentNode assignment)
+            {
+                return assignment.TempVariable;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Points every assignment of one variable inside these statements at another,
+    /// for a case that carries its result out of a nested statement while an earlier
+    /// case already owns the variable the switch will carry.
+    /// </summary>
+    private static void Reassign(
+        IList<IStatement> body, TempVariableNode from, TempVariableNode to)
+    {
+        new StatementVisitor(body).Visit(statement =>
+        {
+            foreach (var output in statement.Outputs.ToList())
+            {
+                if (output.Value is TempAssignmentNode assignment
+                    && ReferenceEquals(assignment.TempVariable, from))
+                {
+                    assignment.TempVariable = to;
+                    assignment.IsReassignment = true;
+                }
+                else if (ReferenceEquals(output.Value, from))
+                {
+                    statement.Outputs[output.Key] = to;
+                }
+            }
+        });
     }
 
     private void SetReturnStatement(IList<IStatement> statements)

@@ -122,14 +122,15 @@ public class RoundTripCostTests
             + "registers too, where the same thing happened for a different reason: "
             + "the bits printed as 1 and 8, a whole float having no decimal point, "
             + "and HLSL read those as integers."),
-        ["ps_3_0/continue_nested"] = (17,
+        ["ps_3_0/continue_nested"] = (16,
             "The four components of one cmp all read r1 as it was before it, and they "
             + "are written as two statements. Naming the condition first keeps it the "
             + "value the instruction saw - it used to be recomputed in the second "
             + "statement, from a r1.y the first had already overwritten, which was "
             + "wrong as well as an instruction dearer. What is left is the naming "
             + "itself: fxc has no reason to keep a variable the shader never asked "
-            + "for, and the two statements do not fold back into one cmp."),
+            + "for, and the two statements do not fold back into one cmp. Was 17 "
+            + "while the if side was empty and the body sat in the else."),
         ["vs_2_0/matrix_palette"] = (28,
             "Two instructions, the blend index: the input has to be declared float, "
             + "the bytecode not saying otherwise, and fxc floors a float subscript "

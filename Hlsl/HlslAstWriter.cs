@@ -538,23 +538,50 @@ public class HlslAstWriter : HlslWriter
     {
         WriteIfStatementTempVariables(ifStatement);
 
-        string comparison = _compiler.Compile(ifStatement.Comparison.Select(Reduce));
-        WriteLine($"if ({comparison}) {{");
+        HlslTreeNode[] comparison = ifStatement.Comparison;
+        IList<IStatement> trueBody = ifStatement.TrueBody;
+        IList<IStatement> falseBody = ifStatement.FalseBody;
+        // An if whose if side is empty and whose else side is the whole body -
+        // `if_lt` over a condition fxc wrote the other way round - says the same
+        // thing inverted, with one branch instead of two and nothing in it.
+        if (trueBody.Count == 0 && falseBody != null && Inverted(comparison) is HlslTreeNode[] opposite)
+        {
+            comparison = opposite;
+            trueBody = falseBody;
+            falseBody = null;
+        }
+
+        WriteLine($"if ({_compiler.Compile(comparison.Select(Reduce))}) {{");
         indent += "\t";
-        WriteStatements(ifStatement.TrueBody);
+        WriteStatements(trueBody);
         indent = indent.Substring(0, indent.Length - 1);
-        if (ifStatement.FalseBody != null)
+        if (falseBody != null)
         {
             WriteLine("} else {");
             indent += "\t";
-            WriteStatements(ifStatement.FalseBody);
+            WriteStatements(falseBody);
             indent = indent.Substring(0, indent.Length - 1);
-            WriteLine("}");
         }
-        else
+        WriteLine("}");
+    }
+
+    /// <summary>
+    /// The comparison with the opposite outcome, component for component, or null
+    /// where any of them has none - a test of something that is not a comparison at
+    /// all, or one whose inverse the enum cannot name.
+    /// </summary>
+    private static HlslTreeNode[] Inverted(HlslTreeNode[] comparison)
+    {
+        var inverted = new HlslTreeNode[comparison.Length];
+        for (int i = 0; i < comparison.Length; i++)
         {
-            WriteLine("}");
+            if (comparison[i] is not ComparisonNode node || node.Inverted() is not ComparisonNode opposite)
+            {
+                return null;
+            }
+            inverted[i] = opposite;
         }
+        return inverted;
     }
 
     private void WriteIfStatementTempVariables(IfStatement ifStatement)

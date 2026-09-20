@@ -42,7 +42,13 @@ public class NodeGraphConsistencyTests
 
         // Parsing alone leaves the graph consistent; it is the finalizer that rewires
         // it, so checking before this runs proves nothing.
-        StatementFinalizer.Finalize(ast.Statements, true,
+        // A compute or geometry shader returns nothing - it writes through a
+        // resource or a stream - and asking the finalizer for a return value it
+        // cannot build is the test's mistake, not the finalizer's.
+        bool hasReturnValue = shader.Type is not ShaderType.Compute
+            and not ShaderType.Geometry
+            && ast.RegisterState.MethodOutputRegisters.Count != 0;
+        StatementFinalizer.Finalize(ast.Statements, hasReturnValue,
             shader.Instructions.Count != 0 && shader.Instructions[0] is D3D10Instruction
                 ? new IntegerOperandAnalysis(shader)
                 : null);

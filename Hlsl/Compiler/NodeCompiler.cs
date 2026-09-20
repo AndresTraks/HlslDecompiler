@@ -891,11 +891,51 @@ public sealed class NodeCompiler
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
+                    // Two constant branches are the one place a whole float has
+                    // nothing beside it to be typed by: `cond ? 1 : 0` is a pair of
+                    // int literals to HLSL, and the arithmetic around it goes
+                    // integer with them. It is how a comparison mask anded with the
+                    // bits of 1.0f comes out - the set branch is the float, the
+                    // clear one the integer zero - and it cost comparison_mask two
+                    // instructions. The point goes on the branches that are floats;
+                    // a zero beside one is promoted by it.
+                    if (AreConstants(components, 1) && AreConstants(components, 2)
+                        && (AreFloatConstants(components, 1) || AreFloatConstants(components, 2)))
+                    {
+                        if (AreFloatConstants(components, 1))
+                        {
+                            value2 = WithDecimalPoint(value2);
+                        }
+                        if (AreFloatConstants(components, 2))
+                        {
+                            value3 = WithDecimalPoint(value3);
+                        }
+                    }
+
                     return $"{value1} ? {value2} : {value3}";
                 }
             default:
                 throw new NotImplementedException(operation.GetType().Name);
         }
+    }
+
+    private static bool AreConstants(List<HlslTreeNode> components, int inputIndex)
+    {
+        return components.All(c => c.Inputs[inputIndex] is ConstantNode);
+    }
+
+    // Whether every component of an operand is a constant that stands for a float.
+    private static bool AreFloatConstants(List<HlslTreeNode> components, int inputIndex)
+    {
+        return components.All(c => c.Inputs[inputIndex] is ConstantNode { IntegerValue: null });
+    }
+
+    // A float literal HLSL would otherwise read as an integer. Left alone for one
+    // that already says what it is - a decimal point, an exponent, or a name like
+    // NaN and INF.
+    private static string WithDecimalPoint(string value)
+    {
+        return value.Any(c => !char.IsAsciiDigit(c) && c != (char)45) ? value : value + ".0";
     }
 
     // The index into an array of matrices counts registers, so it is already the

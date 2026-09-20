@@ -113,15 +113,6 @@ public class RoundTripCostTests
             + "source says that chain rather than the subscript it came from - fxc "
             + "has no subscript to put back and compiles the chain it is given. Was "
             + "39 while the loop's exit test was an if around a break."),
-        ["ps_4_0/comparison_mask"] = (8,
-            "The masks anded onto the comparisons are 0x3f800000 and 0x41000000, the "
-            + "bits of 1.0f and 8.0f, and the registers holding them are declared "
-            + "int, so fxc compiles the whole expression in integers - ishl, and, "
-            + "iadd - and converts once at the end where the original never left "
-            + "float. The result is the same. Was 8 with the masks in float "
-            + "registers too, where the same thing happened for a different reason: "
-            + "the bits printed as 1 and 8, a whole float having no decimal point, "
-            + "and HLSL read those as integers."),
         ["ps_3_0/continue_nested"] = (16,
             "The four components of one cmp all read r1 as it was before it, and they "
             + "are written as two statements. Naming the condition first keeps it the "

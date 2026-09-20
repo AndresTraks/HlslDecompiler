@@ -79,6 +79,12 @@ public sealed class NodeCompiler
     public HashSet<HlslTreeNode> Grouped { get; set; }
 
     /// <summary>
+    /// The component sets the groupers matched whole, recorded beside
+    /// <see cref="Grouped"/> while a statement is being measured.
+    /// </summary>
+    public List<HlslTreeNode[]> GroupMatches { get; set; }
+
+    /// <summary>
     /// Records everything under the matched components except what is under the
     /// operands the match handed back.
     /// </summary>
@@ -88,6 +94,11 @@ public sealed class NodeCompiler
         {
             return;
         }
+        // What the match is of, as against what it is made of. A set of components
+        // one grouper took whole is one expression and can be named as one; four
+        // unrelated values that share a register are a constructor, and naming them
+        // writes an assignment inside it.
+        GroupMatches?.Add([.. matched]);
         HashSet<HlslTreeNode> boundary = HlslTreeNode.NewNodeSet();
         foreach (IEnumerable<HlslTreeNode> operand in operands)
         {

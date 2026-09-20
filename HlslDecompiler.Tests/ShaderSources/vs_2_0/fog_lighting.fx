@@ -23,12 +23,13 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float t0 = saturate(dot(normalize(mul(i.normal.xyz, (float3x3)world)).xyz, -lightDirection.xyz));
-	float t1 = rcp(fog.y - fog.x) * (fog.y - dot(transpose(worldViewProjection)[3], i.position));
-	float t2 = rcp(dot(transpose(worldViewProjection)[3], i.position));
-	o.position = mul(i.position, worldViewProjection);
+	float4 t1 = mul(i.position, worldViewProjection);
+	float t2 = rcp(fog.y - fog.x) * (fog.y - t1.w);
+	float t3 = rcp(t1.w);
+	o.position = t1;
 	o.color = lightColour * t0 + lightColour.w;
-	o.fog = saturate(t1);
-	o.psize = t2 * fog.z;
+	o.fog = saturate(t2);
+	o.psize = t3 * fog.z;
 
 	return o;
 }

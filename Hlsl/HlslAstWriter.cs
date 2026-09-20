@@ -717,8 +717,16 @@ public class HlslAstWriter : HlslWriter
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
 
         // The returned expression is compiled straight from here rather than through
-        // GroupAssignments, so the hoist has to happen here too.
-        WriteSharedSubexpressions(outputs.Values.ToList());
+        // GroupAssignments, so the hoist has to happen here too - and what it names
+        // has to come back, since a whole output's value may now be a variable and
+        // the dictionary holds the group it was written from.
+        List<RegisterComponentKey> outputKeys = [.. outputs.Keys];
+        List<HlslTreeNode[]> outputGroups = [.. outputKeys.Select(key => outputs[key])];
+        WriteSharedSubexpressions(outputGroups);
+        for (int i = 0; i < outputKeys.Count; i++)
+        {
+            outputs[outputKeys[i]] = outputGroups[i];
+        }
 
         string condition = returnStatement.Comparison == null
             ? null
@@ -1092,8 +1100,10 @@ public class HlslAstWriter : HlslWriter
             IEnumerable<HlslTreeNode[]> groups = registerGroups.Concat(named).Concat(assignments);
             var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
             HashSet<HlslTreeNode> grouped = HlslTreeNode.NewNodeSet();
+            var groupMatches = new List<HlslTreeNode[]>();
             _compiler.Recording = recording;
             _compiler.Grouped = grouped;
+            _compiler.GroupMatches = groupMatches;
             try
             {
                 foreach (HlslTreeNode[] group in groups)
@@ -1109,6 +1119,7 @@ public class HlslAstWriter : HlslWriter
             {
                 _compiler.Recording = null;
                 _compiler.Grouped = null;
+                _compiler.GroupMatches = null;
             }
 
             // A repeat is the same nodes compiled again - or the same but for a
@@ -1144,7 +1155,9 @@ public class HlslAstWriter : HlslWriter
             // merges are exactly the ones that would.
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
-                : TextRepeats(recording, grouped, roots) ?? SplitRead(readers, grouped, roots);
+                : TextRepeats(recording, grouped, roots)
+                    ?? SplitRead(readers, grouped, roots)
+                    ?? SharedRoots(registerGroups, readers, recording, groupMatches);
             if (occurrences == null)
             {
                 return assignments;
@@ -1192,6 +1205,20 @@ public class HlslAstWriter : HlslWriter
                         }
                     }
                     Rewire(twin, variables[i], alongside);
+                }
+            }
+            // Where what was named is a register's whole value, the register reads
+            // the variable from now on. Rewire moves the readers in the graph and an
+            // output has none - it is not a node that reads the value, it is the
+            // register whose value that is - so the group it was written from is
+            // repointed instead.
+            for (int i = 0; i < registerGroups.Count; i++)
+            {
+                if (registerGroups[i].Length == candidate.Length
+                    && registerGroups[i].Zip(candidate).All(pair =>
+                        ReferenceEquals(pair.First, pair.Second)))
+                {
+                    registerGroups[i] = [.. variables];
                 }
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
@@ -1329,6 +1356,64 @@ public class HlslAstWriter : HlslWriter
     /// of arithmetic written out twice cost nothing, and there are hundreds of
     /// those: naming them would be a declaration apiece for no instruction saved.
     /// </summary>
+    /// <summary>
+    /// A register's whole value, where something other than the register itself
+    /// reads it. Such a value cannot be named a component at a time: the four dot
+    /// products of `mul(v, m)` are one match, and naming the one the fog reads
+    /// would leave the output reading a variable for its w and the dots for the
+    /// rest, which is no multiply at all. Named whole it keeps its shape, since the
+    /// assignment compiles the same components and the grouper matches them again.
+    ///
+    /// Judged by what saying it again costs in text rather than by whether it costs
+    /// an instruction - fxc recognises the common subexpression either way, so this
+    /// is the text pass's question and takes the text pass's budget.
+    /// </summary>
+    private List<HlslTreeNode[]> SharedRoots(
+        IList<HlslTreeNode[]> registerGroups,
+        HashSet<HlslTreeNode> readers,
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        List<HlslTreeNode[]> groupMatches)
+    {
+        foreach (HlslTreeNode[] group in registerGroups)
+        {
+            // One component is what SplitRead above is for; this is for the ones
+            // that have to move together - and only where a grouper took them
+            // together, since that is what makes them one expression. Four
+            // unrelated values sharing a register are a constructor, and an
+            // assignment cannot be written inside one.
+            if (group.Length < 2
+                || !group.All(IsNameable)
+                || group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode))
+                || !groupMatches.Any(match => match.Length == group.Length
+                    && match.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second))))
+            {
+                continue;
+            }
+            HashSet<HlslTreeNode> inside = HlslTreeNode.NewNodeSet();
+            foreach (HlslTreeNode node in Reachable(group))
+            {
+                inside.Add(node);
+            }
+            int repeated = 0;
+            foreach (HlslTreeNode node in group)
+            {
+                if (!node.Outputs.Any(reader =>
+                    readers.Contains(reader) && !inside.Contains(reader)))
+                {
+                    continue;
+                }
+                repeated += recording
+                    .Where(r => r.Nodes.Length == 1 && ReferenceEquals(r.Nodes[0], node))
+                    .Sum(r => r.Text.Length);
+            }
+            if (repeated >= RepeatedTextBudget)
+            {
+                return [group];
+            }
+        }
+        return null;
+    }
+
     private List<HlslTreeNode[]> SplitRead(
         HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> grouped, HashSet<HlslTreeNode> roots)
     {

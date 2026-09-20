@@ -108,6 +108,7 @@ public class DecompileDxbcTests
     [TestCase("gs_5_0", "stream_expand")]
     [TestCase("ds_5_0", "patch_interpolate")]
     [TestCase("ds_5_0", "patch_constants")]
+    [TestCase("ds_5_0", "quad_patch")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

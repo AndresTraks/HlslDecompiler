@@ -1685,7 +1685,12 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID;
-        int writeMask = isScalar ? 1 : 4;
+        // A domain location is two components on a quad and three on a triangle,
+        // and its dcl says which - `dcl_input vDomain.xy` - where the 4 below would
+        // make every one of them three wide.
+        int writeMask = registerKey.OperandType == OperandType.InputDomainPoint
+            ? instruction.GetDestinationWriteMask()
+            : isScalar ? 1 : 4;
         // SV_Coverage is a uint. The signature says so too, but keys it to register
         // -1, which is why the lookup above did not find it.
         const int UInt32ComponentType = 1;

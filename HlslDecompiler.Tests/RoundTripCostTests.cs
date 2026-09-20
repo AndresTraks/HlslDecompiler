@@ -83,7 +83,20 @@ public class RoundTripCostTests
             + "`sqrt(t5 * t5 + t6 * t6 + t3 * t3)` named on a line of its own, with "
             + "`float3(t5, t6, t3) / t7` after it, is `normalize(float3(t5, t6, "
             + "t3))` now. No change in the count, one temp fewer and a line that "
-            + "says what it does."),
+            + "says what it does. The four are all recoverable and the split is in "
+            + "NameCandidates, which groups two shared subexpressions only where "
+            + "CanGroupComponents says they are components of one thing: written by "
+            + "hand as `float2 t1 = 0.0000305180438 * float2(a, b) - 1` with the "
+            + "downstream reading t1.x and t1.y, it is 32. Letting the pass group "
+            + "anything the compiler would write as one instruction - the same "
+            + "elementwise operation differing in one operand - does produce that, "
+            + "and is too weak a rule for everything else: it merged the two "
+            + "unrelated saturates of resource_swizzle and reversed the two lights "
+            + "of struct_cbuffer, and in water_ripple it grouped a node with one "
+            + "that reads it, which is not HLSL at all. What the pair here has and "
+            + "those lack is that the bytecode wrote them as two components of one "
+            + "register, and a hoisted subexpression carries no record of the "
+            + "instruction it came from."),
         ["cs_4_0/particle_update"] = (13,
             "Two instructions, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "
@@ -107,8 +120,14 @@ public class RoundTripCostTests
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
             + "comparisons selecting one of four components, and the decompiled "
             + "source says that chain rather than the subscript it came from - fxc "
-            + "has no subscript to put back and compiles the chain it is given. Was "
-            + "39 while the loop's exit test was an if around a break."),
+            + "has no subscript to put back and compiles the chain it is given. "
+            + "Written back by hand as `i.blendindices[t1]` it is one cheaper, so "
+            + "the claim holds and recovering the subscript is the whole of it - but "
+            + "the chain is a bespoke encoding with a differently shaped mask per "
+            + "component (`i < 1 ? -1 : 0`, `i < 2 ? -i : 0`, `i < 2 ? 0 : i - 3`), "
+            + "and a template for it would be fragile for one instruction. The line "
+            + "it would replace is unreadable, which is the better reason to want "
+            + "it. Was 39 while the loop's exit test was an if around a break."),
         ["ps_3_0/continue_nested"] = (16,
             "The four components of one cmp all read r1 as it was before it, and they "
             + "are written as two statements. Naming the condition first keeps it the "
@@ -119,12 +138,22 @@ public class RoundTripCostTests
             + "for, and the two statements do not fold back into one cmp. Was 17 "
             + "while the if side was empty and the body sat in the else."),
         ["vs_2_0/matrix_palette"] = (28,
-            "Two instructions, the blend index: the input has to be declared float, "
-            + "the bytecode not saying otherwise, and fxc floors a float subscript "
-            + "with a frc and an add where the original rounds it into the address "
-            + "register. The blend itself is `mul(p, bones[i.x]) * w.x + mul(p, "
-            + "bones[i.y]) * w.y` now, the source; was 38 while a row read through "
-            + "the address register was not a row."),
+            "Two instructions, the blend index. A float subscript is floored by fxc "
+            + "with a frc and an add before it reaches the address register, and the "
+            + "original has neither - `mul r0.xy, v3.xy, c28.xx` straight into "
+            + "`mova`. Declaring the input int4 gives 26, the original's count and "
+            + "its instructions; an explicit `(int)` on the subscript gives 31, "
+            + "worse than either, since the cast truncates where mova rounds and fxc "
+            + "has to say so. So the bytecode does tell: a source that said float "
+            + "would carry the floor, and one that said int would not. Reading that "
+            + "means asking whether anything floors the value on its way from the "
+            + "input to the address register, which is a use analysis the "
+            + "declaration side has not got. The difference only shows on a "
+            + "fractional index, which is why the interpreter feeds BLENDINDICES "
+            + "whole numbers and says so where it does. The blend itself is "
+            + "`mul(p, bones[i.x]) * w.x + mul(p, bones[i.y]) * w.y` now, the "
+            + "source; was 38 while a row read through the address register was not "
+            + "a row."),
 
 
         ["vs_3_0/partial_overwrite"] = (13,
@@ -145,7 +174,11 @@ public class RoundTripCostTests
         ["vs_3_0/vertex_texture"] = (8,
             "The original adds to one component with a swizzle over a def'd constant, "
             + "`mad r0, r0.x, c4.yxyy, v0`. The decompiled float4 construction says the "
-            + "same thing and fxc writes it as an add and a mov."),
+            + "same thing and fxc writes it as an add and a mov. Written as the mad it "
+            + "came from - `height * float4(0, 1, 0, 0) + i.position` - it is one "
+            + "cheaper, and that is the bytecode's trick rather than the shader's "
+            + "meaning: the constructor says which component the height goes in and "
+            + "the mad makes the reader work it out. Kept, knowingly."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

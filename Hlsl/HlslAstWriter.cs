@@ -1771,8 +1771,16 @@ public class HlslAstWriter : HlslWriter
                 {
                     continue;
                 }
-                // Against the first, which is how GroupComponents reads a run too.
-                if (nodeGrouper.CanGroupComponents(candidate, other))
+                // Against the first, which is how GroupComponents reads a run too -
+                // or where one instruction made both, which is the same question
+                // answered by the bytecode rather than by the shape of the two
+                // values. A mad over two components of a register is one
+                // instruction however differently its operands read, and hoisting
+                // used to lose that: the two halves of gbuffer_decode's normal are
+                // scaled by one mad and were named apart, which left everything
+                // downstream of them scalar.
+                if (nodeGrouper.CanGroupComponents(candidate, other)
+                    || HlslTreeNode.IsSameInstruction(candidate, other))
                 {
                     group.Add(other);
                     named.Add(other);

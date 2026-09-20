@@ -15,14 +15,12 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	int3 t0 = int3((int2)i.sv_position.xy, 0);
-	float t1 = 0.0000305180438 * (float)(gbuffer1.Load(t0).x & 65535) - 1;
-	float t2 = 0.0000305180438 * (float)((uint)gbuffer1.Load(t0).x >> 16) - 1;
-	float t3 = 1 - abs(t1) - abs(t2);
-	float t4 = max(-t3, 0);
-	float t5 = (t1 >= 0 ? -t4 : t4) + t1;
-	float t6 = (t2 >= 0 ? -t4 : t4) + t2;
-	float3 t7 = -i.texcoord1 * asfloat(gbuffer1.Load(t0).y) + lightPosition.xyz;
-	float t8 = saturate(1 - length(t7) / lightPosition.w);
-	float t9 = saturate(dot(normalize(float3(t5, t6, t3)), normalize(t7))) * t8 * t8;
-	return float4(t9 * gbuffer0.Sample(samp, i.texcoord).xyz * lightColour.xyz, 1);
+	float2 t1 = 0.0000305180438 * float2((float)(gbuffer1.Load(t0).x & 65535), (float)((uint)gbuffer1.Load(t0).x >> 16)) - 1;
+	float t2 = 1 - abs(t1.x) - abs(t1.y);
+	float t3 = max(-t2, 0);
+	float2 t4 = (t1 >= 0 ? -t3 : t3) + t1;
+	float3 t5 = -i.texcoord1 * asfloat(gbuffer1.Load(t0).y) + lightPosition.xyz;
+	float t6 = saturate(1 - length(t5) / lightPosition.w);
+	float t7 = saturate(dot(normalize(float3(t4, t2)), normalize(t5))) * t6 * t6;
+	return float4(t7 * gbuffer0.Sample(samp, i.texcoord).xyz * lightColour.xyz, 1);
 }

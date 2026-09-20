@@ -18,6 +18,25 @@ public class HlslTreeNode
     /// </summary>
     public bool? ConsumesInteger { get; set; }
 
+    /// <summary>
+    /// Which instruction made this value, as its position in the shader. The
+    /// components of one instruction share it, and that is the only question it is
+    /// there to answer: four loads into one register are four instructions and the
+    /// four components of one load are one. Zero where nothing set it - a node a
+    /// template built, or an operand read rather than computed - and zero is never
+    /// the same instruction as anything, including another zero.
+    /// </summary>
+    public int SourceInstruction { get; set; }
+
+    /// <summary>
+    /// Whether two values were made by one instruction, which is what makes them
+    /// components of one thing rather than two that share a register.
+    /// </summary>
+    public static bool IsSameInstruction(HlslTreeNode a, HlslTreeNode b)
+    {
+        return a.SourceInstruction != 0 && a.SourceInstruction == b.SourceInstruction;
+    }
+
     public void Replace(HlslTreeNode with)
     {
         // Replacing a node with itself would drop its own back-references and then

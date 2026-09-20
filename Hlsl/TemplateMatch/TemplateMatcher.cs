@@ -117,6 +117,13 @@ public class TemplateMatcher
         {
             replacement.ConsumesInteger = node.ConsumesInteger;
         }
+        // And which instruction made it: a template rewrites the value, not where
+        // it came from, and a hoisted subexpression that has forgotten its
+        // instruction cannot be told from one beside it that shares a register.
+        if (replacement.SourceInstruction == 0)
+        {
+            replacement.SourceInstruction = node.SourceInstruction;
+        }
     }
 
     private HlslTreeNode ReduceDepthFirst(HlslTreeNode node, HashSet<HlslTreeNode> onPath,

@@ -783,47 +783,17 @@ public class StatementFinalizer
     /// makes them components of one value rather than two that share a register.
     /// The same kind of node over the same inputs but for the component each reads.
     /// </summary>
+    /// <summary>
+    /// Whether two components were written by the same instruction, which is what
+    /// makes them components of one value rather than two that share a register.
+    /// The node carries which instruction made it, so this is that question and
+    /// nothing else. It used to be asked of the node type and the operands, which
+    /// two loads of one register answer the same way - and which needed the
+    /// resource swizzle and the offset immediate read back out to tell apart.
+    /// </summary>
     private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
     {
-        if (a.GetType() != b.GetType() || a.Inputs.Count != b.Inputs.Count)
-        {
-            return false;
-        }
-        if (a is not (LoadStructuredNode or ResourceLoadNode
-            or TextureLoadOutputNode or ConsumeNode))
-        {
-            return false;
-        }
-        // The same operands, not merely the same kind of node: two loads from one
-        // buffer into two components of a register are two instructions, and one of
-        // them being shared says nothing about the other. The components of one
-        // instruction read the same address and the same resource register, and
-        // differ only in which channel of it they take - which is carried by the
-        // resource operand and is the one input that may differ.
-        for (int i = 0; i < a.Inputs.Count; i++)
-        {
-            if (ReferenceEquals(a.Inputs[i], b.Inputs[i]))
-            {
-                continue;
-            }
-            if (a.Inputs[i] is RegisterInputNode left && b.Inputs[i] is RegisterInputNode right
-                && left.RegisterComponentKey.RegisterKey.Equals(
-                    right.RegisterComponentKey.RegisterKey))
-            {
-                continue;
-            }
-            // An immediate operand becomes a node of its own per component - the
-            // byte offset of a load is built four times for one instruction - so
-            // two constants of the same value are the one operand.
-            if (a.Inputs[i] is ConstantNode first && b.Inputs[i] is ConstantNode second
-                && first.Value == second.Value)
-            {
-                continue;
-            }
-            return false;
-        }
-        return a is not LoadStructuredNode structured
-            || structured.ElementByteOffset == ((LoadStructuredNode)b).ElementByteOffset;
+        return HlslTreeNode.IsSameInstruction(a, b);
     }
 
     /// <summary>

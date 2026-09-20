@@ -1525,6 +1525,13 @@ public class InstructionParser
 
     private HlslTreeNode CreateInstructionTree(D3D9Instruction instruction, RegisterComponentKey destinationKey)
     {
+        HlslTreeNode stamped = CreateD3D9InstructionTree(instruction, destinationKey);
+        StampSourceInstruction(stamped);
+        return stamped;
+    }
+
+    private HlslTreeNode CreateD3D9InstructionTree(D3D9Instruction instruction, RegisterComponentKey destinationKey)
+    {
         int componentIndex = destinationKey.ComponentIndex;
 
         switch (instruction.Opcode)
@@ -1646,7 +1653,24 @@ public class InstructionParser
     {
         HlslTreeNode node = CreateD3D10InstructionTree(instruction, destinationKey);
         node.ConsumesInteger ??= GetConsumedType(instruction.Opcode);
+        // Where the value came from, so that the components of one instruction can
+        // be told from two that share a register. The position in the shader: no
+        // two instructions have the same, and every component of this one does.
+        StampSourceInstruction(node);
         return node;
+    }
+
+    /// <summary>
+    /// Marks a value with the instruction being parsed, unless it is a value that
+    /// was read rather than computed - an operand carries the instruction that made
+    /// it, not the one reading it.
+    /// </summary>
+    private void StampSourceInstruction(HlslTreeNode node)
+    {
+        if (node.SourceInstruction == 0 && node is not RegisterInputNode and not ConstantNode)
+        {
+            node.SourceInstruction = _instructionPointer + 1;
+        }
     }
 
     // What an instruction makes of the operands it reads. itof reads integers and

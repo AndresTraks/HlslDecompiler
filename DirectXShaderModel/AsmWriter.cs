@@ -455,6 +455,12 @@ public class AsmWriter
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                 break;
+            // The run of input registers a dynamic read indexes over: the first of
+            // them with its mask, and how many there are.
+            case D3D10Opcode.DclIndexRange:
+                WriteLine("dcl_indexrange {0} {1}", FormatOperand(instruction, 0),
+                    instruction.IndexRangeCount);
+                break;
             case D3D10Opcode.DclIndexableTemp:
                 WriteLine("dcl_indexableTemp x{0}[{1}], {2}", instruction.IndexableTempRegister,
                     instruction.IndexableTempElementCount, instruction.IndexableTempComponentCount);

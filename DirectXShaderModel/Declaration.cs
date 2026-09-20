@@ -150,6 +150,13 @@ public class RegisterDeclaration
         }
     }
 
+    /// <summary>
+    /// How many registers the declaration covers, for a run declared as one array
+    /// by dcl_indexrange - `float4 texcoord[4] : TEXCOORD`, which HLSL spreads over
+    /// TEXCOORD0 to TEXCOORD3. One for everything else.
+    /// </summary>
+    public int ArrayLength { get; set; } = 1;
+
     public int WriteMask { get; set; }
 
     // Length of ".xy" = 2

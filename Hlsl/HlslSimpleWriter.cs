@@ -1418,6 +1418,8 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.DclConstantBuffer:
             case D3D10Opcode.DclGlobalFlags:
+            // The run it names is written as one array parameter, above.
+            case D3D10Opcode.DclIndexRange:
             case D3D10Opcode.DclGSInputPrimitive:
             case D3D10Opcode.DclGSMaxOutputVertexCount:
             case D3D10Opcode.DclInput:
@@ -1694,6 +1696,16 @@ public class HlslSimpleWriter : HlslWriter
         }
         if (operandType == OperandType.Input)
         {
+            // A run of input registers declared as one array by dcl_indexrange has
+            // one index, and the immediate beside it is the first register of the
+            // run; a geometry shader has two, and the second names the register
+            // while the first is the vertex.
+            if (operandIndices.Length == 1)
+            {
+                var arrayKey = new D3D10RegisterKey(
+                    OperandType.Input, (int)operandIndices[0].Immediate);
+                return $"{_registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0))}[{index}]";
+            }
             // The vertex is the dynamic part; the second index names the register.
             var vertexKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
             return $"i[{index}].{_registers.RegisterDeclarations[vertexKey].Name}";

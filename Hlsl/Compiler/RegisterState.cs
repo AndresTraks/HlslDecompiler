@@ -1403,6 +1403,35 @@ public sealed class RegisterState
         }
     }
 
+    /// <summary>
+    /// dcl_indexrange says a run of input registers is one array, indexed at run
+    /// time. Each of them has been declared separately by a dcl_input of its own,
+    /// and HLSL writes the run as one parameter - `float4 texcoord[4] : TEXCOORD`,
+    /// whose elements take the consecutive semantics those declarations carry. So
+    /// the first keeps its declaration and grows a length, and the rest stop being
+    /// parameters of their own. They stay in RegisterDeclarations, since an
+    /// instruction reading one by name still has to find it.
+    /// </summary>
+    public void DeclareIndexRange(D3D10Instruction instruction)
+    {
+        var baseKey = instruction.GetParamRegisterKey(0) as D3D10RegisterKey;
+        if (baseKey == null
+            || !RegisterDeclarations.TryGetValue(baseKey, out RegisterDeclaration first))
+        {
+            return;
+        }
+        int count = instruction.IndexRangeCount;
+        first.ArrayLength = count;
+        for (int offset = 1; offset < count; offset++)
+        {
+            var key = new D3D10RegisterKey(baseKey.OperandType, baseKey.Number + offset);
+            if (RegisterDeclarations.TryGetValue(key, out RegisterDeclaration element))
+            {
+                MethodInputRegisters.Remove(element);
+            }
+        }
+    }
+
     public void DeclareRegisterWrite(D3D10RegisterKey registerKey, int writeMask)
     {
         if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))

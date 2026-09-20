@@ -493,6 +493,7 @@ public abstract class HlslWriter
 
     private static string CompileRegisterDeclaration(RegisterDeclaration input)
     {
-        return $"{input.TypeName} {input.Name} : {input.Semantic}";
+        string subscript = input.ArrayLength > 1 ? $"[{input.ArrayLength}]" : "";
+        return $"{input.TypeName} {input.Name}{subscript} : {input.Semantic}";
     }
 }

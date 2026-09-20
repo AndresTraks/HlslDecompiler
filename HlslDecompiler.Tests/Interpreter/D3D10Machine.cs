@@ -1099,6 +1099,16 @@ public class D3D10Machine
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     if (indices.Length < 2 || _shader.Type != ShaderType.Geometry)
                     {
+                        // A vertex shader reads a run declared by dcl_indexrange as
+                        // `v[r0.x + 0]`: the register is the immediate plus whatever
+                        // the index register holds, and GetParamRegisterNumber has
+                        // no index to add and reads off the end.
+                        if (indices.Length == 1 && indices[0].IsRelative)
+                        {
+                            int element = (int)indices[0].Immediate
+                                + RelativeIndex(instruction, index, 0);
+                            return _input[Math.Clamp(element, 0, _input.Length - 1)];
+                        }
                         return _input[instruction.GetParamRegisterNumber(index)];
                     }
                     // GetOperandIndices, not GetParamIndexImmediate32: the latter

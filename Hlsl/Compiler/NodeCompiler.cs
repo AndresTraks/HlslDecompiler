@@ -1037,6 +1037,15 @@ public sealed class NodeCompiler
                 // other way round from a constant buffer array.
                 return $"i[{index}].{vertex.Name}{swizzle}";
             }
+            // A run of input registers declared as one array by dcl_indexrange. Here
+            // the semantic is the array and the index its subscript, the way round a
+            // constant buffer array has it.
+            if (arrayKey.RegisterKey is D3D10RegisterKey inputArrayKey
+                && inputArrayKey.OperandType == OperandType.Input
+                && !inputArrayKey.GSVertex.HasValue)
+            {
+                return $"{arrayName}[{index}]{swizzle}";
+            }
             if (arrayKey.RegisterKey is D3D10RegisterKey d3d10ArrayKey
                 && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)
                     is ConstantDeclaration constantBufferArray)

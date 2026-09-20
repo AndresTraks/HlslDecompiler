@@ -423,6 +423,9 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.DclGlobalFlags:
                     break;
+                case D3D10Opcode.DclIndexRange:
+                    _registerState.DeclareIndexRange(instruction);
+                    break;
                 default:
                     throw new NotImplementedException(instruction.Opcode.ToString());
             }
@@ -2174,9 +2177,22 @@ public class InstructionParser
         HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
             new D3D10RegisterKey(indexType, indexNumber), indexComponent));
 
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        // A vertex shader indexes the run of input registers a dcl_indexrange
+        // declared and writes `v[r0.x + 0]`, one index, where a geometry shader
+        // writes `v[r0.x][0]` and the second index names the register. The
+        // immediate beside the index is the first register of the run.
+        if (operandIndices.Length == 1)
+        {
+            return new RelativeAddressNode(
+                new RegisterComponentKey(
+                    new D3D10RegisterKey(OperandType.Input, (int)operandIndices[0].Immediate),
+                    swizzle[componentIndex]),
+                index);
+        }
+
         // Any vertex will do to find the declaration; they share one.
         var registerKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
-        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         return new RelativeAddressNode(
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }

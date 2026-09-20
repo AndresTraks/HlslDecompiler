@@ -73,6 +73,11 @@ public class D3D10Instruction : Instruction
     public int IndexableTempElementCount => (int)OperandTokens.Tokens[1];
     public int IndexableTempComponentCount => (int)OperandTokens.Tokens[2];
 
+    // dcl_indexrange carries one operand - the first register of the run, with the
+    // mask the run is indexed over - and then a plain dword for how many registers
+    // the run covers. It sits after the operand's tokens, however many those are.
+    public int IndexRangeCount => (int)OperandTokens.Tokens[OperandTokens.GetSpan(0).Length];
+
     /// <summary>
     /// The payload of a customdata instruction, which is not operand tokens - an
     /// immediate constant buffer is four floats per row.

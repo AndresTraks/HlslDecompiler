@@ -14,6 +14,10 @@ public class HlslAstWriter : HlslWriter
     private TemplateMatcher _templateMatcher;
     private int _loopDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
+    // The variables each Consume call was named into, by the slot that identifies
+    // it, so that a second statement reading the same call finds them.
+    private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _consumeVariables =
+        new(ReferenceEqualityComparer.Instance);
 
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
@@ -975,6 +979,7 @@ public class HlslAstWriter : HlslWriter
         // GetDimensions has no expression form - it hands its results back through
         // out parameters - so a resinfo result is always named, whatever it costs.
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
+        resourceInfo.AddRange(NameConsumes(order));
 
         // Sharing alone is not a reason to name something - almost every expression
         // shares a register read. What is worth naming is a subexpression of some
@@ -1579,6 +1584,60 @@ public class HlslAstWriter : HlslWriter
                 component.NamedAs = variable;
                 return (HlslTreeNode)NameSubexpression(component, variable);
             })]);
+        }
+        return assignments;
+    }
+
+    /// <summary>
+    /// Names every Consume reachable from here, the components of one call
+    /// together. A consume buffer has the one method and it reads the whole
+    /// element, so the call is named and its components read out of the variable -
+    /// the same shape a GetDimensions takes, for the same reason.
+    /// </summary>
+    private List<HlslTreeNode[]> NameConsumes(IList<HlslTreeNode> order)
+    {
+        var assignments = new List<HlslTreeNode[]>();
+        var named = HlslTreeNode.NewNodeSet();
+        foreach (ConsumeNode consume in order.OfType<ConsumeNode>())
+        {
+            if (named.Contains(consume) || consume.NamedAs != null)
+            {
+                continue;
+            }
+            // One call is one slot: the loads that read what a single
+            // imm_atomic_consume took.
+            List<ConsumeNode> call = [.. order.OfType<ConsumeNode>()
+                .Where(other => other.NamedAs == null
+                    && ReferenceEquals(other.Slot, consume.Slot))
+                .OrderBy(other => other.ComponentIndex)];
+            foreach (ConsumeNode component in call)
+            {
+                named.Add(component);
+            }
+            // The whole element, not the components this statement happens to read:
+            // the hoist runs once per statement, and a call whose components are
+            // read by two of them would otherwise be named twice and consumed twice.
+            // The variables are remembered by the slot so the second statement finds
+            // the first one's.
+            if (!_consumeVariables.TryGetValue(consume.Slot, out TempVariableNode[] variables))
+            {
+                variables = _compiler.CreateTempVariables(
+                    _registers.GetStructuredBufferComponents(
+                        consume.Buffer.RegisterComponentKey.RegisterKey));
+                _consumeVariables[consume.Slot] = variables;
+                // Only the statement that names it first writes the call.
+                assignments.Add([.. call.Select(component =>
+                {
+                    TempVariableNode variable = variables[component.ComponentIndex];
+                    component.NamedAs = variable;
+                    return (HlslTreeNode)NameSubexpression(component, variable);
+                })]);
+                continue;
+            }
+            foreach (ConsumeNode component in call)
+            {
+                component.NamedAs = variables[component.ComponentIndex];
+            }
         }
         return assignments;
     }

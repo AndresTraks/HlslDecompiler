@@ -397,6 +397,22 @@ public class InstructionParser
                         });
                         break;
                     }
+                case D3D10Opcode.ImmAtomicConsume:
+                    {
+                        // The slot goes in a register, and every load from a consume
+                        // buffer is a component of the call that took it - there is
+                        // no other way to read one - so nothing ends up reading this
+                        // and the assignment goes away as dead.
+                        var consumeKey = new RegisterComponentKey(
+                            instruction.GetParamRegisterKey(1), 0);
+                        var slot = new ConsumeSlotNode(new RegisterInputNode(consumeKey));
+                        var slotKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareRegisterWrite(slotKey, instruction.GetWriteMask(0));
+                        SetActiveOutput(
+                            new RegisterComponentKey(slotKey, FirstWrittenComponent(instruction)),
+                            slot);
+                        break;
+                    }
                 case D3D10Opcode.ImmAtomicAlloc:
                     {
                         // imm_atomic_alloc takes the next slot and the store after it
@@ -669,6 +685,13 @@ public class InstructionParser
             }
         }
         return 0;
+    }
+
+    /// <summary>Whether a register names a buffer elements are consumed from.</summary>
+    private bool IsConsumeBuffer(RegisterKey registerKey)
+    {
+        return _registerState.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
+            && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
     }
 
     /// <summary>The instruction after the one being parsed, or null at the end.</summary>
@@ -1917,12 +1940,25 @@ public class InstructionParser
                         case D3D10Opcode.RoundZ:
                             return new TruncateOperation(inputs[0]);
                         case D3D10Opcode.LdStructured:
-                            return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
                             {
-                                ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                                int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
                                     ? instruction.GetParamInt(2, 0)
-                                    : 0,
-                            };
+                                    : 0;
+                                // A load from a consume buffer is a component of the
+                                // Consume that took the slot: the address is what the
+                                // consume left, and the byte offset says which
+                                // component of the element this is.
+                                if (inputs[0] is ConsumeSlotNode slot
+                                    && IsConsumeBuffer(instruction.GetParamRegisterKey(3)))
+                                {
+                                    return new ConsumeNode(
+                                        (RegisterInputNode)inputs[2], elementByteOffset / 4, slot);
+                                }
+                                return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
+                                {
+                                    ElementByteOffset = elementByteOffset,
+                                };
+                            }
                         case D3D10Opcode.LdRaw:
                             // ld_raw dst, byteOffset, t#: the offset stands where an
                             // element index would, and there is no offset within one.

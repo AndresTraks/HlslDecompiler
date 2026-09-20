@@ -85,6 +85,16 @@ public class HlslSimpleWriter : HlslWriter
             && store.GetParamRegisterKey(1).Equals(alloc.GetParamRegisterKey(0));
     }
 
+    // The variable each consume call filled, by the register it left its slot in.
+    private readonly Dictionary<RegisterKey, string> _consumedSlots = [];
+    private int _consumeCount;
+
+    private bool IsConsumeResource(RegisterKey registerKey)
+    {
+        return _registers.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
+            && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
+    }
+
     private void WriteTemporaryVariableDeclarations()
     {
         Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
@@ -1227,6 +1237,33 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Ftou:
                 WriteConversion(instruction, null, "uint");
                 break;
+            case D3D10Opcode.ImmAtomicConsume:
+                {
+                    // A consume buffer has one method and it both takes the slot and
+                    // reads the element, so the call goes here and the loads that
+                    // follow read the variable it filled - the same shape
+                    // GetDimensions takes, and for the same reason.
+                    string consumed = $"consumed{_consumeCount++}";
+                    string element = GetStructuredElementType(
+                        _registers.ResourceDefinitions.First(d =>
+                            d.BindPoint == instruction.GetParamRegisterNumber(1)
+                            && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured));
+                    WriteLine("{0} {1} = {2}.Consume();", element, consumed,
+                        GetOperandName(instruction, 1));
+                    _consumedSlots[instruction.GetParamRegisterKey(0)] = consumed;
+                    break;
+                }
+            case D3D10Opcode.LdStructured
+                when _consumedSlots.TryGetValue(instruction.GetParamRegisterKey(1), out string consumedElement)
+                    && IsConsumeResource(instruction.GetParamRegisterKey(3)):
+                {
+                    // A component of the element that call read, picked by the byte
+                    // offset the load asks for.
+                    int component = instruction.GetParamInt(2, 0) / 4;
+                    WriteResult(instruction, "{0} = {1}.{2};", GetOperandName(instruction, 0),
+                        consumedElement, "xyzw"[component]);
+                    break;
+                }
             case D3D10Opcode.LdStructured:
                 {
                     // The byte offset picks a row where the element is a matrix. A

@@ -1402,6 +1402,10 @@ public sealed class NodeCompiler
             {
                 return CompileResourceInfoCall(components.Cast<TempAssignmentNode>().ToList());
             }
+            if (tempAssignment.Value is ConsumeNode)
+            {
+                return CompileConsumeCall(components.Cast<TempAssignmentNode>().ToList());
+            }
 
             // Compile variable once with all components
             string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
@@ -1464,6 +1468,16 @@ public sealed class NodeCompiler
             return $"t{tempVariable.DeclarationIndex}{swizzle}";
         }
 
+        if (first is ConsumeNode consume)
+        {
+            if (consume.NamedAs == null)
+            {
+                throw new NotImplementedException(
+                    "A Consume result was compiled before its call was named.");
+            }
+            return Compile(components.Select(c => (HlslTreeNode)((ConsumeNode)c).NamedAs));
+        }
+
         if (first is ResourceInfoNode resourceInfo)
         {
             // A resinfo result standing as an output's own value is read from the
@@ -1517,6 +1531,23 @@ public sealed class NodeCompiler
         }
         compiled = $"{variable.Name}{swizzle}";
         return true;
+    }
+
+    /// <summary>
+    /// `float4 t0 = input.Consume();` - the declaration and the call, which a
+    /// consume buffer offers instead of a subscript. One statement, where a
+    /// GetDimensions takes two, because this one returns its element rather than
+    /// filling out parameters.
+    /// </summary>
+    private string CompileConsumeCall(List<TempAssignmentNode> assignments)
+    {
+        var consume = (ConsumeNode)assignments[0].Value;
+        TempVariableNode variable = assignments[0].TempVariable;
+        ResourceDefinition buffer = _registers.ResourceDefinitions
+            .First(d => d.BindPoint == consume.Buffer.RegisterComponentKey.RegisterKey.Number
+                && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
+        string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
+        return $"float{width} t{variable.DeclarationIndex} = {buffer.Name}.Consume();";
     }
 
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)

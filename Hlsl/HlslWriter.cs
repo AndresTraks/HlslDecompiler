@@ -367,7 +367,7 @@ public abstract class HlslWriter
         return char.ToUpperInvariant(resource.Name[0]) + resource.Name[1..] + "Element";
     }
 
-    private string GetStructuredElementType(ResourceDefinition resource)
+    protected string GetStructuredElementType(ResourceDefinition resource)
     {
         if (resource.ElementType?.MemberInfo != null && resource.ElementType.MemberInfo.Count != 0)
         {

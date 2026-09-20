@@ -371,6 +371,27 @@ public class NodeGrouper
             }
         }
 
+        // Two components of one multi output node share every input and are not
+        // the same value: normalize(n).x is not normalize(n).z. Comparing inputs
+        // alone said they were, and the cross product grouper - which finds the
+        // vectors by asking which factor of a product is which - took the first
+        // pairing that passed, and wrote cross(float3(t.x, n.yz), t.zyx).
+        if (node1 is IHasComponentIndex indexed1 && node2 is IHasComponentIndex indexed2
+            && indexed1.ComponentIndex != indexed2.ComponentIndex)
+        {
+            return false;
+        }
+
+        // A variable has no inputs to compare, so two of them compared equal
+        // whatever they were - t0.x was t3.x. Each component of a variable is one
+        // node that every reader points at, so the node itself says which it is.
+        if (node1 is TempVariableNode variable1 && node2 is TempVariableNode variable2)
+        {
+            return ReferenceEquals(variable1, variable2)
+                || (variable1.DeclarationIndex != null
+                    && variable1.DeclarationIndex == variable2.DeclarationIndex);
+        }
+
         if ((node1 is IHasComponentIndex) ||
             (node1 is GroupNode) ||
             (node1 is Operation))

@@ -6,7 +6,7 @@ float4 main() : SV_Target
 	float4 o;
 
 	int4 r0;
-	r0.x = (int)seed;
+	r0.x = seed;
 	r0.y = 0;
 	while (true) {
 		r0.z = (r0.y >= count) ? -1 : 0;

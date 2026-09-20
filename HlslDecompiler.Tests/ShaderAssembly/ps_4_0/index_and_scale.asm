@@ -12,7 +12,7 @@ imul null, r1.y, r1.x, cb0[4].x
 and r1.y, r1.y, l(3)
 utof r1.z, r1.x
 add r1.z, r1.z, v0.x
-mad r0, cb0[0], r1.z, r0
+mad r0, cb0[r1.y], r1.z, r0
 iadd r1.x, r1.x, l(1)
 endloop
 ushr r1.x, v0.y, l(23)

@@ -6,7 +6,7 @@ float4 main() : SV_Position
 {
 	float4 o;
 
-	float r0;
+	int r0;
 	r0 = idx;
 	o = first + arr[r0.x];
 

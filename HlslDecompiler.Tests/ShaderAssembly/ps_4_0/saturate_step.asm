@@ -5,6 +5,6 @@ dcl_temps 2
 div r0, l(1, 1, 1, 1), v0
 mov_sat r0, r0
 ge r1, l(0.5, 0.5, 0.5, 0.5), v0
-and r1, r1, l(1, 1, 1, 1)
+and r1, r1, l(0x3f800000, 0x3f800000, 0x3f800000, 0x3f800000)
 add o0, r0, r1
 ret

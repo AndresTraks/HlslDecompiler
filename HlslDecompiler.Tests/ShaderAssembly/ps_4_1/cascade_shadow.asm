@@ -22,10 +22,10 @@ imin r0.x, r0.x, l(3)
 ishl r0.y, r0.x, l(2)
 mov r1.xyz, v1.xyz
 mov r1.w, l(1)
-dp4 r2.x, r1, cb0[0]
-dp4 r2.y, r1, cb0[0]
-dp4 r0.z, r1, cb0[0]
-dp4 r0.y, r1, cb0[0]
+dp4 r2.x, r1, cb0[r0.y]
+dp4 r2.y, r1, cb0[r0.y + 1]
+dp4 r0.z, r1, cb0[r0.y + 2]
+dp4 r0.y, r1, cb0[r0.y + 3]
 div r1.xy, r2.xy, r0.yy
 mul r2.y, r1.y, l(-0.5)
 mad r3.xy, r1.xy, l(0.5, -0.5, 0, 0), l(0.5, 0.5, 0, 0)

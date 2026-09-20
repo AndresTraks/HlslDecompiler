@@ -1172,6 +1172,8 @@ public class HlslAstWriter : HlslWriter
                 candidate = WithSiblingComponents(candidate, readers, roots);
                 occurrences = [candidate];
             }
+            occurrences = InWrittenOrder(occurrences);
+            candidate = occurrences[0];
             TempVariableNode[] variables = CreateTempVariables(candidate);
             foreach (HlslTreeNode[] occurrence in occurrences)
             {
@@ -1591,6 +1593,43 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
+    /// The components of a value in the order the value has them, rather than in
+    /// the order the first reader happened to read them. A repeat is found by its
+    /// text, and the text is whatever swizzle that reader used - so the normalize
+    /// under a cross product, read .yzx first, was named as `normalize(t.zyx)` and
+    /// every reader of it became a permutation of the one it was. Components of one
+    /// multi output node have an index apiece, and those one instruction wrote have
+    /// the component it wrote them to; either says what order to put them in.
+    /// </summary>
+    private static List<HlslTreeNode[]> InWrittenOrder(List<HlslTreeNode[]> occurrences)
+    {
+        HlslTreeNode[] first = occurrences[0];
+        if (first.Length < 2)
+        {
+            return occurrences;
+        }
+        int[] order = null;
+        if (first.All(n => n is IHasComponentIndex)
+            && first.Select(n => ((IHasComponentIndex)n).ComponentIndex).Distinct().Count() == first.Length
+            && first.Select(n => n.GetType()).Distinct().Count() == 1)
+        {
+            order = [.. Enumerable.Range(0, first.Length)
+                .OrderBy(i => ((IHasComponentIndex)first[i]).ComponentIndex)];
+        }
+        else if (first[0].SourceInstruction != 0
+            && first.All(n => HlslTreeNode.IsSameInstruction(n, first[0]))
+            && first.Select(n => n.SourceComponent).Distinct().Count() == first.Length)
+        {
+            order = [.. Enumerable.Range(0, first.Length).OrderBy(i => first[i].SourceComponent)];
+        }
+        if (order == null || order.SequenceEqual(Enumerable.Range(0, first.Length)))
+        {
+            return occurrences;
+        }
+        return [.. occurrences.Select(occurrence => order.Select(i => occurrence[i]).ToArray())];
+    }
+
+    /// <summary>
     /// Numbers the hoisted variables in the order their assignments are written.
     /// The outermost repeat is named first, and the ones inside it after, so the
     /// order they were made in is the reverse of the order they are read in.
@@ -1839,6 +1878,11 @@ public class HlslAstWriter : HlslWriter
                 }
             }
 
+            // In the order the value has them, not the order they were found in:
+            // the candidates are collected from the graph, which is walked from the
+            // last component back, and a variable named backwards is read by every
+            // swizzle reversed.
+            group = [.. InWrittenOrder([[.. group]])[0]];
             TempVariableNode[] variables = CreateTempVariables(group);
             assignments.Add([.. group.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
         }

@@ -17,10 +17,10 @@ mov r0.z, l(0)
 loop
 ige r0.w, r0.z, l(3)
 breakc_nz r0.w
-dp4 r0.w, v[r0.z][0], cb0[0]
-dp4 r1.x, v[r0.z][0], cb0[0]
-dp4 r1.y, v[r0.z][0], cb0[0]
-dp4 r1.z, v[r0.z][0], cb0[0]
+dp4 r0.w, v[r0.z][0], cb0[r0.y]
+dp4 r1.x, v[r0.z][0], cb0[r0.y + 1]
+dp4 r1.y, v[r0.z][0], cb0[r0.y + 2]
+dp4 r1.z, v[r0.z][0], cb0[r0.y + 3]
 mov o0.x, r0.w
 mov o0.y, r1.x
 mov o0.z, r1.y

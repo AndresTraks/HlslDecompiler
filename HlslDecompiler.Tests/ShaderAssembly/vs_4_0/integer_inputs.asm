@@ -17,5 +17,5 @@ ushr r0.y, v1.x, l(4)
 and r0.y, r0.y, l(3)
 iadd r0.z, v2.x, l(1)
 itof r0.z, r0.z
-mad o1, cb0[0], r0.x, r0.z
+mad o1, cb0[r0.y + 4], r0.x, r0.z
 ret

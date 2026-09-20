@@ -10,7 +10,7 @@ div r0.yz, v0.xy, cb0[0].xy
 mul r1.x, r0.y, l(8)
 frc r1.x, r1.x
 lt r1.x, r1.x, l(0.5)
-and r1.x, r1.x, l(1)
+and r1.x, r1.x, l(0x3f800000)
 ftoi r2.xy, v0.xy
 mov r2.zw, l(0, 0, 0, 0)
 iadd r3, r2, l(1, 0, 0, 0)

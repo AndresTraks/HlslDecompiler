@@ -1261,7 +1261,13 @@ public class AsmWriter
         string registerNumber;
         if (operandType == OperandType.ConstantBuffer)
         {
-            registerNumber = instruction.GetParamRegisterNumber(index) + "[" + instruction.GetParamConstantBufferOffset(index) + "]";
+            // cb0[2], or cb0[r0.x + 2] where the shader indexes the buffer at run
+            // time: the second index is a register plus an immediate then, and
+            // writing only the immediate made an array read look like a read of
+            // its first element.
+            D3D10OperandTokenCollection.OperandIndex[] indices =
+                instruction.OperandTokens.GetOperandIndices(index);
+            registerNumber = indices[0].Immediate + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
         }
         else if (D3D10Instruction.IsThreadRegister(operandType))
         {
@@ -1284,9 +1290,18 @@ public class AsmWriter
                     isInteger = readAs == ValueKind.Integer;
                 }
             }
+            // A bitwise operator over a float's bits: `and r0, r0, l(0x3f800000)`
+            // keeps the 1.0 it masks with. Written as the float it is, it read
+            // l(1), which is the integer 1 - a different word.
+            bool isBits = !isInteger && instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or
+                or D3D10Opcode.Xor or D3D10Opcode.Not;
             var componentSelection = instruction.GetOperandComponentSelection(index);
             if (componentSelection == D3D10OperandNumComponents.Operand1Component)
             {
+                if (isBits)
+                {
+                    return $"l(0x{instruction.GetParamInt(index):x8})";
+                }
                 if (isInteger)
                 {
                     return $"l({instruction.GetParamInt(index).ToString(CultureInfo.InvariantCulture)})";
@@ -1298,6 +1313,11 @@ public class AsmWriter
             }
             else
             {
+                if (isBits)
+                {
+                    return "l(" + string.Join(", ", Enumerable.Range(0, 4)
+                        .Select(c => $"0x{instruction.GetParamInt(index, c):x8}")) + ")";
+                }
                 if (isInteger)
                 {
                     string immediate0 = instruction.GetParamInt(index, 0).ToString(CultureInfo.InvariantCulture);

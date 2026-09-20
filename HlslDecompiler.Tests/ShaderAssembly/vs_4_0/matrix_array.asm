@@ -5,10 +5,10 @@ dcl_input_sgv v1.x, instance_id
 dcl_output_siv o0, position
 dcl_temps 2
 ishl r0.x, v1.x, l(2)
-dp4 r1.x, v0, cb0[0]
-dp4 r1.y, v0, cb0[0]
-dp4 r1.z, v0, cb0[0]
-dp4 r1.w, v0, cb0[0]
+dp4 r1.x, v0, cb0[r0.x + 4]
+dp4 r1.y, v0, cb0[r0.x + 5]
+dp4 r1.z, v0, cb0[r0.x + 6]
+dp4 r1.w, v0, cb0[r0.x + 7]
 dp4 o0.x, r1, cb0[0]
 dp4 o0.y, r1, cb0[1]
 dp4 o0.z, r1, cb0[2]

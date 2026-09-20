@@ -8,7 +8,7 @@ loop
 ige r1.y, r1.x, cb0[8].x
 breakc_nz r1.y
 and r1.y, r1.x, l(7)
-add r0, r0, cb0[0]
+add r0, r0, cb0[r1.y]
 iadd r1.x, r1.x, l(1)
 endloop
 mov o0, r0

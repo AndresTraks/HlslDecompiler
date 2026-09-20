@@ -965,6 +965,23 @@ public sealed class IntegerOperandAnalysis
             }
         }
 
+        // A constant buffer variable declared int, uint or bool holds an integer,
+        // and says so in the reflection data. Without this an `and` over a uint
+        // flags word and an immediate had nothing to type it by, and the immediate
+        // came out as the denormal float its bits spell: `flags & 0.000000`.
+        foreach (D3D10ConstantDeclaration constant in shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>())
+        {
+            if (constant.TypeInfo.ParameterType is not (ParameterType.Int or ParameterType.Uint or ParameterType.Bool))
+            {
+                continue;
+            }
+            for (int offset = constant.VariableOffset; offset < constant.VariableOffset + constant.VariableSize; offset += 4)
+            {
+                var key = new D3D10RegisterKey(OperandType.ConstantBuffer, constant.RegisterIndex, offset / 16);
+                integerRegisters.Add(new RegisterComponentKey(key, offset % 16 / 4));
+            }
+        }
+
         // The registers a shader is given rather than declared - thread and group
         // indices, the primitive id - are unsigned integers by definition, whatever
         // reads them: `and r0.xyz, vPrim, l(3, 1, 2, 0)` says nothing about its

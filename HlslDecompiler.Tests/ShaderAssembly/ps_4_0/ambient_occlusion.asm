@@ -17,12 +17,12 @@ mov r3.x, l(0)
 loop
 ige r3.y, r3.x, l(12)
 breakc_nz r3.y
-dp3 r3.y, cb0[0].xyz, r1.xyz
+dp3 r3.y, cb0[r3.x + 4].xyz, r1.xyz
 lt r3.z, l(0), r3.y
 lt r3.y, r3.y, l(0)
 iadd r3.y, -r3.z, r3.y
 itof r3.y, r3.y
-mul r3.yzw, r3.yyy, cb0[0].xyz
+mul r3.yzw, r3.yyy, cb0[r3.x + 4].xyz
 mad r2.xyz, r3.yzw, cb0[16].xxx, r0.yzw
 dp4 r4.x, r2, cb0[0]
 dp4 r4.y, r2, cb0[1]

@@ -155,6 +155,18 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
+        // A constant buffer variable is kept the way it was declared: an int
+        // index moved into an int register is a move, not a conversion, and
+        // `(int)idx` over an int said otherwise.
+        if (instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer)
+        {
+            byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            ConstantDeclaration constant = _registers.FindConstant(
+                (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex), component);
+            return constant?.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint or ParameterType.Bool
+                ? ComponentStorage.Integer
+                : ComponentStorage.Numeric;
+        }
         if (instruction.GetOperandType(operandIndex) is not (OperandType.Temp or OperandType.Input
             or OperandType.InputThreadID or OperandType.InputThreadGroupID
             or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened

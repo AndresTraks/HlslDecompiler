@@ -496,9 +496,34 @@ public sealed class NodeCompiler
         {
             return $"({compiled} ? -1 : 0)";
         }
-        return AssociativityTester.NeedsParenthesesAsOperand(list[0])
+        // By the node, unless the nodes were written as one call: three subtracts
+        // that are a cross product bind as tightly as any call does, and
+        // `(cross(a, b)) * c` says nothing with its brackets.
+        return AssociativityTester.NeedsParenthesesAsOperand(list[0]) && !IsOneCall(compiled)
             ? $"({compiled})"
             : compiled;
+    }
+
+    // Whether the text is one function call and nothing beside it: a name, and a
+    // bracket that opens after it and closes at the end.
+    private static bool IsOneCall(string text)
+    {
+        int open = text.IndexOf('(');
+        if (open <= 0 || text[^1] != ')'
+            || !text.Take(open).All(c => char.IsLetterOrDigit(c) || c == '_' || c == '.'))
+        {
+            return false;
+        }
+        int depth = 0;
+        for (int i = open; i < text.Length; i++)
+        {
+            depth += text[i] == '(' ? 1 : text[i] == ')' ? -1 : 0;
+            if (depth == 0 && i != text.Length - 1)
+            {
+                return false;
+            }
+        }
+        return depth == 0;
     }
 
     /// <summary>

@@ -1941,6 +1941,7 @@ public class InstructionParser
                 }
             case D3D10Opcode.LD:
             case D3D10Opcode.LDMS:
+            case D3D10Opcode.LdUAVTyped:
                 return CreateResourceLoadNode(instruction, componentIndex);
             case D3D10Opcode.ResInfo:
                 return CreateResourceInfoNode(instruction, componentIndex);
@@ -1971,18 +1972,23 @@ public class InstructionParser
         const int ResourceParamIndex = 2;
 
         var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
+        bool isUnorderedAccessView = instruction.Opcode == D3D10Opcode.LdUAVTyped;
         ResourceDefinition definition = _registerState.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .Where(d => d.ShaderInputType == (isUnorderedAccessView
+                ? D3DShaderInputType.UavRWTyped
+                : D3DShaderInputType.Texture))
             .FirstOrDefault(d => d.BindPoint == resource.RegisterComponentKey.RegisterKey.Number);
 
         // Load reads a texel directly, so it takes the mip level alongside the
         // coordinates: a 2D texture is addressed by an int3. A buffer has no mips
         // and is addressed by its index alone, and a multisampled texture has none
         // either - it takes the sample index as an argument of its own instead.
+        // A writable view has the one level, so its load takes no mip either.
         bool multisampled = instruction.Opcode == D3D10Opcode.LDMS;
         int addressLength = definition?.Dimension == ResourceDimension.Buffer
             ? 1
-            : (definition?.GetDimensionSize() ?? 2) + (multisampled ? 0 : 1);
+            : (definition?.GetDimensionSize() ?? 2)
+                + (multisampled || isUnorderedAccessView ? 0 : 1);
         // The address is in texels, so an immediate operand holds integers rather
         // than the floats those same bits would spell.
         HlslTreeNode[] address = instruction.GetOperandType(AddressParamIndex) == OperandType.Immediate32
@@ -2706,6 +2712,9 @@ public class InstructionParser
                 return 4;
             // The coordinate and the value; the resource is the destination operand.
             case D3D10Opcode.StoreUAVTyped:
+                return 2;
+            // The coordinate and the view.
+            case D3D10Opcode.LdUAVTyped:
                 return 2;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:

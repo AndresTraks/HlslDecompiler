@@ -838,6 +838,8 @@ public class D3D10Machine
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
                 return LoadTexel(instruction);
+            case D3D10Opcode.LdUAVTyped:
+                return LoadViewTexel(instruction);
             case D3D10Opcode.LDMS:
                 return LoadSample(instruction);
             case D3D10Opcode.ResInfo:
@@ -998,6 +1000,20 @@ public class D3D10Machine
         float[] coordinates = WithOffsets(instruction,
             [address[0] * 0.01f, address[1] * 0.01f, address[2] * 0.01f, 0]);
         return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates));
+    }
+
+    /// <summary>
+    /// A texel of a writable view. What one holds is whatever ran before, which is
+    /// not modelled - the stores into it are recorded rather than kept - so the read
+    /// answers the same stand-in a texture read does. Two programs reading the same
+    /// texel of it agree, which is the question the comparison asks; the address has
+    /// no mip, a view having the one level.
+    /// </summary>
+    private uint[] LoadViewTexel(D3D10Instruction instruction)
+    {
+        int[] address = [.. Ints(instruction, 1)];
+        return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2),
+            [address[0] * 0.01f, address[1] * 0.01f, 0, 0]));
     }
 
     // One sample of a multisampled texel. The address has no mip and only its xy

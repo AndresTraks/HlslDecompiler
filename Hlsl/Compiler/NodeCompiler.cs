@@ -1231,8 +1231,14 @@ public sealed class NodeCompiler
             {
                 return textureBufferRead;
             }
+            // A writable view is read by subscript rather than by Load, which is
+            // what the shader said and what a store into it looks like beside it.
+            bool isWritableView = resourceLoad.Resource.RegisterComponentKey.RegisterKey
+                is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
             ResourceDefinition resourceDefinition = _registers.ResourceDefinitions
-                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                .Where(d => d.ShaderInputType == (isWritableView
+                    ? D3DShaderInputType.UavRWTyped
+                    : D3DShaderInputType.Texture))
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
             // Load addresses in texels, so its coordinate vector is built as ints:
             // as a float3 fxc converts an integer address to float and straight back.
@@ -1251,7 +1257,9 @@ public sealed class NodeCompiler
             string sampleIndex = resourceLoad.HasSampleIndex
                 ? $", {Compile(new[] { resourceLoad.SampleIndex })}"
                 : "";
-            string loaded = $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
+            string loaded = isWritableView
+                ? $"{resourceDefinition.Name}[{address}]{loadSwizzle}"
+                : $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
             // A texel of a texture of uints is an integer, and is named as one
             // where its readers read it as one. Read as anything else it is the
             // bits it holds and not the number they make: a G-buffer packs a depth

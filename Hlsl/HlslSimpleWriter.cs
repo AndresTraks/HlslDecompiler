@@ -1412,6 +1412,11 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.F16ToF32:
                 WriteResult(instruction, "{0} = f16tof32({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
+            case D3D10Opcode.LdUAVTyped:
+                // The same subscript a store uses, read rather than written.
+                WriteResult(instruction, "{0} = {1}[{2}];", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 2), GetOperandName(instruction, 1));
+                break;
             case D3D10Opcode.StoreUAVTyped:
                 // A texel, addressed by as many coordinates as the resource has
                 // dimensions - which is what GetSourceLength answers for it.
@@ -2144,6 +2149,7 @@ public class HlslSimpleWriter : HlslWriter
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
+            || (instruction.Opcode == D3D10Opcode.LdUAVTyped && operandIndex == 2)
             || (instruction.Opcode.IsAtomic() && operandIndex == 0)
             || (instruction.Opcode.IsImmediateAtomic() && operandIndex == 1))
         {
@@ -2708,6 +2714,10 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction.Opcode == D3D10Opcode.StoreUAVTyped)
         {
             return _registers.GetResourceDimensionSize(instruction.GetParamRegisterKey(0));
+        }
+        if (instruction.Opcode == D3D10Opcode.LdUAVTyped)
+        {
+            return _registers.GetResourceDimensionSize(instruction.GetParamRegisterKey(2));
         }
         if (instruction.Opcode == D3D10Opcode.LD)
         {

@@ -397,6 +397,33 @@ public class InstructionParser
                         });
                         break;
                     }
+                case D3D10Opcode.ImmAtomicAlloc:
+                    {
+                        // imm_atomic_alloc takes the next slot and the store after it
+                        // puts the element there: together they are one Append, and
+                        // an append buffer has no other spelling - no subscript, and
+                        // no counter to read the slot out of.
+                        D3D10Instruction store = NextInstruction();
+                        if (store?.Opcode != D3D10Opcode.StoreStructured
+                            || store.GetParamRegisterNumber(0) != instruction.GetParamRegisterNumber(1)
+                            || !ReadsRegister(store, 1, instruction.GetParamRegisterKey(0)))
+                        {
+                            throw new NotImplementedException(
+                                "imm_atomic_alloc without the store that appends the element.");
+                        }
+                        var appendKey = new RegisterComponentKey(
+                            instruction.GetParamRegisterKey(1), 0);
+                        RegisterComponentKey[] appendedKeys = GetDestinationKeys(store).ToArray();
+                        HlslTreeNode[] appended = appendedKeys
+                            .Select(key => GetInputs(store, key.ComponentIndex)[2])
+                            .ToArray();
+                        RecordStoredType(store, appended);
+                        InsertStatement(new BufferAppendStatement(
+                            new RegisterInputNode(appendKey), appended, ActiveOutputs));
+                        // Both instructions, the store having been taken with this one.
+                        _instructionPointer++;
+                        break;
+                    }
                 case D3D10Opcode.AtomicIAdd:
                 case D3D10Opcode.AtomicAnd:
                 case D3D10Opcode.AtomicOr:
@@ -642,6 +669,21 @@ public class InstructionParser
             }
         }
         return 0;
+    }
+
+    /// <summary>The instruction after the one being parsed, or null at the end.</summary>
+    private D3D10Instruction NextInstruction()
+    {
+        return _instructionPointer + 1 < _shaderModel.Instructions.Count
+            ? _shaderModel.Instructions[_instructionPointer + 1] as D3D10Instruction
+            : null;
+    }
+
+    /// <summary>Whether an operand reads the given register.</summary>
+    private static bool ReadsRegister(D3D10Instruction instruction, int operandIndex, RegisterKey registerKey)
+    {
+        return instruction.GetOperandType(operandIndex) != OperandType.Immediate32
+            && instruction.GetParamRegisterKey(operandIndex).Equals(registerKey);
     }
 
     private void InsertStatement(IStatement statement)

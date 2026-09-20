@@ -195,6 +195,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "texture_accumulate")]
     [TestCase("cs_5_0", "buffer_write")]
     [TestCase("cs_5_0", "buffer_size")]
+    [TestCase("cs_5_0", "append_filter")]
     [TestCase("cs_5_0", "luminance_histogram")]
     [TestCase("cs_5_0", "bit_counts")]
     [TestCase("cs_5_0", "high_bit")]

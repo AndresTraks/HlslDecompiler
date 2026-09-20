@@ -38,14 +38,30 @@ public class HlslSimpleWriter : HlslWriter
 
         WriteTemporaryVariableDeclarations();
         WriteIndexableTempDeclarations(_integerOperandAnalysis);
-        foreach (Instruction instruction in _shader.Instructions)
+        for (int index = 0; index < _shader.Instructions.Count; index++)
         {
+            Instruction instruction = _shader.Instructions[index];
             if (instruction is D3D9Instruction d3d9Instruction)
             {
                 WriteInstruction(d3d9Instruction);
             }
             else if (instruction is D3D10Instruction d9d10Instruction)
             {
+                // The one place a statement is two instructions rather than one.
+                // An append buffer has no spelling for half of it: no subscript to
+                // store through, and no counter to keep the slot in - so
+                // imm_atomic_alloc and the store after it are written as the Append
+                // they came from, or neither of them can be written at all.
+                if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
+                    && index + 1 < _shader.Instructions.Count
+                    && _shader.Instructions[index + 1] is D3D10Instruction store
+                    && IsAppendPair(d9d10Instruction, store))
+                {
+                    WriteLine("{0}.Append({1});", GetOperandName(d9d10Instruction, 1),
+                        GetOperandName(store, 3));
+                    index++;
+                    continue;
+                }
                 WriteInstruction(d9d10Instruction);
             }
         }
@@ -55,6 +71,18 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine();
             WriteLine("return {0};", _registers.OutputVariableName);
         }
+    }
+
+    /// <summary>
+    /// Whether a store appends the element the alloc before it took the slot for:
+    /// the same buffer, addressed by the register the alloc wrote.
+    /// </summary>
+    private static bool IsAppendPair(D3D10Instruction alloc, D3D10Instruction store)
+    {
+        return store.Opcode == D3D10Opcode.StoreStructured
+            && store.GetParamRegisterNumber(0) == alloc.GetParamRegisterNumber(1)
+            && store.GetOperandType(1) != OperandType.Immediate32
+            && store.GetParamRegisterKey(1).Equals(alloc.GetParamRegisterKey(0));
     }
 
     private void WriteTemporaryVariableDeclarations()
@@ -2198,6 +2226,7 @@ public class HlslSimpleWriter : HlslWriter
             || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.LdUAVTyped && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.BufInfo && operandIndex == 1)
+            || (instruction.Opcode == D3D10Opcode.ImmAtomicAlloc && operandIndex == 1)
             || (instruction.Opcode.IsAtomic() && operandIndex == 0)
             || (instruction.Opcode.IsImmediateAtomic() && operandIndex == 1))
         {

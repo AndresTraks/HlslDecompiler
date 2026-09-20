@@ -852,6 +852,23 @@ public class D3D10Machine
                 return ResourceInfo(instruction);
             case D3D10Opcode.BufInfo:
                 return BufferInfo(instruction);
+            // The slot an append takes or a consume gives back. The buffer is not
+            // modelled, so the counter is: it starts where a fresh one does and both
+            // programs move it the same way, which is what makes the elements they
+            // store comparable.
+            case D3D10Opcode.ImmAtomicAlloc:
+            case D3D10Opcode.ImmAtomicConsume:
+                {
+                    int resource = instruction.GetParamRegisterNumber(1);
+                    _appendCounters.TryGetValue(resource, out uint counter);
+                    uint slot = instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
+                        ? counter
+                        : counter - 1;
+                    _appendCounters[resource] = instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
+                        ? counter + 1
+                        : slot;
+                    return [slot, slot, slot, slot];
+                }
             // An attribute evaluated at a sample or at an offset. One pixel is being
             // run and nothing here is multisampled, so there is no other place for
             // it to have a different value at: the attribute as it stands, which
@@ -977,6 +994,9 @@ public class D3D10Machine
     /// comparison is about. Every component, the way the instruction fills the ones
     /// its mask names.
     /// </summary>
+    // Where each append buffer's counter has got to.
+    private readonly Dictionary<int, uint> _appendCounters = [];
+
     private uint[] BufferInfo(D3D10Instruction instruction)
     {
         uint count = (uint)(64 + 8 * instruction.GetParamRegisterNumber(1));

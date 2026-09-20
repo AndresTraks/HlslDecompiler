@@ -820,6 +820,14 @@ public class AsmWriter
             case D3D10Opcode.AtomicCmpStore:
                 WriteInstruction(instruction, "atomic_cmp_store", 4);
                 break;
+            // The slot an append takes or a consume gives back: the counter, and
+            // the register it lands in.
+            case D3D10Opcode.ImmAtomicAlloc:
+                WriteInstruction(instruction, "imm_atomic_alloc", 2);
+                break;
+            case D3D10Opcode.ImmAtomicConsume:
+                WriteInstruction(instruction, "imm_atomic_consume", 2);
+                break;
             case D3D10Opcode.ImmAtomicIAdd:
                 WriteInstruction(instruction, "imm_atomic_iadd", 4);
                 break;

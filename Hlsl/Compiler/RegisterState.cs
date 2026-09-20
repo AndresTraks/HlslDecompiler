@@ -881,7 +881,10 @@ public sealed class RegisterState
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType is D3DShaderInputType.UavRWStructured
                             or D3DShaderInputType.UavRWByteAddress
-                            or D3DShaderInputType.UavRWTyped)
+                            or D3DShaderInputType.UavRWTyped
+                            or D3DShaderInputType.UavAppendStructured
+                            or D3DShaderInputType.UavConsumeStructured
+                            or D3DShaderInputType.UavRWStucturedWithCounter)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 // Groupshared memory has no reflection entry to take a name from.
@@ -1208,8 +1211,14 @@ public sealed class RegisterState
     public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey, uint stride)
     {
         DeclareStructuredStride(registerKey, stride);
+        // An append buffer, a consume buffer and one with a counter all declare
+        // themselves dcl_uav_structured; which of the four it is, only the binding
+        // says.
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.UavRWStructured)
+            .Where(d => d.ShaderInputType is D3DShaderInputType.UavRWStructured
+                or D3DShaderInputType.UavAppendStructured
+                or D3DShaderInputType.UavConsumeStructured
+                or D3DShaderInputType.UavRWStucturedWithCounter)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);
         if (definition != null)
         {

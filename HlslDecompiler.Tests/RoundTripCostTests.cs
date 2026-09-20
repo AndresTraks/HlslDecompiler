@@ -91,6 +91,15 @@ public class RoundTripCostTests
             + "those lack is that the bytecode wrote them as two components of one "
             + "register, and a hoisted subexpression carries no record of the "
             + "instruction it came from."),
+        ["cs_5_0/append_filter"] = (8,
+            "One instruction, and it is a value two statements read. The element is "
+            + "loaded once and read twice - the .w the if tests, and the whole of it "
+            + "the append stores - and the naming pass works one statement at a time, "
+            + "so neither statement names it and the load is written out in both. "
+            + "Written by hand as `float4 t0 = source[i];` above the if it is the "
+            + "original's 7, instruction for instruction, so the whole of the claim "
+            + "is the name. The same limit SplitRead is up against: what is shared "
+            + "between statements rather than inside one has nobody to hoist it."),
         ["cs_4_0/particle_update"] = (13,
             "Two instructions, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "

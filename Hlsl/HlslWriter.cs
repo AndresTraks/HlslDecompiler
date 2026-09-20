@@ -269,6 +269,22 @@ public abstract class HlslWriter
                 {
                     WriteLine($"ByteAddressBuffer {resource.Name} : register(t{resource.BindPoint});");
                 }
+                // An append or consume buffer declares itself the same way a
+                // structured one does and is bound with a counter beside it, which
+                // is what the reflection data calls it and the only place it is
+                // said: the bytecode declares dcl_uav_structured for all three.
+                else if (resource.ShaderInputType == D3DShaderInputType.UavAppendStructured)
+                {
+                    WriteLine($"AppendStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.UavConsumeStructured)
+                {
+                    WriteLine($"ConsumeStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
+                }
+                else if (resource.ShaderInputType == D3DShaderInputType.UavRWStucturedWithCounter)
+                {
+                    WriteLine($"RWStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
+                }
                 else if (resource.ShaderInputType == D3DShaderInputType.UavRWByteAddress)
                 {
                     WriteLine($"RWByteAddressBuffer {resource.Name} : register(u{resource.BindPoint});");

@@ -76,6 +76,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteAssignmentStatement(assignmentStatement);
         }
+        else if (statement is BufferAppendStatement bufferAppend)
+        {
+            WriteBufferAppendStatement(bufferAppend);
+        }
         else if (statement is StoreTypedStatement storeTyped)
         {
             WriteStoreTypedStatement(storeTyped);
@@ -221,6 +225,23 @@ public class HlslAstWriter : HlslWriter
         {
             write.Write();
         }
+    }
+
+    /// <summary>
+    /// `buffer.Append(value);` - the slot the counter gave and the store into it,
+    /// which is all an append buffer can be asked to do.
+    /// </summary>
+    private void WriteBufferAppendStatement(BufferAppendStatement append)
+    {
+        string destination = _registers.GetRegisterName(
+            ((RegisterInputNode)append.Destination).RegisterComponentKey.RegisterKey);
+        HlslTreeNode[] values = [.. append.Values.Select(Reduce)];
+        WriteSharedSubexpressions([values]);
+        bool storesIntegers = values.All(v => StatementFinalizer.IsIntegerValue(v) == true);
+        string value = storesIntegers
+            ? _compiler.CompileAsInteger(values)
+            : _compiler.Compile(values);
+        WriteLine($"{destination}.Append({value});");
     }
 
     /// <summary>

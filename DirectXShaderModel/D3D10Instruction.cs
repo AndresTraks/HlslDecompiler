@@ -243,6 +243,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.BufInfo:
                 case D3D10Opcode.StoreUAVTyped:
                 case D3D10Opcode.LdUAVTyped:
+                case D3D10Opcode.ImmAtomicAlloc:
+                case D3D10Opcode.ImmAtomicConsume:
                 case D3D10Opcode.ImmAtomicIAdd:
                 case D3D10Opcode.ImmAtomicAnd:
                 case D3D10Opcode.ImmAtomicOr:

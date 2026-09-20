@@ -293,6 +293,8 @@ public static class D3D10OpcodeExtensions
     {
         switch (opcode)
         {
+            case D3D10Opcode.ImmAtomicAlloc:
+            case D3D10Opcode.ImmAtomicConsume:
             case D3D10Opcode.ImmAtomicIAdd:
             case D3D10Opcode.ImmAtomicAnd:
             case D3D10Opcode.ImmAtomicOr:

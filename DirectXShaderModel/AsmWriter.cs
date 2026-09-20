@@ -1024,11 +1024,22 @@ public class AsmWriter
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)
     {
         // Texel offsets ride on the mnemonic, and not only on sample: ld, gather4
-        // and every other form of sample can carry them too.
+        // and every other form of sample can carry them too. So does what shader
+        // model 5 says about the resource. fxc writes the words first and the
+        // brackets after, in the same order: gather4_aoffimmi_indexable(1,-1,0)
+        // (texture2d)(float,float,float,float).
+        string arguments = "";
         if (instruction.SampleOffsets != null)
         {
-            mnemonic += $"_aoffimmi({string.Join(",", instruction.SampleOffsets.Select(o => o.ToString(CultureInfo.InvariantCulture)))})";
+            mnemonic += "_aoffimmi";
+            arguments += $"({string.Join(",", instruction.SampleOffsets.Select(o => o.ToString(CultureInfo.InvariantCulture)))})";
         }
+        if (instruction.IndexableResourceDimension != null)
+        {
+            mnemonic += "_indexable";
+            arguments += GetIndexableResourceArguments(instruction);
+        }
+        mnemonic += arguments;
         string line = instruction.Saturate ? mnemonic + "_sat" : mnemonic;
         for (int i = 0; i < operandCount; i++)
         {
@@ -1415,9 +1426,33 @@ public class AsmWriter
         };
     }
 
+    // The dimension, a structured buffer's stride, and the return types, as fxc
+    // writes them after _indexable: (structured_buffer, stride=16)(mixed,mixed,
+    // mixed,mixed). A buffer is a structured_buffer when it has a stride and a
+    // raw_buffer when it has none.
+    private static string GetIndexableResourceArguments(D3D10Instruction instruction)
+    {
+        ResourceDimension dimension = instruction.IndexableResourceDimension.Value;
+        string name = dimension switch
+        {
+            ResourceDimension.StructuredBuffer =>
+                $"structured_buffer, stride={instruction.IndexableResourceStride}",
+            ResourceDimension.RawBuffer => "raw_buffer",
+            _ => GetResourceDimensionName(dimension),
+        };
+        string returnTypes = instruction.IndexableResourceReturnTypeToken is int token
+            ? GetResourceReturnTypes(token)
+            : "";
+        return $"({name})({returnTypes})";
+    }
+
     private static string GetResourceReturnTypes(D3D10Instruction instruction)
     {
-        int token = instruction.GetResourceReturnTypeToken();
+        return GetResourceReturnTypes(instruction.GetResourceReturnTypeToken());
+    }
+
+    private static string GetResourceReturnTypes(int token)
+    {
         return string.Join(",", Enumerable.Range(0, 4).Select(i =>
             (D3DResourceReturnType)((token >> (4 * i)) & 0xF) switch
             {

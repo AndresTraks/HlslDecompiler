@@ -57,6 +57,16 @@ public class D3D10Instruction : Instruction
     // The texel offsets of sample_aoffimmi, or null when the sample has none.
     public int[] SampleOffsets { get; set; }
 
+    // What shader model 5 says about the resource at the instruction that reads it,
+    // in extended opcode tokens of its own: its dimension, the stride of a
+    // structured buffer, and the four return types. The declaration says the same,
+    // so nothing here needs them to decompile - but fxc writes them into the
+    // mnemonic, `ld_indexable(texture2d)(float,float,float,float)`, and the
+    // listing follows it. Null where the instruction carries none.
+    public ResourceDimension? IndexableResourceDimension { get; set; }
+    public int IndexableResourceStride { get; set; }
+    public int? IndexableResourceReturnTypeToken { get; set; }
+
     // How resinfo reports what it measures: as floats, as their reciprocals, or as
     // the integers GetDimensions' uint overloads take. In the opcode token, so the
     // reader sets it.

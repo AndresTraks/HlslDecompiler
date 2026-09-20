@@ -5,7 +5,7 @@ dcl_uav_structured u0, 8
 dcl_input vThreadID.x
 dcl_temps 2
 dcl_thread_group 64, 1, 1
-ld_structured r0.x, vThreadID.x, l(0), t0.x
+ld_structured_indexable(structured_buffer, stride=4)(mixed,mixed,mixed,mixed) r0.x, vThreadID.x, l(0), t0.x
 ushr r0.y, r0.x, l(16)
 f16tof32 r1.xy, r0.xy
 store_structured u0.xy, vThreadID.xx, l(0), r1.xy

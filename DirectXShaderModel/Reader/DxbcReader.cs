@@ -217,20 +217,37 @@ public class DxbcReader : BinaryReader
         // among other things, and counts towards the instruction length. Dropping it
         // would sample the wrong texels without saying so.
         int[] sampleOffsets = null;
+        ResourceDimension? indexableDimension = null;
+        int indexableStride = 0;
+        int? indexableReturnTypes = null;
         uint extendedToken = opcodeToken;
         while ((extendedToken & 0x80000000) != 0)
         {
             extendedToken = ReadUInt32();
             operandDwordCount--;
             const int SampleControls = 1;
-            if ((extendedToken & 0x3F) == SampleControls)
+            const int ResourceDim = 2;
+            const int ResourceReturnType = 3;
+            switch (extendedToken & 0x3F)
             {
-                sampleOffsets =
-                [
-                    SignExtend4((extendedToken >> 9) & 0xF),
-                    SignExtend4((extendedToken >> 13) & 0xF),
-                    SignExtend4((extendedToken >> 17) & 0xF),
-                ];
+                case SampleControls:
+                    sampleOffsets =
+                    [
+                        SignExtend4((extendedToken >> 9) & 0xF),
+                        SignExtend4((extendedToken >> 13) & 0xF),
+                        SignExtend4((extendedToken >> 17) & 0xF),
+                    ];
+                    break;
+                // Shader model 5 repeats the resource's dimension and return types
+                // at the instruction reading it, and a structured buffer's stride
+                // with them.
+                case ResourceDim:
+                    indexableDimension = (ResourceDimension)((extendedToken >> 6) & 0x1F);
+                    indexableStride = (int)((extendedToken >> 11) & 0xFFFF);
+                    break;
+                case ResourceReturnType:
+                    indexableReturnTypes = (int)((extendedToken >> 6) & 0xFFFF);
+                    break;
             }
         }
 
@@ -275,6 +292,9 @@ public class DxbcReader : BinaryReader
         var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
         instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
         instruction.SampleOffsets = sampleOffsets;
+        instruction.IndexableResourceDimension = indexableDimension;
+        instruction.IndexableResourceStride = indexableStride;
+        instruction.IndexableResourceReturnTypeToken = indexableReturnTypes;
         if (opcode.HasBooleanTest())
         {
             instruction.TestNonZero = (opcodeToken & 0x40000) != 0;

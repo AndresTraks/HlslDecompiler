@@ -7,7 +7,7 @@ dcl_temps 1
 dcl_thread_group 8, 8, 1
 mov r0.xy, vThreadID.xy
 mov r0.zw, l(0, 0, 0, 0)
-ld r0, r0, t0
+ld_indexable(texture2d)(float,float,float,float) r0, r0, t0
 add r0, r0, r0
 store_uav_typed u0, vThreadID.xyyy, r0
 ret

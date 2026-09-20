@@ -911,6 +911,10 @@ public class D3D10Machine
                 return Source(instruction, 1);
             case D3D10Opcode.SampleInfo:
                 return SampleCount(instruction);
+            case D3D10Opcode.SamplePos:
+                // Where a sample sits inside the pixel. Made up, but made up the
+                // same way for both programs, which is what is being compared.
+                return Pack([.. Named($"samplepos{instruction.GetParamRegisterNumber(1)}")]);
             case D3D10Opcode.Lod:
                 return LevelOfDetail(instruction);
             case D3D10Opcode.LdStructured:

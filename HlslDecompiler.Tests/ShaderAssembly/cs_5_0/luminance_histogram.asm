@@ -1,6 +1,6 @@
 cs_5_0
 dcl_globalFlags refactoringAllowed
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_resource_texture2d (float,float,float,float) t0
 dcl_uav_structured u0, 4
 dcl_input vThreadID.xy

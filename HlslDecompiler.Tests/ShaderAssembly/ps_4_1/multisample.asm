@@ -1,7 +1,7 @@
 ps_4_1
 dcl_globalFlags refactoringAllowed
 dcl_resource_texture2dms(4) (float,float,float,float) t0
-dcl_input_sv linear noperspective v0.xy
+dcl_input_ps_siv linear noperspective v0.xy, position
 dcl_output o0
 dcl_temps 4
 ftoi r0.xy, v0.xy

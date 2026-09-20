@@ -1536,6 +1536,7 @@ public class HlslAstWriter : HlslWriter
     {
         return node is LoadStructuredNode
             or TextureLoadOutputNode
+            or SamplePositionNode
             or PartialDerivativeXOperation
             or PartialDerivativeYOperation;
     }

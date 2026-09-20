@@ -131,6 +131,13 @@ public class D3D10Instruction : Instruction
     /// <summary>The sample count a dcl_resource_texture2dms declares, or 0.</summary>
     public int ResourceSampleCount { get; set; }
 
+    /// <summary>
+    /// Whether a declared constant buffer is read at an index a register holds
+    /// rather than at an immediate one. It is one bit of the opcode token, and it
+    /// says what the shader does with the buffer.
+    /// </summary>
+    public bool IsDynamicallyIndexed { get; set; }
+
     /// <summary>What a tessellator subdivides: a triangle, a quad or a line.</summary>
     public D3D10TessellatorDomain TessellatorDomain { get; set; }
 
@@ -238,6 +245,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Rsq:
                 case D3D10Opcode.Gather4:
                 case D3D10Opcode.Lod:
+                case D3D10Opcode.SamplePos:
                 case D3D10Opcode.SampleInfo:
                 case D3D10Opcode.Sample:
                 case D3D10Opcode.Gather4Po:

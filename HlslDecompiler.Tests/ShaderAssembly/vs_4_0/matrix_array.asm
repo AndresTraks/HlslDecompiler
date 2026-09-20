@@ -1,5 +1,5 @@
 vs_4_0
-dcl_constantbuffer cb0[36], immediateIndexed
+dcl_constantbuffer CB0[36], dynamicIndexed
 dcl_input v0
 dcl_input_sgv v1.x, instance_id
 dcl_output_siv o0, position

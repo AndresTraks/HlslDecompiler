@@ -1,8 +1,8 @@
 ps_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_resource_texture2d (float,float,float,float) t0
 dcl_resource_texture2d (float,float,float,float) t1
-dcl_input_sv linear noperspective v0.xy
+dcl_input_ps_siv linear noperspective v0.xy, position
 dcl_input_ps linear v1.x
 dcl_output o0
 dcl_temps 4

@@ -1,6 +1,6 @@
 vs_4_0
-dcl_globalFlags refactoringAllowed enableRawAndStructuredBuffers
-dcl_constantbuffer cb0[4], immediateIndexed
+dcl_globalFlags refactoringAllowed | enableRawAndStructuredBuffers
+dcl_constantbuffer CB0[4], immediateIndexed
 dcl_resource_structured t0, 64
 dcl_input v0
 dcl_input v1.xyz

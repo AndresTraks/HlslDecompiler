@@ -1,5 +1,5 @@
 vs_4_0
-dcl_constantbuffer cb0[2], immediateIndexed
+dcl_constantbuffer CB0[2], immediateIndexed
 dcl_input_sgv v0.x, vertex_id
 dcl_input_sgv v1.x, instance_id
 dcl_output_siv o0, position

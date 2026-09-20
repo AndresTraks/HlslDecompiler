@@ -2,8 +2,8 @@ ds_5_0
 dcl_input_control_point_count 4
 dcl_tessellator_domain domain_quad
 dcl_globalFlags refactoringAllowed
-dcl_constantbuffer cb0[4], immediateIndexed
-dcl_input_siv vpc2.x, finalQuadUEq1EdgeTessFactor
+dcl_constantbuffer CB0[4], immediateIndexed
+dcl_input_siv vpc2.x, finalQuadUeq1EdgeTessFactor
 dcl_input_siv vpc4.x, finalQuadUInsideTessFactor
 dcl_input vDomain.xy
 dcl_input vicp[4][0].xyz

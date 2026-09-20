@@ -1,5 +1,5 @@
 ps_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_sampler s0, mode_default
 dcl_resource_texture2d (float,float,float,float) t0
 dcl_resource_texture2d (float,float,float,float) t1

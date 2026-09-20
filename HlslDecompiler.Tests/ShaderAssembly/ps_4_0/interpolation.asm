@@ -1,5 +1,5 @@
 ps_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_input_ps constant v0
 dcl_input_ps linear centroid v1
 dcl_input_ps linear noperspective v2

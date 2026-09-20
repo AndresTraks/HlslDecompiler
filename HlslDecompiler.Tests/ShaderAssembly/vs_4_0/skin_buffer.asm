@@ -1,6 +1,6 @@
 vs_4_0
 dcl_immediateConstantBuffer { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }
-dcl_constantbuffer cb0[4], immediateIndexed
+dcl_constantbuffer CB0[4], immediateIndexed
 dcl_resource_buffer (float,float,float,float) t0
 dcl_input v0
 dcl_input v1

@@ -1,5 +1,5 @@
 ps_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_output o0
 dcl_temps 1
 mov r0.x, cb0[0].x

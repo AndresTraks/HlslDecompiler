@@ -369,25 +369,29 @@ public class AsmWriter
                 WriteInstruction(instruction, "cut", 0);
                 break;
             case D3D10Opcode.DclConstantBuffer:
-                WriteLine("dcl_constantbuffer {0}, {1}", FormatOperand(instruction, 0), "immediateIndexed"); // TODO: AccessPattern
+                // fxc writes the buffer's name upper case where it is declared and
+                // lower case everywhere it is read, and the listing follows it.
+                WriteLine("dcl_constantbuffer CB{0}, {1}", FormatOperand(instruction, 0).Substring(2),
+                    instruction.IsDynamicallyIndexed ? "dynamicIndexed" : "immediateIndexed");
                 break;
             case D3D10Opcode.DclGlobalFlags:
-                string globalFlags = "";
+                var setFlags = new List<string>();
                 foreach (D3D10GlobalFlags flag in Enum.GetValues(typeof(D3D10GlobalFlags)))
                 {
                     if (flag != D3D10GlobalFlags.None && instruction.GetGlobalFlags().HasFlag(flag))
                     {
                         string flagString = flag.ToString();
-                        globalFlags += " " + char.ToLower(flagString[0]) + flagString.Substring(1);
+                        setFlags.Add(char.ToLower(flagString[0]) + flagString.Substring(1));
                     }
                 }
-                WriteLine("dcl_globalFlags{0}", globalFlags);
+                WriteLine("dcl_globalFlags {0}", string.Join(" | ", setFlags));
                 break;
             case D3D10Opcode.DclInputPS:
                 WriteLine("dcl_input_ps {0} {1}", instruction.GetInterpolationModeName(), FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclInputPSSiv:
-                WriteLine("dcl_input_sv {0} {1}", instruction.GetInterpolationModeName(), FormatOperand(instruction, 0));
+                WriteLine("dcl_input_ps_siv {0} {1}, {2}", instruction.GetInterpolationModeName(),
+                    FormatOperand(instruction, 0), GetSystemValueName(instruction));
                 break;
             case D3D10Opcode.DclInput:
                 WriteLine("dcl_input {0}", FormatOperand(instruction, 0));
@@ -396,12 +400,9 @@ public class AsmWriter
                 WriteLine("dcl_inputprimitive {0}", instruction.GetPrimitive().ToHlslString());
                 break;
             case D3D10Opcode.DclInputSiv:
-                {
-                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
-                    name = name[0].ToString().ToLower() + name.Substring(1).ToString();
-                    WriteLine("dcl_input_siv {0}, {1}", FormatOperand(instruction, 0), name);
-                    break;
-                }
+                WriteLine("dcl_input_siv {0}, {1}", FormatOperand(instruction, 0),
+                    GetSystemValueName(instruction));
+                break;
             case D3D10Opcode.DclGSMaxOutputVertexCount:
                 WriteLine("dcl_maxout {0}", instruction.GetParamInt(0));
                 break;
@@ -435,8 +436,10 @@ public class AsmWriter
                 }
             case D3D10Opcode.DclResource:
                 {
-                    string dimension = GetResourceDimensionName(instruction.GetResourceDimension());
-                    if (instruction.ResourceSampleCount != 0)
+                    ResourceDimension resourceDimension = instruction.GetResourceDimension();
+                    string dimension = GetResourceDimensionName(resourceDimension);
+                    if (resourceDimension is ResourceDimension.Texture2Dms
+                        or ResourceDimension.Texture2DmsArray)
                     {
                         dimension += $"({instruction.ResourceSampleCount})";
                     }
@@ -658,6 +661,9 @@ public class AsmWriter
                 break;
             case D3D10Opcode.LDMS:
                 WriteInstruction(instruction, "ldms", 4);
+                break;
+            case D3D10Opcode.SamplePos:
+                WriteInstruction(instruction, "samplepos", 3);
                 break;
             case D3D10Opcode.SampleInfo:
                 WriteInstruction(instruction, instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
@@ -969,22 +975,42 @@ public class AsmWriter
     // fxc spells these with underscores - is_front_face, vertex_id - and the enum
     // in camel case with the acronym left whole, so a capital only starts a word
     // where it follows a lower case letter or begins one.
+    /// <summary>
+    /// The name fxc writes for a system value in a declaration. There is no rule to
+    /// derive them by: the ones shader model 4 shipped with are lower case with
+    /// underscores and the ones added after it are camel case, which is why
+    /// sampleIndex sits among vertex_id and is_front_face. Spelled out rather than
+    /// computed, so the listing matches fxc's.
+    /// </summary>
     private static string GetSystemValueName(D3D10Instruction instruction)
     {
-        string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString();
-        var builder = new System.Text.StringBuilder(name.Length + 4);
-        for (int i = 0; i < name.Length; i++)
+        var name = (D3D10Name)instruction.GetParamIndexImmediate32(1, 0);
+        return name switch
         {
-            bool startsWord = i > 0 && char.IsUpper(name[i])
-                && (char.IsLower(name[i - 1])
-                    || (i + 1 < name.Length && char.IsLower(name[i + 1])));
-            if (startsWord)
-            {
-                builder.Append('_');
-            }
-            builder.Append(char.ToLowerInvariant(name[i]));
-        }
-        return builder.ToString();
+            D3D10Name.Position => "position",
+            D3D10Name.ClipDistance => "clip_distance",
+            D3D10Name.CullDistance => "cull_distance",
+            D3D10Name.RenderTargetArrayIndex => "rendertarget_array_index",
+            D3D10Name.ViewportArrayIndex => "viewport_array_index",
+            D3D10Name.VertexID => "vertex_id",
+            D3D10Name.PrimitiveID => "primitive_id",
+            D3D10Name.InstanceID => "instance_id",
+            D3D10Name.IsFrontFace => "is_front_face",
+            D3D10Name.SampleIndex => "sampleIndex",
+            D3D10Name.FinalQuadUEq0EdgeTessFactor => "finalQuadUeq0EdgeTessFactor",
+            D3D10Name.FinalQuadVEq0EdgeTessFactor => "finalQuadVeq0EdgeTessFactor",
+            D3D10Name.FinalQuadUEq1EdgeTessFactor => "finalQuadUeq1EdgeTessFactor",
+            D3D10Name.FinalQuadVEq1EdgeTessFactor => "finalQuadVeq1EdgeTessFactor",
+            D3D10Name.FinalQuadUInsideTessFactor => "finalQuadUInsideTessFactor",
+            D3D10Name.FinalQuadVInsideTessFactor => "finalQuadVInsideTessFactor",
+            D3D10Name.FinalTriUEq0EdgeTessFactor => "finalTriUeq0EdgeTessFactor",
+            D3D10Name.FinalTriVEq0EdgeTessFactor => "finalTriVeq0EdgeTessFactor",
+            D3D10Name.FinalTriWEq0EdgeTessFactor => "finalTriWeq0EdgeTessFactor",
+            D3D10Name.FinalTriInsideTessFactor => "finalTriInsideTessFactor",
+            D3D10Name.FinalLineDetailTessFactor => "finalLineDetailTessFactor",
+            D3D10Name.FinalLineDensityTessFactor => "finalLineDensityTessFactor",
+            _ => throw new NotImplementedException(name.ToString()),
+        };
     }
 
     // _nz takes the branch when the register is not zero and _z when it is.

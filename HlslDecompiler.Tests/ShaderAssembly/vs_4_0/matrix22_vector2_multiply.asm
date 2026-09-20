@@ -1,5 +1,5 @@
 vs_4_0
-dcl_constantbuffer cb0[2], immediateIndexed
+dcl_constantbuffer CB0[2], immediateIndexed
 dcl_input v0.xy
 dcl_output o0
 dcl_output o1

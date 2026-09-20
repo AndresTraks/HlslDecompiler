@@ -1,5 +1,5 @@
 vs_4_0
-dcl_constantbuffer cb0[9], immediateIndexed
+dcl_constantbuffer CB0[9], dynamicIndexed
 dcl_output_siv o0, position
 dcl_temps 2
 mov r0, l(0, 0, 0, 0)

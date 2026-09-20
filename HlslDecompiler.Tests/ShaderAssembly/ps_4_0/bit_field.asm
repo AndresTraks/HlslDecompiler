@@ -1,6 +1,6 @@
 ps_4_0
 dcl_immediateConstantBuffer { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }
-dcl_constantbuffer cb0[2], immediateIndexed
+dcl_constantbuffer CB0[2], immediateIndexed
 dcl_input_ps linear v0.xy
 dcl_output o0
 dcl_temps 2

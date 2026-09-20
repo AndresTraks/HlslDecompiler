@@ -1,5 +1,5 @@
 ps_4_0
-dcl_constantbuffer cb0[2], immediateIndexed
+dcl_constantbuffer CB0[2], immediateIndexed
 dcl_output o0
 dcl_temps 2
 xor r0.xy, cb0[1].xw, l(3, 3, 0, 0)

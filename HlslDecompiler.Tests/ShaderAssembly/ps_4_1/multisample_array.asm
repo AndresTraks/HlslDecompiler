@@ -1,6 +1,6 @@
 ps_4_1
 dcl_globalFlags refactoringAllowed
-dcl_resource_texture2dmsarray (float,float,float,float) t0
+dcl_resource_texture2dmsarray(0) (float,float,float,float) t0
 dcl_input_ps linear v0.xyz
 dcl_output o0
 dcl_temps 2

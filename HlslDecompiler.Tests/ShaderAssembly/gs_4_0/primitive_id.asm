@@ -1,4 +1,4 @@
-﻿gs_4_0
+gs_4_0
 dcl_input_siv v[3][0], position
 dcl_input vPrim
 dcl_temps 2

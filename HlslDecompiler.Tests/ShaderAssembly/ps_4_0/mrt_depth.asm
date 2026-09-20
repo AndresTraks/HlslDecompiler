@@ -1,6 +1,6 @@
 ps_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
-dcl_input_sv linear noperspective v0.z
+dcl_constantbuffer CB0[1], immediateIndexed
+dcl_input_ps_siv linear noperspective v0.z, position
 dcl_input_ps linear v1.xyz
 dcl_input_ps linear v2.xy
 dcl_output o0

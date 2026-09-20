@@ -1,5 +1,5 @@
 gs_4_0
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_input_siv v[3][0], position
 dcl_input v[3][1].xyz
 dcl_input v[3][2].xy

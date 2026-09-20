@@ -303,6 +303,10 @@ public class DxbcReader : BinaryReader
         {
             instruction.ControlPointCount = (int)((opcodeToken >> 11) & 0x7F);
         }
+        if (opcode == D3D10Opcode.DclConstantBuffer)
+        {
+            instruction.IsDynamicallyIndexed = ((opcodeToken >> 11) & 0x1) != 0;
+        }
         if (opcode == D3D10Opcode.Sync)
         {
             instruction.SyncFlags = (D3D10SyncFlags)((opcodeToken >> 11) & 0xF);

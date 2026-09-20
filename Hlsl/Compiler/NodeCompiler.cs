@@ -1307,6 +1307,18 @@ public sealed class NodeCompiler
             return loaded;
         }
 
+        if (first is SamplePositionNode samplePosition)
+        {
+            // From the resource operand, the way a sampled texel's channel is: the
+            // destination is .xy and the resource swizzle says which of the two.
+            string positionSwizzle = GetAstSourceSwizzleName(
+                components.Select(c => (IHasComponentIndex)((SamplePositionNode)c).Resource), 2);
+            string sampled = _registers.GetRegisterName(
+                samplePosition.Resource.RegisterComponentKey.RegisterKey);
+            string index = CompileAsInteger([samplePosition.SampleIndex]);
+            return $"{sampled}.GetSamplePosition({index}){positionSwizzle}";
+        }
+
         if (first is TextureLoadOutputNode textureLoad)
         {
             // From the resource operand, not from the load: the load is named after

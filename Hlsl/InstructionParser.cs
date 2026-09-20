@@ -2146,6 +2146,8 @@ public class InstructionParser
                 }
             case D3D10Opcode.SampleInfo:
                 return CreateSampleInfoNode(instruction, componentIndex);
+            case D3D10Opcode.SamplePos:
+                return CreateSamplePositionNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Gather4C:
             case D3D10Opcode.Gather4Po:
@@ -2264,6 +2266,21 @@ public class InstructionParser
             IsSampleCount = true,
             SampleCountComponent = isArray ? 3 : 2,
         };
+    }
+
+    // samplepos dest, resource, sampleIndex: the position of one sample within the
+    // pixel, which is a float2 whichever component is asked for.
+    private SamplePositionNode CreateSamplePositionNode(D3D10Instruction instruction, int outputComponent)
+    {
+        const int ResourceParamIndex = 1;
+        const int SampleIndexParamIndex = 2;
+
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent]
+            as RegisterInputNode;
+        HlslTreeNode sampleIndex = instruction.GetOperandType(SampleIndexParamIndex) == OperandType.Immediate32
+            ? new ConstantNode((int)instruction.GetParamInt(SampleIndexParamIndex, 0))
+            : GetInputComponents(instruction, SampleIndexParamIndex, 1)[0];
+        return new SamplePositionNode(resource, sampleIndex, outputComponent);
     }
 
     private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -2982,6 +2999,8 @@ public class InstructionParser
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreRaw:
+            // The resource and which of its samples.
+            case D3D10Opcode.SamplePos:
                 return 2;
             case D3D10Opcode.SampleInfo:
                 return 1;

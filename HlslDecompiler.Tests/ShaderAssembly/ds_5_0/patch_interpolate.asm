@@ -2,7 +2,7 @@ ds_5_0
 dcl_input_control_point_count 3
 dcl_tessellator_domain domain_tri
 dcl_globalFlags refactoringAllowed
-dcl_constantbuffer cb0[4], immediateIndexed
+dcl_constantbuffer CB0[4], immediateIndexed
 dcl_input vDomain.xyz
 dcl_input vicp[3][0].xyz
 dcl_output_siv o0, position

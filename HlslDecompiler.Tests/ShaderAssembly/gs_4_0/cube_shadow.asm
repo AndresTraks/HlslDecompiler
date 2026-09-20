@@ -1,5 +1,5 @@
-﻿gs_4_0
-dcl_constantbuffer cb0[24], immediateIndexed
+gs_4_0
+dcl_constantbuffer CB0[24], dynamicIndexed
 dcl_input v[3][0]
 dcl_temps 2
 dcl_inputprimitive triangle

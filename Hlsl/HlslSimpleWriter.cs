@@ -1488,6 +1488,13 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;
+            // The resource names itself and the sample index is an integer.
+            case D3D10Opcode.SamplePos:
+                WriteResult(instruction, "{0} = {1}.GetSamplePosition({2});",
+                    GetOperandName(instruction, 0),
+                    _registers.GetRegisterName(instruction.GetParamRegisterKey(1)),
+                    GetOperandName(instruction, 2));
+                break;
             case D3D10Opcode.Log:
                 WriteResult(instruction, "{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -2921,7 +2928,9 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return 2;
             }
-            if (instruction.Opcode == D3D10Opcode.EvalSampleIndex)
+            // And which sample GetSamplePosition is asked about is one index,
+            // however wide the float2 it answers with.
+            if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.SamplePos)
             {
                 return 1;
             }

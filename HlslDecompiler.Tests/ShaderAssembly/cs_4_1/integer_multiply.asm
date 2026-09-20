@@ -1,6 +1,6 @@
 cs_4_1
 dcl_globalFlags refactoringAllowed
-dcl_constantbuffer cb0[1], immediateIndexed
+dcl_constantbuffer CB0[1], immediateIndexed
 dcl_uav_structured u0, 4
 dcl_input vThreadID.x
 dcl_temps 1

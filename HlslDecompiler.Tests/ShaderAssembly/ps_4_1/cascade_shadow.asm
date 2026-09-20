@@ -1,7 +1,7 @@
 ps_4_1
 dcl_globalFlags refactoringAllowed
 dcl_immediateConstantBuffer { { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }
-dcl_constantbuffer cb0[18], immediateIndexed
+dcl_constantbuffer CB0[18], dynamicIndexed
 dcl_sampler s0, mode_comparison
 dcl_resource_texture2darray (float,float,float,float) t0
 dcl_input_ps linear v1.xyz

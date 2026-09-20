@@ -1,5 +1,5 @@
 ps_4_0
-dcl_constantbuffer cb0[2], immediateIndexed
+dcl_constantbuffer CB0[2], immediateIndexed
 dcl_input_ps constant v0
 dcl_input_ps constant v1.xy
 dcl_output o0

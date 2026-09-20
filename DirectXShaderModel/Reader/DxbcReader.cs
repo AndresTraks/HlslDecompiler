@@ -272,6 +272,17 @@ public class DxbcReader : BinaryReader
                 ? D3D10ResInfoReturnType.Uint
                 : D3D10ResInfoReturnType.Float;
         }
+        // The tessellator domain and the control point count ride in the opcode
+        // token the way a resource dimension does.
+        if (opcode == D3D10Opcode.DclTessDomain)
+        {
+            instruction.TessellatorDomain = (D3D10TessellatorDomain)((opcodeToken >> 11) & 0x3);
+        }
+        if (opcode is D3D10Opcode.DclInputControlPointCount
+            or D3D10Opcode.DclOutputControlPointCount)
+        {
+            instruction.ControlPointCount = (int)((opcodeToken >> 11) & 0x7F);
+        }
         if (opcode == D3D10Opcode.Sync)
         {
             instruction.SyncFlags = (D3D10SyncFlags)((opcodeToken >> 11) & 0xF);

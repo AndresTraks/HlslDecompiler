@@ -131,6 +131,12 @@ public class D3D10Instruction : Instruction
     /// <summary>The sample count a dcl_resource_texture2dms declares, or 0.</summary>
     public int ResourceSampleCount { get; set; }
 
+    /// <summary>What a tessellator subdivides: a triangle, a quad or a line.</summary>
+    public D3D10TessellatorDomain TessellatorDomain { get; set; }
+
+    /// <summary>How many control points a patch has, in or out.</summary>
+    public int ControlPointCount { get; set; }
+
     public D3D10GlobalFlags GetGlobalFlags()
     {
         return _globalFlags;
@@ -645,6 +651,8 @@ public class D3D10Instruction : Instruction
             OperandType.InputThreadIDInGroup => "SV_GroupThreadID",
             OperandType.InputThreadIDInGroupFlattened => "SV_GroupIndex",
             OperandType.InputPrimitiveID => "SV_PrimitiveID",
+            OperandType.InputDomainPoint => "SV_DomainLocation",
+            OperandType.OutputControlPointID => "SV_OutputControlPointID",
             OperandType.OutputDepth => "SV_Depth",
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
@@ -652,13 +660,18 @@ public class D3D10Instruction : Instruction
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
+        // A domain location names one register and no number, the way the thread
+        // ids do - but it is a float where they are uints, so it is not one of
+        // them.
         if (!IsThreadRegister(operandType)
+            && operandType != OperandType.InputDomainPoint
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
             && operandType != OperandType.OutputDepthLessEqual
             && operandType != OperandType.OutputCoverageMask)
         {
-            int numberIndex = (_isGeometryShader && operandType == OperandType.Input) ? 2 : 1;
+            int numberIndex = (_isGeometryShader && operandType == OperandType.Input)
+                || operandType == OperandType.InputControlPoint ? 2 : 1;
             int declIndex = (int) GetParamIndexImmediate32(destIndex, numberIndex);
             name += declIndex;
         }
@@ -773,7 +786,11 @@ public class D3D10Instruction : Instruction
                 operandType,
                 (int)OperandTokens.GetOperandIndices(index)[0].Immediate);
         }
-        if (_isGeometryShader && operandType == OperandType.Input)
+        if ((_isGeometryShader && operandType == OperandType.Input)
+            // vicp[2][0] is the same shape: which control point, then which
+            // register of it. The patch is an array of vertices the way a
+            // geometry shader's input is.
+            || operandType == OperandType.InputControlPoint)
         {
             return D3D10RegisterKey.CreateGSInput(
                 (int)GetParamIndexImmediate32(index, 2),

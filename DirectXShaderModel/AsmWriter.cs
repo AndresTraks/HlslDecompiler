@@ -83,6 +83,8 @@ public class AsmWriter
             ShaderType.Pixel => "ps",
             ShaderType.Geometry => "gs",
             ShaderType.Compute => "cs",
+            ShaderType.Domain => "ds",
+            ShaderType.Hull => "hs",
             _ => throw new NotImplementedException(shader.Type.ToString()),
         };
         WriteLine($"{shaderType}_{shader.MajorVersion}_{shader.MinorVersion}");
@@ -471,6 +473,25 @@ public class AsmWriter
             case D3D10Opcode.DclIndexableTemp:
                 WriteLine("dcl_indexableTemp x{0}[{1}], {2}", instruction.IndexableTempRegister,
                     instruction.IndexableTempElementCount, instruction.IndexableTempComponentCount);
+                break;
+            // The tessellation declarations, which say what a patch is and how the
+            // tessellator divides it.
+            case D3D10Opcode.DclInputControlPointCount:
+                WriteLine("dcl_input_control_point_count {0}", instruction.ControlPointCount);
+                break;
+            case D3D10Opcode.DclOutputControlPointCount:
+                WriteLine("dcl_output_control_point_count {0}", instruction.ControlPointCount);
+                break;
+            case D3D10Opcode.DclTessDomain:
+                WriteLine("dcl_tessellator_domain domain_{0}",
+                    instruction.TessellatorDomain switch
+                    {
+                        D3D10TessellatorDomain.Isoline => "isoline",
+                        D3D10TessellatorDomain.Triangle => "tri",
+                        D3D10TessellatorDomain.Quad => "quad",
+                        _ => throw new NotImplementedException(
+                            instruction.TessellatorDomain.ToString()),
+                    });
                 break;
             case D3D10Opcode.DclThreadGroup:
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
@@ -1271,6 +1292,14 @@ public class AsmWriter
             OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
             OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
             OperandType.InputPrimitiveID => "vPrim",
+            // The tessellation inputs: where in the patch the domain shader is
+            // being run, and the control points it is being run over.
+            OperandType.InputDomainPoint => "vDomain",
+            OperandType.InputControlPoint => "vicp",
+            OperandType.OutputControlPoint => "vocp",
+            OperandType.InputPatchConstant => "vpc",
+            OperandType.OutputControlPointID => "vOutputControlPointID",
+            OperandType.InputForkInstanceID => "vForkInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
             // The output stream a geometry shader emits to, which shader model 5

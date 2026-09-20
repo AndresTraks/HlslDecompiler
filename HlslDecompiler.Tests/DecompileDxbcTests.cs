@@ -106,6 +106,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "attribute_evaluate")]
     [TestCase("ps_5_0", "gather_offset")]
     [TestCase("gs_5_0", "stream_expand")]
+    [TestCase("ds_5_0", "patch_interpolate")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

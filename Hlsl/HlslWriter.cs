@@ -74,9 +74,15 @@ public abstract class HlslWriter
         // The geometry shader signature always names the input struct, so it has to
         // be declared even when it holds a single register.
         if (_registers.MethodInputRegisters.Count > 1
-            || _shader.Type == ShaderType.Geometry)
+            || _shader.Type == ShaderType.Geometry
+            || _shader.Type == ShaderType.Domain)
         {
             WriteInputStructureDeclaration();
+        }
+
+        if (_registers.TessellatorDomain != D3D10TessellatorDomain.Undefined)
+        {
+            WritePatchConstantStructureDeclaration();
         }
 
         if (HasOutputStruct)
@@ -87,6 +93,16 @@ public abstract class HlslWriter
         if (_registers.MaxOutputVertexCount != null)
         {
             WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
+        }
+
+        if (_registers.TessellatorDomain != D3D10TessellatorDomain.Undefined)
+        {
+            WriteLine("[domain(\"{0}\")]", _registers.TessellatorDomain switch
+            {
+                D3D10TessellatorDomain.Isoline => "isoline",
+                D3D10TessellatorDomain.Triangle => "tri",
+                _ => "quad",
+            });
         }
 
         if (_registers.NumThreads != null)
@@ -393,6 +409,8 @@ public abstract class HlslWriter
         return components > 1 ? "float" + components : "float";
     }
 
+    private const string PatchConstantStructureName = "DS_CONST";
+
     // A compute shader takes its thread and group indices the way any other shader
     // takes its inputs, and more than one of them needs a structure to hold them.
     private string GetInputStructureName()
@@ -403,6 +421,7 @@ public abstract class HlslWriter
             ShaderType.Vertex => "VS_IN",
             ShaderType.Geometry => "GS_IN",
             ShaderType.Compute => "CS_IN",
+            ShaderType.Domain => "DS_IN",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
         };
     }
@@ -414,6 +433,18 @@ public abstract class HlslWriter
         WriteLine("{");
         indent = "\t";
         ICollection<RegisterDeclaration> inputs = _registers.MethodInputRegisters;
+        // A domain shader reads a patch, which is an array of vertices the way a
+        // geometry shader's input is: one declaration per register, not one per
+        // control point. Its struct is the control point, so the domain location -
+        // which is per run rather than per point - is not a field of it.
+        if (_shader.Type == ShaderType.Domain)
+        {
+            inputs = [.. inputs
+                .Where(r => r.RegisterKey is D3D10RegisterKey
+                    { OperandType: not OperandType.InputDomainPoint })
+                .GroupBy(r => (r.RegisterKey as D3D10RegisterKey).GetGSBaseKey())
+                .Select(g => g.First())];
+        }
         if (_shader.Type == ShaderType.Geometry)
         {
             inputs = inputs
@@ -424,6 +455,36 @@ public abstract class HlslWriter
         foreach (var input in inputs)
         {
             WriteLine(CompileRegisterDeclaration(input) + ';');
+        }
+        indent = "";
+        WriteLine("};");
+        WriteLine();
+    }
+
+    /// <summary>
+    /// The tessellation factors the hull shader computed. Every domain shader is
+    /// given them whether it reads them or not, and fxc refuses to compile one whose
+    /// signature leaves them out, so they are written from the domain alone - which
+    /// fixes both how many there are and what they are called.
+    /// </summary>
+    private void WritePatchConstantStructureDeclaration()
+    {
+        WriteLine($"struct {PatchConstantStructureName}");
+        WriteLine("{");
+        indent = "\t";
+        switch (_registers.TessellatorDomain)
+        {
+            case D3D10TessellatorDomain.Isoline:
+                WriteLine("float edges[2] : SV_TessFactor;");
+                break;
+            case D3D10TessellatorDomain.Triangle:
+                WriteLine("float edges[3] : SV_TessFactor;");
+                WriteLine("float inside : SV_InsideTessFactor;");
+                break;
+            default:
+                WriteLine("float edges[4] : SV_TessFactor;");
+                WriteLine("float inside[2] : SV_InsideTessFactor;");
+                break;
         }
         indent = "";
         WriteLine("};");
@@ -517,6 +578,23 @@ public abstract class HlslWriter
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration)}, ";
             return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}inout {stream}<GS_OUT> stream";
+        }
+        if (_shader.Type == ShaderType.Domain)
+        {
+            // The patch is an array of control points and the domain location says
+            // where in it this run is. Everything else the patch carries - the
+            // tessellation factors the hull shader computed - is read through the
+            // constant parameter, which this shader does not touch unless it says
+            // so.
+            RegisterDeclaration location = _registers.MethodInputRegisters
+                .FirstOrDefault(r => r.RegisterKey is D3D10RegisterKey
+                    { OperandType: OperandType.InputDomainPoint });
+            string domainLocation = location == null
+                ? ""
+                : CompileRegisterDeclaration(location) + ", ";
+            return $"{PatchConstantStructureName} constants, {domainLocation}"
+                + $"const OutputPatch<{GetInputStructureName()}, "
+                + $"{_registers.InputControlPointCount}> patch";
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {

@@ -1665,6 +1665,11 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclOutputSgv:
             case D3D10Opcode.DclInputSiv:
             case D3D10Opcode.DclOutput:
+            // Written as the [domain] attribute and the patch's size, with the
+            // signature rather than in the body.
+            case D3D10Opcode.DclInputControlPointCount:
+            case D3D10Opcode.DclOutputControlPointCount:
+            case D3D10Opcode.DclTessDomain:
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
             // The stream the emits go to, which is written as the parameter the
             // shader already declares.

@@ -181,6 +181,15 @@ public sealed class RegisterState
     /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
     public RegisterDeclaration PrimitiveIdDeclaration { get; set; }
     public int? MaxOutputVertexCount { get; set; }
+
+    /// <summary>How many control points a patch comes in with, and goes out with.
+    /// The first is the size of the array a domain shader reads.</summary>
+    public int? InputControlPointCount { get; set; }
+    public int? OutputControlPointCount { get; set; }
+
+    /// <summary>What the tessellator subdivides, which the shader declares with
+    /// the [domain(...)] attribute.</summary>
+    public D3D10TessellatorDomain TessellatorDomain { get; set; }
     public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
@@ -844,7 +853,10 @@ public sealed class RegisterState
                     // single-input shortcut rather than after it.
                     if (d3d10RegisterKey.GSVertex.HasValue)
                     {
-                        return $"i[{d3d10RegisterKey.GSVertex}].{decl.Name}";
+                        // A domain shader's array is the patch it was given; a
+                        // geometry shader's is the primitive's vertices.
+                        string array = _shaderModel.Type == ShaderType.Domain ? "patch" : "i";
+                        return $"{array}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
                     }
                     if (MethodInputRegisters.Count == 1)
                     {
@@ -862,7 +874,14 @@ public sealed class RegisterState
                         return MethodInputRegisters.Count == 1 ? threadName : "i." + threadName;
                     }
                 case OperandType.InputPrimitiveID:
+                case OperandType.InputDomainPoint:
+                case OperandType.OutputControlPointID:
                     return RegisterDeclarations[registerKey].Name;
+                // A control point of the patch, read the way a geometry shader
+                // reads a vertex of its primitive.
+                case OperandType.InputControlPoint:
+                    return $"patch[{d3d10RegisterKey.GSVertex}]."
+                        + RegisterDeclarations[registerKey].Name;
                 case OperandType.Resource:
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
@@ -1418,6 +1437,9 @@ public sealed class RegisterState
                         case OperandType.InputThreadGroupID:
                         case OperandType.InputThreadIDInGroup:
                         case OperandType.InputThreadIDInGroupFlattened:
+                        // Where in the patch this run is, which is a parameter of
+                        // main beside the patch itself.
+                        case OperandType.InputDomainPoint:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
                         // Per primitive rather than per vertex, so not a field of the

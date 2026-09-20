@@ -559,6 +559,17 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.DclGlobalFlags:
                     break;
+                // What a patch is and how the tessellator divides it, which HLSL
+                // says with the [domain(...)] attribute and the patch's own size.
+                case D3D10Opcode.DclInputControlPointCount:
+                    _registerState.InputControlPointCount = instruction.ControlPointCount;
+                    break;
+                case D3D10Opcode.DclOutputControlPointCount:
+                    _registerState.OutputControlPointCount = instruction.ControlPointCount;
+                    break;
+                case D3D10Opcode.DclTessDomain:
+                    _registerState.TessellatorDomain = instruction.TessellatorDomain;
+                    break;
                 case D3D10Opcode.DclIndexRange:
                     _registerState.DeclareIndexRange(instruction);
                     break;

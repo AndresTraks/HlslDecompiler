@@ -1330,6 +1330,18 @@ public class D3D10Machine
                     int register = (int)indices[1].Immediate;
                     return VertexInput(vertex, register);
                 }
+            case OperandType.InputControlPoint:
+                {
+                    // vicp[point][register] is shaped like a geometry shader's
+                    // v[vertex][register] and named the same way, so a control point
+                    // of the patch gets the value that vertex of the primitive would.
+                    var indices = instruction.OperandTokens.GetOperandIndices(index);
+                    return VertexInput((int)indices[0].Immediate, (int)indices[1].Immediate);
+                }
+            case OperandType.InputDomainPoint:
+                // Where in the patch this run is: a float, unlike the thread ids,
+                // and read as one.
+                return [.. Named("vDomain").Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.Output:
                 return _output[instruction.GetParamRegisterNumber(index)];
             case OperandType.ConstantBuffer:

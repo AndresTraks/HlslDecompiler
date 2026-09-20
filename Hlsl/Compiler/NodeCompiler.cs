@@ -1455,12 +1455,19 @@ public sealed class NodeCompiler
             {
                 int index = _tempAssignmentindexCounter;
                 _tempAssignmentindexCounter++;
-                for (int i = 0; i < components.Count; i++)
+                // The distinct variables, not the places they are read. One scalar
+                // read by every component of a four wide load arrives here four
+                // times, and numbering the positions made it an int4 whose .w was
+                // the value - `input[t0.w]` where the shader said `input[t0]`.
+                List<HlslTreeNode> variables = [.. components
+                    .Distinct(ReferenceEqualityComparer.Instance)
+                    .Cast<HlslTreeNode>()];
+                for (int i = 0; i < variables.Count; i++)
                 {
-                    var component = components[i] as TempVariableNode;
+                    var component = variables[i] as TempVariableNode;
                     component.DeclarationIndex = index;
                     component.ComponentIndex = i;
-                    component.VariableSize = components.Count;
+                    component.VariableSize = variables.Count;
                 }
             }
 

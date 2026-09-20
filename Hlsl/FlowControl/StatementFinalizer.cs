@@ -90,6 +90,12 @@ public class StatementFinalizer
                 .Where(o => o.Key.RegisterKey.IsTempRegister)
                 .Where(o => !(assignment.Inputs.TryGetValue(o.Key, out var input) && ReferenceEquals(input, o.Value)))
                 .ToDictionary();
+            // Which registers this statement assigns have a component shared with a
+            // statement that holds it. By register rather than by component, since a
+            // load writes four and only the one a condition reads looks shared - and
+            // by register rather than by statement, since one statement carries
+            // several: the comparison beside the load is not the load.
+            HashSet<RegisterComponentKey> sharedRegisters = SharedWithHoldingStatement(assignmentOutputs);
             foreach (var assignmentOutput in assignmentOutputs)
             {
                 var assignmentNode = assignmentOutput.Value;
@@ -116,7 +122,7 @@ public class StatementFinalizer
                     // named here, since a store in between may change what the value
                     // reads - a swap loads both elements before it writes either.
                     IStatement[] holders = FindHoldingStatements(assignmentNode);
-                    if (holders.Length == 0
+                    if ((holders.Length == 0 && !sharedRegisters.Contains(assignmentOutput.Key))
                         || (holders.Length == 1 && i < statements.Count - 1
                             && ReferenceEquals(holders[0], statements[i + 1])
                             && statements[i + 1] is IndexableTempStoreStatement))
@@ -149,7 +155,8 @@ public class StatementFinalizer
                         // `t0 = a < b;` that nothing had declared, of a type that a
                         // temp cannot hold anyway.
                         if (assignmentNode.IsInputOf(ifStatement.Comparison)
-                            && assignmentNode.Outputs.All(o => o.IsInputOf(ifStatement.Comparison)))
+                            && assignmentNode.Outputs.All(o => o.IsInputOf(ifStatement.Comparison))
+                            && !sharedRegisters.Contains(assignmentOutput.Key))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);
                             ifStatement.Inputs.Remove(assignmentOutput.Key);
@@ -227,6 +234,8 @@ public class StatementFinalizer
                         && fed.Value.IsInputOf(output.Value))
                     .Select(fed => fed.Key)];
             }
+            // By register, for the reason the removal above asks it that way.
+            HashSet<RegisterComponentKey> sharedRegisters = SharedWithHoldingStatement(newAssignments);
             var assignmentByKey = new Dictionary<RegisterComponentKey, TempAssignmentNode>();
             foreach (var newAssignment in newAssignments)
             {
@@ -236,7 +245,11 @@ public class StatementFinalizer
                 // or if an iteration variable is changed. A store statement holding the
                 // value is a use outside the statement too.
                 bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values))
-                    || FindHoldingStatements(tempValue).Length != 0;
+                    || FindHoldingStatements(tempValue).Length != 0
+                    // And the same question the removal above asks: a value a store
+                    // or an append holds alongside another reader has left the
+                    // statement, whatever the node graph says about it.
+                    || sharedRegisters.Contains(newAssignment.Key);
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
                 TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
@@ -727,6 +740,84 @@ public class StatementFinalizer
     // clip holds its values the same way, but they inline whatever they hold
     // wherever it was computed, as they always have; only the local array, whose
     // stores can change what an earlier load meant, is made to keep the distance.
+    /// <summary>
+    /// The registers among these assignments with a component that a statement
+    /// holds and something else reads as well. Asked of the register because the
+    /// components of one are named together or not at all.
+    /// </summary>
+    private HashSet<RegisterComponentKey> SharedWithHoldingStatement(
+        IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> assignments)
+    {
+        List<KeyValuePair<RegisterComponentKey, HlslTreeNode>> all = [.. assignments];
+        var shared = new HashSet<RegisterComponentKey>();
+        foreach (var assignment in all)
+        {
+            if (!IsSharedWithHoldingStatement(assignment.Value))
+            {
+                continue;
+            }
+            shared.Add(assignment.Key);
+            // And the components that belong with it. A load writes four and only
+            // the one a condition reads looks shared, so naming that one alone
+            // leaves the other three as an expression with nowhere to go - and a
+            // statement carries several instructions, so its other registers, and
+            // even its other writes to this one, are values of their own.
+            foreach (var sibling in all)
+            {
+                if (!sibling.Key.RegisterKey.Equals(assignment.Key.RegisterKey)
+                    || ReferenceEquals(sibling.Value, assignment.Value))
+                {
+                    continue;
+                }
+                if (IsSameValue(sibling.Value, assignment.Value))
+                {
+                    shared.Add(sibling.Key);
+                }
+            }
+        }
+        return shared;
+    }
+
+    /// <summary>
+    /// Whether two components were written by the same instruction, which is what
+    /// makes them components of one value rather than two that share a register.
+    /// The same kind of node over the same inputs but for the component each reads.
+    /// </summary>
+    private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
+    {
+        if (a.GetType() != b.GetType() || a.Inputs.Count != b.Inputs.Count)
+        {
+            return false;
+        }
+        return a is LoadStructuredNode or ResourceLoadNode or TextureLoadOutputNode or ConsumeNode;
+    }
+
+    /// <summary>
+    /// Whether a value a statement holds is read anywhere else as well. One holder
+    /// and nothing else needs no variable - the store writes the expression where
+    /// it stands, which is how every buffer write in the corpus reads. Two of them,
+    /// or one beside a reader in the graph, is a value the bytecode computed once,
+    /// and inlining it computes it again at each.
+    /// </summary>
+    private bool IsSharedWithHoldingStatement(HlslTreeNode node)
+    {
+        int holders = 0;
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if ((statement is StoreStructuredStatement store
+                    && (store.Address == node || store.Values.Contains(node)))
+                || (statement is StoreTypedStatement typedStore
+                    && (typedStore.Coordinates.Contains(node) || typedStore.Values.Contains(node)))
+                || (statement is BufferAppendStatement append && append.Values.Contains(node))
+                || (statement is AtomicStatement atomic
+                    && (atomic.Address == node || atomic.Value == node || atomic.Compare == node)))
+            {
+                holders++;
+            }
+        });
+        return holders > 1 || (holders == 1 && node.Outputs.Count != 0);
+    }
+
     private IStatement[] FindHoldingStatements(HlslTreeNode node)
     {
         var holders = new List<IStatement>();
@@ -797,6 +888,21 @@ public class StatementFinalizer
                     {
                         append.Values[i] = replacement;
                     }
+                }
+            }
+            else if (statement is AtomicStatement atomic)
+            {
+                if (atomic.Address == node)
+                {
+                    atomic.Address = replacement;
+                }
+                if (atomic.Value == node)
+                {
+                    atomic.Value = replacement;
+                }
+                if (atomic.Compare == node)
+                {
+                    atomic.Compare = replacement;
                 }
             }
             else if (statement is ClipStatement clip)

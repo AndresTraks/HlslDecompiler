@@ -16,14 +16,14 @@ namespace HlslDecompiler.Hlsl.FlowControl;
 public class AtomicStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
-    public HlslTreeNode Address { get; }
+    public HlslTreeNode Address { get; set; }
     // The element byte offset, which a structured resource carries in the second
     // component of the address operand and a byte address one does not have.
     public HlslTreeNode ElementByteOffset { get; init; }
     // InterlockedCompareStore alone takes a value to compare against; everything
     // else leaves this null.
-    public HlslTreeNode Compare { get; init; }
-    public HlslTreeNode Value { get; }
+    public HlslTreeNode Compare { get; set; }
+    public HlslTreeNode Value { get; set; }
     /// <summary>
     /// The variable the value the resource held before this goes into, for the
     /// imm_ forms, and null for the ones that keep nothing. HLSL spells it as the

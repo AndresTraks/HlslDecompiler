@@ -772,6 +772,33 @@ public class StatementFinalizer
                     store.Address = replacement;
                 }
             }
+            else if (statement is StoreTypedStatement typedStore)
+            {
+                for (int i = 0; i < typedStore.Values.Length; i++)
+                {
+                    if (typedStore.Values[i] == node)
+                    {
+                        typedStore.Values[i] = replacement;
+                    }
+                }
+                for (int i = 0; i < typedStore.Coordinates.Length; i++)
+                {
+                    if (typedStore.Coordinates[i] == node)
+                    {
+                        typedStore.Coordinates[i] = replacement;
+                    }
+                }
+            }
+            else if (statement is BufferAppendStatement append)
+            {
+                for (int i = 0; i < append.Values.Length; i++)
+                {
+                    if (append.Values[i] == node)
+                    {
+                        append.Values[i] = replacement;
+                    }
+                }
+            }
             else if (statement is ClipStatement clip)
             {
                 for (int i = 0; i < clip.Values.Length; i++)

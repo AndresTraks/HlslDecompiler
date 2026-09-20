@@ -1950,6 +1950,7 @@ public class InstructionParser
             case D3D10Opcode.SampleInfo:
                 return CreateSampleInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
+            case D3D10Opcode.Gather4C:
             case D3D10Opcode.Lod:
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
@@ -2148,6 +2149,9 @@ public class InstructionParser
                 D3D10Opcode.SampleC => TextureLoadControls.Compare,
                 D3D10Opcode.SampleCLZ => TextureLoadControls.Compare | TextureLoadControls.LevelZero,
                 D3D10Opcode.Gather4 => TextureLoadControls.Gather,
+                // A gather that compares: four texels tested against one value, the
+                // way a comparison sample tests the one it reads.
+                D3D10Opcode.Gather4C => TextureLoadControls.Gather | TextureLoadControls.Compare,
                 D3D10Opcode.Lod => TextureLoadControls.CalculateLod,
                 _ => TextureLoadControls.None,
             };

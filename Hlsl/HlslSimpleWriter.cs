@@ -1290,6 +1290,25 @@ public class HlslSimpleWriter : HlslWriter
                         GetResourceSwizzle(instruction));
                     break;
                 }
+            case D3D10Opcode.Gather4C:
+                {
+                    // The same four texels as a gather, each compared against the
+                    // value after the coordinate. The channel is the sampler's
+                    // swizzle again, and only red has a method without a suffix.
+                    string method = instruction.GetSourceSwizzleComponents(3)[0] switch
+                    {
+                        1 => "GatherCmpGreen",
+                        2 => "GatherCmpBlue",
+                        3 => "GatherCmpAlpha",
+                        _ => "GatherCmp",
+                    };
+                    WriteResult(instruction, "{0} = {2}.{5}({3}, {1}, {4}{6}){7};",
+                        GetOperandName(instruction, 0), GetOperandName(instruction, 1),
+                        GetOperandName(instruction, 2), GetOperandName(instruction, 3),
+                        GetOperandName(instruction, 4), method, GetSampleOffset(instruction),
+                        GetResourceSwizzle(instruction));
+                    break;
+                }
             case D3D10Opcode.SampleL:
                 WriteResult(instruction, "{0} = {2}.SampleLevel({3}, {1}, {4}{5}){6};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
@@ -2790,6 +2809,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
             case D3D10Opcode.Gather4:
+            case D3D10Opcode.Gather4C:
             case D3D10Opcode.Lod:
                 return true;
             default:

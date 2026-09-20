@@ -835,6 +835,12 @@ public class D3D10Machine
                 return SampleTexture(instruction);
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
+            // A gather compares the four texels around the coordinate, which are
+            // not modelled - the texture here is a function rather than a grid - so
+            // it answers the one comparison a sample does, in all four components.
+            // Both programs read the same texel and compare it the same way, which
+            // is what the tier is asking about.
+            case D3D10Opcode.Gather4C:
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
                 return LoadTexel(instruction);

@@ -1310,7 +1310,17 @@ public sealed class NodeCompiler
                 }
                 else if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
                 {
-                    method = "Gather";
+                    // A comparison gather takes the value to compare against after
+                    // the coordinate, the way a comparison sample does.
+                    if (textureLoad.Controls.HasFlag(TextureLoadControls.Compare))
+                    {
+                        method = "GatherCmp";
+                        extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
+                    }
+                    else
+                    {
+                        method = "Gather";
+                    }
                 }
                 else if (textureLoad.Controls.HasFlag(TextureLoadControls.Grad))
                 {

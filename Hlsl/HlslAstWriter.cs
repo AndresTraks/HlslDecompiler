@@ -1491,7 +1491,11 @@ public class HlslAstWriter : HlslWriter
             // Width and height at mip 0 is the two-argument overload, and reads out
             // of a two-wide variable; anything more takes the full form.
             bool isSize = call.All(c => c.InfoComponent < 2) && IsConstantZero(info.MipLevel);
-            TempVariableNode[] variables = _compiler.CreateTempVariables(isSize ? 2 : 4);
+            // A multisampled texture's overload is three wide - width, height and
+            // the sample count - and has no mip level to ask about.
+            bool isMultisampled = call.Any(c => c.IsSampleCount);
+            TempVariableNode[] variables = _compiler.CreateTempVariables(
+                isMultisampled ? 3 : isSize ? 2 : 4);
             foreach (TempVariableNode variable in variables)
             {
                 variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;
@@ -1508,7 +1512,11 @@ public class HlslAstWriter : HlslWriter
 
     private static bool IsSameResourceInfoCall(ResourceInfoNode a, ResourceInfoNode b)
     {
-        return a.ReturnType == b.ReturnType
+        // One GetDimensions on a multisampled texture becomes a resinfo and a
+        // sampleinfo, and fxc picks their return types separately - it took the
+        // size as uints and the count as a float in the same call. So the types
+        // have to agree only between measurements of the same kind.
+        return (a.ReturnType == b.ReturnType || a.IsSampleCount != b.IsSampleCount)
             && a.Resource.RegisterComponentKey.RegisterKey.Equals(b.Resource.RegisterComponentKey.RegisterKey)
             && (ReferenceEquals(a.MipLevel, b.MipLevel)
                 || (a.MipLevel is ConstantNode ca && b.MipLevel is ConstantNode cb && ca.Value == cb.Value));

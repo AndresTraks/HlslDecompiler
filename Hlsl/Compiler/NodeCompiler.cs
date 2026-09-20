@@ -1382,9 +1382,14 @@ public sealed class NodeCompiler
         // The two-wide variable is the two-argument overload; otherwise the full
         // form, which for a 2D texture is the mip level in and width, height and
         // mip count out. z is the depth or array size, which a 2D texture has not.
-        string call = variable.VariableSize == 2
-            ? $"{resource.Name}.GetDimensions({name}.x, {name}.y);"
-            : $"{resource.Name}.GetDimensions({Compile(info.MipLevel)}, {name}.x, {name}.y, {name}.w);";
+        string call = variable.VariableSize switch
+        {
+            2 => $"{resource.Name}.GetDimensions({name}.x, {name}.y);",
+            // A multisampled texture has no mips, and reports how many samples it
+            // has in place of the mip count.
+            3 => $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z);",
+            _ => $"{resource.Name}.GetDimensions({Compile(info.MipLevel)}, {name}.x, {name}.y, {name}.w);",
+        };
         return declaration + "\r\n" + call;
     }
 

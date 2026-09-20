@@ -607,6 +607,11 @@ public class AsmWriter
             case D3D10Opcode.LDMS:
                 WriteInstruction(instruction, "ldms", 4);
                 break;
+            case D3D10Opcode.SampleInfo:
+                WriteInstruction(instruction, instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
+                    ? "sampleinfo_uint"
+                    : "sampleinfo", 2);
+                break;
             case D3D10Opcode.ResInfo:
                 WriteInstruction(instruction, instruction.ResInfoReturnType switch
                 {

@@ -1803,6 +1803,8 @@ public class InstructionParser
                 return CreateResourceLoadNode(instruction, componentIndex);
             case D3D10Opcode.ResInfo:
                 return CreateResourceInfoNode(instruction, componentIndex);
+            case D3D10Opcode.SampleInfo:
+                return CreateSampleInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Lod:
             case D3D10Opcode.Sample:
@@ -1873,6 +1875,22 @@ public class InstructionParser
             ? new ConstantNode((int)instruction.GetParamInt(MipLevelParamIndex, 0))
             : GetInputComponents(instruction, MipLevelParamIndex, 1)[0];
         return new ResourceInfoNode(resource, mipLevel, outputComponent, instruction.ResInfoReturnType);
+    }
+
+    // sampleinfo dest, resource: how many samples the resource has, with no mip
+    // level to ask it at and the resource one operand earlier than resinfo has it.
+    // The mip level is a constant zero here so that it joins the resinfo of the
+    // same texture, which is the one GetDimensions call the two came from.
+    private ResourceInfoNode CreateSampleInfoNode(D3D10Instruction instruction, int outputComponent)
+    {
+        const int ResourceParamIndex = 1;
+
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
+        return new ResourceInfoNode(
+            resource, new ConstantNode(0), outputComponent, instruction.ResInfoReturnType)
+        {
+            IsSampleCount = true,
+        };
     }
 
     private TextureLoadOutputNode CreateTextureLoadOutputNode(Instruction instruction, int outputComponent)
@@ -2524,6 +2542,8 @@ public class InstructionParser
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreRaw:
                 return 2;
+            case D3D10Opcode.SampleInfo:
+                return 1;
             default:
                 throw new NotImplementedException();
         }

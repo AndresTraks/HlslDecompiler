@@ -257,6 +257,15 @@ public class DxbcReader : BinaryReader
         {
             instruction.ResInfoReturnType = (D3D10ResInfoReturnType)((opcodeToken >> 11) & 0x3);
         }
+        // sampleinfo reports one number and has one bit for how, where resinfo has
+        // two: the reciprocal form is not one of its choices, so 1 here means the
+        // uint that is 2 there.
+        if (opcode == D3D10Opcode.SampleInfo)
+        {
+            instruction.ResInfoReturnType = ((opcodeToken >> 11) & 0x1) != 0
+                ? D3D10ResInfoReturnType.Uint
+                : D3D10ResInfoReturnType.Float;
+        }
         if (opcode == D3D10Opcode.Sync)
         {
             instruction.SyncFlags = (D3D10SyncFlags)((opcodeToken >> 11) & 0xF);

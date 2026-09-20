@@ -1267,6 +1267,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.ResInfo:
                 WriteResourceInfo(instruction);
                 break;
+            case D3D10Opcode.SampleInfo:
+                WriteSampleInfo(instruction);
+                break;
             case D3D10Opcode.Log:
                 WriteResult(instruction, "{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -2319,7 +2322,15 @@ public class HlslSimpleWriter : HlslWriter
                 read[swizzle[component]] = true;
             }
         }
-        if (!read[2] && !read[3] && mipLevel == "0")
+        // A multisampled texture has one overload and it is the three argument
+        // one: no mip level, and the sample count where the mip count would be.
+        // Asking it for two came out as X3013, no matching intrinsic.
+        if (IsMultisampled(instruction, 2))
+        {
+            WriteLine($"{type}3 {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y, {dimensions}.z);");
+        }
+        else if (!read[2] && !read[3] && mipLevel == "0")
         {
             WriteLine($"{type}2 {dimensions};");
             WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
@@ -2330,6 +2341,35 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine($"{resource}.GetDimensions({mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.w);");
         }
         WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0), dimensions, GetResourceSwizzle(instruction));
+    }
+
+    /// <summary>
+    /// sampleinfo, which reports how many samples a resource has. HLSL asks for it
+    /// through GetDimensions like the size, so this writes a call of its own and
+    /// leaves the width and height it also returns unread - one instruction more
+    /// than the shader had, which is what writing instruction by instruction costs
+    /// wherever one HLSL call becomes two.
+    /// </summary>
+    private void WriteSampleInfo(D3D10Instruction instruction)
+    {
+        string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
+        string resource = GetOperandName(instruction, 1);
+        string dimensions = $"dimensions{_resourceInfoCount++}";
+        WriteLine($"{type}3 {dimensions};");
+        WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y, {dimensions}.z);");
+        WriteResult(instruction, "{0} = {1}.z;", GetOperandName(instruction, 0), dimensions);
+    }
+
+    /// <summary>Whether the resource an operand names is a multisampled texture,
+    /// which changes which GetDimensions overloads there are.</summary>
+    private bool IsMultisampled(D3D10Instruction instruction, int operandIndex)
+    {
+        int bindPoint = instruction.GetParamRegisterNumber(operandIndex);
+        ResourceDefinition definition = _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .FirstOrDefault(d => d.BindPoint == bindPoint);
+        return definition?.Dimension is ResourceDimension.Texture2Dms
+            or ResourceDimension.Texture2DmsArray;
     }
 
     private static string GetResourceSwizzle(D3D10Instruction instruction)

@@ -222,6 +222,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.Rsq:
                 case D3D10Opcode.Gather4:
                 case D3D10Opcode.Lod:
+                case D3D10Opcode.SampleInfo:
                 case D3D10Opcode.Sample:
                 case D3D10Opcode.SampleC:
                 case D3D10Opcode.SampleCLZ:

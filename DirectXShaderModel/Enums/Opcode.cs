@@ -29,6 +29,9 @@ public enum Opcode
     M3x4,
     M3x3,
     M3x2,
+    // Subroutines, which fxc does not emit from HLSL at any D3D9 profile - it
+    // inlines, and there is no noinline to ask it not to. Another set that only
+    // reaches this decompiler in hand written assembly.
     Call,
     CallNZ,
     Loop,
@@ -53,6 +56,10 @@ public enum Opcode
     MovA,
     DefB,
     DefI,
+    // From here to TexDepth is the ps_1_x texture addressing set, which no
+    // fixture reaches and none can: d3dcompiler_47 answers `error X3539: ps_1_x
+    // is no longer supported`. Handled or not, they are for shaders an older fxc
+    // built.
     TexCoord = 64,
     TexKill,
     Tex,
@@ -83,6 +90,9 @@ public enum Opcode
     DSX,
     DSY,
     TexLDD,
+    // Predication, which no fixture reaches: it belonged to ps_2_x and vs_2_x,
+    // and d3dcompiler_47 knows neither target. Handled anyway, since a shader
+    // compiled by an older fxc still carries it.
     SetP,
     TexLDL,
     Breakp,

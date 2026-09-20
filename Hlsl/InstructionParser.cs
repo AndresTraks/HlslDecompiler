@@ -18,6 +18,8 @@ public class InstructionParser
     // The immediates a mov or movc writes, with their bits: the instruction says
     // nothing about their type, so they are typed after parsing by what reads them.
     private readonly List<(ConstantNode Constant, uint Bits)> _polymorphicImmediates = [];
+    private readonly Dictionary<HlslTreeNode, bool> _storedTypes =
+        new(ReferenceEqualityComparer.Instance);
 
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
@@ -352,6 +354,7 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
+                        RecordStoredType(instruction, values);
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs)
                         {
                             ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
@@ -409,6 +412,7 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
                             .ToArray();
+                        RecordStoredType(instruction, values);
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs) { IsRaw = true });
                         break;
                     }
@@ -1516,11 +1520,33 @@ public class InstructionParser
     /// so -1.0f moved into it printed as the -1082130432 of its bits. The readers of
     /// this particular value know better, and where they all agree, they win.
     /// </summary>
+    /// <summary>
+    /// What a buffer store reads the value it is given as, kept for the immediates
+    /// nothing else types. A store is a statement rather than a node, so it is not
+    /// in the graph the reader walk below follows, and a value whose only reader is
+    /// one had nobody to ask: `output[i] = c ? x : -1` into an int buffer wrote the
+    /// -1 as the float its bits are, which is NaN, which is not HLSL at all.
+    /// </summary>
+    private void RecordStoredType(D3D10Instruction instruction, HlslTreeNode[] values)
+    {
+        ValueKind kind = instruction.Opcode == D3D10Opcode.StoreRaw
+            ? ValueKind.Integer
+            : _integerOperandAnalysis.GetStructuredElementKind(instruction);
+        if (kind is not (ValueKind.Integer or ValueKind.Float))
+        {
+            return;
+        }
+        foreach (HlslTreeNode value in values)
+        {
+            _storedTypes[value] = kind == ValueKind.Integer;
+        }
+    }
+
     private void ResolvePolymorphicImmediates()
     {
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
         {
-            bool? consumedAsInteger = GetConsumedType(constant);
+            bool? consumedAsInteger = GetConsumedType(constant, _storedTypes);
             if (consumedAsInteger == null || consumedAsInteger == (constant.IntegerValue != null))
             {
                 continue;
@@ -1546,7 +1572,8 @@ public class InstructionParser
     // What the readers of a value agree it is, looking through the nodes that
     // merely carry it - moves, conditional moves, phis, and a sign or absolute
     // modifier - or null where they disagree or there are none.
-    internal static bool? GetConsumedType(HlslTreeNode value)
+    internal static bool? GetConsumedType(
+        HlslTreeNode value, IReadOnlyDictionary<HlslTreeNode, bool> storedTypes = null)
     {
         bool? type = null;
         var visited = HlslTreeNode.NewNodeSet();
@@ -1555,6 +1582,16 @@ public class InstructionParser
         while (pending.Count != 0)
         {
             HlslTreeNode node = pending.Pop();
+            // A store reads what it is given and is not a node, so it says so here
+            // rather than by being one of the outputs below.
+            if (storedTypes != null && storedTypes.TryGetValue(node, out bool stored))
+            {
+                if (type != null && type != stored)
+                {
+                    return null;
+                }
+                type = stored;
+            }
             foreach (HlslTreeNode reader in node.Outputs)
             {
                 if (!visited.Add(reader))

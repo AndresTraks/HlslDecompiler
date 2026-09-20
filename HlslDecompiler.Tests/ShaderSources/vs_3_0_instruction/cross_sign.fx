@@ -38,7 +38,7 @@ VS_OUT main(VS_IN i)
 	o.texcoord1.y = -r0.y + r0.z;
 	r0.yzw = -axis.xyz + i.position.xyz;
 	r0.y = dot(r0.yzw, r0.yzw);
-	r0.y = 1 / sqrt(r0.y);
+	r0.y = rsqrt(r0.y);
 	o.texcoord1.z = 1 / r0.y;
 	r0.y = r0.x * -2 + 3;
 	r0.x = r0.x * r0.x;

@@ -18,7 +18,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 r2;
 	int4 r3;
 	r0.x = dot(i.texcoord1.xyz, i.texcoord1.xyz);
-	r0.x = 1 / sqrt(r0.x);
+	r0.x = rsqrt(r0.x);
 	r0.xyz = r0.xxx * i.texcoord1.xyz;
 	r1.xyz = i.texcoord.xyz;
 	r2.xyz = float3(0, 0, 0);

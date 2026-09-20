@@ -20,7 +20,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 r3;
 	int r4;
 	r0.x = dot(i.texcoord1.xyz, i.texcoord1.xyz);
-	r0.x = 1 / sqrt(r0.x);
+	r0.x = rsqrt(r0.x);
 	r0.xyz = r0.xxx * i.texcoord1.xyz;
 	r0.xy = r0.xy * parallax.xx;
 	r0.z = max(abs(r0.z), 0.00100000005);

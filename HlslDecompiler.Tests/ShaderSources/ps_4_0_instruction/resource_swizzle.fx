@@ -24,7 +24,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r0.xyz = r1.xyz / r0.xxx;
 	r0.xyz = -(r0.xyz) + lightPos.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r1.x = 1 / sqrt(r0.w);
+	r1.x = rsqrt(r0.w);
 	r0.w = sqrt(r0.w);
 	r0.w = r0.w / lightRange;
 	r0.w = saturate(-(r0.w) + 1);

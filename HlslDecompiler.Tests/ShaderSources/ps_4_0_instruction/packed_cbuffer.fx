@@ -24,7 +24,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 r2;
 	r0.xyz = -(i.texcoord.xyz) + eyePos.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r0.xyz = r0.www * r0.xyz;
 	r1.xw = time * float2(0.0199999996, 0.0130000003);
 	r1.yz = float2(0, 0);
@@ -36,7 +36,7 @@ float4 main(PS_IN i) : SV_Target
 	r1.xyz = r2.xyz * float3(2, 2, 2) + r1.xyz;
 	r1.xyz = r1.xyz + float3(-1, -1, -1);
 	r0.w = dot(r1.xyz, r1.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r1.xyz = r0.www * r1.xyz;
 	r0.x = saturate(dot(r0.xyz, r1.xyz));
 	r0.x = -(r0.x) + 1;

@@ -638,7 +638,7 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.Rsq:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"1 / sqrt({GetSourceName(instruction, 1)})");
+                    $"rsqrt({GetSourceName(instruction, 1)})");
                 break;
             case Opcode.Sge:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -1201,7 +1201,10 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Rsq:
-                WriteResult(instruction, "{0} = 1 / sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                // The instruction HLSL has for this, rather than the division and
+                // the root it is made of: fxc folds neither back, so `1 / sqrt(x)`
+                // is a div and a sqrt where the shader had one rsq.
+                WriteResult(instruction, "{0} = rsqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Sample:
                 WriteResult(instruction, "{0} = {2}.Sample({3}, {1}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));

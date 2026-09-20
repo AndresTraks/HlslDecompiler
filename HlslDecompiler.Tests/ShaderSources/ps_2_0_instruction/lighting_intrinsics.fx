@@ -21,7 +21,7 @@ float4 main(PS_IN i) : COLOR
 	r2 = r1.zxy * i.texcoord1.yzx;
 	r2 = r1.yzx * i.texcoord1.zxy + -r2.xyz;
 	r1.w = dot(r2.xyz, r2.xyz);
-	r0.x = 1 / sqrt(r1.w);
+	r0.x = rsqrt(r1.w);
 	r0.y = r0.x * r1.w;
 	r2 = lightDir.xyz;
 	r2 = r2.xyz + eyeDir.xyz;

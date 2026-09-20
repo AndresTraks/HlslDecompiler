@@ -35,10 +35,10 @@ float4 main(PS_IN i) : SV_Target
 	r1.zw = (r1.zw != 0) ? asint(-(asfloat(r0.xx))) : r0.xx;
 	r2.xy = asfloat(r1.zw) + asfloat(r1.xy);
 	r0.x = asint(dot(r2.xyz, r2.xyz));
-	r0.x = asint(1 / sqrt(asfloat(r0.x)));
+	r0.x = asint(rsqrt(asfloat(r0.x)));
 	r1.xyz = asint(asfloat(r0.xxx) * r2.xyz);
 	r0.x = asint(dot(asfloat(r0.yzw), asfloat(r0.yzw)));
-	r1.w = asint(1 / sqrt(asfloat(r0.x)));
+	r1.w = asint(rsqrt(asfloat(r0.x)));
 	r0.x = asint(sqrt(asfloat(r0.x)));
 	r0.x = asint(asfloat(r0.x) / lightPosition.w);
 	r0.x = asint(saturate(-(asfloat(r0.x)) + 1));

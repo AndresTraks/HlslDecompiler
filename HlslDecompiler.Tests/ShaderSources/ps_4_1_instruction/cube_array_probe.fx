@@ -19,10 +19,10 @@ float4 main(PS_IN i) : SV_Target
 	float4 r1;
 	float4 r2;
 	r0.x = dot(i.normal.xyz, i.normal.xyz);
-	r0.x = 1 / sqrt(r0.x);
+	r0.x = rsqrt(r0.x);
 	r0.xyz = r0.xxx * i.normal.xyz;
 	r0.w = dot(i.texcoord1.xyz, i.texcoord1.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r1.xyz = r0.www * i.texcoord1.xyz;
 	r0.w = dot(-(r1.xyz), r0.xyz);
 	r0.w = r0.w + r0.w;

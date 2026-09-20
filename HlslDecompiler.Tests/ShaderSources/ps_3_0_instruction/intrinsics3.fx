@@ -17,12 +17,12 @@ float4 main(PS_IN i) : COLOR
 	r1 = r0.zxy * i.texcoord.yzx;
 	r0.xyz = r0.yzx * i.texcoord.zxy + -r1.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	o.xyz = r0.www * r0.xyz;
 	r0.xyz = a.xyz;
 	r1 = r0.xyz + -b.xyz;
 	r0.z = dot(r1.xyz, r1.xyz);
-	r0.z = 1 / sqrt(r0.z);
+	r0.z = rsqrt(r0.z);
 	r0.z = 1 / r0.z;
 	o.w = dot(r0.xy, b.xy) + r0.z;
 

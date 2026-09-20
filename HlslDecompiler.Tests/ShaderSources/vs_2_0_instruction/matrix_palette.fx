@@ -46,7 +46,7 @@ VS_OUT main(VS_IN i)
 	r1.z = dot(i.normal.xyz, transpose(bones[a0.y / 3])[2].xyz);
 	r0.xyz = r1.xyz * i.blendweight.xxx + r0.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	o.texcoord = r0.www * r0.xyz;
 
 	return o;

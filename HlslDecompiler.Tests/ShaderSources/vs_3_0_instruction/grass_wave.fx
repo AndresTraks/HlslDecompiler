@@ -40,7 +40,7 @@ VS_OUT main(VS_IN i)
 	o.position.z = dot(r0, transpose(worldViewProjection)[2]);
 	o.position.w = dot(r0, transpose(worldViewProjection)[3]);
 	r0.x = dot(r0.xyz, r0.xyz);
-	r0.x = 1 / sqrt(r0.x);
+	r0.x = rsqrt(r0.x);
 	r0.x = 1 / r0.x;
 	o.fog = saturate(r0.x * -i.texcoord1.w + 1);
 	o.texcoord = i.texcoord.xy;

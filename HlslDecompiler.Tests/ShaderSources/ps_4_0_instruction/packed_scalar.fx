@@ -12,10 +12,10 @@ float4 main(float3 normal : NORMAL) : SV_Target
 	float4 r1;
 	r0.xyz = -(lightDir.xyz) + viewDir.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r0.xyz = r0.www * r0.xyz;
 	r0.w = dot(normal.xyz, normal.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r1.xyz = r0.www * normal.xyz;
 	r0.x = saturate(dot(r1.xyz, r0.xyz));
 	r0.y = saturate(dot(r1.xyz, -(lightDir.xyz)));

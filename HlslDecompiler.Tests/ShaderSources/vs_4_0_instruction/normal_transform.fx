@@ -38,14 +38,14 @@ VS_OUT main(VS_IN i)
 	r0.xyz = transpose(world)[0].xyz * i.normal.xxx + r0.xyz;
 	r0.xyz = transpose(world)[2].xyz * i.normal.zzz + r0.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r0.xyz = r0.www * r0.xyz;
 	o.normal = r0.xyz;
 	r1.x = dot(i.tangent.xyz, transpose(world)[0].xyz);
 	r1.y = dot(i.tangent.xyz, transpose(world)[1].xyz);
 	r1.z = dot(i.tangent.xyz, transpose(world)[2].xyz);
 	r0.w = dot(r1.xyz, r1.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r1 = r0.www * r1.xyz;
 	r2 = r0.zxy * r1.yzx;
 	r2 = r0.yzx * r1.zxy + -(r2.xyz);

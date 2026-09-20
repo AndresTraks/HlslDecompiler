@@ -38,7 +38,7 @@ float4 main(PS_IN i) : SV_Target
 	r1 = layer2.Sample(samp, r1.xy);
 	r0.xyz = r1.xyz * r0.zzz + r0.xyw;
 	r0.w = dot(i.normal.xyz, i.normal.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r1.xyz = r0.www * i.normal.xyz;
 	r0.w = saturate(dot(r1.xyz, -(sunDir.xyz)));
 	r0.w = r0.w * 0.800000012 + 0.200000003;

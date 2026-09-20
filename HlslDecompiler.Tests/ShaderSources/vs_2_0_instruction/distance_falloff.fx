@@ -27,7 +27,7 @@ VS_OUT main(VS_IN i)
 	o.position.w = dot(i.position, transpose(worldViewProj)[3]);
 	r0.xyz = -i.position.xyz + light.xyz;
 	r0.w = dot(r0.xyz, r0.xyz);
-	r0.w = 1 / sqrt(r0.w);
+	r0.w = rsqrt(r0.w);
 	r0.xyz = r0.www * r0.xyz;
 	r1.z = 1 / r0.w;
 	r0.x = dot(r0.xyz, i.normal.xyz);

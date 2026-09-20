@@ -23,7 +23,7 @@ PS_OUT main(PS_IN i)
 	r0.zw = float2(0, 1);
 	o.sv_target = r0 * tint;
 	r0.x = dot(i.normal.xyz, i.normal.xyz);
-	r0.x = 1 / sqrt(r0.x);
+	r0.x = rsqrt(r0.x);
 	r0.xyz = r0.xxx * i.normal.xyz;
 	o.sv_target1.xyz = r0.xyz * float3(0.5, 0.5, 0.5) + float3(0.5, 0.5, 0.5);
 	o.sv_target1.w = 1;

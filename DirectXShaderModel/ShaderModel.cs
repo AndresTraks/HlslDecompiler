@@ -12,6 +12,7 @@ public class ShaderModel
     public IList<Instruction> Instructions { get; }
     public IList<RegisterSignature> InputSignatures { get; }
     public IList<RegisterSignature> OutputSignatures { get; }
+    public IList<RegisterSignature> PatchConstantSignatures { get; }
     public IList<D3D10ConstantDeclaration> ConstantDeclarations { get; }
     public IList<ResourceDefinition> ResourceDefinitions { get; }
 
@@ -20,6 +21,7 @@ public class ShaderModel
         ShaderType type,
         IList<RegisterSignature> inputSignatures, 
         IList<RegisterSignature> outputSignatures, 
+        IList<RegisterSignature> patchConstantSignatures,
         IList<D3D10ConstantDeclaration> constantDeclarations, 
         IList<ResourceDefinition> resourceDefinitions,
         IList<Instruction> instructions)
@@ -29,6 +31,7 @@ public class ShaderModel
         Type = type;
         InputSignatures = inputSignatures;
         OutputSignatures = outputSignatures;
+        PatchConstantSignatures = patchConstantSignatures;
         ConstantDeclarations = constantDeclarations;
         ResourceDefinitions = resourceDefinitions;
         Instructions = instructions;
@@ -41,6 +44,7 @@ public class ShaderModel
         Type = type;
         InputSignatures = [];
         OutputSignatures = [];
+        PatchConstantSignatures = [];
         ConstantDeclarations = [];
         Instructions = instructions;
     }

@@ -2831,7 +2831,8 @@ public class HlslSimpleWriter : HlslWriter
         return instruction.GetOperandType(operandIndex) switch
         {
             OperandType.ConstantBuffer => _registers.GetConstantComponentBase(registerComponentKey),
-            OperandType.Input => _registers.GetInputComponentBase(registerComponentKey),
+            OperandType.Input or OperandType.InputPatchConstant =>
+                _registers.GetInputComponentBase(registerComponentKey),
             _ => 0,
         };
     }

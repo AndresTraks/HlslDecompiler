@@ -37,6 +37,7 @@ public class DxbcReader : BinaryReader
         ShaderType? shaderType = null;
         var inputSignatures = new List<RegisterSignature>();
         var outputSignatures = new List<RegisterSignature>();
+        var patchConstantSignatures = new List<RegisterSignature>();
         var instructions = new List<Instruction>();
         var constantDeclarations = new List<D3D10ConstantDeclaration>();
         var resourceDefinitions = new List<ResourceDefinition>();
@@ -146,6 +147,15 @@ public class DxbcReader : BinaryReader
             {
                 ReadSignatures(chunkOffset, OperandType.Output, outputSignatures);
             }
+            else if (chunkType == "PCSG")
+            {
+                // What the hull shader computed once for the whole patch. A domain
+                // shader reads these; they are not in the input signature, and the
+                // tessellation factors among them are there whether it reads them
+                // or not.
+                ReadSignatures(chunkOffset, OperandType.InputPatchConstant,
+                    patchConstantSignatures);
+            }
             else if (chunkType == "SHDR" || chunkType == "SHEX")
             {
                 ReadBytes(8);
@@ -166,6 +176,7 @@ public class DxbcReader : BinaryReader
             shaderType.Value,
             inputSignatures,
             outputSignatures,
+            patchConstantSignatures,
             constantDeclarations,
             resourceDefinitions,
             instructions);

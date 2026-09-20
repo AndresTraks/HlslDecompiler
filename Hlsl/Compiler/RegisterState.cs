@@ -185,6 +185,10 @@ public sealed class RegisterState
     /// <summary>How many control points a patch comes in with, and goes out with.
     /// The first is the size of the array a domain shader reads.</summary>
     public int? InputControlPointCount { get; set; }
+
+    // The patch constants this shader actually reads. What it is given is in the
+    // signature chunk, which holds the tessellation factors as well.
+    public IList<RegisterDeclaration> PatchConstantRegisters { get; } = [];
     public int? OutputControlPointCount { get; set; }
 
     /// <summary>What the tessellator subdivides, which the shader declares with
@@ -251,6 +255,13 @@ public sealed class RegisterState
                 {
                     return inputDeclaration.MaskedLength;
                 }
+            }
+            // A patch constant register is packed the same way, and more reliably:
+            // a tessellation factor takes its x whatever else is in it.
+            if (d3d10RegisterKey.OperandType == OperandType.InputPatchConstant
+                && RegisterDeclarations.TryGetValue(d3d10RegisterKey, out RegisterDeclaration patchConstant))
+            {
+                return patchConstant.MaskedLength;
             }
         }
         return GetRegisterMaskedLength(registerComponentKey.RegisterKey);
@@ -345,12 +356,16 @@ public sealed class RegisterState
     public int GetInputComponentBase(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
-            || registerKey.OperandType != OperandType.Input)
+            || registerKey.OperandType is not OperandType.Input
+                and not OperandType.InputPatchConstant)
         {
             return 0;
         }
 
-        RegisterDeclaration declaration = FindInputDeclaration(registerKey, registerComponentKey.ComponentIndex);
+        RegisterDeclaration declaration = registerKey.OperandType == OperandType.InputPatchConstant
+            ? (RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration patchConstant)
+                ? patchConstant : null)
+            : FindInputDeclaration(registerKey, registerComponentKey.ComponentIndex);
         if (declaration == null)
         {
             return 0;
@@ -877,6 +892,18 @@ public sealed class RegisterState
                 case OperandType.InputDomainPoint:
                 case OperandType.OutputControlPointID:
                     return RegisterDeclarations[registerKey].Name;
+                // A field of the struct the hull shader filled in. The tessellation
+                // factors are one array over several registers, so the name comes
+                // from the signature rather than from the register.
+                case OperandType.InputPatchConstant:
+                    {
+                        RegisterSignature signature =
+                            RegisterDeclarations[registerKey].PatchConstantSignature;
+                        string field = signature == null
+                            ? RegisterDeclarations[registerKey].Name
+                            : PatchConstants.Reference(signature, _shaderModel.PatchConstantSignatures);
+                        return $"{PatchConstants.ParameterName}.{field}";
+                    }
                 // A control point of the patch, read the way a geometry shader
                 // reads a vertex of its primitive.
                 case OperandType.InputControlPoint:
@@ -1442,6 +1469,11 @@ public sealed class RegisterState
                         case OperandType.InputDomainPoint:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
+                        // A field of the patch constant struct, which is written
+                        // from the signature chunk rather than from what is read.
+                        case OperandType.InputPatchConstant:
+                            PatchConstantRegisters.Add(registerDeclaration);
+                            break;
                         // Per primitive rather than per vertex, so not a field of the
                         // vertex struct: a parameter of main of its own.
                         case OperandType.InputPrimitiveID:
@@ -1614,12 +1646,12 @@ public sealed class RegisterState
         // on the mask this dcl actually declares, not just the register, so the two
         // resolve to their own signatures instead of both finding whichever is first.
         int declaredMask = instruction.GetDestinationWriteMask();
-        RegisterSignature signature = _shaderModel.InputSignatures
+        IEnumerable<RegisterSignature> signatures = _shaderModel.InputSignatures
             .Concat(_shaderModel.OutputSignatures)
-            .FirstOrDefault(i => i.RegisterKey.Equals(registerKey) && (i.Mask & declaredMask) != 0)
-            ?? _shaderModel.InputSignatures
-            .Concat(_shaderModel.OutputSignatures)
-            .FirstOrDefault(i => i.RegisterKey.Equals(registerKey));
+            .Concat(_shaderModel.PatchConstantSignatures);
+        RegisterSignature signature =
+            signatures.FirstOrDefault(i => i.RegisterKey.Equals(registerKey) && (i.Mask & declaredMask) != 0)
+            ?? signatures.FirstOrDefault(i => i.RegisterKey.Equals(registerKey));
         if (signature != null)
         {
             string semantic = signature.Name;
@@ -1627,11 +1659,21 @@ public sealed class RegisterState
             {
                 semantic += signature.Index;
             }
-            return new RegisterDeclaration(registerKey, semantic, signature.Mask)
+            var declaration = new RegisterDeclaration(registerKey, semantic, signature.Mask)
             {
                 ComponentType = signature.ComponentType,
                 InterpolationMode = instruction.GetInterpolationMode(),
             };
+            // A patch constant register is packed with the tessellation factors as a
+            // matter of course - a float3 lands in a register's yzw because a factor
+            // has its x - so its width is the count of its own components rather
+            // than the highest one it reaches.
+            if (registerKey.OperandType == OperandType.InputPatchConstant)
+            {
+                declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
+                declaration.PatchConstantSignature = signature;
+            }
+            return declaration;
         }
 
         // A depth output is one component, and so is SV_GroupIndex, the flattened

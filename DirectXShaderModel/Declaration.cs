@@ -183,6 +183,10 @@ public class RegisterDeclaration
     // padding that belongs to the other declaration sharing the register.
     public int? MaskedLengthOverride { get; set; }
 
+    // Which patch constant this is, for a domain shader: several registers can be
+    // one array, so the name it reads by comes from the signature.
+    public RegisterSignature PatchConstantSignature { get; set; }
+
     public int MaskedLength
     {
         get

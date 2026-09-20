@@ -409,8 +409,6 @@ public abstract class HlslWriter
         return components > 1 ? "float" + components : "float";
     }
 
-    private const string PatchConstantStructureName = "DS_CONST";
-
     // A compute shader takes its thread and group indices the way any other shader
     // takes its inputs, and more than one of them needs a structure to hold them.
     private string GetInputStructureName()
@@ -462,33 +460,53 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// The tessellation factors the hull shader computed. Every domain shader is
-    /// given them whether it reads them or not, and fxc refuses to compile one whose
-    /// signature leaves them out, so they are written from the domain alone - which
-    /// fixes both how many there are and what they are called.
+    /// What the hull shader computed once for the patch. The signature chunk holds
+    /// all of it, read or not, which is what is wanted: fxc refuses a domain shader
+    /// whose signature leaves the tessellation factors out even when nothing touches
+    /// them. Older bytecode without the chunk falls back to the factors the domain
+    /// implies, which is the least that will compile.
     /// </summary>
     private void WritePatchConstantStructureDeclaration()
     {
-        WriteLine($"struct {PatchConstantStructureName}");
+        WriteLine($"struct {PatchConstants.StructureName}");
         WriteLine("{");
         indent = "\t";
-        switch (_registers.TessellatorDomain)
+        IList<RegisterSignature> signatures = _shader.PatchConstantSignatures;
+        if (signatures.Count == 0)
         {
-            case D3D10TessellatorDomain.Isoline:
-                WriteLine("float edges[2] : SV_TessFactor;");
-                break;
-            case D3D10TessellatorDomain.Triangle:
-                WriteLine("float edges[3] : SV_TessFactor;");
-                WriteLine("float inside : SV_InsideTessFactor;");
-                break;
-            default:
-                WriteLine("float edges[4] : SV_TessFactor;");
-                WriteLine("float inside[2] : SV_InsideTessFactor;");
-                break;
+            foreach (string field in ImpliedTessellationFactors())
+            {
+                WriteLine(field);
+            }
+        }
+        else
+        {
+            foreach (string field in PatchConstants.Fields(signatures))
+            {
+                WriteLine(field);
+            }
         }
         indent = "";
         WriteLine("};");
         WriteLine();
+    }
+
+    private IEnumerable<string> ImpliedTessellationFactors()
+    {
+        switch (_registers.TessellatorDomain)
+        {
+            case D3D10TessellatorDomain.Isoline:
+                yield return "float edges[2] : SV_TessFactor;";
+                break;
+            case D3D10TessellatorDomain.Triangle:
+                yield return "float edges[3] : SV_TessFactor;";
+                yield return "float inside : SV_InsideTessFactor;";
+                break;
+            default:
+                yield return "float edges[4] : SV_TessFactor;";
+                yield return "float inside[2] : SV_InsideTessFactor;";
+                break;
+        }
     }
 
     private void WriteOutputStructureDeclaration()
@@ -592,7 +610,7 @@ public abstract class HlslWriter
             string domainLocation = location == null
                 ? ""
                 : CompileRegisterDeclaration(location) + ", ";
-            return $"{PatchConstantStructureName} constants, {domainLocation}"
+            return $"{PatchConstants.StructureName} {PatchConstants.ParameterName}, {domainLocation}"
                 + $"const OutputPatch<{GetInputStructureName()}, "
                 + $"{_registers.InputControlPointCount}> patch";
         }

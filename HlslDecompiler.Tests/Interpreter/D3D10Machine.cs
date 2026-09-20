@@ -1338,6 +1338,12 @@ public class D3D10Machine
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     return VertexInput((int)indices[0].Immediate, (int)indices[1].Immediate);
                 }
+            case OperandType.InputPatchConstant:
+                // One value per register, whichever field of the struct the register
+                // holds: both programs read the same register and get the same made
+                // up float.
+                return [.. Named($"vpc{instruction.GetParamRegisterNumber(index)}")
+                    .Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.InputDomainPoint:
                 // Where in the patch this run is: a float, unlike the thread ids,
                 // and read as one.

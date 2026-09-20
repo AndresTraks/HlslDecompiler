@@ -789,7 +789,41 @@ public class StatementFinalizer
         {
             return false;
         }
-        return a is LoadStructuredNode or ResourceLoadNode or TextureLoadOutputNode or ConsumeNode;
+        if (a is not (LoadStructuredNode or ResourceLoadNode
+            or TextureLoadOutputNode or ConsumeNode))
+        {
+            return false;
+        }
+        // The same operands, not merely the same kind of node: two loads from one
+        // buffer into two components of a register are two instructions, and one of
+        // them being shared says nothing about the other. The components of one
+        // instruction read the same address and the same resource register, and
+        // differ only in which channel of it they take - which is carried by the
+        // resource operand and is the one input that may differ.
+        for (int i = 0; i < a.Inputs.Count; i++)
+        {
+            if (ReferenceEquals(a.Inputs[i], b.Inputs[i]))
+            {
+                continue;
+            }
+            if (a.Inputs[i] is RegisterInputNode left && b.Inputs[i] is RegisterInputNode right
+                && left.RegisterComponentKey.RegisterKey.Equals(
+                    right.RegisterComponentKey.RegisterKey))
+            {
+                continue;
+            }
+            // An immediate operand becomes a node of its own per component - the
+            // byte offset of a load is built four times for one instruction - so
+            // two constants of the same value are the one operand.
+            if (a.Inputs[i] is ConstantNode first && b.Inputs[i] is ConstantNode second
+                && first.Value == second.Value)
+            {
+                continue;
+            }
+            return false;
+        }
+        return a is not LoadStructuredNode structured
+            || structured.ElementByteOffset == ((LoadStructuredNode)b).ElementByteOffset;
     }
 
     /// <summary>

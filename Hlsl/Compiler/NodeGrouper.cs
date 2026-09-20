@@ -114,7 +114,7 @@ public class NodeGrouper
             return true;
         }
 
-        if (node1.GetType() != node2.GetType())
+        if (!Operation.IsSameKind(node1, node2))
         {
             return false;
         }
@@ -326,7 +326,7 @@ public class NodeGrouper
 
     public static bool AreNodesEquivalent(HlslTreeNode node1, HlslTreeNode node2)
     {
-        if (node1.GetType() != node2.GetType())
+        if (!Operation.IsSameKind(node1, node2))
         {
             return false;
         }

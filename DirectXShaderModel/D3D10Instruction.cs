@@ -170,6 +170,11 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DclOutput:
                 case D3D10Opcode.DerivRtx:
                 case D3D10Opcode.DerivRty:
+                case D3D10Opcode.DerivRtxCoarse:
+                case D3D10Opcode.DerivRtxFine:
+                case D3D10Opcode.DerivRtyCoarse:
+                case D3D10Opcode.DerivRtyFine:
+                case D3D10Opcode.Rcp:
                 // Two destinations is still destinations. Saying they had none
                 // left both operands looking like sources, so they took source
                 // swizzles and the sources were read four components wide - a udiv

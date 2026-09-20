@@ -341,7 +341,7 @@ public sealed class NodeCompiler
         {
             return false;
         }
-        return components.All(c => c.GetType() == first.GetType() && c.Inputs.Count == first.Inputs.Count);
+        return components.All(c => Operation.IsSameKind(c, first) && c.Inputs.Count == first.Inputs.Count);
     }
 
     private int CountUngroupedOperands(List<HlslTreeNode> components)

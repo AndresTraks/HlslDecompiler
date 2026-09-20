@@ -966,9 +966,15 @@ public class D3D10Machine
                 }
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
+            case D3D10Opcode.DerivRtxCoarse:
+            case D3D10Opcode.DerivRtxFine:
+            case D3D10Opcode.DerivRtyCoarse:
+            case D3D10Opcode.DerivRtyFine:
                 // No neighbouring pixel to difference against. Both programs get
                 // zero, so the shader is still compared on everything else.
                 return [0, 0, 0, 0];
+            case D3D10Opcode.Rcp:
+                return Pack([.. Floats(instruction, 1).Select(v => 1f / v)]);
             default:
                 throw new UnsupportedException($"opcode {instruction.Opcode}");
         }

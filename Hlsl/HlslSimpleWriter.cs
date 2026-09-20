@@ -1114,6 +1114,20 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DerivRty:
                 WriteResult(instruction, "{0} = ddy({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
+            case D3D10Opcode.DerivRtxCoarse:
+            case D3D10Opcode.DerivRtxFine:
+            case D3D10Opcode.DerivRtyCoarse:
+            case D3D10Opcode.DerivRtyFine:
+            case D3D10Opcode.Rcp:
+                WriteResult(instruction, "{0} = " + instruction.Opcode switch
+                {
+                    D3D10Opcode.DerivRtxCoarse => "ddx_coarse",
+                    D3D10Opcode.DerivRtxFine => "ddx_fine",
+                    D3D10Opcode.DerivRtyCoarse => "ddy_coarse",
+                    D3D10Opcode.DerivRtyFine => "ddy_fine",
+                    _ => "rcp",
+                } + "({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
             case D3D10Opcode.Discard:
                 // discard_nz tests the bits, like if_nz; clip tests the sign of a
                 // float, and a comparison mask is NaN as a float, which is never
@@ -2478,7 +2492,9 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             }
             else if (instruction is D3D10Instruction { Opcode: D3D10Opcode.Sample or D3D10Opcode.SampleB
-                    or D3D10Opcode.SampleC or D3D10Opcode.DerivRtx or D3D10Opcode.DerivRty }
+                    or D3D10Opcode.SampleC or D3D10Opcode.DerivRtx or D3D10Opcode.DerivRty
+                    or D3D10Opcode.DerivRtxCoarse or D3D10Opcode.DerivRtxFine
+                    or D3D10Opcode.DerivRtyCoarse or D3D10Opcode.DerivRtyFine }
                 || instruction is D3D9Instruction { Opcode: Opcode.Tex or Opcode.DSX or Opcode.DSY })
             {
                 samples = true;

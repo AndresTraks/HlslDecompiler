@@ -509,6 +509,21 @@ public class AsmWriter
             case D3D10Opcode.DerivRty:
                 WriteInstruction(instruction, "deriv_rty", 2);
                 break;
+            case D3D10Opcode.DerivRtxCoarse:
+                WriteInstruction(instruction, "deriv_rtx_coarse", 2);
+                break;
+            case D3D10Opcode.DerivRtxFine:
+                WriteInstruction(instruction, "deriv_rtx_fine", 2);
+                break;
+            case D3D10Opcode.DerivRtyCoarse:
+                WriteInstruction(instruction, "deriv_rty_coarse", 2);
+                break;
+            case D3D10Opcode.DerivRtyFine:
+                WriteInstruction(instruction, "deriv_rty_fine", 2);
+                break;
+            case D3D10Opcode.Rcp:
+                WriteInstruction(instruction, "rcp", 2);
+                break;
             case D3D10Opcode.Discard:
                 WriteInstruction(instruction, Conditional(instruction, "discard"), 1);
                 break;

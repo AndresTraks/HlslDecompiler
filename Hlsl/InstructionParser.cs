@@ -1863,6 +1863,11 @@ public class InstructionParser
             case D3D10Opcode.Add:
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
+            case D3D10Opcode.DerivRtxCoarse:
+            case D3D10Opcode.DerivRtxFine:
+            case D3D10Opcode.DerivRtyCoarse:
+            case D3D10Opcode.DerivRtyFine:
+            case D3D10Opcode.Rcp:
             case D3D10Opcode.Exp:
             case D3D10Opcode.And:
             case D3D10Opcode.Xor:
@@ -1933,6 +1938,20 @@ public class InstructionParser
                             return new PartialDerivativeXOperation(inputs[0]);
                         case D3D10Opcode.DerivRty:
                             return new PartialDerivativeYOperation(inputs[0]);
+                        case D3D10Opcode.DerivRtxCoarse:
+                            return new PartialDerivativeXOperation(inputs[0],
+                                DerivativePrecision.Coarse);
+                        case D3D10Opcode.DerivRtxFine:
+                            return new PartialDerivativeXOperation(inputs[0],
+                                DerivativePrecision.Fine);
+                        case D3D10Opcode.DerivRtyCoarse:
+                            return new PartialDerivativeYOperation(inputs[0],
+                                DerivativePrecision.Coarse);
+                        case D3D10Opcode.DerivRtyFine:
+                            return new PartialDerivativeYOperation(inputs[0],
+                                DerivativePrecision.Fine);
+                        case D3D10Opcode.Rcp:
+                            return new ReciprocalOperation(inputs[0]);
                         case D3D10Opcode.Exp:
                             return new ExponentialOperation(inputs[0]);
                         case D3D10Opcode.Frc:
@@ -2834,6 +2853,11 @@ public class InstructionParser
         {
             case D3D10Opcode.DerivRtx:
             case D3D10Opcode.DerivRty:
+            case D3D10Opcode.DerivRtxCoarse:
+            case D3D10Opcode.DerivRtxFine:
+            case D3D10Opcode.DerivRtyCoarse:
+            case D3D10Opcode.DerivRtyFine:
+            case D3D10Opcode.Rcp:
             case D3D10Opcode.Exp:
             case D3D10Opcode.Frc:
             case D3D10Opcode.Ftoi:

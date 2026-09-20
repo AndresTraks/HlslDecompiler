@@ -33,7 +33,7 @@ void main(CS_IN i)
 	r1.w = 0;
 	r0 = int4(0, 0, 0, 0);
 	while (true) {
-		r2.x = (r0.w >= 4) ? -1 : 0;
+		r2.x = ((uint)r0.w >= 4) ? -1 : 0;
 		if (r2.x != 0) break;
 		r2.x = (int)r0.w + i.sv_groupindex.x;
 		r2.x = r2.x & 63;

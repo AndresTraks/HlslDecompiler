@@ -23,7 +23,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	r0.xy = int2(0, 0);
 	while (true) {
-		r0.z = (r0.y >= 8) ? -1 : 0;
+		r0.z = ((uint)r0.y >= 8) ? -1 : 0;
 		if (r0.z != 0) break;
 		r0.z = r0.y + i.sv_groupindex.x;
 		r0.z = r0.z & 63;

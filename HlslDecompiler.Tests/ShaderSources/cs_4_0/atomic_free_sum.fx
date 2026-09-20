@@ -14,7 +14,7 @@ struct CS_IN
 [numthreads(64, 1, 1)]
 void main(CS_IN i)
 {
-	int t0 = (uint)input[i.sv_dispatchthreadid.x] >> 16;
+	uint t0 = (uint)input[i.sv_dispatchthreadid.x] >> 16;
 	g0[i.sv_groupindex] = t0 ^ input[i.sv_dispatchthreadid.x];
 	GroupMemoryBarrierWithGroupSync();
 	int t1 = 0;

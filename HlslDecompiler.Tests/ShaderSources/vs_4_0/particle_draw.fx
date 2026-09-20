@@ -21,7 +21,7 @@ VS_OUT main(uint sv_vertexid : SV_VertexID)
 {
 	VS_OUT o;
 
-	int t0 = (uint)sv_vertexid >> 2;
+	uint t0 = sv_vertexid >> 2;
 	float2 t1 = (float2)(sv_vertexid & int2(1, 2) ? 1 : -1);
 	float2 t2 = t1 * particles[t0].size + particles[t0].position.xy;
 	o.sv_position = mul(float4(t2, particles[t0].position.z, 1), viewProjection);

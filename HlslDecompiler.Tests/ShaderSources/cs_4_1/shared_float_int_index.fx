@@ -16,9 +16,9 @@ void main(CS_IN i)
 {
 	g0[i.sv_groupindex] = input[i.sv_dispatchthreadid.x];
 	GroupMemoryBarrierWithGroupSync();
-	int t0 = ((uint)i.sv_groupindex >> 2) ^ i.sv_groupindex * seed;
+	int t0 = (i.sv_groupindex >> 2) ^ i.sv_groupindex * seed;
 	float t1 = 0;
-	for (int t2 = 0; t2 < 4; t2 = t2 + 1) {
+	for (uint t2 = 0; t2 < 4; t2 = t2 + 1) {
 		t1 = g0[t2 + t0 & 63] + t1;
 	}
 	output[i.sv_dispatchthreadid.x] = 0.25 * t1;

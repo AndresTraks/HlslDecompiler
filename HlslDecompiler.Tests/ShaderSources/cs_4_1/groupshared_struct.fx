@@ -28,7 +28,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	float3 t0 = 0;
 	float t1 = 0;
-	for (int t2 = 0; t2 < 4; t2 = t2 + 1) {
+	for (uint t2 = 0; t2 < 4; t2 = t2 + 1) {
 		int t3 = t2 + i.sv_groupindex & 63;
 		float t4 = g0[t3].w;
 		t0 = g0[t3].xyz * t4 + t0;

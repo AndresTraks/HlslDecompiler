@@ -589,7 +589,7 @@ public class HlslAstWriter : HlslWriter
                     continue;
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
-                string type = variable.IsInteger ? "int" : "float";
+                string type = variable.IsInteger ? variable.IntegerTypeName : "float";
                 WriteLine($"{type}{size} t{variable.DeclarationIndex};");
             }
         }
@@ -1417,10 +1417,15 @@ public class HlslAstWriter : HlslWriter
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
         bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
         bool isBits = nodes.All(node => StatementFinalizer.IsBitsVariable(node, isInteger));
+        // Unsigned only where every component is, and not for bits: those are a
+        // float's, and calling them uint says something about them that is not so.
+        bool isUnsigned = isInteger && !isBits
+            && nodes.All(node => StatementFinalizer.IsUnsignedValue(node) == true);
         foreach (TempVariableNode variable in variables)
         {
             variable.IsInteger = isInteger;
             variable.IsBits = isBits;
+            variable.IsUnsigned = isUnsigned;
         }
         return variables;
     }

@@ -8,9 +8,9 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 {
 	PS_OUT o;
 
-	int t0 = (uint)(4 * texcoord.w);
+	uint t0 = (uint)(4 * texcoord.w);
 	int t1 = 0;
-	for (int t2 = 0; t2 < t0; t2 = t2 + 1) {
+	for (uint t2 = 0; t2 < t0; t2 = t2 + 1) {
 		t1 = (1 << t2) | t1;
 	}
 	o.sv_coverage = t1;

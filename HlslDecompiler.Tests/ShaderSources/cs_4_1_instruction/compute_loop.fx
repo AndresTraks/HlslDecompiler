@@ -11,7 +11,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r1 = float4(0, 0, 0, 0);
 	r0.y = 0;
 	while (true) {
-		r0.z = (r0.y >= 4) ? -1 : 0;
+		r0.z = ((uint)r0.y >= 4) ? -1 : 0;
 		if (r0.z != 0) break;
 		r0.z = r0.y + r0.x;
 		r2 = In[r0.z];

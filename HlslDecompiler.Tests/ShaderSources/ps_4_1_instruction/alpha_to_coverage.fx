@@ -13,7 +13,7 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 	r0.x = (uint)asfloat(r0.x);
 	r0.yz = int2(0, 0);
 	while (true) {
-		r0.w = (r0.z >= r0.x) ? -1 : 0;
+		r0.w = ((uint)r0.z >= r0.x) ? -1 : 0;
 		if (r0.w != 0) break;
 		r0.w = 1 << r0.z;
 		r0.y = r0.w | r0.y;

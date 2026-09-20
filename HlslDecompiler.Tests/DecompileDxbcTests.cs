@@ -107,6 +107,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "subtract_sum")]
     [TestCase("ps_4_0", "bit_field")]
     [TestCase("ps_4_0", "index_and_scale")]
+    [TestCase("ps_4_0", "unsigned_compare")]
     [TestCase("vs_4_0", "attribute_divide")]
     [TestCase("cs_4_1", "shared_float_int_index")]
     [TestCase("ps_4_0", "mixed_register")]

@@ -1716,11 +1716,13 @@ public class InstructionParser
                         case D3D10Opcode.Ilt:
                         case D3D10Opcode.ULT:
                             return new ComparisonNode(
-                                inputs[0], inputs[1], IfComparison.LT, isInteger: true);
+                                inputs[0], inputs[1], IfComparison.LT, isInteger: true,
+                                isUnsigned: instruction.Opcode == D3D10Opcode.ULT);
                         case D3D10Opcode.Ige:
                         case D3D10Opcode.UGE:
                             return new ComparisonNode(
-                                inputs[0], inputs[1], IfComparison.GE, isInteger: true);
+                                inputs[0], inputs[1], IfComparison.GE, isInteger: true,
+                                isUnsigned: instruction.Opcode == D3D10Opcode.UGE);
                         case D3D10Opcode.Ieq:
                             return new ComparisonNode(
                                 inputs[0], inputs[1], IfComparison.EQ, isInteger: true);

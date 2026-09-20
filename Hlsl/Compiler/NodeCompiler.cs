@@ -559,9 +559,8 @@ public sealed class NodeCompiler
                     // HLSL reads >> as arithmetic or logical from the type of what
                     // is shifted, so ushr has to say it there. As wide as the value,
                     // since a bare (uint) over two components is X3014. Not over a
-                    // value that is already a conversion to uint.
-                    if (shiftRight.IsUnsigned
-                        && shiftRight.Inputs[0] is not ConvertOperation { TargetType: "uint" })
+                    // value HLSL already reads as unsigned.
+                    if (shiftRight.IsUnsigned && !IsUnsignedAlready(shiftRight.Inputs[0]))
                     {
                         string size = components.Count > 1 ? components.Count.ToString() : "";
                         value = $"(uint{size}){value}";
@@ -1220,7 +1219,9 @@ public sealed class NodeCompiler
             }
             else
             {
-                type = tempAssignment.TempVariable.IsInteger ? "int" : "float";
+                type = tempAssignment.TempVariable.IsInteger
+                    ? tempAssignment.TempVariable.IntegerTypeName
+                    : "float";
                 if (tempAssignment.TempVariable.VariableSize > 1)
                 {
                     type += tempAssignment.TempVariable.VariableSize;
@@ -1385,7 +1386,77 @@ public sealed class NodeCompiler
         // different expression and not one HLSL will even accept on a float.
         string left = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Left));
         string right = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Right));
+        // ult and ilt both read as `a < b`, and HLSL takes the signedness from the
+        // operands, so the unsigned form has to say so at one of them - the usual
+        // promotion then carries it to the other, which is why one side already
+        // being unsigned is enough. Where neither is, the cast goes on the side that
+        // is not a constant: `(uint)0 <= x` is a tautology fxc warns about. As wide
+        // as the comparison, since a bare (uint) over two components is X3014.
+        if (first.IsUnsigned
+            && !IsUnsignedAlready(first.Left)
+            && !IsUnsignedAlready(first.Right))
+        {
+            string size = components.Count > 1 ? components.Count.ToString() : "";
+            if (first.Left is not ConstantNode)
+            {
+                left = $"(uint{size}){left}";
+            }
+            else if (first.Right is not ConstantNode)
+            {
+                right = $"(uint{size}){right}";
+            }
+        }
         return $"{left} {first.Comparison.ToHlslString()} {right}";
+    }
+
+    /// <summary>
+    /// Whether HLSL already reads a value as unsigned, so that it needs no cast of
+    /// its own: a variable or a register declared uint, or an expression one of
+    /// those reaches. `1664525 * k.x + 1013904223` over a uint4 k is unsigned
+    /// arithmetic by promotion, and casting anything in it says nothing new.
+    /// </summary>
+    private bool IsUnsignedAlready(HlslTreeNode node)
+    {
+        switch (node)
+        {
+            case ConvertOperation { TargetType: "uint" }:
+            case ShiftRightOperation { IsUnsigned: true }:
+            case TempVariableNode { IsUnsigned: true }:
+            case TempAssignmentNode { TempVariable.IsUnsigned: true }:
+                return true;
+            case RegisterInputNode register:
+                return IsUnsignedRegister(register);
+            // The branches of a select, not the condition: `c ? a : b` takes its
+            // type from a and b, and c is a bool by then whatever it was.
+            case MoveConditionalOperation select:
+                return IsUnsignedAlready(select.Inputs[1]) || IsUnsignedAlready(select.Inputs[2]);
+            // Through the operations that promote: an unsigned operand makes the
+            // whole of one unsigned, whichever side it is on.
+            case AddOperation or SubtractOperation or MultiplyOperation
+                or ShiftLeftOperation or MinimumOperation or MaximumOperation
+                or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+                or BitwiseNotOperation or MoveOperation:
+                return node.Inputs.Any(IsUnsignedAlready);
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether a register holds an unsigned integer: a constant buffer variable
+    /// declared uint, an input whose signature types it one, or a thread id, which
+    /// is a uint without being declared anything.
+    /// </summary>
+    private bool IsUnsignedRegister(RegisterInputNode register)
+    {
+        RegisterComponentKey key = register.RegisterComponentKey;
+        ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+        if (constant != null)
+        {
+            return constant.TypeInfo.ParameterType == ParameterType.Uint;
+        }
+        return _registers.RegisterDeclarations.TryGetValue(key.RegisterKey, out RegisterDeclaration declaration)
+            && declaration.TypeName.Contains("uint");
     }
 
     /// <param name="componentBase">

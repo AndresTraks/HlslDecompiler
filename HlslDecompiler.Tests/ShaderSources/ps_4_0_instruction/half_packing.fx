@@ -24,9 +24,9 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r0.x = (uint)r0.x >> 13;
 	r1.x = r2.y + -939524096;
 	r1.x = (uint)r1.x >> 13;
-	r1.z = (r2.y < 947912704) ? -1 : 0;
+	r1.z = ((uint)r2.y < 947912704) ? -1 : 0;
 	r0.x = (r1.z != 0) ? r0.x : r1.x;
-	r1.x = (1207951360 < r2.y) ? -1 : 0;
+	r1.x = (1207951360 < (uint)r2.y) ? -1 : 0;
 	r0.x = (r1.x != 0) ? 31743 : r0.x;
 	r1.x = (uint)r0.z >> 13;
 	r1.z = (uint)r0.z >> 3;
@@ -57,9 +57,9 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r0.y = (uint)r0.y >> 13;
 	r0.w = r1.z + -939524096;
 	r0.w = (uint)r0.w >> 13;
-	r1.x = (r1.z < 947912704) ? -1 : 0;
+	r1.x = ((uint)r1.z < 947912704) ? -1 : 0;
 	r0.y = (r1.x != 0) ? r0.y : r0.w;
-	r0.w = (1207951360 < r1.z) ? -1 : 0;
+	r0.w = (1207951360 < (uint)r1.z) ? -1 : 0;
 	r1.x = (r1.w == 2139095040) ? -1 : 0;
 	r0.y = (r0.w != 0) ? 31743 : r0.y;
 	r0.y = (r1.x != 0) ? r0.z : r0.y;

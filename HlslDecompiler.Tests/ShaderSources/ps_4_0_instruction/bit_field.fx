@@ -26,12 +26,12 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r0.w = 0;
 	r1.x = 0;
 	while (true) {
-		r1.y = (r1.x >= 4) ? -1 : 0;
+		r1.y = ((uint)r1.x >= 4) ? -1 : 0;
 		if (r1.y != 0) break;
 		r1.y = r1.x << 3;
 		r1.y = (uint)packed.x >> r1.y;
 		r1.y = r1.y & 255;
-		r1.y = (128 < r1.y) ? -1 : 0;
+		r1.y = (128 < (uint)r1.y) ? -1 : 0;
 		r0.w = r0.w + -(r1.y);
 		r1.x = r1.x + 1;
 	}

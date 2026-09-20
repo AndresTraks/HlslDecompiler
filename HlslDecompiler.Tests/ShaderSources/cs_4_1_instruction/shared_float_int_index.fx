@@ -23,7 +23,7 @@ void main(CS_IN i)
 	r0.x = r0.y ^ r0.x;
 	r0.yz = int2(0, 0);
 	while (true) {
-		r0.w = (r0.z >= 4) ? -1 : 0;
+		r0.w = ((uint)r0.z >= 4) ? -1 : 0;
 		if (r0.w != 0) break;
 		r0.w = r0.z + r0.x;
 		r0.w = r0.w & 63;

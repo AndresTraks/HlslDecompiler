@@ -32,7 +32,7 @@ float4 main(VS_IN i) : SV_Position
 		r1.y = (r1.x >= 3) ? -1 : 0;
 		if (r1.y != 0) break;
 		r1.y = -r1.x;
-		r2.xyz = (r1.xxx < int3(1, 2, 3)) ? -1 : 0;
+		r2.xyz = ((uint3)r1.xxx < int3(1, 2, 3)) ? -1 : 0;
 		r3.y = r1.y & r2.y;
 		r1.yz = r1.xx + int2(-3, 1);
 		r3.z = (r2.y != 0) ? 0 : r1.y;

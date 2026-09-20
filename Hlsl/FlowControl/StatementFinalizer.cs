@@ -245,15 +245,20 @@ public class StatementFinalizer
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
                     // Before the readers move to the variable: they are what types it.
                     bool? isIntegerValue = IsIntegerValue(tempValue);
+                    bool? isUnsignedValue = IsUnsignedValue(tempValue);
                     tempValue.Outputs.Clear();
                     bool isInteger = isIntegerValue
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
+                    bool isBits = IsBitsVariable(tempValue, isInteger);
                     TempVariableNode tempVariable = tempInputAssignment?.TempVariable
                         ?? tempInputVariable
                         ?? new TempVariableNode
                         {
                             IsInteger = isInteger,
-                            IsBits = IsBitsVariable(tempValue, isInteger),
+                            IsBits = isBits,
+                            // Not for bits: those are a float's, and calling them uint
+                            // says something about them that is not so.
+                            IsUnsigned = isInteger && !isBits && isUnsignedValue == true,
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
@@ -725,6 +730,127 @@ public class StatementFinalizer
             return true;
         }
         return InstructionParser.GetConsumedType(value) ?? MadeType(value);
+    }
+
+    /// <summary>
+    /// Whether an integer value is unsigned, decided the way its integer-ness is:
+    /// by the readers where they agree, by what made it otherwise. ult and ilt both
+    /// read as `a &lt; b`, and HLSL takes the signedness from the operands rather
+    /// than from the operator, so a value only ever used unsigned is better declared
+    /// uint than cast at each use. Null where nothing says either way, which leaves
+    /// the int the writer has always declared.
+    /// </summary>
+    internal static bool? IsUnsignedValue(HlslTreeNode value)
+    {
+        return ConsumedAsUnsigned(value) ?? MadeUnsigned(value);
+    }
+
+    /// <summary>
+    /// What the readers of a value agree its signedness is, looking through the
+    /// operations that are the same instruction either way - a move, a phi, an add,
+    /// a bitwise operator - or null where they disagree or none of them says.
+    /// </summary>
+    private static bool? ConsumedAsUnsigned(HlslTreeNode value)
+    {
+        bool? unsigned = null;
+        var visited = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(value);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            foreach (HlslTreeNode reader in node.Outputs)
+            {
+                if (!visited.Add(reader))
+                {
+                    continue;
+                }
+                bool? says = ReadsAsUnsigned(reader, node);
+                if (says == null)
+                {
+                    if (IsSignNeutral(reader, node))
+                    {
+                        pending.Push(reader);
+                    }
+                    continue;
+                }
+                if (unsigned != null && unsigned != says)
+                {
+                    return null;
+                }
+                unsigned = says;
+            }
+        }
+        return unsigned;
+    }
+
+    /// <summary>Whether this reader of the node reads it as unsigned, or null where
+    /// it says nothing about signedness.</summary>
+    private static bool? ReadsAsUnsigned(HlslTreeNode reader, HlslTreeNode node)
+    {
+        switch (reader)
+        {
+            // ieq and ine are the same comparison either way, so only the ordered
+            // ones say anything.
+            case ComparisonNode { IsInteger: true, Comparison: IfComparison.LT
+                or IfComparison.LE or IfComparison.GT or IfComparison.GE } comparison:
+                return comparison.IsUnsigned;
+            // What is shifted, not by how much: ushr and ishr differ in what fills
+            // the top bits of the value.
+            case ShiftRightOperation shift when ReferenceEquals(shift.Value, node):
+                return shift.IsUnsigned;
+            // udiv is the only integer divide there is - there is no signed opcode
+            // for it - so an integer quotient or remainder is unsigned.
+            case DivisionOperation { ConsumesInteger: true }:
+            case ModuloOperation { ConsumesInteger: true }:
+                return true;
+            // ineg, which is meaningless on an unsigned value.
+            case NegateOperation when IsIntegerValue(reader) == true:
+                return false;
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the reader is the same instruction signed or unsigned, so that what
+    /// reads its result is what knows. imin and umin are here because the parse
+    /// makes one node of both and it no longer says which.
+    /// </summary>
+    private static bool IsSignNeutral(HlslTreeNode reader, HlslTreeNode value)
+    {
+        // A select carries its branches and not its condition: which way the test
+        // went says nothing about the number it chose between.
+        if (reader is MoveConditionalOperation select)
+        {
+            return !ReferenceEquals(select.Inputs[0], value);
+        }
+        return reader is MoveOperation or PhiNode
+            or AddOperation or SubtractOperation or MultiplyOperation
+            or ShiftLeftOperation or MinimumOperation or MaximumOperation
+            or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+            or BitwiseNotOperation;
+    }
+
+    /// <summary>What the operation that made a value makes it, signed or unsigned,
+    /// or null where the operation does not say.</summary>
+    private static bool? MadeUnsigned(HlslTreeNode value)
+    {
+        return value switch
+        {
+            // ftou and ftoi.
+            ConvertOperation convert => convert.TargetType switch
+            {
+                "uint" => true,
+                "int" => false,
+                _ => null,
+            },
+            ShiftRightOperation shift => shift.IsUnsigned,
+            DivisionOperation { ConsumesInteger: true } => true,
+            ModuloOperation { ConsumesInteger: true } => true,
+            NegateOperation => false,
+            _ => null,
+        };
     }
 
     /// <summary>

@@ -742,10 +742,55 @@ public class HlslSimpleWriter : HlslWriter
     // is an int one, where -1 and 0 are the numbers wanted; where the mask goes into
     // a float register instead, nothing integer ever touches it and its readers only
     // test it, for which -1 and 0 do as well.
-    private void WriteComparison(D3D10Instruction instruction, string op)
+    private void WriteComparison(D3D10Instruction instruction, string op, bool unsigned = false)
     {
+        string left = GetOperandName(instruction, 1);
+        string right = GetOperandName(instruction, 2);
+        // A temp register is declared signed, and `<` between signed values orders
+        // them by sign first: ult held 0x80000000 to be below 1, and written without
+        // this the comparison said the opposite. One side is enough - the other is
+        // promoted to match whichever is unsigned - so a register already declared
+        // one needs nothing, and the cast goes on the side that is not an immediate,
+        // where it says something.
+        if (unsigned
+            && !IsUnsignedOperand(instruction, 1)
+            && !IsUnsignedOperand(instruction, 2))
+        {
+            int length = instruction.GetDestinationMaskLength();
+            string size = length == 1 ? "" : length.ToString();
+            if (instruction.GetOperandType(1) != OperandType.Immediate32)
+            {
+                left = $"(uint{size}){left}";
+            }
+            else
+            {
+                right = $"(uint{size}){right}";
+            }
+        }
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
-            $"({GetOperandName(instruction, 1)} {op} {GetOperandName(instruction, 2)}) ? -1 : 0");
+            $"({left} {op} {right}) ? -1 : 0");
+    }
+
+    /// <summary>
+    /// Whether the operand is a register HLSL already reads as unsigned - a uint
+    /// constant buffer variable, an input the signature types one, a thread id. A
+    /// temp is never one: the writer declares them all int.
+    /// </summary>
+    private bool IsUnsignedOperand(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) is OperandType.Immediate32
+            or OperandType.Temp or OperandType.IndexableTemp)
+        {
+            return false;
+        }
+        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        ConstantDeclaration constant = _registers.FindConstant(registerKey);
+        if (constant != null)
+        {
+            return constant.TypeInfo.ParameterType == ParameterType.Uint;
+        }
+        return _registers.RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration declaration)
+            && declaration.TypeName.Contains("uint");
     }
 
     // and, or and xor work on the bits, whatever the register holding them is
@@ -1066,11 +1111,13 @@ public class HlslSimpleWriter : HlslWriter
                 WriteComparison(instruction, "<");
                 break;
             case D3D10Opcode.Ige:
-            case D3D10Opcode.UGE:
                 WriteComparison(instruction, ">=");
                 break;
+            case D3D10Opcode.UGE:
+                WriteComparison(instruction, ">=", unsigned: true);
+                break;
             case D3D10Opcode.ULT:
-                WriteComparison(instruction, "<");
+                WriteComparison(instruction, "<", unsigned: true);
                 break;
             case D3D10Opcode.EndLoop:
                 indent = indent.Substring(0, indent.Length - 1);

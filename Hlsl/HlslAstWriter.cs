@@ -1015,7 +1015,9 @@ public class HlslAstWriter : HlslWriter
         {
             IEnumerable<HlslTreeNode[]> groups = registerGroups.Concat(named).Concat(assignments);
             var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
+            HashSet<HlslTreeNode> grouped = HlslTreeNode.NewNodeSet();
             _compiler.Recording = recording;
+            _compiler.Grouped = grouped;
             try
             {
                 foreach (HlslTreeNode[] group in groups)
@@ -1030,6 +1032,7 @@ public class HlslAstWriter : HlslWriter
             finally
             {
                 _compiler.Recording = null;
+                _compiler.Grouped = null;
             }
 
             // A repeat is the same nodes compiled again - or the same but for a
@@ -1040,7 +1043,7 @@ public class HlslAstWriter : HlslWriter
                 .GroupBy(r => new NodeList(Broadcast(r.Nodes)))
                 .Select(g => (g.Key.Nodes, Repeated: (g.Count() - 1) * g.First().Text.Length))
                 .Where(r => r.Repeated >= RepeatedTextBudget)
-                .Where(r => r.Nodes.All(n => IsNameable(n) && !roots.Contains(n)))
+                .Where(r => r.Nodes.All(n => IsNameable(n) && !roots.Contains(n) && !grouped.Contains(n)))
                 .Where(r => r.Nodes.Any(n => n is not ConstantNode))
                 .Where(r => r.Nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == r.Nodes.Length)
                 .OrderByDescending(r => r.Repeated)
@@ -1065,7 +1068,7 @@ public class HlslAstWriter : HlslWriter
             // merges are exactly the ones that would.
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
-                : TextRepeats(recording, roots) ?? SplitRead(readers, roots);
+                : TextRepeats(recording, grouped, roots) ?? SplitRead(readers, grouped, roots);
             if (occurrences == null)
             {
                 return assignments;
@@ -1251,10 +1254,12 @@ public class HlslAstWriter : HlslWriter
     /// those: naming them would be a declaration apiece for no instruction saved.
     /// </summary>
     private List<HlslTreeNode[]> SplitRead(
-        HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
+        HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> grouped, HashSet<HlslTreeNode> roots)
     {
         HlslTreeNode chosen = readers
-            .Where(node => CostsAnInstruction(node) && !roots.Contains(node))
+            .Where(node => CostsAnInstruction(node)
+                && !roots.Contains(node)
+                && !grouped.Contains(node))
             // Not one that has been named already. Counting over the instruction
             // rather than the node means naming a component does not bring its own
             // count down - every component still answers for all of them - so
@@ -1344,7 +1349,9 @@ public class HlslAstWriter : HlslWriter
     /// to be named together, or null where there is none.
     /// </summary>
     private List<HlslTreeNode[]> TextRepeats(
-        List<(HlslTreeNode[] Nodes, string Text)> recording, HashSet<HlslTreeNode> roots)
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        HashSet<HlslTreeNode> grouped,
+        HashSet<HlslTreeNode> roots)
     {
         return recording
             .GroupBy(r => r.Text)
@@ -1360,7 +1367,8 @@ public class HlslAstWriter : HlslWriter
             // vector does.
             .Where(r => r.Occurrences.All(nodes => nodes.Length == r.Occurrences[0].Length))
             .Where(r => r.Repeated >= RepeatedTextBudget)
-            .Where(r => r.Occurrences.All(nodes => nodes.All(n => IsNameable(n) && !roots.Contains(n))))
+            .Where(r => r.Occurrences.All(nodes =>
+                nodes.All(n => IsNameable(n) && !roots.Contains(n) && !grouped.Contains(n))))
             .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))
             .Where(r => r.Occurrences.All(nodes =>
                 nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length))

@@ -69,6 +69,62 @@ public sealed class NodeCompiler
     public List<(HlslTreeNode[] Nodes, string Text)> Recording { get; set; }
 
     /// <summary>
+    /// Set alongside Recording: the nodes a grouper took the inside of. A cross
+    /// product is recognised from the six multiplies under it, and those multiplies
+    /// are never written on their own - naming one puts a variable where the next
+    /// compile expects the pattern, and the grouper stops matching. The operands a
+    /// grouper hands back are not in here: those are compiled by themselves anyway,
+    /// so a name is safe at the boundary of a match and nowhere inside it.
+    /// </summary>
+    public HashSet<HlslTreeNode> Grouped { get; set; }
+
+    /// <summary>
+    /// Records everything under the matched components except what is under the
+    /// operands the match handed back.
+    /// </summary>
+    private void MarkGrouped(IEnumerable<HlslTreeNode> matched, params IEnumerable<HlslTreeNode>[] operands)
+    {
+        if (Grouped == null)
+        {
+            return;
+        }
+        HashSet<HlslTreeNode> boundary = HlslTreeNode.NewNodeSet();
+        foreach (IEnumerable<HlslTreeNode> operand in operands)
+        {
+            foreach (HlslTreeNode node in Reachable(operand))
+            {
+                boundary.Add(node);
+            }
+        }
+        foreach (HlslTreeNode node in Reachable(matched))
+        {
+            if (!boundary.Contains(node))
+            {
+                Grouped.Add(node);
+            }
+        }
+    }
+
+    private static IEnumerable<HlslTreeNode> Reachable(IEnumerable<HlslTreeNode> roots)
+    {
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>(roots);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            yield return node;
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                stack.Push(input);
+            }
+        }
+    }
+
+    /// <summary>
     /// Compiles a value standing where a float is wanted - an output, or a return.
     /// Bits reaching one of those are reinterpreted, the same as bits reaching the
     /// operand of a float operation; the writer has to say so because an output is
@@ -143,6 +199,11 @@ public sealed class NodeCompiler
             var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(components);
             if (multiplication != null)
             {
+                // The index a row is read through is handed back too, and is
+                // written on its own - `cascadeTransform[min(t0, 3)]` - so it is a
+                // boundary of the match like the vector is.
+                MarkGrouped(components, multiplication.Vector,
+                    multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
                 return _matrixMultiplicationCompiler.Compile(multiplication);
             }
             // Dot products group only as rows of one matrix multiply. A run of them
@@ -158,6 +219,7 @@ public sealed class NodeCompiler
             var normalize = _nodeGrouper.NormalizeGrouper.TryGetContext(components);
             if (normalize != null)
             {
+                MarkGrouped(components, normalize);
                 var vector = Compile(normalize);
                 return $"normalize({vector})";
             }
@@ -165,12 +227,14 @@ public sealed class NodeCompiler
             var reflect = _nodeGrouper.ReflectGrouper.TryGetContext(components);
             if (reflect != null)
             {
+                MarkGrouped(components, reflect.Value.Incident, reflect.Value.Normal);
                 return $"reflect({Compile(reflect.Value.Incident)}, {Compile(reflect.Value.Normal)})";
             }
 
             var cross = _nodeGrouper.CrossProductGrouper.TryGetContext(components);
             if (cross != null)
             {
+                MarkGrouped(components, cross.Value.A, cross.Value.B);
                 return $"cross({Compile(cross.Value.A)}, {Compile(cross.Value.B)})";
             }
         }

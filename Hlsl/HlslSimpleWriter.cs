@@ -1126,6 +1126,14 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.GE:
                 WriteComparison(instruction, ">=");
                 break;
+            // The float comparisons, beside ieq and ine further down: both pairs
+            // write the same mask and are told apart by what they read it from.
+            case D3D10Opcode.Eq:
+                WriteComparison(instruction, "==");
+                break;
+            case D3D10Opcode.Ne:
+                WriteComparison(instruction, "!=");
+                break;
             case D3D10Opcode.Ilt:
                 WriteComparison(instruction, "<");
                 break;

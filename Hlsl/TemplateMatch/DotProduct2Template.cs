@@ -56,6 +56,16 @@ public class DotProduct2Template : IGroupTemplate
                     // costs a mul that the multiplication grouper would have kept.
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
                 }
+                // `a*a + b*b` is a length squared, and the vector it is taken over
+                // needs no grouping to be a vector: both factors of each product are
+                // the same value, so whatever the components are the shader squared
+                // them and added them up. grass_wave takes the length of a position
+                // whose x and z are a mad and whose y is read straight from the
+                // input, and those do not group with one another.
+                if (NodeGrouper.AreNodesEquivalent(a, x) && NodeGrouper.AreNodesEquivalent(b, y))
+                {
+                    return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
+                }
                 return null;
             }
             Swap(ref b, ref y);

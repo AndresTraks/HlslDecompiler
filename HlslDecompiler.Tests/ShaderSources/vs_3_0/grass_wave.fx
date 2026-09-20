@@ -23,7 +23,7 @@ VS_OUT main(VS_IN i)
 	float2 t1 = i.position.xz + i.texcoord1.yz + wind.xy * t0;
 	o.position = mul(float4(t1.x, i.position.y, t1.y, i.position.w), worldViewProjection);
 	o.texcoord = i.texcoord.xy;
-	o.fog = saturate(sqrt(t1.x * t1.x + i.position.y * i.position.y + t1.y * t1.y) * -i.texcoord1.w + 1);
+	o.fog = saturate(length(float3(t1.x, i.position.y, t1.y)) * -i.texcoord1.w + 1);
 
 	return o;
 }

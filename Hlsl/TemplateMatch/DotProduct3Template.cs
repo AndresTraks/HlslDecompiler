@@ -84,6 +84,15 @@ public class DotProduct3Template : IGroupTemplate
                 new GroupNode(dot.X.Inputs[0], b, c),
                 new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));
         }
+        else if (NodeGrouper.AreNodesEquivalent(dot.X, dot.Y)
+            && NodeGrouper.AreNodesEquivalent(cz.Factor1, cz.Factor2))
+        {
+            // The same as the two component case: a dot of a vector with itself is
+            // a length squared whatever its components are, so they need not group.
+            return new DotProductContext(
+                new GroupNode(dot.X.Inputs[0], b, c),
+                new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));
+        }
 
         return null;
     }

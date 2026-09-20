@@ -78,16 +78,12 @@ public class RoundTripCostTests
             + "again rather than sharing the one the saturate above it already "
             + "computes. One instruction for the word, paid knowingly - five "
             + "shaders read `normalize(v)` where they read a division by a length "
-            + "on a line of its own."),
-        ["vs_3_0/grass_wave"] = (24,
-            "Two instructions, and the same cause as ps_4_0/gbuffer_decode. The "
-            + "position the length is taken of has two components computed by a mad "
-            + "and one read straight from the input, and a component built by a "
-            + "different expression from its neighbour does not group with it - so "
-            + "the dp3 is written as three multiplies and two adds rather than as "
-            + "length(float3(...)), and fxc has no vector to take it over. Was 27 "
-            + "while the cos of a half angle kept the whole range reduction fxc "
-            + "wrote in front of it, which fxc then reduced again."),
+            + "on a line of its own. The normal is the second of them since a dot "
+            + "of a vector with itself stopped needing its components to group: "
+            + "`sqrt(t5 * t5 + t6 * t6 + t3 * t3)` named on a line of its own, with "
+            + "`float3(t5, t6, t3) / t7` after it, is `normalize(float3(t5, t6, "
+            + "t3))` now. No change in the count, one temp fewer and a line that "
+            + "says what it does."),
         ["cs_4_0/particle_update"] = (13,
             "Two instructions, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "

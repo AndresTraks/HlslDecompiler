@@ -1493,9 +1493,9 @@ public class HlslAstWriter : HlslWriter
             bool isSize = call.All(c => c.InfoComponent < 2) && IsConstantZero(info.MipLevel);
             // A multisampled texture's overload is three wide - width, height and
             // the sample count - and has no mip level to ask about.
-            bool isMultisampled = call.Any(c => c.IsSampleCount);
+            ResourceInfoNode sampleCount = call.FirstOrDefault(c => c.IsSampleCount);
             TempVariableNode[] variables = _compiler.CreateTempVariables(
-                isMultisampled ? 3 : isSize ? 2 : 4);
+                sampleCount != null ? sampleCount.SampleCountComponent + 1 : isSize ? 2 : 4);
             foreach (TempVariableNode variable in variables)
             {
                 variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;

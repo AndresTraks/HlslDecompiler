@@ -26,11 +26,19 @@ public class ResourceInfoNode : HlslTreeNode, IHasComponentIndex
     // resinfo. The two are separate instructions and one GetDimensions call.
     public bool IsSampleCount { get; init; }
 
+    /// <summary>
+    /// Which out parameter the sample count is. A multisampled texture reports
+    /// width, height and the count; an array of them reports the element count
+    /// between, so the sample count is the fourth rather than the third.
+    /// </summary>
+    public int SampleCountComponent { get; init; } = 2;
+
     // Which measurement this is: the resource operand's swizzle picks it, the
     // same way a sample's picks the channel. Except for the sample count, whose
     // swizzle is .x like a width's - it is the third out parameter of the overload
     // a multisampled texture takes, so it answers z.
-    public int InfoComponent => IsSampleCount ? 2 : Resource.RegisterComponentKey.ComponentIndex;
+    public int InfoComponent =>
+        IsSampleCount ? SampleCountComponent : Resource.RegisterComponentKey.ComponentIndex;
 
     // The variable the writer named this into. Set when the call statement is
     // hoisted, and read wherever the node itself is still the root of an output.

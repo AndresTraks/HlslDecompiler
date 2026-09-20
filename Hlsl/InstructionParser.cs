@@ -1889,10 +1889,15 @@ public class InstructionParser
         const int ResourceParamIndex = 1;
 
         var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
+        ResourceDefinition definition = _registerState.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .FirstOrDefault(d => d.BindPoint == resource.RegisterComponentKey.RegisterKey.Number);
+        bool isArray = definition?.Dimension == ResourceDimension.Texture2DmsArray;
         return new ResourceInfoNode(
             resource, new ConstantNode(0), outputComponent, instruction.ResInfoReturnType)
         {
             IsSampleCount = true,
+            SampleCountComponent = isArray ? 3 : 2,
         };
     }
 

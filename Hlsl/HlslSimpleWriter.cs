@@ -2339,8 +2339,7 @@ public class HlslSimpleWriter : HlslWriter
         // Asking it for two came out as X3013, no matching intrinsic.
         if (IsMultisampled(instruction, 2))
         {
-            WriteLine($"{type}3 {dimensions};");
-            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y, {dimensions}.z);");
+            WriteMultisampledDimensions(instruction, 2, type, dimensions);
         }
         else if (!read[2] && !read[3] && mipLevel == "0")
         {
@@ -2365,23 +2364,52 @@ public class HlslSimpleWriter : HlslWriter
     private void WriteSampleInfo(D3D10Instruction instruction)
     {
         string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
-        string resource = GetOperandName(instruction, 1);
         string dimensions = $"dimensions{_resourceInfoCount++}";
+        WriteMultisampledDimensions(instruction, 1, type, dimensions);
+        // The count is the last out parameter, which an array pushes to w by
+        // reporting how many elements it has in front of it.
+        string component = IsMultisampledArray(instruction, 1) ? "w" : "z";
+        WriteResult(instruction, "{0} = {1}.{2};", GetOperandName(instruction, 0), dimensions, component);
+    }
+
+    /// <summary>
+    /// The GetDimensions a multisampled texture takes: width, height and the sample
+    /// count, with the element count between them for an array, and no mip level in
+    /// either - there are no mips to ask about.
+    /// </summary>
+    private void WriteMultisampledDimensions(
+        D3D10Instruction instruction, int resourceOperand, string type, string dimensions)
+    {
+        string resource = GetOperandName(instruction, resourceOperand);
+        if (IsMultisampledArray(instruction, resourceOperand))
+        {
+            WriteLine($"{type}4 {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y, {dimensions}.z, {dimensions}.w);");
+            return;
+        }
         WriteLine($"{type}3 {dimensions};");
         WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y, {dimensions}.z);");
-        WriteResult(instruction, "{0} = {1}.z;", GetOperandName(instruction, 0), dimensions);
+    }
+
+    private bool IsMultisampledArray(D3D10Instruction instruction, int operandIndex)
+    {
+        return ResourceDimensionOf(instruction, operandIndex) == ResourceDimension.Texture2DmsArray;
     }
 
     /// <summary>Whether the resource an operand names is a multisampled texture,
     /// which changes which GetDimensions overloads there are.</summary>
     private bool IsMultisampled(D3D10Instruction instruction, int operandIndex)
     {
-        int bindPoint = instruction.GetParamRegisterNumber(operandIndex);
-        ResourceDefinition definition = _registers.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-            .FirstOrDefault(d => d.BindPoint == bindPoint);
-        return definition?.Dimension is ResourceDimension.Texture2Dms
+        return ResourceDimensionOf(instruction, operandIndex) is ResourceDimension.Texture2Dms
             or ResourceDimension.Texture2DmsArray;
+    }
+
+    private ResourceDimension? ResourceDimensionOf(D3D10Instruction instruction, int operandIndex)
+    {
+        int bindPoint = instruction.GetParamRegisterNumber(operandIndex);
+        return _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .FirstOrDefault(d => d.BindPoint == bindPoint)?.Dimension;
     }
 
     private static string GetResourceSwizzle(D3D10Instruction instruction)

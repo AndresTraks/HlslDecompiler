@@ -572,6 +572,30 @@ public sealed class NodeCompiler
                         : $"-({value})";
                 }
 
+            // Before ConsumerOperation, which this is one of: firstbithigh names
+            // two instructions and HLSL tells them apart by the operand, so the
+            // unsigned one says so where the value does not already say it itself.
+            // Without the cast, firstbithigh over a temp - which is declared int -
+            // compiles back to firstbit_shi, which answers differently for every
+            // word with its top bit set.
+            case FirstBitHighOperation high:
+                {
+                    string value = Compile(components.Select(g => g.Inputs[0]));
+                    if (high.IsUnsigned && !IsUnsignedAlready(high.Value))
+                    {
+                        string size = components.Count > 1 ? components.Count.ToString() : "";
+                        // A cast binds tighter than the arithmetic it is put in front
+                        // of, so anything but a value already standing alone needs
+                        // the brackets: `(uint)a + b` casts a and adds b to it.
+                        string cast = high.Value is RegisterInputNode or ConstantNode
+                            or TempVariableNode or TempAssignmentNode
+                            ? value
+                            : $"({value})";
+                        value = $"(uint{size}){cast}";
+                    }
+                    return $"firstbithigh({value})";
+                }
+
             case ConsumerOperation _:
                 {
                     string name = operation.HlslFunction;

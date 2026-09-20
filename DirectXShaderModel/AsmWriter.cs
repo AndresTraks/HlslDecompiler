@@ -763,6 +763,12 @@ public class AsmWriter
             case D3D10Opcode.FirstBitLo:
                 WriteInstruction(instruction, "firstbit_lo", 2);
                 break;
+            case D3D10Opcode.FirstBitHi:
+                WriteInstruction(instruction, "firstbit_hi", 2);
+                break;
+            case D3D10Opcode.FirstBitSHi:
+                WriteInstruction(instruction, "firstbit_shi", 2);
+                break;
             case D3D10Opcode.BFRev:
                 WriteInstruction(instruction, "bfrev", 2);
                 break;

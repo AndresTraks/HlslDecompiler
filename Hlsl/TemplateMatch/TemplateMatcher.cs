@@ -51,6 +51,7 @@ public class TemplateMatcher
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
             new StepTemplate(),
+            new FirstBitHighTemplate(),
             new ClampTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>

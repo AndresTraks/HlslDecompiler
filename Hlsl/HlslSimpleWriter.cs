@@ -721,6 +721,29 @@ public class HlslSimpleWriter : HlslWriter
     // the original reads 4294967295. The reading is a reinterpretation of the same
     // bits; only the outer cast converts. Both are as wide as what is written,
     // since a bare (float) over two components is X3014.
+    /// <summary>
+    /// firstbit_hi and firstbit_shi, which HLSL has one function for and counts
+    /// the other way round: firstbithigh gives the position of the bit from the
+    /// bottom, and both instructions give the number of bits above it. So the
+    /// statement is the subtraction, and the case each instruction has no answer
+    /// for has to be said as well - a word with no bit to find answers 0xffffffff
+    /// rather than the 32 the subtraction would give. The signed form has two such
+    /// words, 0 and -1, being the two whose bits are all their own sign.
+    ///
+    /// The cast is what picks the instruction: firstbithigh over a uint is
+    /// firstbit_hi and over an int it is firstbit_shi, and a temp is declared int.
+    /// </summary>
+    private void WriteFirstBitHigh(D3D10Instruction instruction, bool signed)
+    {
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        string source = GetOperandName(instruction, 1);
+        string value = signed || IsUnsignedOperand(instruction, 1) ? source : $"(uint{size}){source}";
+        string found = signed ? $"{source} != 0 && {source} != -1" : $"{value} != 0";
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+            $"{found} ? 31 - firstbithigh({value}) : -1");
+    }
+
     private void WriteConversion(D3D10Instruction instruction, string readAs, string convertTo)
     {
         int length = instruction.GetDestinationMaskLength();
@@ -1359,6 +1382,12 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.FirstBitLo:
                 WriteResult(instruction, "{0} = firstbitlow({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.FirstBitHi:
+                WriteFirstBitHigh(instruction, signed: false);
+                break;
+            case D3D10Opcode.FirstBitSHi:
+                WriteFirstBitHigh(instruction, signed: true);
                 break;
             case D3D10Opcode.BFRev:
                 WriteResult(instruction, "{0} = reversebits({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));

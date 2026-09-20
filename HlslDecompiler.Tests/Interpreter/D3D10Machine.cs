@@ -708,6 +708,16 @@ public class D3D10Machine
                 // 0xffffffff where no bit is set, which is what the instruction
                 // answers and what TrailingZeroCount does not.
                 return MapUInt(instruction, v => v == 0 ? 0xFFFFFFFF : (uint)BitOperations.TrailingZeroCount(v));
+            case D3D10Opcode.FirstBitHi:
+                return MapUInt(instruction, v => v == 0 ? 0xFFFFFFFF : (uint)BitOperations.LeadingZeroCount(v));
+            case D3D10Opcode.FirstBitSHi:
+                // The bits above the highest one that is not the sign, so a word
+                // that is all sign - 0 and -1 - has none and answers 0xffffffff.
+                // Counting them over the inverse of a negative word is counting the
+                // zeroes above its highest one.
+                return MapUInt(instruction, v => v == 0 || v == 0xFFFFFFFF
+                    ? 0xFFFFFFFF
+                    : (uint)BitOperations.LeadingZeroCount((int)v < 0 ? ~v : v));
             case D3D10Opcode.BFRev:
                 return MapUInt(instruction, ReverseBits);
             case D3D10Opcode.F32ToF16:

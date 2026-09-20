@@ -1666,6 +1666,8 @@ public class InstructionParser
             case D3D10Opcode.Sqrt:
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.FirstBitHi:
+            case D3D10Opcode.FirstBitSHi:
             case D3D10Opcode.BFRev:
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
@@ -1791,6 +1793,21 @@ public class InstructionParser
                             return new BitCountOperation(inputs[0]);
                         case D3D10Opcode.FirstBitLo:
                             return new FirstBitLowOperation(inputs[0]);
+                        // firstbit_hi counts from the top and firstbithigh counts
+                        // from the bottom, so the instruction is the subtraction
+                        // rather than the call: written as the nodes it is made of,
+                        // the subtraction binds like any other and the pattern fxc
+                        // guards it with is a pattern over ordinary arithmetic. The
+                        // two differ only where there is no bit to find - the
+                        // instruction answers 0xffffffff and the subtraction 32 -
+                        // and that is the case the guard exists to handle, so the
+                        // template that puts firstbithigh back takes it away again.
+                        case D3D10Opcode.FirstBitHi:
+                        case D3D10Opcode.FirstBitSHi:
+                            return new SubtractOperation(
+                                new ConstantNode(31),
+                                new FirstBitHighOperation(
+                                    inputs[0], instruction.Opcode == D3D10Opcode.FirstBitHi));
                         case D3D10Opcode.BFRev:
                             return new ReverseBitsOperation(inputs[0]);
                         case D3D10Opcode.F32ToF16:
@@ -2506,6 +2523,8 @@ public class InstructionParser
             case D3D10Opcode.SinCos:
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:
+            case D3D10Opcode.FirstBitHi:
+            case D3D10Opcode.FirstBitSHi:
             case D3D10Opcode.BFRev:
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:

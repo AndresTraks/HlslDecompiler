@@ -757,9 +757,11 @@ public sealed class IntegerOperandAnalysis
         // atomic over a float, so an array one reaches holds integers whatever the
         // stores into it look like. A histogram's bins are cleared with a store of
         // l(0), whose bits say nothing either way.
-        if (instructions.Any(instruction => instruction.Opcode.IsAtomic()
-            && instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory
-            && instruction.GetParamRegisterNumber(0) == register))
+        if (instructions.Any(instruction =>
+            (instruction.Opcode.IsAtomic() || instruction.Opcode.IsImmediateAtomic())
+            && instruction.GetOperandType(instruction.Opcode.IsAtomic() ? 0 : 1)
+                == OperandType.ThreadGroupSharedMemory
+            && instruction.GetParamRegisterNumber(instruction.Opcode.IsAtomic() ? 0 : 1) == register))
         {
             return true;
         }

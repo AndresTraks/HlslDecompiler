@@ -1433,19 +1433,39 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
             case D3D10Opcode.AtomicCmpStore:
+            case D3D10Opcode.ImmAtomicIAdd:
+            case D3D10Opcode.ImmAtomicAnd:
+            case D3D10Opcode.ImmAtomicOr:
+            case D3D10Opcode.ImmAtomicXor:
+            case D3D10Opcode.ImmAtomicIMax:
+            case D3D10Opcode.ImmAtomicIMin:
+            case D3D10Opcode.ImmAtomicUMax:
+            case D3D10Opcode.ImmAtomicUMin:
+            case D3D10Opcode.ImmAtomicExch:
+            case D3D10Opcode.ImmAtomicCmpExch:
                 {
                     // A byte address buffer takes the interlocked operations as its
                     // own methods over a byte offset; everything else takes them as
-                    // free functions over the element.
+                    // free functions over the element. The imm_ forms keep what the
+                    // resource held, in a register that goes in front of the rest -
+                    // so every operand is one further along - and HLSL takes it as
+                    // the out parameter after the value.
                     string method = instruction.Opcode.AtomicMethodName();
-                    string resource = GetOperandName(instruction, 0);
-                    string address = GetOperandName(instruction, 1);
-                    bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
-                    string value = GetOperandName(instruction, isCompareStore ? 3 : 2);
-                    string arguments = isCompareStore
-                        ? $"{GetOperandName(instruction, 2)}, {value}"
+                    bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
+                    int first = keepsOriginal ? 1 : 0;
+                    string resource = GetOperandName(instruction, first);
+                    string address = GetOperandName(instruction, first + 1);
+                    bool hasCompare = instruction.Opcode
+                        is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
+                    string value = GetOperandName(instruction, first + (hasCompare ? 3 : 2));
+                    string arguments = hasCompare
+                        ? $"{GetOperandName(instruction, first + 2)}, {value}"
                         : value;
-                    if (_registers.IsRawResource(instruction.GetParamRegisterKey(0)))
+                    if (keepsOriginal)
+                    {
+                        arguments += $", {GetOperandName(instruction, 0)}";
+                    }
+                    if (_registers.IsRawResource(instruction.GetParamRegisterKey(first)))
                     {
                         WriteLine("{0}.{1}({2}, {3});", resource, method, address, arguments);
                         break;
@@ -2102,7 +2122,8 @@ public class HlslSimpleWriter : HlslWriter
         if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
-            || (instruction.Opcode.IsAtomic() && operandIndex == 0))
+            || (instruction.Opcode.IsAtomic() && operandIndex == 0)
+            || (instruction.Opcode.IsImmediateAtomic() && operandIndex == 1))
         {
             writeMaskName = "";
         }
@@ -2631,6 +2652,10 @@ public class HlslSimpleWriter : HlslWriter
         // its second component is the byte offset within the element and is not part
         // of the subscript.
         if (instruction.Opcode.IsAtomic() && operandIndex != 0)
+        {
+            return 1;
+        }
+        if (instruction.Opcode.IsImmediateAtomic() && operandIndex > 1)
         {
             return 1;
         }

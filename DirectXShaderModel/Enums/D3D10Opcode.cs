@@ -284,6 +284,32 @@ public static class D3D10OpcodeExtensions
     }
 
     /// <summary>
+    /// Whether the interlocked operation keeps the value the resource held before
+    /// it. The same operations as above with an imm_ in front and a destination
+    /// register in front of the resource, which HLSL writes as the out parameter
+    /// the two argument form leaves off.
+    /// </summary>
+    public static bool IsImmediateAtomic(this D3D10Opcode opcode)
+    {
+        switch (opcode)
+        {
+            case D3D10Opcode.ImmAtomicIAdd:
+            case D3D10Opcode.ImmAtomicAnd:
+            case D3D10Opcode.ImmAtomicOr:
+            case D3D10Opcode.ImmAtomicXor:
+            case D3D10Opcode.ImmAtomicIMax:
+            case D3D10Opcode.ImmAtomicIMin:
+            case D3D10Opcode.ImmAtomicUMax:
+            case D3D10Opcode.ImmAtomicUMin:
+            case D3D10Opcode.ImmAtomicExch:
+            case D3D10Opcode.ImmAtomicCmpExch:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
     /// The HLSL intrinsic an interlocked operation is written as. The unsigned and
     /// the signed minimum and maximum share one name each - the operands say which,
     /// the way they do for umin and imin themselves.
@@ -299,6 +325,16 @@ public static class D3D10OpcodeExtensions
             D3D10Opcode.AtomicIMax or D3D10Opcode.AtomicUMax => "InterlockedMax",
             D3D10Opcode.AtomicIMin or D3D10Opcode.AtomicUMin => "InterlockedMin",
             D3D10Opcode.AtomicCmpStore => "InterlockedCompareStore",
+            D3D10Opcode.ImmAtomicIAdd => "InterlockedAdd",
+            D3D10Opcode.ImmAtomicAnd => "InterlockedAnd",
+            D3D10Opcode.ImmAtomicOr => "InterlockedOr",
+            D3D10Opcode.ImmAtomicXor => "InterlockedXor",
+            D3D10Opcode.ImmAtomicIMax or D3D10Opcode.ImmAtomicUMax => "InterlockedMax",
+            D3D10Opcode.ImmAtomicIMin or D3D10Opcode.ImmAtomicUMin => "InterlockedMin",
+            // The exchanges have no form that drops the old value, so these two
+            // names belong to the imm_ opcodes alone.
+            D3D10Opcode.ImmAtomicExch => "InterlockedExchange",
+            D3D10Opcode.ImmAtomicCmpExch => "InterlockedCompareExchange",
             _ => throw new NotImplementedException(opcode.ToString()),
         };
     }
@@ -347,6 +383,16 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
             case D3D10Opcode.AtomicCmpStore:
+            case D3D10Opcode.ImmAtomicIAdd:
+            case D3D10Opcode.ImmAtomicAnd:
+            case D3D10Opcode.ImmAtomicOr:
+            case D3D10Opcode.ImmAtomicXor:
+            case D3D10Opcode.ImmAtomicIMax:
+            case D3D10Opcode.ImmAtomicIMin:
+            case D3D10Opcode.ImmAtomicUMax:
+            case D3D10Opcode.ImmAtomicUMin:
+            case D3D10Opcode.ImmAtomicExch:
+            case D3D10Opcode.ImmAtomicCmpExch:
             // The bit instructions read an integer and count or reorder its bits.
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:

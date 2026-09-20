@@ -237,6 +237,16 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
                 case D3D10Opcode.StoreStructured:
+                case D3D10Opcode.ImmAtomicIAdd:
+                case D3D10Opcode.ImmAtomicAnd:
+                case D3D10Opcode.ImmAtomicOr:
+                case D3D10Opcode.ImmAtomicXor:
+                case D3D10Opcode.ImmAtomicIMax:
+                case D3D10Opcode.ImmAtomicIMin:
+                case D3D10Opcode.ImmAtomicUMax:
+                case D3D10Opcode.ImmAtomicUMin:
+                case D3D10Opcode.ImmAtomicExch:
+                case D3D10Opcode.ImmAtomicCmpExch:
                 case D3D10Opcode.CountBits:
                 case D3D10Opcode.FirstBitLo:
                 case D3D10Opcode.FirstBitHi:

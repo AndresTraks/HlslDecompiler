@@ -805,6 +805,36 @@ public class AsmWriter
             case D3D10Opcode.AtomicCmpStore:
                 WriteInstruction(instruction, "atomic_cmp_store", 4);
                 break;
+            case D3D10Opcode.ImmAtomicIAdd:
+                WriteInstruction(instruction, "imm_atomic_iadd", 4);
+                break;
+            case D3D10Opcode.ImmAtomicAnd:
+                WriteInstruction(instruction, "imm_atomic_and", 4);
+                break;
+            case D3D10Opcode.ImmAtomicOr:
+                WriteInstruction(instruction, "imm_atomic_or", 4);
+                break;
+            case D3D10Opcode.ImmAtomicXor:
+                WriteInstruction(instruction, "imm_atomic_xor", 4);
+                break;
+            case D3D10Opcode.ImmAtomicIMax:
+                WriteInstruction(instruction, "imm_atomic_imax", 4);
+                break;
+            case D3D10Opcode.ImmAtomicIMin:
+                WriteInstruction(instruction, "imm_atomic_imin", 4);
+                break;
+            case D3D10Opcode.ImmAtomicUMax:
+                WriteInstruction(instruction, "imm_atomic_umax", 4);
+                break;
+            case D3D10Opcode.ImmAtomicUMin:
+                WriteInstruction(instruction, "imm_atomic_umin", 4);
+                break;
+            case D3D10Opcode.ImmAtomicExch:
+                WriteInstruction(instruction, "imm_atomic_exch", 4);
+                break;
+            case D3D10Opcode.ImmAtomicCmpExch:
+                WriteInstruction(instruction, "imm_atomic_cmp_exch", 5);
+                break;
             case D3D10Opcode.StoreStructured:
                 WriteInstruction(instruction, "store_structured", 4);
                 break;

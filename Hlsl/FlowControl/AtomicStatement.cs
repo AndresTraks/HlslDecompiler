@@ -24,6 +24,13 @@ public class AtomicStatement : IStatement
     // else leaves this null.
     public HlslTreeNode Compare { get; init; }
     public HlslTreeNode Value { get; }
+    /// <summary>
+    /// The variable the value the resource held before this goes into, for the
+    /// imm_ forms, and null for the ones that keep nothing. HLSL spells it as the
+    /// out parameter after the value - and InterlockedExchange and
+    /// InterlockedCompareExchange have no form without it.
+    /// </summary>
+    public TempVariableNode Original { get; init; }
     public string MethodName { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }

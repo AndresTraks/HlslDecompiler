@@ -272,15 +272,33 @@ public class HlslAstWriter : HlslWriter
             ? null
             : _compiler.Compile(Reduce(atomic.Compare));
 
+        // The variable the old value goes into has to exist before the call takes
+        // its address, and compiling it is what numbers it. Declared here rather
+        // than by the block rule above, which declares what a block assigns and
+        // this is not an assignment.
+        string original = null;
+        if (atomic.Original != null)
+        {
+            original = _compiler.Compile(atomic.Original);
+            if (_declaredVariables.Add(atomic.Original))
+            {
+                string type = atomic.Original.IsInteger ? atomic.Original.IntegerTypeName : "float";
+                WriteLine($"{type} {original};");
+            }
+        }
+        string arguments = compare == null ? value : $"{compare}, {value}";
+        if (original != null)
+        {
+            arguments += $", {original}";
+        }
+
         // A byte address buffer has the interlocked operations as methods on itself,
         // taking the byte offset. Everything else - a structured buffer, a typed
         // UAV, groupshared memory - has them as free functions over the destination,
         // which is the element rather than the resource.
         if (atomic.ElementByteOffset == null)
         {
-            WriteLine(compare == null
-                ? $"{resource}.{atomic.MethodName}({address}, {value});"
-                : $"{resource}.{atomic.MethodName}({address}, {compare}, {value});");
+            WriteLine($"{resource}.{atomic.MethodName}({address}, {arguments});");
             return;
         }
 
@@ -291,9 +309,7 @@ public class HlslAstWriter : HlslWriter
         {
             element += "." + runs[0].Name;
         }
-        WriteLine(compare == null
-            ? $"{atomic.MethodName}({element}, {value});"
-            : $"{atomic.MethodName}({element}, {compare}, {value});");
+        WriteLine($"{atomic.MethodName}({element}, {arguments});");
     }
 
     private static int GetElementByteOffset(AtomicStatement atomic)

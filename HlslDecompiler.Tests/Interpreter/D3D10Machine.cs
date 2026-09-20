@@ -313,6 +313,16 @@ public class D3D10Machine
                 case D3D10Opcode.AtomicUMax:
                 case D3D10Opcode.AtomicUMin:
                 case D3D10Opcode.AtomicCmpStore:
+                case D3D10Opcode.ImmAtomicIAdd:
+                case D3D10Opcode.ImmAtomicAnd:
+                case D3D10Opcode.ImmAtomicOr:
+                case D3D10Opcode.ImmAtomicXor:
+                case D3D10Opcode.ImmAtomicIMax:
+                case D3D10Opcode.ImmAtomicIMin:
+                case D3D10Opcode.ImmAtomicUMax:
+                case D3D10Opcode.ImmAtomicUMin:
+                case D3D10Opcode.ImmAtomicExch:
+                case D3D10Opcode.ImmAtomicCmpExch:
                     Atomic(instruction);
                     pc++;
                     continue;
@@ -492,27 +502,43 @@ public class D3D10Machine
     /// </summary>
     private void Atomic(D3D10Instruction instruction)
     {
-        const int ResourceIndex = 0;
-        const int AddressIndex = 1;
-        int resource = instruction.GetParamRegisterNumber(ResourceIndex);
-        int[] address = Ints(instruction, AddressIndex);
-        bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
-        uint value = Source(instruction, isCompareStore ? 3 : 2)[0];
-        uint compare = isCompareStore ? Source(instruction, 2)[0] : 0;
+        // The imm_ forms keep what the resource held, in a register that goes in
+        // front of the resource - so every operand is one further along.
+        bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
+        int resourceIndex = keepsOriginal ? 1 : 0;
+        int addressIndex = resourceIndex + 1;
+        int resource = instruction.GetParamRegisterNumber(resourceIndex);
+        int[] address = Ints(instruction, addressIndex);
+        bool hasCompare = instruction.Opcode
+            is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
+        uint value = Source(instruction, addressIndex + (hasCompare ? 2 : 1))[0];
+        uint compare = hasCompare ? Source(instruction, addressIndex + 1)[0] : 0;
 
-        if (instruction.GetOperandType(ResourceIndex) == OperandType.ThreadGroupSharedMemory)
+        if (instruction.GetOperandType(resourceIndex) == OperandType.ThreadGroupSharedMemory)
         {
             (int stride, uint[] words) = _threadGroupSharedMemory[resource];
             int word = SharedMemoryWord(stride, words, address[0], address[1]);
+            uint held = word < words.Length ? words[word] : 0;
             if (word < words.Length)
             {
-                words[word] = ApplyAtomic(instruction.Opcode, words[word], value, compare);
+                words[word] = ApplyAtomic(instruction.Opcode, held, value, compare);
+            }
+            if (keepsOriginal)
+            {
+                Store(instruction, 0, [held, held, held, held]);
             }
             return;
         }
         _stored.Add(new KeyValuePair<string, uint[]>(
             $"ATOMIC{instruction.Opcode}{resource}[{address[0]}][{address[1]}]",
             [value, compare, 0, 0]));
+        if (keepsOriginal)
+        {
+            // A buffer is not modelled - only the effects on it are recorded - so
+            // there is nothing to have held. Zero, the same on both sides of the
+            // comparison, which is what the tier is asking about.
+            Store(instruction, 0, [0, 0, 0, 0]);
+        }
     }
 
     private static uint ApplyAtomic(D3D10Opcode opcode, uint held, uint value, uint compare)
@@ -528,6 +554,16 @@ public class D3D10Machine
             D3D10Opcode.AtomicUMax => Math.Max(held, value),
             D3D10Opcode.AtomicUMin => Math.Min(held, value),
             D3D10Opcode.AtomicCmpStore => held == compare ? value : held,
+            D3D10Opcode.ImmAtomicIAdd => held + value,
+            D3D10Opcode.ImmAtomicAnd => held & value,
+            D3D10Opcode.ImmAtomicOr => held | value,
+            D3D10Opcode.ImmAtomicXor => held ^ value,
+            D3D10Opcode.ImmAtomicIMax => (uint)Math.Max((int)held, (int)value),
+            D3D10Opcode.ImmAtomicIMin => (uint)Math.Min((int)held, (int)value),
+            D3D10Opcode.ImmAtomicUMax => Math.Max(held, value),
+            D3D10Opcode.ImmAtomicUMin => Math.Min(held, value),
+            D3D10Opcode.ImmAtomicExch => value,
+            D3D10Opcode.ImmAtomicCmpExch => held == compare ? value : held,
             _ => throw new UnsupportedException($"opcode {opcode}"),
         };
     }

@@ -139,7 +139,11 @@ public class InstructionParser
             && instruction.Opcode != D3D10Opcode.StoreRaw
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
-            && instruction.Opcode != D3D10Opcode.Udiv)
+            && instruction.Opcode != D3D10Opcode.Udiv
+            // An interlocked operation that keeps what it found writes a register
+            // as well as the resource, and is still a statement: it has an effect,
+            // and the order it runs in is the whole point of it.
+            && !instruction.Opcode.IsImmediateAtomic())
         {
             ParseAssignmentInstruction(instruction);
         }
@@ -373,33 +377,66 @@ public class InstructionParser
                 case D3D10Opcode.AtomicUMax:
                 case D3D10Opcode.AtomicUMin:
                 case D3D10Opcode.AtomicCmpStore:
+                case D3D10Opcode.ImmAtomicIAdd:
+                case D3D10Opcode.ImmAtomicAnd:
+                case D3D10Opcode.ImmAtomicOr:
+                case D3D10Opcode.ImmAtomicXor:
+                case D3D10Opcode.ImmAtomicIMax:
+                case D3D10Opcode.ImmAtomicIMin:
+                case D3D10Opcode.ImmAtomicUMax:
+                case D3D10Opcode.ImmAtomicUMin:
+                case D3D10Opcode.ImmAtomicExch:
+                case D3D10Opcode.ImmAtomicCmpExch:
                     {
                         // atomic_iadd u0, address, value, and atomic_cmp_store with a
                         // compare between the two. The destination is the resource
                         // itself and carries no write mask, so there are no
                         // destination keys to walk - one statement, not one per
                         // component.
+                        //
+                        // The imm_ forms keep what the resource held and put it in a
+                        // register, which goes in front of everything else - so the
+                        // resource is the second operand there, and every source is
+                        // one further along.
+                        bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
+                        int first = keepsOriginal ? 1 : 0;
                         var resourceKey = new RegisterComponentKey(
-                            instruction.GetParamRegisterKey(0), 0);
+                            instruction.GetParamRegisterKey(first), 0);
                         var destination = new RegisterInputNode(resourceKey);
-                        bool isCompareStore = instruction.Opcode == D3D10Opcode.AtomicCmpStore;
+                        bool hasCompare = instruction.Opcode
+                            is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
                         // A structured resource addresses an element and a byte offset
                         // within it, both components of the one operand; a byte address
                         // one has only the offset.
-                        HlslTreeNode address = GetInputs(instruction, 0)[0];
+                        HlslTreeNode address = GetInputs(instruction, 0)[first];
                         HlslTreeNode elementByteOffset = _registerState.IsRawResource(resourceKey.RegisterKey)
                             ? null
-                            : GetInputs(instruction, 1)[0];
+                            : GetInputs(instruction, 1)[first];
+                        TempVariableNode original = keepsOriginal
+                            ? new TempVariableNode { IsInteger = true, VariableSize = 1 }
+                            : null;
                         InsertStatement(new AtomicStatement(
                             destination,
                             address,
-                            GetInputs(instruction, 0)[isCompareStore ? 2 : 1],
+                            GetInputs(instruction, 0)[first + (hasCompare ? 2 : 1)],
                             instruction.Opcode.AtomicMethodName(),
                             ActiveOutputs)
                         {
                             ElementByteOffset = elementByteOffset,
-                            Compare = isCompareStore ? GetInputs(instruction, 0)[1] : null,
+                            Compare = hasCompare ? GetInputs(instruction, 0)[first + 1] : null,
+                            Original = original,
                         });
+                        if (original != null)
+                        {
+                            var originalKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
+                            _registerState.DeclareRegisterWrite(
+                                originalKey, instruction.GetWriteMask(0));
+                            // One component: an atomic is over a single value, whatever
+                            // the mask on the register it lands in says.
+                            SetActiveOutput(
+                                new RegisterComponentKey(originalKey, FirstWrittenComponent(instruction)),
+                                original);
+                        }
                         break;
                     }
                 case D3D10Opcode.StoreRaw:
@@ -558,6 +595,24 @@ public class InstructionParser
             }
             _currentStatements.Pop();
         }
+    }
+
+    /// <summary>
+    /// The component an instruction's destination mask names. An atomic writes one
+    /// value, so the mask has one bit - but it need not be x: fxc puts the result
+    /// wherever the register is free.
+    /// </summary>
+    private static int FirstWrittenComponent(D3D10Instruction instruction)
+    {
+        int writeMask = instruction.GetWriteMask(0);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                return component;
+            }
+        }
+        return 0;
     }
 
     private void InsertStatement(IStatement statement)
@@ -2605,6 +2660,21 @@ public class InstructionParser
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
                 return 2;
+            case D3D10Opcode.ImmAtomicIAdd:
+            case D3D10Opcode.ImmAtomicAnd:
+            case D3D10Opcode.ImmAtomicOr:
+            case D3D10Opcode.ImmAtomicXor:
+            case D3D10Opcode.ImmAtomicIMax:
+            case D3D10Opcode.ImmAtomicIMin:
+            case D3D10Opcode.ImmAtomicUMax:
+            case D3D10Opcode.ImmAtomicUMin:
+            case D3D10Opcode.ImmAtomicExch:
+                // The resource, the address and the value: the destination register
+                // is not a source, and the resource is read as one here only so that
+                // the operands after it line up.
+                return 3;
+            case D3D10Opcode.ImmAtomicCmpExch:
+                return 4;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:

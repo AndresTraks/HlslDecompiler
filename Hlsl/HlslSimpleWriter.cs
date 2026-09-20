@@ -2718,6 +2718,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleL:
             case D3D10Opcode.SampleB:
             case D3D10Opcode.SampleD:
+            case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Lod:

@@ -662,6 +662,11 @@ public class AsmWriter
             case D3D10Opcode.SampleCLZ:
                 WriteInstruction(instruction, "sample_c_lz", 5);
                 break;
+            // The same five operands: the comparison value is the fifth either way,
+            // and the difference is only which mip the comparison is made against.
+            case D3D10Opcode.SampleC:
+                WriteInstruction(instruction, "sample_c", 5);
+                break;
             // The test-boolean bit is not decoded, so the nz form is assumed, as it
             // already is for if and discard.
             case D3D10Opcode.RetC:

@@ -9,6 +9,6 @@ public class NegateConstantTemplate : NodeTemplate<NegateOperation>
 
     public override HlslTreeNode Reduce(NegateOperation node)
     {
-        return new ConstantNode(-(node.Value as ConstantNode).Value);
+        return (node.Value as ConstantNode).Negated();
     }
 }

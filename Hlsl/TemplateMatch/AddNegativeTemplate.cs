@@ -13,8 +13,8 @@ public class AddNegativeTemplate : NodeTemplate<AddOperation>
     {
         if (ConstantMatcher.IsNegative(node.Addend1))
         {
-            return new SubtractOperation(node.Addend2, new ConstantNode(-(node.Addend1 as ConstantNode).Value));
+            return new SubtractOperation(node.Addend2, (node.Addend1 as ConstantNode).Negated());
         }
-        return new SubtractOperation(node.Addend1, new ConstantNode(-(node.Addend2 as ConstantNode).Value));
+        return new SubtractOperation(node.Addend1, (node.Addend2 as ConstantNode).Negated());
     }
 }

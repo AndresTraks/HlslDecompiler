@@ -24,6 +24,20 @@ public class ConstantNode : HlslTreeNode
         IntegerValue = value;
     }
 
+    /// <summary>
+    /// The same constant with the opposite sign, through the integer constructor
+    /// where it was an integer - which is what keeps IntegerValue, and with it the
+    /// value. Negating Value alone turned the 0x9E3779B9 of a hash into
+    /// -1640531584, that number's nearest float, where the bytecode meant
+    /// -1640531527.
+    /// </summary>
+    public ConstantNode Negated()
+    {
+        return IntegerValue != null
+            ? new ConstantNode(-IntegerValue.Value)
+            : new ConstantNode(-Value);
+    }
+
     public override bool Equals(object obj)
     {
         return obj is ConstantNode other && this == other;

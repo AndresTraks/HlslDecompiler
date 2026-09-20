@@ -356,7 +356,8 @@ public sealed class NodeCompiler
         return operation is AddOperation or SubtractOperation or MultiplyOperation
             or MultiplyAddOperation or DivisionOperation or NegateOperation or AbsoluteOperation
             or MinimumOperation or MaximumOperation or SaturateOperation or ClampOperation
-            or LinearInterpolateOperation or SmoothStepOperation or MoveConditionalOperation
+            or LinearInterpolateOperation or SmoothStepOperation or StepOperation
+            or MoveConditionalOperation
             or FractionalOperation or FloorOperation or CeilingOperation or RoundOperation
             or TruncateOperation or SquareRootOperation or ReciprocalOperation
             or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
@@ -879,6 +880,11 @@ public sealed class NodeCompiler
                     Compile(components.Select(g => g.Inputs[0])),
                     Compile(components.Select(g => g.Inputs[1])),
                     Compile(components.Select(g => g.Inputs[2])));
+
+            case StepOperation _:
+                return string.Format("step({0}, {1})",
+                    Compile(components.Select(g => g.Inputs[0])),
+                    Compile(components.Select(g => g.Inputs[1])));
 
             case FloatingModuloOperation _:
                 return string.Format("fmod({0}, {1})",

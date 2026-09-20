@@ -50,6 +50,7 @@ public class TemplateMatcher
             new LinearInterpolateTemplate(),
             new FloatingModuloTemplate(),
             new SmoothStepTemplate(),
+            new StepTemplate(),
             new ClampTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>

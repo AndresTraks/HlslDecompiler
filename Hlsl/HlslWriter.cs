@@ -139,14 +139,45 @@ public abstract class HlslWriter
             // and the constant table lists it once per register. It is still one
             // declaration.
             var declaredNames = new HashSet<string>();
+            int written = 0;
             foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
+                // A texture buffer's variables keep their block, below.
+                if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true })
+                {
+                    continue;
+                }
                 if (declaredNames.Add(declaration.Name))
                 {
                     WriteLine(compiler.Compile(declaration));
+                    written++;
                 }
             }
-            WriteLine();
+            if (written != 0)
+            {
+                WriteLine();
+            }
+
+            // A cbuffer is flattened into globals - they bind to the same register
+            // and are read the same way - but a texture buffer binds to a t register
+            // and is read with ld, so the block and its name are what make the
+            // shader the one it was.
+            foreach (var textureBuffer in _registers.ConstantDeclarations
+                .OfType<D3D10ConstantDeclaration>()
+                .Where(d => d.IsTextureBuffer)
+                .GroupBy(d => d.BufferName))
+            {
+                WriteLine($"tbuffer {textureBuffer.Key}");
+                WriteLine("{");
+                indent = "\t";
+                foreach (D3D10ConstantDeclaration member in textureBuffer)
+                {
+                    WriteLine(compiler.Compile(member));
+                }
+                indent = "";
+                WriteLine("};");
+                WriteLine();
+            }
         }
 
         // Emitted after the uniforms so that a subscript reading one is already in
@@ -204,8 +235,15 @@ public abstract class HlslWriter
                 WriteLine();
             }
 
+            int declared = 0;
             foreach (var resource in _registers.ResourceDefinitions)
             {
+                // A texture buffer is declared by its block, with the constants,
+                // and not as a resource of its own.
+                if (resource.ShaderInputType == D3DShaderInputType.TBuffer)
+                {
+                    continue;
+                }
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
                     WriteLine($"{resource.TypeName} {resource.Name};");
@@ -239,8 +277,12 @@ public abstract class HlslWriter
                 {
                     throw new NotImplementedException();
                 }
+                declared++;
             }
-            WriteLine();
+            if (declared != 0)
+            {
+                WriteLine();
+            }
         }
     }
 

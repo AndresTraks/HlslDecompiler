@@ -1258,6 +1258,14 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {2}.SampleGrad({3}, {1}, {4}, {5}{6}){7};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.LD:
+                // A texture buffer has no Load: each element of it is a variable of
+                // the block, and the address says which.
+                if (TextureBufferVariable(instruction) is string bufferVariable)
+                {
+                    WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0),
+                        bufferVariable, GetResourceSwizzle(instruction));
+                    break;
+                }
                 WriteResult(instruction, "{0} = {2}.Load({1}{3}){4};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.LDMS:
@@ -2439,18 +2447,44 @@ public class HlslSimpleWriter : HlslWriter
 
     private bool IsBufferResource(D3D10Instruction instruction)
     {
-        return _registers.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-            .FirstOrDefault(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
-            ?.Dimension == ResourceDimension.Buffer;
+        return LoadedResource(instruction)?.Dimension == ResourceDimension.Buffer;
     }
 
     private int GetTextureDimension(D3D10Instruction instruction)
     {
+        return LoadedResource(instruction).GetDimensionSize();
+    }
+
+    /// <summary>
+    /// The variable an ld reads, where the resource it reads is a texture buffer
+    /// and the address is a constant: each 16 byte element of the block is one of
+    /// its variables. Null for anything else.
+    /// </summary>
+    private string TextureBufferVariable(D3D10Instruction instruction)
+    {
+        ResourceDefinition buffer = LoadedResource(instruction);
+        if (buffer?.ShaderInputType != D3DShaderInputType.TBuffer
+            || instruction.GetOperandType(1) != OperandType.Immediate32)
+        {
+            return null;
+        }
+        int register = instruction.GetParamInt(1, 0);
+        return _registers.ConstantDeclarations
+            .OfType<D3D10ConstantDeclaration>()
+            .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name)
+            .FirstOrDefault(d => d.VariableOffset / 16 == register)
+            ?.Name;
+    }
+
+    // A texture buffer is declared with a dcl_resource_buffer and read with an ld
+    // like any other buffer, so it is addressed the same way and belongs in both
+    // questions above; only what the load is written as differs.
+    private ResourceDefinition LoadedResource(D3D10Instruction instruction)
+    {
         return _registers.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-            .First(d => d.BindPoint == instruction.GetParamRegisterNumber(2))
-            .GetDimensionSize();
+            .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
+                or D3DShaderInputType.TBuffer)
+            .FirstOrDefault(d => d.BindPoint == instruction.GetParamRegisterNumber(2));
     }
 
     // A constructor over the variables an operand reads, when it reads more than

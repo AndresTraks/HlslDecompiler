@@ -108,6 +108,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "texture_1d_3d")]
     [TestCase("ps_4_0", "texture_1d_array")]
     [TestCase("ps_4_0", "texture_formats")]
+    [TestCase("ps_4_0", "texture_buffer")]
     [TestCase("ps_4_0", "typed_buffer")]
     [TestCase("ps_4_0", "int_minmax")]
     [TestCase("ps_4_0", "divide_product")]

@@ -866,7 +866,8 @@ public sealed class RegisterState
                 case OperandType.Resource:
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
-                            or D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress)
+                            or D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress
+                            or D3DShaderInputType.TBuffer)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 case OperandType.Sampler:
@@ -1088,14 +1089,28 @@ public sealed class RegisterState
 
     public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType, int sampleCount = 0)
     {
+        // A texture buffer declares itself the same way a texture does, with a
+        // dcl_resource_buffer, and is told apart only by the binding calling it a
+        // tbuffer. Its variables are never read as constant registers, so nothing
+        // else would ever bring them in.
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+            .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
+                or D3DShaderInputType.TBuffer)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);
         if (definition != null)
         {
             definition.Dimension = resourceDimension;
             definition.SampleCount = sampleCount;
             ResourceDefinitions.Add(definition);
+            if (definition.ShaderInputType == D3DShaderInputType.TBuffer)
+            {
+                foreach (D3D10ConstantDeclaration variable in _shaderModel.ConstantDeclarations
+                    .OfType<D3D10ConstantDeclaration>()
+                    .Where(d => d.IsTextureBuffer && d.BufferName == definition.Name))
+                {
+                    ConstantDeclarations.Add(variable);
+                }
+            }
         }
     }
 

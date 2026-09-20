@@ -97,7 +97,11 @@ public class DxbcReader : BinaryReader
                             continue;
                         }
 
-                        var description = new D3D10ConstantDeclaration(name, registerNumber, variableSize, variableOffset, typeInfo, elementOffset);
+                        var description = new D3D10ConstantDeclaration(name, registerNumber, variableSize, variableOffset, typeInfo, elementOffset)
+                        {
+                            BufferName = bufferName,
+                            IsTextureBuffer = bufferType == D3DCbufferType.Tbuffer,
+                        };
                         constantDeclarations.Add(description);
                     }
                 }

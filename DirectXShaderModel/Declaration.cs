@@ -66,6 +66,16 @@ public class D3D10ConstantDeclaration : ConstantDeclaration
     public int VariableSize { get; }
     public int VariableOffset { get; }
 
+    /// <summary>
+    /// The buffer this variable was declared in, and whether that buffer is a
+    /// texture buffer. A cbuffer is flattened into globals, which binds the same
+    /// and reads the same; a tbuffer binds to a t register and is read with ld, so
+    /// it has to keep its block and its name.
+    /// </summary>
+    public string BufferName { get; init; }
+
+    public bool IsTextureBuffer { get; init; }
+
     public D3D10ConstantDeclaration(string name, short registerIndex, int variableSize, int variableOffset, ShaderTypeInfo typeInfo, int offset)
         : base(name, registerIndex, typeInfo)
     {

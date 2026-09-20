@@ -1197,6 +1197,10 @@ public sealed class NodeCompiler
         if (first is ResourceLoadNode resourceLoad)
         {
             string loadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            if (TryCompileTextureBufferLoad(resourceLoad, loadSwizzle, out string textureBufferRead))
+            {
+                return textureBufferRead;
+            }
             ResourceDefinition resourceDefinition = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
@@ -1416,6 +1420,40 @@ public sealed class NodeCompiler
     /// parameters, so the variable is declared first and the call fills it. Two
     /// statements, which the writer indents line by line.
     /// </summary>
+    /// <summary>
+    /// A texture buffer is bound to a t register and read with ld, one element at a
+    /// time, where a constant buffer is read as cb0[n] - but the block behind it is
+    /// the same shape, so the element is a variable of it and not a buffer load.
+    /// `ld r0, l(1, 1, 1, 1), t0` over `tbuffer Params { float4 tint; float4
+    /// offset; }` is the offset.
+    /// </summary>
+    private const int BytesPerConstantRegister = 4 * sizeof(float);
+
+    private bool TryCompileTextureBufferLoad(
+        ResourceLoadNode resourceLoad, string swizzle, out string compiled)
+    {
+        compiled = null;
+        ResourceDefinition buffer = _registers.ResourceDefinitions
+            .Where(d => d.ShaderInputType == D3DShaderInputType.TBuffer)
+            .FirstOrDefault(d => d.BindPoint
+                == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
+        if (buffer == null || resourceLoad.Address.FirstOrDefault() is not ConstantNode element)
+        {
+            return false;
+        }
+        int register = element.IntegerValue ?? (int)element.Value;
+        D3D10ConstantDeclaration variable = _registers.ConstantDeclarations
+            .OfType<D3D10ConstantDeclaration>()
+            .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name)
+            .FirstOrDefault(d => d.VariableOffset / BytesPerConstantRegister == register);
+        if (variable == null)
+        {
+            return false;
+        }
+        compiled = $"{variable.Name}{swizzle}";
+        return true;
+    }
+
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)
     {
         var info = (ResourceInfoNode)assignments[0].Value;

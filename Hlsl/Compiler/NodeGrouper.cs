@@ -119,6 +119,17 @@ public class NodeGrouper
             return false;
         }
 
+        // An attribute evaluation takes the input register itself and nothing else -
+        // fxc rejects an expression there, with an internal compiler error rather
+        // than a message - so two of them only group when they are one instruction.
+        // Two eval_centroid over different attributes would otherwise have become
+        // one call over a float4 constructed from both.
+        if (node1 is EvaluateAttributeOperation
+            && !HlslTreeNode.IsSameInstruction(node1, node2))
+        {
+            return false;
+        }
+
         if (node1 is ConstantNode)
         {
             return true;

@@ -907,6 +907,7 @@ public class D3D10Machine
             // both programs read the same.
             case D3D10Opcode.EvalSampleIndex:
             case D3D10Opcode.EvalSnapped:
+            case D3D10Opcode.EvalCentroid:
                 return Source(instruction, 1);
             case D3D10Opcode.SampleInfo:
                 return SampleCount(instruction);

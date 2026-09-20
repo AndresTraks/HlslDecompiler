@@ -2105,25 +2105,39 @@ public class InstructionParser
                 return CreateBufferInfoNode(instruction, componentIndex);
             case D3D10Opcode.EvalSampleIndex:
             case D3D10Opcode.EvalSnapped:
+            case D3D10Opcode.EvalCentroid:
                 {
                     // The attribute, and where to evaluate it: a sample index in one
-                    // component, or an offset in two. The place is the same for
-                    // every component of the result, the way a sample's coordinate
-                    // is.
-                    bool isSnapped = instruction.Opcode == D3D10Opcode.EvalSnapped;
+                    // component, an offset in two, or nothing at all for the
+                    // centroid. The place is the same for every component of the
+                    // result, the way a sample's coordinate is.
+                    EvaluateAttributeAt place = instruction.Opcode switch
+                    {
+                        D3D10Opcode.EvalSnapped => EvaluateAttributeAt.Snapped,
+                        D3D10Opcode.EvalCentroid => EvaluateAttributeAt.Centroid,
+                        _ => EvaluateAttributeAt.Sample,
+                    };
+                    bool isSnapped = place == EvaluateAttributeAt.Snapped;
                     HlslTreeNode value = GetInputs(instruction, componentIndex)[0];
                     // A snapped offset is written as an immediate, and it is a
                     // count of sixteenths of a pixel rather than the float those
                     // bits spell.
                     const int PlaceParamIndex = 2;
-                    int places = isSnapped ? 2 : 1;
-                    HlslTreeNode[] at = instruction.GetOperandType(PlaceParamIndex) == OperandType.Immediate32
+                    int places = place switch
+                    {
+                        EvaluateAttributeAt.Snapped => 2,
+                        EvaluateAttributeAt.Centroid => 0,
+                        _ => 1,
+                    };
+                    HlslTreeNode[] at = places == 0
+                        ? []
+                        : instruction.GetOperandType(PlaceParamIndex) == OperandType.Immediate32
                         ? [.. Enumerable.Range(0, places)
                             .Select(component => (HlslTreeNode)new ConstantNode(
                                 (int)instruction.GetParamInt(PlaceParamIndex, component)))]
                         : [.. Enumerable.Range(0, places)
                             .Select(component => GetInputs(instruction, component)[1])];
-                    return new EvaluateAttributeOperation(value, at, isSnapped);
+                    return new EvaluateAttributeOperation(value, at, place);
                 }
             case D3D10Opcode.SampleInfo:
                 return CreateSampleInfoNode(instruction, componentIndex);
@@ -2947,6 +2961,9 @@ public class InstructionParser
             case D3D10Opcode.EvalSampleIndex:
             case D3D10Opcode.EvalSnapped:
                 return 2;
+            // The centroid takes no saying where.
+            case D3D10Opcode.EvalCentroid:
+                return 1;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:

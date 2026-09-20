@@ -1479,6 +1479,12 @@ public class HlslSimpleWriter : HlslWriter
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1),
                     GetOperandName(instruction, 2));
                 break;
+            // The centroid of the covered part of the pixel, which takes no operand
+            // to say so.
+            case D3D10Opcode.EvalCentroid:
+                WriteResult(instruction, "{0} = EvaluateAttributeCentroid({1});",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;

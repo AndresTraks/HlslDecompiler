@@ -341,6 +341,14 @@ public sealed class NodeCompiler
         {
             return false;
         }
+        // An attribute evaluation takes the input register itself and nothing else -
+        // fxc answers an expression there with an internal compiler error - so two
+        // of them are one call only when they are one instruction.
+        if (first is EvaluateAttributeOperation
+            && components.Any(c => !HlslTreeNode.IsSameInstruction(c, first)))
+        {
+            return false;
+        }
         return components.All(c => Operation.IsSameKind(c, first) && c.Inputs.Count == first.Inputs.Count);
     }
 
@@ -927,6 +935,10 @@ public sealed class NodeCompiler
                     // elementwise operation's operand is; where it is evaluated is
                     // one value for all of them, and an integer either way.
                     string attribute = Compile(components.Select(g => g.Inputs[0]));
+                    if (evaluate.Place == EvaluateAttributeAt.Centroid)
+                    {
+                        return $"{evaluate.HlslName}({attribute})";
+                    }
                     string at = CompileAsInteger(
                         evaluate.Inputs.Skip(1).ToList());
                     return $"{evaluate.HlslName}({attribute}, {at})";

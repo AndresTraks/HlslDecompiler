@@ -911,6 +911,9 @@ public class AsmWriter
             case D3D10Opcode.EvalSnapped:
                 WriteInstruction(instruction, "eval_snapped", 3);
                 break;
+            case D3D10Opcode.EvalCentroid:
+                WriteInstruction(instruction, "eval_centroid", 2);
+                break;
             // Shader model 5 names the stream in the instruction where model 4
             // had the one and left it out. A shader with a single stream means the
             // same thing either way.

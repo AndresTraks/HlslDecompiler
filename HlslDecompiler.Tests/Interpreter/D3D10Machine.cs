@@ -765,6 +765,10 @@ public class D3D10Machine
                 return LoadSample(instruction);
             case D3D10Opcode.ResInfo:
                 return ResourceInfo(instruction);
+            case D3D10Opcode.SampleInfo:
+                return SampleCount(instruction);
+            case D3D10Opcode.Lod:
+                return LevelOfDetail(instruction);
             case D3D10Opcode.LdStructured:
                 {
                     // Element and byte offset, named so that both programs read the
@@ -871,6 +875,41 @@ public class D3D10Machine
         return instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
             ? [.. swizzled.Select(v => (uint)v)]
             : Pack(swizzled);
+    }
+
+    /// <summary>
+    /// How many samples a multisampled resource has. There is no resource here to
+    /// ask, so every one answers the same small power of two: what the comparison
+    /// needs is that both programs get the same number, and a shader that indexes
+    /// samples with it needs that number small and positive.
+    /// </summary>
+    private static uint[] SampleCount(D3D10Instruction instruction)
+    {
+        const uint samples = 4;
+        uint value = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
+            ? samples
+            : BitConverter.SingleToUInt32Bits(samples);
+        return [value, value, value, value];
+    }
+
+    /// <summary>
+    /// The level of detail a sample of the resource would use. There are no
+    /// gradients here and no mip chain to have one over, so it is a number derived
+    /// from the coordinate - the same for both programs, and different between the
+    /// two forms the instruction has. The resource swizzle picks them: x is the
+    /// level clamped to the mips that exist, y the level before clamping, which is
+    /// what makes a decompilation that takes the wrong one show up here rather than
+    /// only in the golden text.
+    /// </summary>
+    private uint[] LevelOfDetail(D3D10Instruction instruction)
+    {
+        float[] coordinates = Floats(instruction, 1);
+        float unclamped = 8 * (Texture.Sample(
+            instruction.GetParamRegisterNumber(2), coordinates)[0] - 0.5f);
+        bool isUnclamped = instruction.GetSourceSwizzleComponents(2)[0] == 1;
+        float lod = isUnclamped ? unclamped : MathF.Max(unclamped, 0);
+        uint bits = BitConverter.SingleToUInt32Bits(lod);
+        return [bits, bits, bits, bits];
     }
 
     private uint[] LoadTexel(D3D10Instruction instruction)

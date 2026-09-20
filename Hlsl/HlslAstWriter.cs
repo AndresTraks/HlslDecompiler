@@ -76,6 +76,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteAssignmentStatement(assignmentStatement);
         }
+        else if (statement is StoreTypedStatement storeTyped)
+        {
+            WriteStoreTypedStatement(storeTyped);
+        }
         else if (statement is StoreStructuredStatement storeStructured)
         {
             WriteStoreStructuredStatement(storeStructured);
@@ -217,6 +221,28 @@ public class HlslAstWriter : HlslWriter
         {
             write.Write();
         }
+    }
+
+    /// <summary>
+    /// `destination[coordinate] = value;` - a texel of a writable view, addressed
+    /// by as many coordinates as the view has dimensions.
+    /// </summary>
+    private void WriteStoreTypedStatement(StoreTypedStatement storeTyped)
+    {
+        // The view is named without a swizzle: the subscript picks the texel, and a
+        // component selection would belong after it rather than on the view.
+        string destination = _registers.GetRegisterName(
+            ((RegisterInputNode)storeTyped.Destination).RegisterComponentKey.RegisterKey);
+        // The coordinate is an integer one, and a vector of them says so where a
+        // constructor over the components would be typed by nothing.
+        string coordinate = _compiler.CompileAsInteger(
+            storeTyped.Coordinates.Select(Reduce).ToList());
+        HlslTreeNode[] values = [.. storeTyped.Values.Select(Reduce)];
+        bool storesIntegers = values.All(v => StatementFinalizer.IsIntegerValue(v) == true);
+        string value = storesIntegers
+            ? _compiler.CompileAsInteger(values)
+            : _compiler.Compile(values);
+        WriteLine($"{destination}[{coordinate}] = {value};");
     }
 
     private void WriteStoreStructuredStatement(StoreStructuredStatement storeStructured)

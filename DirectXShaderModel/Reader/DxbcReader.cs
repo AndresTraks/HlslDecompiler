@@ -238,7 +238,9 @@ public class DxbcReader : BinaryReader
             operandTokens[i] = ReadUInt32();
         }
 
-        if (opcode == D3D10Opcode.DclResource)
+        // A typed UAV declares its dimension in the same bits a texture does: it
+        // is a texture that can be written to, and has no sample count.
+        if (opcode is D3D10Opcode.DclResource or D3D10Opcode.DclUnorderedAccessViewTyped)
         {
             var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
             // A multisampled texture carries its sample count in the seven bits above

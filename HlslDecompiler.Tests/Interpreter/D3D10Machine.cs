@@ -300,6 +300,10 @@ public class D3D10Machine
                     Store(instruction);
                     pc++;
                     continue;
+                case D3D10Opcode.StoreUAVTyped:
+                    StoreTyped(instruction);
+                    pc++;
+                    continue;
                 case D3D10Opcode.StoreRaw:
                     StoreRaw(instruction);
                     pc++;
@@ -484,6 +488,33 @@ public class D3D10Machine
             {
                 _stored.Add(new KeyValuePair<string, uint[]>(
                     $"STORE{resource}[{element}][{offset + 4 * written++}]",
+                    [value[component], 0, 0, 0]));
+            }
+        }
+    }
+
+    /// <summary>
+    /// store_uav_typed u0, coordinate, value: a texel rather than an element and a
+    /// byte offset within one. Recorded the way the other stores are - each
+    /// component by where it went, so that what the shader never wrote is never
+    /// compared - with the whole coordinate in the name, there being no one number
+    /// that addresses a texel.
+    /// </summary>
+    private void StoreTyped(D3D10Instruction instruction)
+    {
+        const int UnorderedAccessIndex = 0;
+        const int CoordinateIndex = 1;
+        const int ValueIndex = 2;
+        int resource = instruction.GetParamRegisterNumber(UnorderedAccessIndex);
+        int[] coordinate = Ints(instruction, CoordinateIndex);
+        uint[] value = Source(instruction, ValueIndex);
+        int writeMask = instruction.GetDestinationWriteMask();
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0)
+            {
+                _stored.Add(new KeyValuePair<string, uint[]>(
+                    $"STORETYPED{resource}[{coordinate[0]}][{coordinate[1]}][{coordinate[2]}][{component}]",
                     [value[component], 0, 0, 0]));
             }
         }

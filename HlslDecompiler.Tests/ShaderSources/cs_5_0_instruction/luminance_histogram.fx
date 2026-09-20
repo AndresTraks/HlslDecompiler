@@ -7,7 +7,7 @@ RWStructuredBuffer<uint> histogram : register(u0);
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float4 r0;
-	r0.xy = (float)sv_dispatchthreadid.xy;
+	r0.xy = (float2)sv_dispatchthreadid.xy;
 	r0.zw = int2(0, 0);
 	r0.xyz = source.Load(r0.xyz).xyz;
 	r0.x = dot(r0.xyz, levels.xyz);

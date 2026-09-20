@@ -73,19 +73,32 @@ public class ResourceDefinition
         (((int)Flags & (int)(D3DShaderInputFlags.TextureComponent0 | D3DShaderInputFlags.TextureComponent1)) >> 2) + 1;
 
     /// <summary>The HLSL element type of a typed resource: float4, uint, and so on.</summary>
-    public string ReturnTypeName
+    public string ReturnTypeName =>
+        ReturnComponents > 1 ? ReturnScalarTypeName + ReturnComponents : ReturnScalarTypeName;
+
+    /// <summary>What one component of a typed resource holds, without the width.</summary>
+    public string ReturnScalarTypeName => ResourceReturnType switch
     {
-        get
-        {
-            string scalar = ResourceReturnType switch
-            {
-                D3DResourceReturnType.SInt => "int",
-                D3DResourceReturnType.UInt => "uint",
-                _ => "float",
-            };
-            return ReturnComponents > 1 ? scalar + ReturnComponents : scalar;
-        }
-    }
+        D3DResourceReturnType.SInt => "int",
+        D3DResourceReturnType.UInt => "uint",
+        _ => "float",
+    };
+
+    /// <summary>
+    /// The HLSL type a typed unordered access view is declared as. The same as a
+    /// texture's with RW in front, except that it always names what it holds: there
+    /// is no bare RWTexture2D standing for RWTexture2D&lt;float4&gt; the way a plain
+    /// Texture2D stands for its own.
+    /// </summary>
+    /// <remarks>
+    /// Four components, whatever the reflection data counts: a shader that declared
+    /// RWTexture2D&lt;float&gt; and one that declared RWTexture2D&lt;float4&gt;
+    /// compile to the same dcl_uav_typed_texture2d (float,float,float,float) and the
+    /// same store over an xyzw mask, so four is what the bytecode says and the
+    /// narrower one cannot be told from it.
+    /// </remarks>
+    public string ReadWriteTypeName =>
+        $"RW{Dimension}<{(IsNormalisedReturnType ? NormalisedPrefix + " " : "")}{ReturnScalarTypeName}4>";
 
     /// <summary>The HLSL type a texture or buffer resource is declared as.</summary>
     public string TypeName => Dimension switch

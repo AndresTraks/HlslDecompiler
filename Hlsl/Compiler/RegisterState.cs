@@ -880,7 +880,8 @@ public sealed class RegisterState
                 case OperandType.UnorderedAccessView:
                     return ResourceDefinitions
                         .Where(d => d.ShaderInputType is D3DShaderInputType.UavRWStructured
-                            or D3DShaderInputType.UavRWByteAddress)
+                            or D3DShaderInputType.UavRWByteAddress
+                            or D3DShaderInputType.UavRWTyped)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
                 // Groupshared memory has no reflection entry to take a name from.
@@ -1087,15 +1088,33 @@ public sealed class RegisterState
         RegisterDeclarations.Add(registerKey, registerDeclaration);
     }
 
+    /// <summary>
+    /// How many coordinates address one texel of a resource - two for a Texture2D,
+    /// three for a Texture3D or a Texture2DArray.
+    /// </summary>
+    public int GetResourceDimensionSize(RegisterKey registerKey)
+    {
+        bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
+        return ResourceDefinitions
+            .First(d => d.BindPoint == registerKey.Number
+                && (isUav
+                    ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
+                    : d.ShaderInputType is D3DShaderInputType.Texture))
+            .GetDimensionSize();
+    }
+
     public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType, int sampleCount = 0)
     {
         // A texture buffer declares itself the same way a texture does, with a
         // dcl_resource_buffer, and is told apart only by the binding calling it a
         // tbuffer. Its variables are never read as constant registers, so nothing
         // else would ever bring them in.
+        // t and u registers number separately, so which of the two the declaration
+        // is for has to come from the register rather than from the bind point.
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
-            .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
-                or D3DShaderInputType.TBuffer)
+            .Where(d => registerKey.OperandType == OperandType.UnorderedAccessView
+                ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
+                : d.ShaderInputType is D3DShaderInputType.Texture or D3DShaderInputType.TBuffer)
             .FirstOrDefault(d => d.BindPoint == registerKey.Number);
         if (definition != null)
         {

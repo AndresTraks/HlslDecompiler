@@ -136,6 +136,7 @@ public class InstructionParser
         }
         else if (instruction.HasDestination
             && instruction.Opcode != D3D10Opcode.StoreStructured
+            && instruction.Opcode != D3D10Opcode.StoreUAVTyped
             && instruction.Opcode != D3D10Opcode.StoreRaw
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
@@ -263,6 +264,34 @@ public class InstructionParser
                             var destinationKey = new RegisterComponentKey(registerKey, component);
                             SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
                         }
+                        break;
+                    }
+                case D3D10Opcode.DclUnorderedAccessViewTyped:
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareResource(registerKey,
+                            instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
+                        SeedResourceComponents(registerKey);
+                        break;
+                    }
+                case D3D10Opcode.StoreUAVTyped:
+                    {
+                        // store_uav_typed u0, coordinate, value: a texel rather than
+                        // an element and an offset within it, so the address is as
+                        // wide as the resource has dimensions and the components
+                        // written are the resource's own.
+                        RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
+                        var output = new RegisterInputNode(destinationKeys[0]);
+                        int dimensions = _registerState.GetResourceDimensionSize(
+                            destinationKeys[0].RegisterKey);
+                        HlslTreeNode[] coordinates = [.. Enumerable.Range(0, dimensions)
+                            .Select(component => GetInputs(instruction, component)[0])];
+                        HlslTreeNode[] values = destinationKeys
+                            .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
+                            .ToArray();
+                        RecordStoredType(instruction, values);
+                        InsertStatement(new StoreTypedStatement(
+                            output, coordinates, values, ActiveOutputs));
                         break;
                     }
                 case D3D10Opcode.DclResourceStructured:
@@ -2675,6 +2704,9 @@ public class InstructionParser
                 return 3;
             case D3D10Opcode.ImmAtomicCmpExch:
                 return 4;
+            // The coordinate and the value; the resource is the destination operand.
+            case D3D10Opcode.StoreUAVTyped:
+                return 2;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:

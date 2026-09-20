@@ -264,7 +264,21 @@ public class HlslSimpleWriter : HlslWriter
         {
             return source == ComponentStorage.Integer ? $"asfloat({name})" : AsInt(name);
         }
-        return destination == ComponentStorage.Integer ? $"(int){name}" : $"(float){name}";
+        // As wide as what is being moved. A scalar cast over two components takes
+        // the first and spreads it: `(float)vThreadID.xy` is the x of it twice, and
+        // an address built that way reads the wrong texel - which is what
+        // `mov r0.xy, vThreadID.xy` came out as.
+        int length = MovedComponentCount(instruction);
+        string size = length == 1 ? "" : length.ToString();
+        return destination == ComponentStorage.Integer ? $"(int{size}){name}" : $"(float{size}){name}";
+    }
+
+    /// <summary>
+    /// How many components a move carries: the ones its destination mask names.
+    /// </summary>
+    private static int MovedComponentCount(D3D10Instruction instruction)
+    {
+        return instruction.HasDestination ? instruction.GetDestinationMaskLength() : 1;
     }
 
     // How an immediate an instruction reads is printed: as an integer where the
@@ -1398,6 +1412,12 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.F16ToF32:
                 WriteResult(instruction, "{0} = f16tof32({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
+            case D3D10Opcode.StoreUAVTyped:
+                // A texel, addressed by as many coordinates as the resource has
+                // dimensions - which is what GetSourceLength answers for it.
+                WriteLine("{0}[{1}] = {2};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
             case D3D10Opcode.StoreStructured:
                 {
                     // A struct element is written a member at a time: one store of
@@ -1501,6 +1521,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
             case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
+            case D3D10Opcode.DclUnorderedAccessViewTyped:
             case D3D10Opcode.DclResourceStructured:
             case D3D10Opcode.DclResourceRaw:
             case D3D10Opcode.DclUnorderedAccessViewRaw:
@@ -2122,6 +2143,7 @@ public class HlslSimpleWriter : HlslWriter
         if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
+            || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
             || (instruction.Opcode.IsAtomic() && operandIndex == 0)
             || (instruction.Opcode.IsImmediateAtomic() && operandIndex == 1))
         {
@@ -2680,6 +2702,12 @@ public class HlslSimpleWriter : HlslWriter
         if (IsSamplingOpcode(instruction.Opcode))
         {
             return GetTextureDimension(instruction);
+        }
+        // A texel of the view being written, addressed by as many coordinates as it
+        // has dimensions - and no mip, there being only the one to write to.
+        if (instruction.Opcode == D3D10Opcode.StoreUAVTyped)
+        {
+            return _registers.GetResourceDimensionSize(instruction.GetParamRegisterKey(0));
         }
         if (instruction.Opcode == D3D10Opcode.LD)
         {

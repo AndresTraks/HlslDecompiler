@@ -237,6 +237,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
                 case D3D10Opcode.StoreStructured:
+                case D3D10Opcode.StoreUAVTyped:
+                case D3D10Opcode.LdUAVTyped:
                 case D3D10Opcode.ImmAtomicIAdd:
                 case D3D10Opcode.ImmAtomicAnd:
                 case D3D10Opcode.ImmAtomicOr:
@@ -832,7 +834,13 @@ public class D3D10Instruction : Instruction
 
     public int GetResourceReturnTypeToken()
     {
-        return (int) GetParamIndexImmediate32(0, 2);
+        // The dword after the operand, either way. A texture's operand token says it
+        // carries two indices and the return type is read as the second of them; a
+        // typed UAV's says one, so the dword falls outside the operand and is
+        // counted as another of its own.
+        return Opcode == D3D10Opcode.DclUnorderedAccessViewTyped
+            ? (int)GetParamIndexImmediate32(1, 0)
+            : (int)GetParamIndexImmediate32(0, 2);
     }
 
     public uint GetResourceStructuredBufferStride()

@@ -273,6 +273,14 @@ public abstract class HlslWriter
                 {
                     WriteLine($"RWByteAddressBuffer {resource.Name} : register(u{resource.BindPoint});");
                 }
+                // A typed unordered access view is the texture type it would be as a
+                // resource, written RW - and it always names its element type, where
+                // a read only texture names one only when it holds integers: there is
+                // no bare RWTexture2D that means RWTexture2D<float4>.
+                else if (resource.ShaderInputType == D3DShaderInputType.UavRWTyped)
+                {
+                    WriteLine($"{resource.ReadWriteTypeName} {resource.Name} : register(u{resource.BindPoint});");
+                }
                 else
                 {
                     throw new NotImplementedException();

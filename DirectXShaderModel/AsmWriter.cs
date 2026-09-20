@@ -439,6 +439,13 @@ public class AsmWriter
                         $"dcl_resource_{dimension} ({GetResourceReturnTypes(instruction)})", 1);
                 }
                 break;
+            // A typed UAV declares a dimension and an element type the way a
+            // texture does: it is a texture that can be written to.
+            case D3D10Opcode.DclUnorderedAccessViewTyped:
+                WriteInstruction(instruction,
+                    $"dcl_uav_typed_{GetResourceDimensionName(instruction.GetResourceDimension())}"
+                        + $" ({GetResourceReturnTypes(instruction)})", 1);
+                break;
             case D3D10Opcode.DclResourceStructured:
                 WriteLine("dcl_resource_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
@@ -842,6 +849,14 @@ public class AsmWriter
                 break;
             case D3D10Opcode.StoreStructured:
                 WriteInstruction(instruction, "store_structured", 4);
+                break;
+            // The resource, the coordinate and the value: a typed UAV addresses a
+            // texel rather than an element and a byte offset within one.
+            case D3D10Opcode.StoreUAVTyped:
+                WriteInstruction(instruction, "store_uav_typed", 3);
+                break;
+            case D3D10Opcode.LdUAVTyped:
+                WriteInstruction(instruction, "ld_uav_typed", 3);
                 break;
             case D3D10Opcode.StoreRaw:
                 WriteInstruction(instruction, "store_raw", 3);

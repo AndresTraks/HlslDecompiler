@@ -107,8 +107,22 @@ public class ResourceDefinition
         // texture: the component count comes from the reflection data, which counts
         // the components the shader reads and not the ones it declared, so a
         // Texture2D read for its .x alone would be narrowed to Texture2D<float>.
-        _ => IsIntegerReturnType ? $"{Dimension}<{ReturnTypeName}>" : Dimension.ToString(),
+        // A normalised texture says so, and at four components whatever the
+        // reflection counts: a bare Texture2D already means Texture2D<float4>, so
+        // the width is not new information here and the unreliable count is not
+        // worth consulting for it. Dropped, `Texture2D<unorm float4>` came back as
+        // a plain Texture2D and the declaration no longer said what the texels are.
+        _ => IsNormalisedReturnType ? $"{Dimension}<{NormalisedPrefix} float4>"
+            : IsIntegerReturnType ? $"{Dimension}<{ReturnTypeName}>"
+            : Dimension.ToString(),
     };
+
+    /// <summary>Whether a typed resource returns floats normalised from integers.</summary>
+    public bool IsNormalisedReturnType =>
+        ResourceReturnType is D3DResourceReturnType.UNorm or D3DResourceReturnType.SNorm;
+
+    private string NormalisedPrefix =>
+        ResourceReturnType == D3DResourceReturnType.UNorm ? "unorm" : "snorm";
 
     /// <summary>Whether a typed resource returns integers rather than floats.</summary>
     public bool IsIntegerReturnType => ResourceReturnType is D3DResourceReturnType.SInt or D3DResourceReturnType.UInt;

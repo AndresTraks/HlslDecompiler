@@ -10,6 +10,7 @@ struct VS_IN
 
 float4 main(VS_IN i) : POSITION
 {
-	float t0 = 10 * tex2Dlod(height, float4(0.00999999978 * lerp(i.position.xz, i.texcoord.xz, morph), 0, 0)).x + lerp(i.position.y, i.texcoord.y, morph);
-	return mul(float4(lerp(i.position.x, i.texcoord.x, morph), t0, lerp(i.position.zw, i.texcoord.zw, morph)), wvp);
+	float4 t0 = lerp(i.position, i.texcoord, morph);
+	float t1 = 10 * tex2Dlod(height, float4(0.00999999978 * t0.xz, 0, 0)).x + t0.y;
+	return mul(float4(t0.x, t1, t0.zw), wvp);
 }

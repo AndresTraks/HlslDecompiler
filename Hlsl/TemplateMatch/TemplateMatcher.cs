@@ -123,6 +123,7 @@ public class TemplateMatcher
         if (replacement.SourceInstruction == 0)
         {
             replacement.SourceInstruction = node.SourceInstruction;
+            replacement.SourceComponent = node.SourceComponent;
         }
     }
 

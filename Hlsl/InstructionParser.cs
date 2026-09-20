@@ -1526,7 +1526,7 @@ public class InstructionParser
     private HlslTreeNode CreateInstructionTree(D3D9Instruction instruction, RegisterComponentKey destinationKey)
     {
         HlslTreeNode stamped = CreateD3D9InstructionTree(instruction, destinationKey);
-        StampSourceInstruction(stamped);
+        StampSourceInstruction(stamped, destinationKey.ComponentIndex);
         return stamped;
     }
 
@@ -1656,7 +1656,7 @@ public class InstructionParser
         // Where the value came from, so that the components of one instruction can
         // be told from two that share a register. The position in the shader: no
         // two instructions have the same, and every component of this one does.
-        StampSourceInstruction(node);
+        StampSourceInstruction(node, destinationKey.ComponentIndex);
         return node;
     }
 
@@ -1665,11 +1665,12 @@ public class InstructionParser
     /// was read rather than computed - an operand carries the instruction that made
     /// it, not the one reading it.
     /// </summary>
-    private void StampSourceInstruction(HlslTreeNode node)
+    private void StampSourceInstruction(HlslTreeNode node, int component)
     {
         if (node.SourceInstruction == 0 && node is not RegisterInputNode and not ConstantNode)
         {
             node.SourceInstruction = _instructionPointer + 1;
+            node.SourceComponent = component;
         }
     }
 

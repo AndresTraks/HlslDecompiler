@@ -29,6 +29,13 @@ public class HlslTreeNode
     public int SourceInstruction { get; set; }
 
     /// <summary>
+    /// Which component of that instruction's destination this value is, so that
+    /// the components of one instruction can be put back in the order it wrote
+    /// them. Meaningless where <see cref="SourceInstruction"/> is zero.
+    /// </summary>
+    public int SourceComponent { get; set; }
+
+    /// <summary>
     /// Whether two values were made by one instruction, which is what makes them
     /// components of one thing rather than two that share a register.
     /// </summary>

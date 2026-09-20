@@ -55,24 +55,19 @@ public class RoundTripCostTests
             + "and it is written out longhand, which fxc expands again inside each "
             + "unrolled copy. It computes the right answer now, which it did not "
             + "when this entry was written."),
-        ["cs_4_0/particle_update"] = (13,
-            "Two instructions, and the price of naming the members. The original "
+        ["cs_4_0/particle_update"] = (12,
+            "One instruction, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "
             + "two stores, and reads each member out of the registers in between. "
             + "Written a member at a time - which is what the source said, and what "
-            + "makes it readable - fxc reloads the two members that are read after a "
-            + "store to a different member of the same element. Correct, and the "
-            + "alternative is a struct shaped temporary the writer has no way to "
-            + "know was there. Measured, that temporary costs 10, which is one "
-            + "under what the original costs - so it is not only available to a "
-            + "writer that could see it, it is the better shape. The element is "
-            + "read in five statements and the hoist is per statement. Naming the "
-            + "four members separately instead, which wants no struct typed "
-            + "variable and no new kind of declaration, costs 12: it takes one of "
-            + "the two instructions and leaves the other, because fxc loads four "
-            + "members where the original loaded the element twice. The cheap "
-            + "version is not enough, which is the thing to know before trying "
-            + "it."),
+            + "makes it readable - fxc reloads the member that is read after a store "
+            + "to a different member of the same element. Was 13 while each load was "
+            + "written out at every use: the components one instruction wrote are "
+            + "named together now, so the sixteen bytes are read once and the "
+            + "members are swizzles of it, which is the 12 this entry predicted for "
+            + "naming them. The struct shaped temporary that would cost 10 - one "
+            + "under the original - wants a struct typed variable and a declaration "
+            + "of a kind the writer has not got."),
         ["vs_4_0/skin_buffer"] = (37,
             "One instruction, and the shape of the source rather than its "
             + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
@@ -114,16 +109,6 @@ public class RoundTripCostTests
             + "a row."),
 
 
-        ["vs_3_0/partial_overwrite"] = (13,
-            "The original computes a lerp over all four components and then overwrites "
-            + "y with the height lookup. An expression has nowhere to put that: x and "
-            + "zw carry the lerp, y carries the lerp plus the lookup, and the shared "
-            + "part is three separate nodes rather than one, so naming it would not "
-            + "help either. Correct, and the two instructions are the cost of saying "
-            + "it as one expression. Was 15 while the lookup was added in front of "
-            + "the lerp rather than onto it."),
-
-
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,
             "fxc unrolls the eight iteration loop the decompiled source spells out, "
@@ -140,6 +125,14 @@ public class RoundTripCostTests
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),
+        ["ps_4_0/screen_position"] = (15,
+            "One instruction, and it is the position read as a pair. The shader "
+            + "divides sv_position.xy by the resolution and casts it to int2, and "
+            + "both were written out twice - once scalar for the checker pattern, "
+            + "once as a pair in the return. Named, each is written once and reads "
+            + "far better, and the int2 the loads address with becomes one vector "
+            + "add where the original added a scalar 1 to the x alone. Paid for "
+            + "what the same pass takes off partial_overwrite and particle_update."),
         ["ps_3_0/dynamic_index"] = (6,
             "The original selects with cmp over def'd constants; the decompiled "
             + "comparison compiles to abs and a compare."),

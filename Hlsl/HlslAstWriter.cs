@@ -1157,7 +1157,8 @@ public class HlslAstWriter : HlslWriter
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
                     ?? SplitRead(readers, grouped, roots)
-                    ?? SharedRoots(registerGroups, readers, recording, groupMatches);
+                    ?? SharedRoots(registerGroups, readers, recording, groupMatches)
+                    ?? SharedInstruction(readers, recording, roots);
             if (occurrences == null)
             {
                 return assignments;
@@ -1407,6 +1408,56 @@ public class HlslAstWriter : HlslWriter
                     .Sum(r => r.Text.Length);
             }
             if (repeated >= RepeatedTextBudget)
+            {
+                return [group];
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The components one instruction wrote, where the output writes them out in
+    /// more than one place. A four wide mad whose components are read as xz here, y
+    /// there and x and zw in the return is one instruction and four lerps in the
+    /// text; named, it is the one instruction the bytecode has and the readers are
+    /// swizzles of it.
+    ///
+    /// The node says which instruction made it, so this asks that and then the text
+    /// pass's question: whether writing it out at each use costs more than the line
+    /// a name takes.
+    /// </summary>
+    private List<HlslTreeNode[]> SharedInstruction(
+        HashSet<HlslTreeNode> readers,
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        HashSet<HlslTreeNode> roots)
+    {
+        foreach (IGrouping<int, HlslTreeNode> instruction in readers
+            .Where(node => node.SourceInstruction != 0 && IsNameable(node) && !roots.Contains(node))
+            .GroupBy(node => node.SourceInstruction)
+            .Where(group => group.Count() > 1)
+            .OrderByDescending(group => group.Count()))
+        {
+            // In the order the instruction wrote them, so the variable's components
+            // are the register's and the readers are the swizzles they were.
+            HlslTreeNode[] group = [.. instruction.OrderBy(node => node.SourceComponent)];
+            if (group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode)))
+            {
+                continue;
+            }
+            // Every place the components are written out. What a name saves is all
+            // of them but the one it keeps.
+            List<(HlslTreeNode[] Nodes, string Text)> written = [.. recording
+                .Where(r => r.Nodes.All(group.Contains))];
+            // And only where something reads them as a vector. A register whose
+            // components are read one at a time by unrelated expressions is four
+            // values that share an instruction, and gathering them into a variable
+            // makes fxc build the vector that the shader was doing without.
+            if (written.Count < 2 || !written.Any(r => r.Nodes.Length > 1))
+            {
+                continue;
+            }
+            int saved = written.Sum(r => r.Text.Length) - written.Max(r => r.Text.Length);
+            if (saved >= RepeatedTextBudget)
             {
                 return [group];
             }

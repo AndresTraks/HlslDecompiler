@@ -1206,6 +1206,16 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Sample:
                 WriteResult(instruction, "{0} = {2}.Sample({3}, {1}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
+            // The resource swizzle chooses the level rather than naming a channel,
+            // and the level is a float, so it is read here and not written after.
+            case D3D10Opcode.Lod:
+                WriteResult(instruction, "{0} = {2}.{4}({3}, {1});",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1),
+                    GetOperandName(instruction, 2), GetOperandName(instruction, 3),
+                    instruction.GetSourceSwizzleComponents(2)[0] == 1
+                        ? "CalculateLevelOfDetailUnclamped"
+                        : "CalculateLevelOfDetail");
+                break;
             case D3D10Opcode.RoundZ:
                 WriteResult(instruction, "{0} = trunc({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -2531,6 +2541,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleD:
             case D3D10Opcode.SampleCLZ:
             case D3D10Opcode.Gather4:
+            case D3D10Opcode.Lod:
                 return true;
             default:
                 return false;

@@ -64,6 +64,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_1", "cube_array_probe")]
     [TestCase("ps_4_1", "coverage_mask")]
     [TestCase("ps_4_1", "alpha_to_coverage")]
+    [TestCase("ps_4_1", "level_of_detail")]
     [TestCase("ps_4_0", "cbuffer_array")]
     [TestCase("ps_4_0", "uint_loop")]
     [TestCase("ps_4_0", "if_deep_nest")]

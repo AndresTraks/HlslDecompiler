@@ -1187,10 +1187,16 @@ public sealed class NodeCompiler
             // From the resource operand, not from the load: the load is named after
             // the component it writes, and the resource says which channel that
             // component came from. The same as LoadStructuredNode above.
-            string swizzle = textureLoad.Texture != null
-                ? GetAstSourceSwizzleName(
-                    components.Select(c => (IHasComponentIndex)((TextureLoadOutputNode)c).Texture), 4)
-                : GetAstSourceSwizzleName(componentsWithIndices, 4);
+            // lod is the exception: its resource swizzle chooses between the two
+            // levels rather than naming a channel of a texel, and the level itself
+            // is a float. `CalculateLevelOfDetailUnclamped(...).y` is a swizzle of a
+            // scalar, which does not compile.
+            string swizzle = textureLoad.Controls.HasFlag(TextureLoadControls.CalculateLod)
+                ? ""
+                : textureLoad.Texture != null
+                    ? GetAstSourceSwizzleName(
+                        components.Select(c => (IHasComponentIndex)((TextureLoadOutputNode)c).Texture), 4)
+                    : GetAstSourceSwizzleName(componentsWithIndices, 4);
 
             var textureDefinition = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
@@ -1205,7 +1211,13 @@ public sealed class NodeCompiler
                 // the compared value, and still compiled.
                 string method = "Sample";
                 string extraArguments = "";
-                if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
+                if (textureLoad.Controls.HasFlag(TextureLoadControls.CalculateLod))
+                {
+                    method = textureLoad.Controls.HasFlag(TextureLoadControls.Unclamped)
+                        ? "CalculateLevelOfDetailUnclamped"
+                        : "CalculateLevelOfDetail";
+                }
+                else if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
                 {
                     method = "Gather";
                 }

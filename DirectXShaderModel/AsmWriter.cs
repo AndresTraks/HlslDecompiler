@@ -737,6 +737,9 @@ public class AsmWriter
             case D3D10Opcode.Sample:
                 WriteInstruction(instruction, "sample", 4);
                 break;
+            case D3D10Opcode.Lod:
+                WriteInstruction(instruction, "lod", 4);
+                break;
             case D3D10Opcode.SinCos:
                 WriteInstruction(instruction, "sincos", 3);
                 break;

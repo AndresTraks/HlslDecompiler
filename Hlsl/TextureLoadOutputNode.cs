@@ -152,5 +152,11 @@ public enum TextureLoadControls
     Project = 8,
     Compare = 16,
     LevelZero = 32,
-    Gather = 64
+    Gather = 64,
+    // The lod instruction, which measures a level rather than reading a texel.
+    CalculateLod = 128,
+    // Which of the two levels it measures: the clamped one the texture would
+    // actually use, or the unclamped one it computed before clamping. The resource
+    // operand's swizzle says which - `t0.x` for the first, `t0.y` for the second.
+    Unclamped = 256,
 }

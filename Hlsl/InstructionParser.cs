@@ -1804,6 +1804,7 @@ public class InstructionParser
             case D3D10Opcode.ResInfo:
                 return CreateResourceInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
+            case D3D10Opcode.Lod:
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
@@ -1956,8 +1957,17 @@ public class InstructionParser
                 D3D10Opcode.SampleC => TextureLoadControls.Compare,
                 D3D10Opcode.SampleCLZ => TextureLoadControls.Compare | TextureLoadControls.LevelZero,
                 D3D10Opcode.Gather4 => TextureLoadControls.Gather,
+                D3D10Opcode.Lod => TextureLoadControls.CalculateLod,
                 _ => TextureLoadControls.None,
             };
+            // lod puts the clamped level in x and the unclamped one in y, and the
+            // resource swizzle picks between them - the only thing that tells
+            // CalculateLevelOfDetail from CalculateLevelOfDetailUnclamped.
+            if (controls.HasFlag(TextureLoadControls.CalculateLod)
+                && instruction.GetSourceSwizzleComponents(TextureParamIndex)[0] == 1)
+            {
+                controls |= TextureLoadControls.Unclamped;
+            }
             HlslTreeNode[] derivativeX = null;
             HlslTreeNode[] derivativeY = null;
             HlslTreeNode scalarArgument = null;

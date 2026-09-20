@@ -111,6 +111,8 @@ public class DecompileTests
     [TestCase("ps_2_0", "lighting_intrinsics")]
     [TestCase("vs_1_1", "select_idioms")]
     [TestCase("ps_3_0", "kill_derivatives")]
+    [TestCase("ps_3_0", "multiply_negate")]
+    [TestCase("ps_3_0", "continue_nested")]
     [TestCase("vs_2_0", "matrix_palette")]
     [TestCase("ps_2_0", "water_ripple")]
     [TestCase("ps_2_0", "alpha_cutout")]

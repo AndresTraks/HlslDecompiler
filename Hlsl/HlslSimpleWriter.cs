@@ -1331,6 +1331,29 @@ public class HlslSimpleWriter : HlslWriter
                         GetResourceSwizzle(instruction));
                     break;
                 }
+            case D3D10Opcode.Gather4Po:
+            case D3D10Opcode.Gather4PoC:
+                {
+                    // The offset is an operand rather than part of the mnemonic, so
+                    // the texture and the sampler are one further along and the
+                    // offset goes where an immediate one would - last, after the
+                    // compared value where there is one.
+                    bool compares = instruction.Opcode == D3D10Opcode.Gather4PoC;
+                    string method = instruction.GetSourceSwizzleComponents(4)[0] switch
+                    {
+                        1 => compares ? "GatherCmpGreen" : "GatherGreen",
+                        2 => compares ? "GatherCmpBlue" : "GatherBlue",
+                        3 => compares ? "GatherCmpAlpha" : "GatherAlpha",
+                        _ => compares ? "GatherCmp" : "Gather",
+                    };
+                    string compared = compares ? $", {GetOperandName(instruction, 5)}" : "";
+                    WriteResult(instruction, "{0} = {1}.{2}({3}, {4}{5}, {6}){7};",
+                        GetOperandName(instruction, 0), GetOperandName(instruction, 3),
+                        method, GetOperandName(instruction, 4), GetOperandName(instruction, 1),
+                        compared, GetOperandName(instruction, 2),
+                        GetResourceSwizzle(instruction));
+                    break;
+                }
             case D3D10Opcode.Gather4C:
                 {
                     // The same four texels as a gather, each compared against the
@@ -2615,11 +2638,13 @@ public class HlslSimpleWriter : HlslWriter
 
     private static string GetResourceSwizzle(D3D10Instruction instruction)
     {
-        if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ)
+        if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ
+            or D3D10Opcode.Gather4PoC)
         {
             return "";
         }
-        return instruction.GetSourceSwizzleName(2);
+        // Of the operand that names the texture, which a register offset moves.
+        return instruction.GetSourceSwizzleName(TextureOperandIndex(instruction));
     }
 
     // An offset shifts the sample by whole texels. Leaving it out compiles and
@@ -2677,7 +2702,18 @@ public class HlslSimpleWriter : HlslWriter
         return _registers.ResourceDefinitions
             .Where(d => d.ShaderInputType is D3DShaderInputType.Texture
                 or D3DShaderInputType.TBuffer)
-            .FirstOrDefault(d => d.BindPoint == instruction.GetParamRegisterNumber(2));
+            .FirstOrDefault(d => d.BindPoint
+                == instruction.GetParamRegisterNumber(TextureOperandIndex(instruction)));
+    }
+
+    /// <summary>
+    /// Which operand names the texture. The third for everything that samples or
+    /// loads, and the fourth for a gather that takes its offset from a register -
+    /// that offset is an operand of its own, and pushes the rest along.
+    /// </summary>
+    private static int TextureOperandIndex(D3D10Instruction instruction)
+    {
+        return instruction.Opcode is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC ? 3 : 2;
     }
 
     // A constructor over the variables an operand reads, when it reads more than
@@ -2791,6 +2827,13 @@ public class HlslSimpleWriter : HlslWriter
         {
             return 1;
         }
+        // The offset a gather4_po reads from a register is as wide as the texture,
+        // the same as the coordinate before it.
+        if (operandIndex == 2
+            && instruction.Opcode is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC)
+        {
+            return GetTextureDimension(instruction);
+        }
         // Where an attribute is evaluated is as wide as the question: one sample
         // index, or an offset in x and y. The operand is as wide as the destination
         // mask otherwise, and `EvaluateAttributeSnapped(v, int4(...))` is not an
@@ -2828,6 +2871,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return GetTextureDimension(instruction);
         }
+
         // A texel of the view being written, addressed by as many coordinates as it
         // has dimensions - and no mip, there being only the one to write to.
         if (instruction.Opcode == D3D10Opcode.StoreUAVTyped)
@@ -2879,6 +2923,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleCLZ:
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Gather4C:
+            case D3D10Opcode.Gather4Po:
+            case D3D10Opcode.Gather4PoC:
             case D3D10Opcode.Lod:
                 return true;
             default:

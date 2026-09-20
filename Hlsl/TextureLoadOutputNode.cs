@@ -7,6 +7,7 @@ namespace HlslDecompiler.Hlsl;
 public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
 {
     private int _numTextureCoordinates;
+    private int _numOffsets;
     private bool _hasScalarArgument;
 
     // The texel offsets of sample_aoffimmi, which shift the sample by whole texels
@@ -92,7 +93,8 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
         TextureLoadControls controls,
         HlslTreeNode[] derivativeX,
         HlslTreeNode[] derivativeY,
-        HlslTreeNode scalarArgument)
+        HlslTreeNode scalarArgument,
+        HlslTreeNode[] offsets = null)
     {
         var node = new TextureLoadOutputNode(sampler, textureCoords, componentIndex, null)
         {
@@ -105,6 +107,14 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
                 node.AddInput(component);
             }
             foreach (HlslTreeNode component in derivativeY)
+            {
+                node.AddInput(component);
+            }
+        }
+        if (offsets != null)
+        {
+            node._numOffsets = offsets.Length;
+            foreach (HlslTreeNode component in offsets)
             {
                 node.AddInput(component);
             }
@@ -126,8 +136,16 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     public IEnumerable<HlslTreeNode> DerivativeY => Inputs
         .Skip(1 + 2 * _numTextureCoordinates)
         .Take(Controls.HasFlag(TextureLoadControls.Grad) ? _numTextureCoordinates : 0);
+    // The offset a gather4_po takes from a register, which goes after the
+    // coordinates the way the gradients do.
+    public IEnumerable<HlslTreeNode> Offsets => Inputs
+        .Skip(1 + _numTextureCoordinates
+            + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0))
+        .Take(_numOffsets);
     public RegisterInputNode Texture => Inputs
-        .Skip(1 + _numTextureCoordinates + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0))
+        .Skip(1 + _numTextureCoordinates
+            + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0)
+            + _numOffsets)
         .FirstOrDefault() as RegisterInputNode;
     // The level, bias or comparison value, whichever the controls call for.
     public HlslTreeNode ScalarArgument => _hasScalarArgument ? Inputs[Inputs.Count - 1] : null;
@@ -159,4 +177,10 @@ public enum TextureLoadControls
     // actually use, or the unclamped one it computed before clamping. The resource
     // operand's swizzle says which - `t0.x` for the first, `t0.y` for the second.
     Unclamped = 256,
+    /// <summary>
+    /// The texel offset is an operand rather than part of the mnemonic: gather4_po
+    /// takes it from a register, so it can differ per pixel where an aoffimmi
+    /// cannot.
+    /// </summary>
+    ProgrammableOffset = 512,
 }

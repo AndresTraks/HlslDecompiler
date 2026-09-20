@@ -833,6 +833,31 @@ public class D3D10Machine
             case D3D10Opcode.SampleD:
             case D3D10Opcode.Gather4:
                 return SampleTexture(instruction);
+            // A gather whose offset is a register rather than part of the mnemonic.
+            // Every operand after the offset is one further along, and the offset is
+            // added to the coordinate the way an immediate one is - in texels, which
+            // here are the hundredths this machine samples in.
+            case D3D10Opcode.Gather4Po:
+            case D3D10Opcode.Gather4PoC:
+                {
+                    float[] coordinates = Floats(instruction, 1);
+                    int[] offset = Ints(instruction, 2);
+                    float[] offsetCoordinates =
+                    [
+                        coordinates[0] + offset[0] * 0.01f,
+                        coordinates[1] + offset[1] * 0.01f,
+                        coordinates[2],
+                        coordinates[3],
+                    ];
+                    float[] sampled = Texture.Sample(
+                        instruction.GetParamRegisterNumber(3), offsetCoordinates);
+                    if (instruction.Opcode == D3D10Opcode.Gather4PoC)
+                    {
+                        return BroadcastFloat(sampled[0] >= Floats(instruction, 5)[0] ? 1 : 0);
+                    }
+                    byte[] channels = instruction.GetSourceSwizzleComponents(3);
+                    return Pack([.. channels.Select(c => sampled[c])]);
+                }
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
             // A gather compares the four texels around the coordinate, which are

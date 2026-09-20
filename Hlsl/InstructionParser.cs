@@ -2015,6 +2015,8 @@ public class InstructionParser
                 return CreateSampleInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
             case D3D10Opcode.Gather4C:
+            case D3D10Opcode.Gather4Po:
+            case D3D10Opcode.Gather4PoC:
             case D3D10Opcode.Lod:
             case D3D10Opcode.Sample:
             case D3D10Opcode.SampleC:
@@ -2183,8 +2185,13 @@ public class InstructionParser
         }
         else
         {
-            const int TextureParamIndex = 2;
-            const int SamplerParamIndex = 3;
+            // gather4_po takes its offset from a register, in an operand of its own
+            // between the coordinate and the texture, so everything after it is one
+            // further along.
+            bool hasProgrammableOffset = ((D3D10Instruction)instruction).Opcode
+                is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC;
+            int TextureParamIndex = hasProgrammableOffset ? 3 : 2;
+            int SamplerParamIndex = hasProgrammableOffset ? 4 : 3;
 
             // The resource operand carries the swizzle that says which channel each
             // component of the result comes from - `t2.yzxw` puts the red channel in
@@ -2216,6 +2223,10 @@ public class InstructionParser
                 // A gather that compares: four texels tested against one value, the
                 // way a comparison sample tests the one it reads.
                 D3D10Opcode.Gather4C => TextureLoadControls.Gather | TextureLoadControls.Compare,
+                D3D10Opcode.Gather4Po =>
+                    TextureLoadControls.Gather | TextureLoadControls.ProgrammableOffset,
+                D3D10Opcode.Gather4PoC => TextureLoadControls.Gather
+                    | TextureLoadControls.Compare | TextureLoadControls.ProgrammableOffset,
                 D3D10Opcode.Lod => TextureLoadControls.CalculateLod,
                 _ => TextureLoadControls.None,
             };
@@ -2230,6 +2241,11 @@ public class InstructionParser
             HlslTreeNode[] derivativeX = null;
             HlslTreeNode[] derivativeY = null;
             HlslTreeNode scalarArgument = null;
+            // The offset is the operand before the texture, and as wide as the
+            // texture has dimensions - two for a Texture2D.
+            HlslTreeNode[] offsets = hasProgrammableOffset
+                ? GetInputComponents(instruction, TextureParamIndex - 1, dimension)
+                : null;
             if (controls.HasFlag(TextureLoadControls.Grad))
             {
                 derivativeX = GetInputComponents(instruction, ExtraParamIndex, dimension);
@@ -2240,13 +2256,16 @@ public class InstructionParser
                 || controls.HasFlag(TextureLoadControls.Compare))
             {
                 // Only these carry one more operand. gather4 takes the same operands
-                // as sample, so reading a fifth would run off the end.
-                scalarArgument = GetInputComponents(instruction, ExtraParamIndex, 1)[0];
+                // as sample, so reading a fifth would run off the end. A comparison
+                // gather with a register offset has both, and the value compared
+                // against is last of all.
+                scalarArgument = GetInputComponents(
+                    instruction, hasProgrammableOffset ? ExtraParamIndex + 1 : ExtraParamIndex, 1)[0];
             }
 
             TextureLoadOutputNode node = TextureLoadOutputNode.CreateSample(
                 sampler, texCoords, outputComponent, texture,
-                controls, derivativeX, derivativeY, scalarArgument);
+                controls, derivativeX, derivativeY, scalarArgument, offsets);
             node.SampleOffsets = ((D3D10Instruction)instruction).SampleOffsets;
             return node;
         }

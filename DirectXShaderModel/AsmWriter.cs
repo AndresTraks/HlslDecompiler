@@ -672,6 +672,12 @@ public class AsmWriter
             case D3D10Opcode.Gather4C:
                 WriteInstruction(instruction, "gather4_c", 5);
                 break;
+            case D3D10Opcode.Gather4Po:
+                WriteInstruction(instruction, "gather4_po", 5);
+                break;
+            case D3D10Opcode.Gather4PoC:
+                WriteInstruction(instruction, "gather4_po_c", 6);
+                break;
             // The same five operands: the comparison value is the fifth either way,
             // and the difference is only which mip the comparison is made against.
             case D3D10Opcode.SampleC:

@@ -1350,6 +1350,12 @@ public sealed class NodeCompiler
                     extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
                 }
                 extraArguments += CompileSampleOffsets(textureLoad.SampleOffsets, textureDefinition);
+                // An offset the shader computes goes where an immediate one would,
+                // and is an integer vector like one.
+                if (textureLoad.Controls.HasFlag(TextureLoadControls.ProgrammableOffset))
+                {
+                    extraArguments += $", {CompileAsInteger(textureLoad.Offsets.ToList())}";
+                }
                 return $"{textureDefinition.Name}.{method}({samplerDefinition.Name}, {texcoords}{extraArguments}){swizzle}";
             }
             else

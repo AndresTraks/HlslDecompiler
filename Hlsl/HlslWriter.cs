@@ -95,6 +95,13 @@ public abstract class HlslWriter
             WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
         }
 
+        // A geometry shader run more than once per primitive, each run knowing
+        // which it is.
+        if (_registers.GSInstanceCount != null)
+        {
+            WriteLine("[instance({0})]", _registers.GSInstanceCount);
+        }
+
         if (_registers.TessellatorDomain != D3D10TessellatorDomain.Undefined)
         {
             WriteLine("[domain(\"{0}\")]", _registers.TessellatorDomain switch
@@ -595,7 +602,11 @@ public abstract class HlslWriter
             string primitiveId = _registers.PrimitiveIdDeclaration == null
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration)}, ";
-            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}inout {stream}<GS_OUT> stream";
+            string instanceId = _registers.GSInstanceIdDeclaration == null
+                ? ""
+                : $"{CompileRegisterDeclaration(_registers.GSInstanceIdDeclaration)}, ";
+            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}{instanceId}"
+                + $"inout {stream}<GS_OUT> stream";
         }
         if (_shader.Type == ShaderType.Domain)
         {

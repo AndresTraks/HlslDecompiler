@@ -269,6 +269,11 @@ public class InstructionParser
                         _registerState.MaxOutputVertexCount = (int)instruction.GetParamInt(0);
                         break;
                     }
+                case D3D10Opcode.DclGSInstanceCount:
+                    {
+                        _registerState.GSInstanceCount = (int)instruction.GetParamInt(0);
+                        break;
+                    }
                 case D3D10Opcode.DclGSOutputPrimitiveTopology:
                     {
                         _registerState.PrimitiveTopology = instruction.GetPrimitiveTopology();

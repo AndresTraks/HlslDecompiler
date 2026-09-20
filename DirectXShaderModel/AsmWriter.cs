@@ -405,6 +405,9 @@ public class AsmWriter
             case D3D10Opcode.DclGSMaxOutputVertexCount:
                 WriteLine("dcl_maxout {0}", instruction.GetParamInt(0));
                 break;
+            case D3D10Opcode.DclGSInstanceCount:
+                WriteLine("dcl_gsinstances {0}", instruction.GetParamInt(0));
+                break;
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
                 WriteLine("dcl_outputtopology {0}", instruction.GetPrimitiveTopology().ToString().ToLower());
                 break;
@@ -418,7 +421,7 @@ public class AsmWriter
                         D3D10Name.Position => "position",
                         D3D10Name.ClipDistance => "clip_distance",
                         D3D10Name.CullDistance => "cull_distance",
-                        D3D10Name.RenderTargetArrayIndex => "render_target_array_index",
+                        D3D10Name.RenderTargetArrayIndex => "rendertarget_array_index",
                         D3D10Name.ViewportArrayIndex => "viewport_array_index",
                         D3D10Name.VertexID => "vertex_id",
                         D3D10Name.PrimitiveID => "primitive_id",
@@ -1310,6 +1313,8 @@ public class AsmWriter
             OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
             OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
             OperandType.InputPrimitiveID => "vPrim",
+            // Which of the instances a geometry shader was asked for this is.
+            OperandType.InputGSInstanceID => "vGSInstanceID",
             // The tessellation inputs: where in the patch the domain shader is
             // being run, and the control points it is being run over.
             OperandType.InputDomainPoint => "vDomain",

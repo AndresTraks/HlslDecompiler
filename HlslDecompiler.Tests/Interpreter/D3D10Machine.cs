@@ -1377,6 +1377,7 @@ public class D3D10Machine
             case OperandType.InputThreadIDInGroup:
             case OperandType.InputThreadIDInGroupFlattened:
             case OperandType.InputPrimitiveID:
+            case OperandType.InputGSInstanceID:
                 // Small whole numbers: a thread index taken from float bits would
                 // address somewhere no buffer reaches.
                 return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];

@@ -657,6 +657,7 @@ public class D3D10Instruction : Instruction
             OperandType.InputThreadIDInGroup => "SV_GroupThreadID",
             OperandType.InputThreadIDInGroupFlattened => "SV_GroupIndex",
             OperandType.InputPrimitiveID => "SV_PrimitiveID",
+            OperandType.InputGSInstanceID => "SV_GSInstanceID",
             OperandType.InputDomainPoint => "SV_DomainLocation",
             OperandType.OutputControlPointID => "SV_OutputControlPointID",
             OperandType.OutputDepth => "SV_Depth",
@@ -688,7 +689,10 @@ public class D3D10Instruction : Instruction
     {
         Span<uint> span = OperandTokens.GetSpan(index);
         uint value;
-        if (Opcode == D3D10Opcode.DclTemps || Opcode == D3D10Opcode.DclGSMaxOutputVertexCount)
+        // A bare count rather than an operand: the dword after the opcode token is
+        // the number itself, with no operand token in front of it to describe it.
+        if (Opcode == D3D10Opcode.DclTemps || Opcode == D3D10Opcode.DclGSMaxOutputVertexCount
+            || Opcode == D3D10Opcode.DclGSInstanceCount)
         {
             value = span[0];
         }
@@ -818,7 +822,10 @@ public class D3D10Instruction : Instruction
             or OperandType.InputThreadGroupID
             or OperandType.InputThreadIDInGroup
             or OperandType.InputThreadIDInGroupFlattened
-            or OperandType.InputPrimitiveID;
+            or OperandType.InputPrimitiveID
+            // A geometry shader instance is numbered the way a primitive is: one
+            // register, no number, and an unsigned integer.
+            or OperandType.InputGSInstanceID;
     }
 
     public OperandType GetOperandType(int index)

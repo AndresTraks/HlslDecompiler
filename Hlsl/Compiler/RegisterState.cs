@@ -180,6 +180,12 @@ public sealed class RegisterState
 
     /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
     public RegisterDeclaration PrimitiveIdDeclaration { get; set; }
+
+    // Which instance of an instanced geometry shader this run is, and how many
+    // instances it was declared with.
+    public RegisterDeclaration GSInstanceIdDeclaration { get; set; }
+
+    public int? GSInstanceCount { get; set; }
     public int? MaxOutputVertexCount { get; set; }
 
     /// <summary>How many control points a patch comes in with, and goes out with.
@@ -889,6 +895,7 @@ public sealed class RegisterState
                         return MethodInputRegisters.Count == 1 ? threadName : "i." + threadName;
                     }
                 case OperandType.InputPrimitiveID:
+                case OperandType.InputGSInstanceID:
                 case OperandType.InputDomainPoint:
                 case OperandType.OutputControlPointID:
                     return RegisterDeclarations[registerKey].Name;
@@ -1479,6 +1486,11 @@ public sealed class RegisterState
                         case OperandType.InputPrimitiveID:
                             PrimitiveIdDeclaration = registerDeclaration;
                             break;
+                        // And so is the instance number, which is per run of the
+                        // shader rather than per vertex of the primitive.
+                        case OperandType.InputGSInstanceID:
+                            GSInstanceIdDeclaration = registerDeclaration;
+                            break;
                         case OperandType.Output:
                         // A depth output is written like any other, and naming no
                         // register does not make it less of one.
@@ -1684,7 +1696,8 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
             || registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
-            || registerKey.OperandType == OperandType.InputPrimitiveID;
+            || registerKey.OperandType == OperandType.InputPrimitiveID
+            || registerKey.OperandType == OperandType.InputGSInstanceID;
         // A domain location is two components on a quad and three on a triangle,
         // and its dcl says which - `dcl_input vDomain.xy` - where the 4 below would
         // make every one of them three wide.

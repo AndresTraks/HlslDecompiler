@@ -1677,6 +1677,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclIndexRange:
             case D3D10Opcode.DclGSInputPrimitive:
             case D3D10Opcode.DclGSMaxOutputVertexCount:
+            // The [instance] attribute, written with the signature.
+            case D3D10Opcode.DclGSInstanceCount:
             case D3D10Opcode.DclInput:
             case D3D10Opcode.DclInputPS:
             case D3D10Opcode.DclInputPSSgv:

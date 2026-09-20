@@ -1,4 +1,4 @@
-gs_4_0
+﻿gs_4_0
 dcl_constantbuffer cb0[24], immediateIndexed
 dcl_input v[3][0]
 dcl_temps 2
@@ -6,7 +6,7 @@ dcl_inputprimitive triangle
 dcl_outputtopology trianglestrip
 dcl_output_siv o0, position
 dcl_output o1.xyz
-dcl_output_siv o2.x, render_target_array_index
+dcl_output_siv o2.x, rendertarget_array_index
 dcl_maxout 18
 mov r0.x, l(0)
 loop

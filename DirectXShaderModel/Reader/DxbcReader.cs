@@ -147,6 +147,15 @@ public class DxbcReader : BinaryReader
             {
                 ReadSignatures(chunkOffset, OperandType.Output, outputSignatures);
             }
+            // A geometry shader that names its stream writes the output signature
+            // with the stream beside each element, in a chunk of its own. Reading
+            // only OSGN left a shader model 5 geometry shader with no output
+            // semantics at all, so every output fell back to SV_Target.
+            else if (chunkType == "OSG5")
+            {
+                ReadSignatures(chunkOffset, OperandType.Output, outputSignatures,
+                    hasStream: true);
+            }
             else if (chunkType == "PCSG")
             {
                 // What the hull shader computed once for the whole patch. A domain
@@ -369,16 +378,22 @@ public class DxbcReader : BinaryReader
         return builder.ToString();
     }
 
-    private void ReadSignatures(int chunkOffset, OperandType operandType, IList<RegisterSignature> signatures)
+    private void ReadSignatures(int chunkOffset, OperandType operandType,
+        IList<RegisterSignature> signatures, bool hasStream = false)
     {
         ReadInt32();
         int elementCount = ReadInt32();
         ReadInt32();
         long elementOffset = BaseStream.Position;
 
+        int elementSize = hasStream ? 28 : 24;
         for (int i = 0; i < elementCount; i++)
         {
-            BaseStream.Position = elementOffset + i * 24;
+            BaseStream.Position = elementOffset + i * elementSize;
+            if (hasStream)
+            {
+                ReadInt32();
+            }
             RegisterSignature signature = ReadSignature(chunkOffset, operandType);
             signatures.Add(signature);
         }

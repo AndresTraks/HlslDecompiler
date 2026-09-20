@@ -757,6 +757,44 @@ public class D3D10Machine
 
             case D3D10Opcode.IAdd:
                 return Int(instruction, (a, b) => a + b);
+            case D3D10Opcode.UBFE:
+            case D3D10Opcode.IBFE:
+                {
+                    // The low five bits of the width and offset count; a zero width
+                    // is zero; a field running off the top is what is left above the
+                    // offset. ibfe fills the top with the field's own sign.
+                    uint[] width = Source(instruction, 1);
+                    uint[] offset = Source(instruction, 2);
+                    uint[] value = Source(instruction, 3);
+                    bool signed = instruction.Opcode == D3D10Opcode.IBFE;
+                    return [.. Enumerable.Range(0, 4).Select(i =>
+                    {
+                        int w = (int)(width[i] & 31);
+                        int o = (int)(offset[i] & 31);
+                        if (w == 0)
+                        {
+                            return 0u;
+                        }
+                        int up = w + o < 32 ? 32 - w - o : 0;
+                        int down = w + o < 32 ? 32 - w : o;
+                        uint raised = value[i] << up;
+                        return signed ? unchecked((uint)((int)raised >> down)) : raised >> down;
+                    })];
+                }
+            case D3D10Opcode.BFI:
+                {
+                    uint[] width = Source(instruction, 1);
+                    uint[] offset = Source(instruction, 2);
+                    uint[] insert = Source(instruction, 3);
+                    uint[] value = Source(instruction, 4);
+                    return [.. Enumerable.Range(0, 4).Select(i =>
+                    {
+                        int w = (int)(width[i] & 31);
+                        int o = (int)(offset[i] & 31);
+                        uint mask = (w == 0 ? 0u : (w >= 32 ? uint.MaxValue : (1u << w) - 1)) << o;
+                        return ((insert[i] << o) & mask) | (value[i] & ~mask);
+                    })];
+                }
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
                 {

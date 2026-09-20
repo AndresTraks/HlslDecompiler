@@ -373,6 +373,7 @@ public sealed class NodeCompiler
     private static bool IsElementwise(Operation operation)
     {
         return operation is AddOperation or SubtractOperation or MultiplyOperation
+            or BitFieldExtractOperation or BitFieldInsertOperation
             or MultiplyAddOperation or DivisionOperation or NegateOperation or AbsoluteOperation
             or MinimumOperation or MaximumOperation or SaturateOperation or ClampOperation
             or LinearInterpolateOperation or SmoothStepOperation or StepOperation
@@ -383,6 +384,102 @@ public sealed class NodeCompiler
             or NaturalExponentialOperation or NaturalLogarithmOperation
             or PowerOperation or SineOperation or CosineOperation or SignOperation
             or FloatingModuloOperation or EvaluateAttributeOperation;
+    }
+
+    /// <summary>
+    /// ubfe and ibfe as the shift and mask they mean. Where the width and offset are
+    /// immediates - which is how fxc writes a field it can see - the mask and the
+    /// shifts are worked out here and written as numbers, which is what a shader
+    /// author writes and what fxc turns back into the one instruction. ibfe fills
+    /// the top with the field's own top bit, which HLSL does by shifting the field
+    /// up to the top of a signed value and back down.
+    /// </summary>
+    private string CompileBitFieldExtract(BitFieldExtractOperation extract, List<HlslTreeNode> components)
+    {
+        List<HlslTreeNode> widths = [.. components.Select(c => c.Inputs[0])];
+        List<HlslTreeNode> offsets = [.. components.Select(c => c.Inputs[1])];
+        List<HlslTreeNode> values = [.. components.Select(c => c.Inputs[2])];
+        string value = CompileIntegerOperand(values);
+        string size = components.Count > 1 ? components.Count.ToString() : "";
+
+        if (extract.IsUnsigned)
+        {
+            if (!IsUnsignedAlready(extract.Value))
+            {
+                value = $"(uint{size}){value}";
+            }
+            if (AllIntegers(widths, out int[] width) && AllIntegers(offsets, out int[] offset))
+            {
+                // Five bits wide is a mask of 31; a whole word wide is no mask.
+                string shifted = offset.All(o => o == 0)
+                    ? value
+                    : $"{value} >> {CompileIntegers(offset)}";
+                if (width.All(w => w >= 32))
+                {
+                    return shifted;
+                }
+                string masked = offset.All(o => o == 0) ? shifted : $"({shifted})";
+                return $"{masked} & {CompileIntegers([.. width.Select(w => w >= 32 ? -1 : (1 << w) - 1)])}";
+            }
+            return $"({value} >> {CompileOperand(offsets)}) & ((1 << {CompileOperand(widths)}) - 1)";
+        }
+
+        if (IsUnsignedAlready(extract.Value))
+        {
+            value = $"(int{size}){value}";
+        }
+        if (AllIntegers(widths, out int[] signedWidth) && AllIntegers(offsets, out int[] signedOffset))
+        {
+            int[] up = [.. signedWidth.Zip(signedOffset, (w, o) => 32 - w - o)];
+            int[] down = [.. signedWidth.Select(w => 32 - w)];
+            string raised = up.All(u => u == 0) ? value : $"({value} << {CompileIntegers(up)})";
+            return down.All(d => d == 0) ? raised : $"{raised} >> {CompileIntegers(down)}";
+        }
+        string upBy = $"32 - {CompileOperand(widths)} - {CompileOperand(offsets)}";
+        return $"({value} << ({upBy})) >> (32 - {CompileOperand(widths)})";
+    }
+
+    /// <summary>
+    /// bfi as the masks it means: the value with the field's bits cleared, or'd
+    /// with the inserted bits shifted into place and cut to the field. Written with
+    /// the numbers worked out where they are immediates, the way an author packs
+    /// a byte into a word - `(v & ~65280) | ((b << 8) & 65280)`.
+    /// </summary>
+    private string CompileBitFieldInsert(List<HlslTreeNode> components)
+    {
+        List<HlslTreeNode> widths = [.. components.Select(c => c.Inputs[0])];
+        List<HlslTreeNode> offsets = [.. components.Select(c => c.Inputs[1])];
+        string insert = CompileIntegerOperand(components.Select(c => c.Inputs[2]));
+        string value = CompileIntegerOperand(components.Select(c => c.Inputs[3]));
+
+        if (AllIntegers(widths, out int[] width) && AllIntegers(offsets, out int[] offset))
+        {
+            int[] mask = [.. width.Zip(offset, (w, o) => (w >= 32 ? -1 : (1 << w) - 1) << o)];
+            string maskText = CompileIntegers(mask);
+            string shifted = offset.All(o => o == 0) ? insert : $"({insert} << {CompileIntegers(offset)})";
+            return $"({value} & ~{maskText}) | ({shifted} & {maskText})";
+        }
+        string maskExpression = $"(((1 << {CompileOperand(widths)}) - 1) << {CompileOperand(offsets)})";
+        return $"({value} & ~{maskExpression}) | (({insert} << {CompileOperand(offsets)}) & {maskExpression})";
+    }
+
+    private static bool AllIntegers(List<HlslTreeNode> nodes, out int[] values)
+    {
+        values = new int[nodes.Count];
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (nodes[i] is not ConstantNode constant)
+            {
+                return false;
+            }
+            values[i] = constant.IntegerValue ?? (int)constant.Value;
+        }
+        return true;
+    }
+
+    private string CompileIntegers(int[] values)
+    {
+        return _constantCompiler.Compile([.. values.Select(v => new ConstantNode(v))]);
     }
 
     // Compiles a sub-expression, parenthesised when its operator binds more loosely
@@ -412,7 +509,7 @@ public sealed class NodeCompiler
     private bool IsFloatRegister(RegisterInputNode register)
     {
         RegisterComponentKey key = register.RegisterComponentKey;
-        ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+        ConstantDeclaration constant = FindConstantOfComponent(register);
         if (constant != null)
         {
             return constant.TypeInfo.ParameterType is not (ParameterType.Int
@@ -563,6 +660,7 @@ public sealed class NodeCompiler
         {
             BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
                 or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
+                or BitFieldExtractOperation or BitFieldInsertOperation
                 or MoveOperation or MoveConditionalOperation => false,
             _ => StatementFinalizer.IsIntegerValue(operation) != true,
         };
@@ -676,6 +774,12 @@ public sealed class NodeCompiler
                     return string.Format("{0} >> {1}", value,
                         CompileOperand(components.Select(g => g.Inputs[1])));
                 }
+
+            case BitFieldExtractOperation extract:
+                return CompileBitFieldExtract(extract, components);
+
+            case BitFieldInsertOperation _:
+                return CompileBitFieldInsert(components);
 
             case BitwiseNotOperation _:
                 {
@@ -1777,10 +1881,23 @@ public sealed class NodeCompiler
     /// declared uint, an input whose signature types it one, or a thread id, which
     /// is a uint without being declared anything.
     /// </summary>
+    // The variable this component of the register is, not the first variable in the
+    // register: `uint a; int b;` pack into one, and asking by register alone made b
+    // a uint.
+    private ConstantDeclaration FindConstantOfComponent(RegisterInputNode register)
+    {
+        RegisterComponentKey key = register.RegisterComponentKey;
+        // A read through a register index has no offset to ask by, so the register
+        // answers for it as before.
+        return (key.RegisterKey is D3D10RegisterKey d3D10Key
+            ? _registers.FindConstant(d3D10Key, key.ComponentIndex)
+            : null) ?? _registers.FindConstant(key.RegisterKey);
+    }
+
     private bool IsUnsignedRegister(RegisterInputNode register)
     {
         RegisterComponentKey key = register.RegisterComponentKey;
-        ConstantDeclaration constant = _registers.FindConstant(key.RegisterKey);
+        ConstantDeclaration constant = FindConstantOfComponent(register);
         if (constant != null)
         {
             return constant.TypeInfo.ParameterType == ParameterType.Uint;

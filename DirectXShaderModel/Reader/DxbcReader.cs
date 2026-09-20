@@ -57,6 +57,22 @@ public class DxbcReader : BinaryReader
                 majorVersion = ReadByte();
                 shaderType = (ShaderType)ReadUInt16();
                 _isGeometryShader = shaderType == ShaderType.Geometry;
+                ReadInt32(); // flags
+                ReadInt32(); // creator string offset
+
+                // Shader model 5 grew the variable record - a texture and sampler
+                // range each - and says so in an RD11 block after the header, which
+                // lists the size of every record kind. With the model 4 stride, the
+                // second variable of any model 5 buffer was read from the middle of
+                // the first, and its type offset pointed off the end of the file.
+                int variableRecordSize = 24;
+                if (FourCC.Decode(ReadInt32()) == "RD11")
+                {
+                    ReadInt32(); // header size
+                    ReadInt32(); // constant buffer record size
+                    ReadInt32(); // resource binding record size
+                    variableRecordSize = ReadInt32();
+                }
 
                 var structuredElements = new Dictionary<string, ShaderTypeInfo>();
                 constantBufferOffset = chunkOffset + constantBufferOffset + 8;
@@ -74,7 +90,7 @@ public class DxbcReader : BinaryReader
 
                     for (int j = 0; j < variableCount; j++)
                     {
-                        BaseStream.Position = chunkOffset + variableDescriptionOffset + j * 24 + 8;
+                        BaseStream.Position = chunkOffset + variableDescriptionOffset + j * variableRecordSize + 8;
                         int variableNameOffset = ReadInt32();
                         int variableOffset = ReadInt32();
                         int variableSize = ReadInt32();

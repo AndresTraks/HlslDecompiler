@@ -1873,6 +1873,9 @@ public class InstructionParser
             case D3D10Opcode.DerivRtyCoarse:
             case D3D10Opcode.DerivRtyFine:
             case D3D10Opcode.Rcp:
+            case D3D10Opcode.UBFE:
+            case D3D10Opcode.IBFE:
+            case D3D10Opcode.BFI:
             case D3D10Opcode.Exp:
             case D3D10Opcode.And:
             case D3D10Opcode.Xor:
@@ -1957,6 +1960,12 @@ public class InstructionParser
                                 DerivativePrecision.Fine);
                         case D3D10Opcode.Rcp:
                             return new ReciprocalOperation(inputs[0]);
+                        case D3D10Opcode.UBFE:
+                        case D3D10Opcode.IBFE:
+                            return new BitFieldExtractOperation(inputs[0], inputs[1], inputs[2],
+                                instruction.Opcode == D3D10Opcode.UBFE);
+                        case D3D10Opcode.BFI:
+                            return new BitFieldInsertOperation(inputs[0], inputs[1], inputs[2], inputs[3]);
                         case D3D10Opcode.Exp:
                             return new ExponentialOperation(inputs[0]);
                         case D3D10Opcode.Frc:
@@ -2972,6 +2981,8 @@ public class InstructionParser
                 // the operands after it line up.
                 return 3;
             case D3D10Opcode.ImmAtomicCmpExch:
+            // The width, the offset, the bits going in and the value they go into.
+            case D3D10Opcode.BFI:
                 return 4;
             // The coordinate and the value; the resource is the destination operand.
             case D3D10Opcode.StoreUAVTyped:
@@ -2986,6 +2997,9 @@ public class InstructionParser
             // The centroid takes no saying where.
             case D3D10Opcode.EvalCentroid:
                 return 1;
+            // The width, the offset and the value.
+            case D3D10Opcode.UBFE:
+            case D3D10Opcode.IBFE:
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:
             case D3D10Opcode.Mad:

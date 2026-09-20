@@ -1288,7 +1288,13 @@ public sealed class IntegerOperandAnalysis
                 return 2;
             case D3D10Opcode.IMad:
             case D3D10Opcode.AtomicCmpStore:
+            // The width, the offset and the value.
+            case D3D10Opcode.UBFE:
+            case D3D10Opcode.IBFE:
                 return 3;
+            // And the bits going in.
+            case D3D10Opcode.BFI:
+                return 4;
             default:
                 return 0;
         }

@@ -530,6 +530,15 @@ public class AsmWriter
             case D3D10Opcode.Rcp:
                 WriteInstruction(instruction, "rcp", 2);
                 break;
+            case D3D10Opcode.UBFE:
+                WriteInstruction(instruction, "ubfe", 4);
+                break;
+            case D3D10Opcode.IBFE:
+                WriteInstruction(instruction, "ibfe", 4);
+                break;
+            case D3D10Opcode.BFI:
+                WriteInstruction(instruction, "bfi", 5);
+                break;
             case D3D10Opcode.Discard:
                 WriteInstruction(instruction, Conditional(instruction, "discard"), 1);
                 break;

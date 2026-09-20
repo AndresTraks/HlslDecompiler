@@ -32,6 +32,9 @@ public static class AssociativityTester
             // around them.
             case ShiftLeftOperation _:
             case ShiftRightOperation _:
+            // Written as shifts and masks, so they bind as loosely as those.
+            case BitFieldExtractOperation _:
+            case BitFieldInsertOperation _:
             case BitwiseAndOperation _:
             case BitwiseOrOperation _:
             case BitwiseXorOperation _:

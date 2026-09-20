@@ -1076,6 +1076,8 @@ public class StatementFinalizer
                 _ => null,
             },
             ShiftRightOperation shift => shift.IsUnsigned,
+            // ubfe fills the top of the field with zeroes and ibfe with its sign.
+            BitFieldExtractOperation extract => extract.IsUnsigned,
             DivisionOperation { ConsumesInteger: true } => true,
             ModuloOperation { ConsumesInteger: true } => true,
             NegateOperation => false,
@@ -1110,7 +1112,8 @@ public class StatementFinalizer
             // has no other type it could be. Left saying nothing, four masks came
             // out as a float4, and every integer use of them stopped compiling.
             BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
-                or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation => true,
+                or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
+                or BitFieldExtractOperation or BitFieldInsertOperation => true,
             Operation operation => operation.ConsumesInteger,
             _ => null,
         };
@@ -1152,7 +1155,8 @@ public class StatementFinalizer
         // of either, whatever type it was given.
         bool reinterprets = value is BitwiseAndOperation or BitwiseOrOperation
             or BitwiseXorOperation or BitwiseNotOperation
-            or ShiftLeftOperation or ShiftRightOperation;
+            or ShiftLeftOperation or ShiftRightOperation
+            or BitFieldExtractOperation or BitFieldInsertOperation;
         foreach (HlslTreeNode input in value.Inputs)
         {
             if (input is ConstantNode)

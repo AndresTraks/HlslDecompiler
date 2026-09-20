@@ -106,6 +106,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "attribute_evaluate")]
     [TestCase("ps_5_0", "attribute_centroid")]
     [TestCase("ps_5_0", "sample_position")]
+    [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "gather_offset")]
     [TestCase("ps_5_0", "derivative_precision")]
     [TestCase("gs_5_0", "stream_expand")]

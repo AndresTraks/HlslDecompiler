@@ -292,6 +292,9 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.FirstBitHi:
                 case D3D10Opcode.FirstBitSHi:
                 case D3D10Opcode.BFRev:
+                case D3D10Opcode.UBFE:
+                case D3D10Opcode.IBFE:
+                case D3D10Opcode.BFI:
                 case D3D10Opcode.F32ToF16:
                 case D3D10Opcode.F16ToF32:
                     return true;

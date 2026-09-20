@@ -1083,6 +1083,30 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.IShl:
                 WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
                 break;
+            // Shifts and masks, since HLSL has no intrinsic for a bit field. An
+            // unsigned extract has to shift an unsigned value or it drags the sign
+            // bit down; a signed one puts the field at the top of a signed value
+            // and shifts it back.
+            case D3D10Opcode.UBFE:
+                {
+                    int length = instruction.GetDestinationMaskLength();
+                    string size = length == 1 ? "" : length.ToString();
+                    WriteResult(instruction, "{0} = ((uint{4}){3} >> {2}) & ((1 << {1}) - 1);",
+                        GetOperandName(instruction, 0), ShiftOperand(instruction, 1),
+                        ShiftOperand(instruction, 2), ShiftOperand(instruction, 3), size);
+                    break;
+                }
+            case D3D10Opcode.IBFE:
+                WriteResult(instruction, "{0} = ({3} << (32 - {1} - {2})) >> (32 - {1});",
+                    GetOperandName(instruction, 0), ShiftOperand(instruction, 1),
+                    ShiftOperand(instruction, 2), ShiftOperand(instruction, 3));
+                break;
+            case D3D10Opcode.BFI:
+                WriteResult(instruction, "{0} = ({4} & ~(((1 << {1}) - 1) << {2})) | (({3} << {2}) & (((1 << {1}) - 1) << {2}));",
+                    GetOperandName(instruction, 0), ShiftOperand(instruction, 1),
+                    ShiftOperand(instruction, 2), ShiftOperand(instruction, 3),
+                    ShiftOperand(instruction, 4));
+                break;
             case D3D10Opcode.IShr:
                 WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
                 break;

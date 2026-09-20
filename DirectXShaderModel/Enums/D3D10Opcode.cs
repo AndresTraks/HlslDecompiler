@@ -353,6 +353,10 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.IShl:
             case D3D10Opcode.IShr:
             case D3D10Opcode.UShr:
+            // A bit field's width and offset are counts and the value is bits.
+            case D3D10Opcode.UBFE:
+            case D3D10Opcode.IBFE:
+            case D3D10Opcode.BFI:
             case D3D10Opcode.Ieq:
             case D3D10Opcode.Ige:
             case D3D10Opcode.UGE:

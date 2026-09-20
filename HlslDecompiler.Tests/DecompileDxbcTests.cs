@@ -186,6 +186,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "histogram")]
     [TestCase("cs_5_0", "groupshared_atomic")]
     [TestCase("cs_5_0", "structured_minmax")]
+    [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "luminance_histogram")]
     [TestCase("cs_5_0", "bit_counts")]
     [TestCase("cs_5_0", "high_bit")]

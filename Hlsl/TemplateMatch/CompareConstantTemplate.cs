@@ -23,6 +23,11 @@ public class CompareConstantTemplate : NodeTemplate<ComparisonNode>
             IfComparison.NE => IfComparison.NE,
             _ => throw new InvalidOperationException(node.Comparison.ToString()),
         };
-        return new ComparisonNode(node.Right, node.Left, comparison);
+        // Carrying what the node knew: the same two values compared the same way
+        // round the other way about, so it is still the integer comparison it was,
+        // and still the unsigned one. Dropped, an unsigned test swapped to put its
+        // constant on the right came out signed.
+        return new ComparisonNode(
+            node.Right, node.Left, comparison, node.IsInteger, node.IsUnsigned);
     }
 }

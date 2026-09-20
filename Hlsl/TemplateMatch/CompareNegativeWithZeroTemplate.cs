@@ -23,6 +23,8 @@ public class CompareNegativeWithZeroTemplate : NodeTemplate<ComparisonNode>
             IfComparison.NE => IfComparison.NE,
             _ => throw new InvalidOperationException(node.Comparison.ToString()),
         };
-        return new ComparisonNode((node.Left as NegateOperation).Value, node.Right, comparison);
+        return new ComparisonNode(
+            (node.Left as NegateOperation).Value, node.Right, comparison,
+            node.IsInteger, node.IsUnsigned);
     }
 }

@@ -36,6 +36,7 @@ public class TemplateMatcher
             //new NegateSubtractTemplate(),
             new CompareConstantTemplate(),
             new CompareNegativeWithZeroTemplate(),
+            new CompareAbsoluteWithZeroTemplate(),
             new ComparePositiveAndNegativeTemplate(),
             new CompareCompareTemplate(),
             new MaxOfPositiveAndNegativeTemplate(),

@@ -26,8 +26,10 @@ public class ComparePositiveAndNegativeTemplate : NodeTemplate<ComparisonNode>
                 IfComparison.NE => IfComparison.NE,
                 _ => throw new InvalidOperationException(node.Comparison.ToString()),
             };
-            return new ComparisonNode(node.Right, new ConstantNode(0), comparison);
+            return new ComparisonNode(
+                node.Right, new ConstantNode(0), comparison, node.IsInteger, node.IsUnsigned);
         }
-        return new ComparisonNode(node.Left, new ConstantNode(0), node.Comparison);
+        return new ComparisonNode(
+            node.Left, new ConstantNode(0), node.Comparison, node.IsInteger, node.IsUnsigned);
     }
 }

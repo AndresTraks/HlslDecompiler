@@ -76,6 +76,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "dxbc_continue")]
     [TestCase("ps_4_0", "switch_nested")]
     [TestCase("ps_4_0", "switch_branch")]
+    [TestCase("ps_4_0", "switch_labels")]
     [TestCase("ps_4_0", "dxbc_switch")]
     [TestCase("ps_4_0", "early_return")]
     [TestCase("ps_4_0", "divide")]

@@ -1945,6 +1945,8 @@ public class InstructionParser
                 return CreateResourceLoadNode(instruction, componentIndex);
             case D3D10Opcode.ResInfo:
                 return CreateResourceInfoNode(instruction, componentIndex);
+            case D3D10Opcode.BufInfo:
+                return CreateBufferInfoNode(instruction, componentIndex);
             case D3D10Opcode.SampleInfo:
                 return CreateSampleInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
@@ -2006,6 +2008,25 @@ public class InstructionParser
         return new ResourceLoadNode(resource, address, outputComponent, sampleIndex)
         {
             SampleOffsets = instruction.SampleOffsets,
+        };
+    }
+
+    /// <summary>
+    /// bufinfo r0.x, t0: how many elements the buffer holds, or how many bytes a
+    /// byte address one does. One number, with no mip level to ask it at - the
+    /// resource operand's swizzle routes it rather than choosing between
+    /// measurements the way a resinfo's does.
+    /// </summary>
+    private ResourceInfoNode CreateBufferInfoNode(D3D10Instruction instruction, int outputComponent)
+    {
+        const int ResourceParamIndex = 1;
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent]
+            as RegisterInputNode;
+        return new ResourceInfoNode(resource, new ConstantNode(0), outputComponent,
+            D3D10ResInfoReturnType.Uint)
+        {
+            IsBuffer = true,
+            IsRawBuffer = _registerState.IsRawResource(resource.RegisterComponentKey.RegisterKey),
         };
     }
 

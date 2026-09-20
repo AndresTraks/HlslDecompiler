@@ -393,6 +393,9 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ImmAtomicUMin:
             case D3D10Opcode.ImmAtomicExch:
             case D3D10Opcode.ImmAtomicCmpExch:
+            // How many elements a buffer holds is a count, and so is the register
+            // it lands in.
+            case D3D10Opcode.BufInfo:
             // The bit instructions read an integer and count or reorder its bits.
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:
@@ -434,6 +437,7 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.UTof:
             // The mip level, and the element and byte offsets.
             case D3D10Opcode.ResInfo:
+            case D3D10Opcode.BufInfo:
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreRaw:
@@ -468,6 +472,10 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdStructured:
                 return ValueKind.Unknown;
+            // How many elements a buffer holds, which is a count and not a measure
+            // of anything that could be a float.
+            case D3D10Opcode.BufInfo:
+                return ValueKind.Integer;
             // A raw buffer holds dwords, read out as uints.
             case D3D10Opcode.LdRaw:
                 return ValueKind.Integer;

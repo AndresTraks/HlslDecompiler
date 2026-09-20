@@ -1323,6 +1323,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.ResInfo:
                 WriteResourceInfo(instruction);
                 break;
+            case D3D10Opcode.BufInfo:
+                WriteBufferInfo(instruction);
+                break;
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;
@@ -2150,6 +2153,7 @@ public class HlslSimpleWriter : HlslWriter
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.LdUAVTyped && operandIndex == 2)
+            || (instruction.Opcode == D3D10Opcode.BufInfo && operandIndex == 1)
             || (instruction.Opcode.IsAtomic() && operandIndex == 0)
             || (instruction.Opcode.IsImmediateAtomic() && operandIndex == 1))
         {
@@ -2449,6 +2453,33 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine($"{resource}.GetDimensions({mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.w);");
         }
         WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0), dimensions, GetResourceSwizzle(instruction));
+    }
+
+    /// <summary>
+    /// bufinfo, which reports how many elements a buffer holds - or how many bytes
+    /// a byte address one does. HLSL asks through GetDimensions like the rest, in
+    /// the overload the buffer takes: a structured one reports its stride beside
+    /// the count, which fxc knows as a constant and does not ask for, so the second
+    /// out parameter is written into and never read.
+    /// </summary>
+    private void WriteBufferInfo(D3D10Instruction instruction)
+    {
+        string resource = GetOperandName(instruction, 1);
+        string dimensions = $"dimensions{_resourceInfoCount++}";
+        if (_registers.IsRawResource(instruction.GetParamRegisterKey(1)))
+        {
+            WriteLine($"uint {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions});");
+        }
+        else
+        {
+            WriteLine($"uint2 {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
+        }
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+            _registers.IsRawResource(instruction.GetParamRegisterKey(1))
+                ? dimensions
+                : $"{dimensions}.x");
     }
 
     /// <summary>

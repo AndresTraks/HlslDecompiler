@@ -27,6 +27,19 @@ public class ResourceInfoNode : HlslTreeNode, IHasComponentIndex
     public bool IsSampleCount { get; init; }
 
     /// <summary>
+    /// Whether this is bufinfo rather than resinfo: how many elements a buffer
+    /// holds, which is one number and has no mip level to ask it at. HLSL asks with
+    /// the same GetDimensions, in the overload the buffer takes - a structured one
+    /// reports its element count and its stride, a byte address one its size in
+    /// bytes.
+    /// </summary>
+    public bool IsBuffer { get; init; }
+
+    /// <summary>Whether that buffer is a byte address one, which reports one number
+    /// where a structured one reports two.</summary>
+    public bool IsRawBuffer { get; init; }
+
+    /// <summary>
     /// Which out parameter the sample count is. A multisampled texture reports
     /// width, height and the count; an array of them reports the element count
     /// between, so the sample count is the fourth rather than the third.
@@ -38,7 +51,9 @@ public class ResourceInfoNode : HlslTreeNode, IHasComponentIndex
     // swizzle is .x like a width's - it is the third out parameter of the overload
     // a multisampled texture takes, so it answers z.
     public int InfoComponent =>
-        IsSampleCount ? SampleCountComponent : Resource.RegisterComponentKey.ComponentIndex;
+        IsBuffer ? 0
+        : IsSampleCount ? SampleCountComponent
+        : Resource.RegisterComponentKey.ComponentIndex;
 
     // The variable the writer named this into. Set when the call statement is
     // hoisted, and read wherever the node itself is still the root of an output.

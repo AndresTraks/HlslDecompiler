@@ -235,9 +235,11 @@ public class HlslAstWriter : HlslWriter
             ((RegisterInputNode)storeTyped.Destination).RegisterComponentKey.RegisterKey);
         // The coordinate is an integer one, and a vector of them says so where a
         // constructor over the components would be typed by nothing.
-        string coordinate = _compiler.CompileAsInteger(
-            storeTyped.Coordinates.Select(Reduce).ToList());
+        HlslTreeNode[] coordinates = [.. storeTyped.Coordinates.Select(Reduce)];
         HlslTreeNode[] values = [.. storeTyped.Values.Select(Reduce)];
+        // As above: what a store alone reads is hoisted from here.
+        WriteSharedSubexpressions([values, coordinates]);
+        string coordinate = _compiler.CompileAsInteger(coordinates);
         bool storesIntegers = values.All(v => StatementFinalizer.IsIntegerValue(v) == true);
         string value = storesIntegers
             ? _compiler.CompileAsInteger(values)
@@ -251,8 +253,14 @@ public class HlslAstWriter : HlslWriter
         // and any component selection belongs after it, not on the buffer.
         string compiledDestination = _registers.GetRegisterName(
             ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey);
-        string compiledAddress = _compiler.Compile(Reduce(storeStructured.Address));
+        HlslTreeNode address = Reduce(storeStructured.Address);
         HlslTreeNode[] storedValues = [.. storeStructured.Values.Select(Reduce)];
+        // A store computes its value from here rather than through
+        // GroupAssignments, so the hoist has to happen here too - the way a return
+        // statement's does. Without it a GetDimensions whose result a store alone
+        // reads was never named, and the result of one cannot be an expression.
+        WriteSharedSubexpressions([storedValues, [address]]);
+        string compiledAddress = _compiler.Compile(address);
         // Into a buffer of integers as integers. A vector constructor is typed by
         // what it is being assigned to and there is nothing else here to say so.
         bool storesIntegers = storedValues.All(v => StatementFinalizer.IsIntegerValue(v) == true);
@@ -1537,7 +1545,9 @@ public class HlslAstWriter : HlslWriter
             // the sample count - and has no mip level to ask about.
             ResourceInfoNode sampleCount = call.FirstOrDefault(c => c.IsSampleCount);
             TempVariableNode[] variables = _compiler.CreateTempVariables(
-                sampleCount != null ? sampleCount.SampleCountComponent + 1 : isSize ? 2 : 4);
+                info.IsBuffer ? (info.IsRawBuffer ? 1 : 2)
+                : sampleCount != null ? sampleCount.SampleCountComponent + 1
+                : isSize ? 2 : 4);
             foreach (TempVariableNode variable in variables)
             {
                 variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;

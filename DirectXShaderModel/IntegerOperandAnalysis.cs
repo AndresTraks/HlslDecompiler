@@ -1255,6 +1255,10 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
                 return 1;
+            // bufinfo reads a resource and writes a count; there is no source
+            // operand of its own to type.
+            case D3D10Opcode.BufInfo:
+                return 0;
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
             case D3D10Opcode.IShr:

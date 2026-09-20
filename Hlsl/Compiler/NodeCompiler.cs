@@ -1496,13 +1496,24 @@ public sealed class NodeCompiler
     {
         var info = (ResourceInfoNode)assignments[0].Value;
         TempVariableNode variable = assignments[0].TempVariable;
-        ResourceDefinition resource = _registers.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-            .First(d => d.BindPoint == info.Resource.RegisterComponentKey.RegisterKey.Number);
+        RegisterKey resourceKey = info.Resource.RegisterComponentKey.RegisterKey;
+        // A buffer is bound as one of several kinds, and which it is decides the
+        // overload below as well as where the name comes from.
+        ResourceDefinition resource = info.IsBuffer
+            ? _registers.ResourceDefinitions.First(d => d.BindPoint == resourceKey.Number
+                && d.ShaderInputType is D3DShaderInputType.Structured
+                    or D3DShaderInputType.ByteAddress or D3DShaderInputType.UavRWStructured
+                    or D3DShaderInputType.UavRWByteAddress)
+            : _registers.ResourceDefinitions
+                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
+                .First(d => d.BindPoint == resourceKey.Number);
 
         string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
         string name = $"t{variable.DeclarationIndex}";
-        string declaration = $"{type}{variable.VariableSize} {name};";
+        // A byte address buffer reports one number, and `uint1` is not how a scalar
+        // is spelled.
+        string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
+        string declaration = $"{type}{width} {name};";
 
         // The two-wide variable is the two-argument overload; otherwise the full
         // form, which for a 2D texture is the mip level in and width, height and
@@ -1510,6 +1521,16 @@ public sealed class NodeCompiler
         // A multisampled texture has no mips and reports how many samples it has in
         // place of the mip count; an array of them reports the element count first,
         // so it takes four and still no mip level.
+        // A buffer reports what it holds rather than how big it is: a structured
+        // one its element count and its stride, a byte address one its size. The
+        // stride is a constant fxc already knows, so the shader reads the count
+        // alone and the second out parameter is there to be written into.
+        if (info.IsBuffer)
+        {
+            return declaration + "\r\n" + (info.IsRawBuffer
+                ? $"{resource.Name}.GetDimensions({name});"
+                : $"{resource.Name}.GetDimensions({name}.x, {name}.y);");
+        }
         bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount);
         string call = (isMultisampled, variable.VariableSize) switch
         {

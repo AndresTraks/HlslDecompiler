@@ -852,6 +852,9 @@ public class AsmWriter
                 break;
             // The resource, the coordinate and the value: a typed UAV addresses a
             // texel rather than an element and a byte offset within one.
+            case D3D10Opcode.BufInfo:
+                WriteInstruction(instruction, "bufinfo", 2);
+                break;
             case D3D10Opcode.StoreUAVTyped:
                 WriteInstruction(instruction, "store_uav_typed", 3);
                 break;

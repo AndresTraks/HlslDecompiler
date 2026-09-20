@@ -964,6 +964,10 @@ public class StatementFinalizer
             HalfToFloatOperation => false,
             ConstantNode constant => constant.IntegerValue != null,
             LoadStructuredNode => null,
+            // What resinfo and bufinfo report is whatever the instruction asked for
+            // them as: a size in texels or a count of elements is a uint, and the
+            // same measurement taken as a float is one.
+            ResourceInfoNode info => info.ReturnType == D3D10ResInfoReturnType.Uint,
             // A bitwise operator says nothing about what it was given - it carries
             // bits along - but what it makes is an integer whatever went in: HLSL
             // has no other type it could be. Left saying nothing, four masks came

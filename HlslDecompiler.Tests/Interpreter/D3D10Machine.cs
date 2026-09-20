@@ -844,6 +844,8 @@ public class D3D10Machine
                 return LoadSample(instruction);
             case D3D10Opcode.ResInfo:
                 return ResourceInfo(instruction);
+            case D3D10Opcode.BufInfo:
+                return BufferInfo(instruction);
             case D3D10Opcode.SampleInfo:
                 return SampleCount(instruction);
             case D3D10Opcode.Lod:
@@ -954,6 +956,18 @@ public class D3D10Machine
         return instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint
             ? [.. swizzled.Select(v => (uint)v)]
             : Pack(swizzled);
+    }
+
+    /// <summary>
+    /// How many elements a buffer holds. There is no buffer here to ask, so it
+    /// answers by its slot - a number both programs get the same, which is what the
+    /// comparison is about. Every component, the way the instruction fills the ones
+    /// its mask names.
+    /// </summary>
+    private uint[] BufferInfo(D3D10Instruction instruction)
+    {
+        uint count = (uint)(64 + 8 * instruction.GetParamRegisterNumber(1));
+        return [count, count, count, count];
     }
 
     /// <summary>

@@ -1100,6 +1100,12 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0}) break;", ZeroTest(instruction, 0));
                 break;
             case D3D10Opcode.Cut:
+            case D3D10Opcode.CutStream:
+                WriteLine("stream.RestartStrip();");
+                break;
+            case D3D10Opcode.EmitThenCut:
+            case D3D10Opcode.EmitThenCutStream:
+                WriteLine("stream.Append(o);");
                 WriteLine("stream.RestartStrip();");
                 break;
             case D3D10Opcode.DerivRtx:
@@ -1120,6 +1126,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = dot({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Emit:
+            case D3D10Opcode.EmitStream:
                 WriteLine("stream.Append(o);");
                 break;
             // Control flow was skipped entirely, so a DXBC loop with a guarded break
@@ -1659,6 +1666,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclInputSiv:
             case D3D10Opcode.DclOutput:
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
+            // The stream the emits go to, which is written as the parameter the
+            // shader already declares.
+            case D3D10Opcode.DclStream:
             case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
             case D3D10Opcode.DclUnorderedAccessViewTyped:

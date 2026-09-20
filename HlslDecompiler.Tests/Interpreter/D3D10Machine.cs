@@ -283,16 +283,23 @@ public class D3D10Machine
                     breakable.Push(pc);
                     pc = flow.SwitchTarget(pc, Source(instruction, 0)[0]);
                     continue;
+                // The stream forms shader model 5 writes, which name the stream
+                // the model 4 ones left implicit. One stream, so they are the same
+                // instruction.
                 case D3D10Opcode.Emit:
+                case D3D10Opcode.EmitStream:
                 case D3D10Opcode.EmitThenCut:
+                case D3D10Opcode.EmitThenCutStream:
                     Emit();
-                    if (instruction.Opcode == D3D10Opcode.EmitThenCut)
+                    if (instruction.Opcode is D3D10Opcode.EmitThenCut
+                        or D3D10Opcode.EmitThenCutStream)
                     {
                         Cut();
                     }
                     pc++;
                     continue;
                 case D3D10Opcode.Cut:
+                case D3D10Opcode.CutStream:
                     Cut();
                     pc++;
                     continue;

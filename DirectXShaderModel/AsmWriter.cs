@@ -875,6 +875,24 @@ public class AsmWriter
             case D3D10Opcode.EvalSnapped:
                 WriteInstruction(instruction, "eval_snapped", 3);
                 break;
+            // Shader model 5 names the stream in the instruction where model 4
+            // had the one and left it out. A shader with a single stream means the
+            // same thing either way.
+            case D3D10Opcode.DclStream:
+                WriteLine("dcl_stream {0}", FormatOperand(instruction, 0));
+                break;
+            case D3D10Opcode.EmitStream:
+                WriteInstruction(instruction, "emit_stream", 1);
+                break;
+            case D3D10Opcode.CutStream:
+                WriteInstruction(instruction, "cut_stream", 1);
+                break;
+            case D3D10Opcode.EmitThenCutStream:
+                WriteInstruction(instruction, "emit_then_cut_stream", 1);
+                break;
+            case D3D10Opcode.EmitThenCut:
+                WriteLine("emit_then_cut");
+                break;
             case D3D10Opcode.BufInfo:
                 WriteInstruction(instruction, "bufinfo", 2);
                 break;
@@ -1255,6 +1273,9 @@ public class AsmWriter
             OperandType.InputPrimitiveID => "vPrim",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
+            // The output stream a geometry shader emits to, which shader model 5
+            // names and model 4 left implicit.
+            OperandType.Stream => "m",
             // These carry no register number of their own.
             OperandType.OutputDepth => "oDepth",
             OperandType.OutputDepthGreaterEqual => "oDepthGE",

@@ -13,6 +13,7 @@ public class InstructionParser
     private IList<IStatement> _statements;
     private Stack<IStatement> _currentStatements;
     private int _instructionPointer;
+    private int _declaredStreams;
     private IntegerOperandAnalysis _integerOperandAnalysis;
 
     // The immediates a mov or movc writes, with their bits: the instruction says
@@ -195,7 +196,28 @@ public class InstructionParser
                     ParseIntegerMultiplyInstruction(instruction);
                     break;
                 case D3D10Opcode.Cut:
+                case D3D10Opcode.CutStream:
                     InsertRestartStrip();
+                    break;
+                // One stream is the ordinary geometry shader and the only one the
+                // writer has a name for; the instruction names it because shader
+                // model 5 allows up to four.
+                case D3D10Opcode.EmitThenCut:
+                case D3D10Opcode.EmitThenCutStream:
+                    InsertAppend();
+                    InsertRestartStrip();
+                    break;
+                case D3D10Opcode.DclStream:
+                    // Shader model 5 allows four, and the writer has a name for one:
+                    // a second stream is a second parameter with output registers of
+                    // its own, and every emit would have to say which it goes to.
+                    // Merging them silently would put both sets of vertices on one
+                    // stream, which is a different shader.
+                    if (++_declaredStreams > 1)
+                    {
+                        throw new NotImplementedException(
+                            "A geometry shader with more than one output stream.");
+                    }
                     break;
                 case D3D10Opcode.Discard:
                     {
@@ -367,6 +389,7 @@ public class InstructionParser
                     EndLoop();
                     break;
                 case D3D10Opcode.Emit:
+                case D3D10Opcode.EmitStream:
                     InsertAppend();
                     break;
                 case D3D10Opcode.Loop:

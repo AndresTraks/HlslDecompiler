@@ -46,12 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_4_0/bit_field"] = (28,
-            "One instruction. The exponent is masked out of the bits and shifted back "
-            + "in, and the decompiled source says that as two statements over a named "
-            + "temp where the original kept it in one register, so fxc folds one fewer "
-            + "shift. The AST writer's reading of this shader is recorded in "
-            + "EquivalenceTests.KnownDifferences as well."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

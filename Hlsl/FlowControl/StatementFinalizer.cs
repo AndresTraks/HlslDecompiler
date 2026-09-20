@@ -246,10 +246,13 @@ public class StatementFinalizer
                     // Before the readers move to the variable: they are what types it.
                     bool? isIntegerValue = IsIntegerValue(tempValue);
                     bool? isUnsignedValue = IsUnsignedValue(tempValue);
-                    tempValue.Outputs.Clear();
                     bool isInteger = isIntegerValue
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
+                    // Also before the clear, and not only because it reads better
+                    // there: whether the bits are a float's is a question about the
+                    // readers as much as the maker, and there are none afterwards.
                     bool isBits = IsBitsVariable(tempValue, isInteger);
+                    tempValue.Outputs.Clear();
                     TempVariableNode tempVariable = tempInputAssignment?.TempVariable
                         ?? tempInputVariable
                         ?? new TempVariableNode
@@ -815,6 +818,10 @@ public class StatementFinalizer
         {
             return true;
         }
+        if (IsIntegerMadeReadAsFloat(value))
+        {
+            return true;
+        }
         return InstructionParser.GetConsumedType(value) ?? MadeType(value);
     }
 
@@ -1031,7 +1038,36 @@ public class StatementFinalizer
     /// </summary>
     internal static bool IsBitsVariable(HlslTreeNode value, bool isInteger)
     {
-        return isInteger && (IsBitsValue(value) || IsFloatMade(value));
+        return isInteger
+            && (IsBitsValue(value) || IsFloatMade(value) || IsIntegerMadeReadAsFloat(value));
+    }
+
+    /// <summary>
+    /// Integer arithmetic whose result a float operation reads without converting
+    /// it. Those bits are a float's: a shader that wanted the number they make
+    /// would have put an itof or a utof between, and this one did not. bit_field
+    /// assembles a float from a mantissa and an exponent with an iadd and
+    /// multiplies what comes out.
+    ///
+    /// The two questions IsIntegerValue asks disagree here - the maker says
+    /// integer and the readers say float - and taking the readers
+
+    /// <summary>
+    /// Integer arithmetic whose result a float operation reads without converting
+    /// it. Those bits are a float's: a shader that wanted the number they make
+    /// would have put an itof or a utof between, and this one did not. bit_field
+    /// assembles a float from a mantissa and an exponent with an iadd and
+    /// multiplies what comes out.
+    ///
+    /// The two questions IsIntegerValue asks disagree here - the maker says
+    /// integer and the readers say float - and taking the readers' answer turns
+    /// the bits into whatever number they happen to be. What tells this apart from
+    /// an extracted field, which is a number and is read as one, is that the field
+    /// has a conversion in front of it, so its readers say integer too.
+    /// </summary>
+    private static bool IsIntegerMadeReadAsFloat(HlslTreeNode value)
+    {
+        return MadeType(value) == true && InstructionParser.GetConsumedType(value) == false;
     }
 
     private static bool IsFreeToRead(HlslTreeNode node)

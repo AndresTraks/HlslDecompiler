@@ -221,6 +221,7 @@ public class RoundTripCostTests
     private static bool IsVersion(string line)
     {
         return line.StartsWith("vs_") || line.StartsWith("ps_")
-            || line.StartsWith("gs_") || line.StartsWith("cs_");
+            || line.StartsWith("gs_") || line.StartsWith("cs_")
+            || line.StartsWith("ds_") || line.StartsWith("hs_");
     }
 }

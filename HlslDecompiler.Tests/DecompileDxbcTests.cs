@@ -103,6 +103,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "equality_select")]
     [TestCase("ps_4_0", "sample_compare")]
     [TestCase("ps_5_0", "gather_compare")]
+    [TestCase("ps_5_0", "attribute_evaluate")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

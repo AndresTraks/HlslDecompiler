@@ -855,6 +855,12 @@ public class AsmWriter
                 break;
             // The resource, the coordinate and the value: a typed UAV addresses a
             // texel rather than an element and a byte offset within one.
+            case D3D10Opcode.EvalSampleIndex:
+                WriteInstruction(instruction, "eval_sample_index", 3);
+                break;
+            case D3D10Opcode.EvalSnapped:
+                WriteInstruction(instruction, "eval_snapped", 3);
+                break;
             case D3D10Opcode.BufInfo:
                 WriteInstruction(instruction, "bufinfo", 2);
                 break;
@@ -1280,12 +1286,18 @@ public class AsmWriter
     // whatever the buffer holds, so they are integers however the instruction is
     // typed: an offset of 28 read as a float is a denormal and printed as 0.000000
     // where fxc prints l(28).
+    /// <summary>
+    /// Operands that address something rather than carrying a value, and so hold
+    /// integers whatever the instruction around them is made of: an element and an
+    /// offset into a buffer, or the place an attribute is evaluated at.
+    /// </summary>
     private static bool IsBufferAddressOperand(D3D10Instruction instruction, int index)
     {
         return instruction.Opcode switch
         {
             D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured => index is 1 or 2,
             D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw => index == 1,
+            D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped => index == 2,
             _ => false,
         };
     }

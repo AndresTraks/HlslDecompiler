@@ -1947,6 +1947,28 @@ public class InstructionParser
                 return CreateResourceInfoNode(instruction, componentIndex);
             case D3D10Opcode.BufInfo:
                 return CreateBufferInfoNode(instruction, componentIndex);
+            case D3D10Opcode.EvalSampleIndex:
+            case D3D10Opcode.EvalSnapped:
+                {
+                    // The attribute, and where to evaluate it: a sample index in one
+                    // component, or an offset in two. The place is the same for
+                    // every component of the result, the way a sample's coordinate
+                    // is.
+                    bool isSnapped = instruction.Opcode == D3D10Opcode.EvalSnapped;
+                    HlslTreeNode value = GetInputs(instruction, componentIndex)[0];
+                    // A snapped offset is written as an immediate, and it is a
+                    // count of sixteenths of a pixel rather than the float those
+                    // bits spell.
+                    const int PlaceParamIndex = 2;
+                    int places = isSnapped ? 2 : 1;
+                    HlslTreeNode[] at = instruction.GetOperandType(PlaceParamIndex) == OperandType.Immediate32
+                        ? [.. Enumerable.Range(0, places)
+                            .Select(component => (HlslTreeNode)new ConstantNode(
+                                (int)instruction.GetParamInt(PlaceParamIndex, component)))]
+                        : [.. Enumerable.Range(0, places)
+                            .Select(component => GetInputs(instruction, component)[1])];
+                    return new EvaluateAttributeOperation(value, at, isSnapped);
+                }
             case D3D10Opcode.SampleInfo:
                 return CreateSampleInfoNode(instruction, componentIndex);
             case D3D10Opcode.Gather4:
@@ -2740,6 +2762,10 @@ public class InstructionParser
                 return 2;
             // The coordinate and the view.
             case D3D10Opcode.LdUAVTyped:
+                return 2;
+            // The attribute and where to evaluate it.
+            case D3D10Opcode.EvalSampleIndex:
+            case D3D10Opcode.EvalSnapped:
                 return 2;
             case D3D10Opcode.IMad:
             case D3D10Opcode.Umad:

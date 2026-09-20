@@ -238,6 +238,8 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.SinCos:
                 case D3D10Opcode.Sqrt:
                 case D3D10Opcode.StoreStructured:
+                case D3D10Opcode.EvalSampleIndex:
+                case D3D10Opcode.EvalSnapped:
                 case D3D10Opcode.BufInfo:
                 case D3D10Opcode.StoreUAVTyped:
                 case D3D10Opcode.LdUAVTyped:

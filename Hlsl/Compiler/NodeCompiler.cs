@@ -363,7 +363,7 @@ public sealed class NodeCompiler
             or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
             or NaturalExponentialOperation or NaturalLogarithmOperation
             or PowerOperation or SineOperation or CosineOperation or SignOperation
-            or FloatingModuloOperation;
+            or FloatingModuloOperation or EvaluateAttributeOperation;
     }
 
     // Compiles a sub-expression, parenthesised when its operator binds more loosely
@@ -909,6 +909,17 @@ public sealed class NodeCompiler
                 return string.Format("step({0}, {1})",
                     Compile(components.Select(g => g.Inputs[0])),
                     Compile(components.Select(g => g.Inputs[1])));
+
+            case EvaluateAttributeOperation evaluate:
+                {
+                    // The attribute is grouped over its components the way any
+                    // elementwise operation's operand is; where it is evaluated is
+                    // one value for all of them, and an integer either way.
+                    string attribute = Compile(components.Select(g => g.Inputs[0]));
+                    string at = CompileAsInteger(
+                        evaluate.Inputs.Skip(1).ToList());
+                    return $"{evaluate.HlslName}({attribute}, {at})";
+                }
 
             case FloatingModuloOperation _:
                 return string.Format("fmod({0}, {1})",

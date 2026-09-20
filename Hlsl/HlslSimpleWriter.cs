@@ -211,6 +211,12 @@ public class HlslSimpleWriter : HlslWriter
         {
             return ValueKind.Bits;
         }
+        // An attribute is a float and where it is evaluated is not: a sample index,
+        // or an offset counted in sixteenths of a pixel.
+        if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped)
+        {
+            return operandIndex == 2 ? ValueKind.Integer : ValueKind.Float;
+        }
         return instruction.Opcode.ConsumedKind();
     }
 
@@ -285,6 +291,13 @@ public class HlslSimpleWriter : HlslWriter
     // opcode says so, or where a mov's readers do.
     private bool IsIntegerImmediate(D3D10Instruction instruction)
     {
+        // The only immediate an eval takes is the place it evaluates the attribute
+        // at - a sample index, or an offset in sixteenths of a pixel - whatever the
+        // attribute itself is made of.
+        if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped)
+        {
+            return true;
+        }
         if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC)
         {
             ValueKind readAs = _integerOperandAnalysis.GetImmediateKindByReaders(instruction);
@@ -1344,6 +1357,18 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.BufInfo:
                 WriteBufferInfo(instruction);
+                break;
+            // Where the attribute is evaluated is an integer: a sample index, or an
+            // offset in sixteenths of a pixel.
+            case D3D10Opcode.EvalSampleIndex:
+                WriteResult(instruction, "{0} = EvaluateAttributeAtSample({1}, {2});",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1),
+                    GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.EvalSnapped:
+                WriteResult(instruction, "{0} = EvaluateAttributeSnapped({1}, {2});",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1),
+                    GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
@@ -2736,6 +2761,21 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction.Opcode.IsImmediateAtomic() && operandIndex > 1)
         {
             return 1;
+        }
+        // Where an attribute is evaluated is as wide as the question: one sample
+        // index, or an offset in x and y. The operand is as wide as the destination
+        // mask otherwise, and `EvaluateAttributeSnapped(v, int4(...))` is not an
+        // overload of anything.
+        if (operandIndex == 2)
+        {
+            if (instruction.Opcode == D3D10Opcode.EvalSnapped)
+            {
+                return 2;
+            }
+            if (instruction.Opcode == D3D10Opcode.EvalSampleIndex)
+            {
+                return 1;
+            }
         }
         if (operandIndex is 1 or 2)
         {

@@ -852,6 +852,13 @@ public class D3D10Machine
                 return ResourceInfo(instruction);
             case D3D10Opcode.BufInfo:
                 return BufferInfo(instruction);
+            // An attribute evaluated at a sample or at an offset. One pixel is being
+            // run and nothing here is multisampled, so there is no other place for
+            // it to have a different value at: the attribute as it stands, which
+            // both programs read the same.
+            case D3D10Opcode.EvalSampleIndex:
+            case D3D10Opcode.EvalSnapped:
+                return Source(instruction, 1);
             case D3D10Opcode.SampleInfo:
                 return SampleCount(instruction);
             case D3D10Opcode.Lod:

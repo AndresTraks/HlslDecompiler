@@ -1895,7 +1895,8 @@ public class HlslSimpleWriter : HlslWriter
                 // A struct member has a name of its own, and the register it owns
                 // swizzles the member rather than the struct. A scalar is named whole:
                 // HLSL broadcasts it where a wider value is wanted. A register indexed
-                // at run time can read any member, so it is left to the naming below.
+                // at run time names its member below, off the declaration rather than
+                // off a register number the index is not part of.
                 if (!instruction.Params.HasRelativeAddressing(srcIndex)
                     && _registers.TryGetConstantMember(
                         new RegisterComponentKey(
@@ -1913,6 +1914,35 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     // Constant register not found in def statements nor the constant table
                     throw new NotImplementedException();
+                }
+
+                // An array of structs picked at run time: the address register counts
+                // registers across the array, so the element is that over the registers
+                // one takes, and the constant beside it says which register of the
+                // element - which member - is read. Indexed as though each register
+                // were an element, `g_Lights[a0 + 2].x` reads a struct where a float4
+                // was wanted, two elements past the one the shader asked for.
+                if (decl.TypeInfo.MemberInfo != null
+                    && instruction.Params.HasRelativeAddressing(srcIndex))
+                {
+                    int registerOffset = registerKey.Number - decl.RegisterIndex;
+                    int stride = Math.Max(decl.RegistersPerElement, 1);
+                    string element = $"{GetRelativeAddressIndex(instruction, srcIndex)} / {stride}";
+                    if (registerOffset / stride != 0)
+                    {
+                        element += $" + {registerOffset / stride}";
+                    }
+                    if (RegisterState.TryGetStructMemberAtRegister(
+                            decl, $"{decl.Name}[{element}]", registerOffset % stride,
+                            out StructMemberAccess dynamicMember))
+                    {
+                        string dynamicSource = dynamicMember.Width <= 1
+                            ? dynamicMember.Name
+                            : dynamicMember.Name
+                                + instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+                        return ApplyModifier(
+                            instruction.GetSourceModifier(srcIndex), dynamicSource);
+                    }
                 }
 
                 // An array of matrices takes two subscripts, and its register offset

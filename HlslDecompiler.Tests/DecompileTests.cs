@@ -125,6 +125,7 @@ public class DecompileTests
     [TestCase("ps_2_0", "shadow_project")]
     [TestCase("vs_2_0", "wave_deform")]
     [TestCase("vs_2_0", "fog_lighting")]
+    [TestCase("vs_3_0", "dynamic_struct_index")]
     [TestCase("vs_3_0", "submatrix43_vector3_multiply")]
     [TestCase("vs_3_0", "vector2_matrix22_multiply")]
     [TestCase("vs_3_0", "vector2_matrix32_multiply")]

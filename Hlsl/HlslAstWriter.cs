@@ -339,6 +339,20 @@ public class HlslAstWriter : HlslWriter
         WriteLine($"{destination}[{coordinate}] = {value};");
     }
 
+    // The dwords a raw store writes: each integer as it is, each float as its bits,
+    // and a mix as a uint constructor of both.
+    private string CompileRawStoredValue(HlslTreeNode[] values)
+    {
+        if (values.All(v => StatementFinalizer.IsIntegerValue(v) != true))
+        {
+            return $"asuint({_compiler.Compile(values)})";
+        }
+        List<string> dwords = [.. values.Select(v => StatementFinalizer.IsIntegerValue(v) == true
+            ? _compiler.CompileAsInteger([v])
+            : $"asuint({_compiler.Compile([v])})")];
+        return $"uint{values.Length}({string.Join(", ", dwords)})";
+    }
+
     private void WriteStoreStructuredStatement(StoreStructuredStatement storeStructured)
     {
         // The buffer is named without a swizzle - the subscript selects the element,
@@ -362,8 +376,14 @@ public class HlslAstWriter : HlslWriter
         if (storeStructured.IsRaw)
         {
             // Store, Store2, Store3 or Store4 at the byte offset, by how many dwords
-            // are written.
+            // are written. The dwords are uints, and a float among them goes in as
+            // its bits: Store2(offset, float2(f, n)) converts f to the integer
+            // nearest it, where the shader stored asuint(f).
             string method = storeStructured.Values.Length == 1 ? "Store" : $"Store{storeStructured.Values.Length}";
+            if (!storesIntegers)
+            {
+                compiledValue = CompileRawStoredValue(storedValues);
+            }
             WriteLine($"{compiledDestination}.{method}({compiledAddress}, {compiledValue});");
             return;
         }

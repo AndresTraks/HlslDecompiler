@@ -1118,6 +1118,10 @@ public class StatementFinalizer
             FloatToHalfOperation => true,
             HalfToFloatOperation => false,
             ConstantNode constant => constant.IntegerValue != null,
+            // A byte address buffer hands back uints whatever was stored, and a
+            // structured one hands back what its element type says, which is
+            // asked of the reflection data elsewhere.
+            LoadStructuredNode { IsRaw: true } => true,
             LoadStructuredNode => null,
             // What resinfo and bufinfo report is whatever the instruction asked for
             // them as: a size in texels or a count of elements is a uint, and the
@@ -1149,6 +1153,19 @@ public class StatementFinalizer
     internal static bool IsBitsValue(HlslTreeNode value)
     {
         return IsBitsValue(value, HlslTreeNode.NewNodeSet());
+    }
+
+    /// <summary>
+    /// Whether a value standing where a float is wanted is to be reinterpreted
+    /// rather than converted: bits, or the dwords a byte address buffer hands back,
+    /// which are uints whatever was stored and are read as a float with asfloat.
+    /// Converted instead, a float's bits came back as the number they happen to
+    /// make. Not bits in the variable's sense - the variable holding them is a
+    /// uint, and rightly.
+    /// </summary>
+    internal static bool IsReinterpretedAsFloat(HlslTreeNode value)
+    {
+        return value is LoadStructuredNode { IsRaw: true } || IsBitsValue(value);
     }
 
     private static bool IsBitsValue(HlslTreeNode value, HashSet<HlslTreeNode> visited)

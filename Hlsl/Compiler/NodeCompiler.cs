@@ -182,7 +182,7 @@ public sealed class NodeCompiler
         // make - a packed pair of half floats came back as three thousand million.
         // Every component, so that a constructor whose components are not all bits
         // is left to reinterpret them one at a time.
-        if (_readingAsFloat && components.All(StatementFinalizer.IsBitsValue))
+        if (_readingAsFloat && components.All(StatementFinalizer.IsReinterpretedAsFloat))
         {
             _readingAsFloat = false;
             try
@@ -1639,6 +1639,13 @@ public sealed class NodeCompiler
             if (tempAssignment.TempVariable.IsInteger && IsFloatValued(tempAssignment.Value))
             {
                 compiled = $"asint({compiled})";
+            }
+            // And the other way about: a float variable holding what a byte
+            // address buffer handed back holds the float those dwords are.
+            else if (!tempAssignment.TempVariable.IsInteger
+                && components.All(a => StatementFinalizer.IsReinterpretedAsFloat(((TempAssignmentNode)a).Value)))
+            {
+                compiled = $"asfloat({compiled})";
             }
             return $"{type}{variableCompiled} = {compiled};";
         }

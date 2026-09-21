@@ -110,6 +110,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "tangent_lighting")]
     [TestCase("vs_5_0", "skinned_instances")]
     [TestCase("cs_5_0", "tile_luminance")]
+    [TestCase("cs_5_0", "prefix_flags")]
     [TestCase("ps_5_0", "depth_aware_blur")]
     [TestCase("ps_5_0", "gbuffer_write")]
     [TestCase("ps_5_0", "environment_lighting")]

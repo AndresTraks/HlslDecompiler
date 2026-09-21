@@ -481,8 +481,32 @@ public sealed class RegisterState
         string variable = declaration.TypeInfo.NumElements > 1
             ? $"{declaration.Name}[{registerOffset / registersPerElement}]"
             : declaration.Name;
-        return TryGetStructMemberAtRegister(
-            declaration, variable, registerOffset % registersPerElement, out member);
+        int registerWithinElement = registerOffset % registersPerElement;
+        if (!TryGetStructMemberAtRegister(declaration, variable, registerWithinElement, out member))
+        {
+            return false;
+        }
+        // The walk hands back a matrix whole. What is read here is the one register
+        // of it the key names, which is a row or a column.
+        if (member.IsMatrix)
+        {
+            member = MatrixRowOf(member, registerWithinElement);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The row or column a register of a matrix member holds, as a member in its
+    /// own right - a vector of the width that row or column has, named the way
+    /// HLSL reaches it.
+    /// </summary>
+    public static StructMemberAccess MatrixRowOf(
+        StructMemberAccess matrix, int registerWithinElement)
+    {
+        int row = registerWithinElement - matrix.StartOffset / 4;
+        var rowType = new ShaderTypeInfo(
+            ParameterClass.Vector, matrix.TypeInfo.ParameterType, 1, matrix.MatrixRowWidth, 1, null);
+        return new StructMemberAccess(matrix.MatrixRow(row), rowType, registerWithinElement * 4);
     }
 
     /// <summary>
@@ -534,10 +558,25 @@ public sealed class RegisterState
                     return TryGetD3D9MemberAtRegister(
                         info.TypeInfo, memberName, within % perElement, out member);
                 }
+                // A matrix is returned whole, the register within it left to the
+                // caller: a writer wants the one row or column the register holds,
+                // and the matrix multiplication grouper wants the matrix and where
+                // it starts, and a name already resolved to a row answers only the
+                // first of those.
                 if (info.TypeInfo.Rows > 1)
                 {
-                    return TryGetD3D9MatrixMemberRow(
-                        info.TypeInfo, memberName, within, out member);
+                    int perMatrix = GetD3D9MatrixRegisterCount(info.TypeInfo);
+                    if (within >= registers)
+                    {
+                        return false;
+                    }
+                    if (info.TypeInfo.NumElements > 1)
+                    {
+                        memberName += $"[{within / perMatrix}]";
+                    }
+                    member = new StructMemberAccess(
+                        memberName, info.TypeInfo, (offset + within / perMatrix * perMatrix) * 4);
+                    return true;
                 }
                 // An array of scalars or vectors takes a register per element, and the
                 // register within the member says which element it reads.
@@ -545,7 +584,7 @@ public sealed class RegisterState
                 {
                     memberName += $"[{within}]";
                 }
-                member = new StructMemberAccess(memberName, info.TypeInfo, offset * 4);
+                member = new StructMemberAccess(memberName, info.TypeInfo, (offset + within) * 4);
                 return true;
             }
             offset += registers;
@@ -553,29 +592,13 @@ public sealed class RegisterState
         return false;
     }
 
-    // One register of a matrix member is one column - or one row where the matrix is
-    // packed by row. HLSL subscripts by row whatever the packing, so a column is
-    // named through a transpose, whose row is the matrix's column.
-    private static bool TryGetD3D9MatrixMemberRow(
-        ShaderTypeInfo typeInfo, string name, int register, out StructMemberAccess member)
+    // One register of a matrix is one column - or one row where it was packed by
+    // row - so a matrix takes that many, and an array of them that many apiece.
+    private static int GetD3D9MatrixRegisterCount(ShaderTypeInfo typeInfo)
     {
-        member = null;
-        bool rowMajor = typeInfo.ParameterClass == ParameterClass.MatrixRows;
-        int registersPerMatrix = rowMajor ? typeInfo.Rows : typeInfo.Columns;
-        int elements = Math.Max(typeInfo.NumElements, 1);
-        if (register >= registersPerMatrix * elements)
-        {
-            return false;
-        }
-        string indexed = elements > 1 ? $"{name}[{register / registersPerMatrix}]" : name;
-        int row = register % registersPerMatrix;
-        int rowWidth = rowMajor ? typeInfo.Columns : typeInfo.Rows;
-        ShaderTypeInfo rowType = new ShaderTypeInfo(
-            ParameterClass.Vector, typeInfo.ParameterType, 1, rowWidth, 1, null);
-        member = new StructMemberAccess(
-            rowMajor ? $"{indexed}[{row}]" : $"transpose({indexed})[{row}]",
-            rowType, register * 4);
-        return true;
+        return typeInfo.ParameterClass == ParameterClass.MatrixRows
+            ? typeInfo.Rows
+            : typeInfo.Columns;
     }
 
     // How many registers a member takes. A leaf vector or scalar has one to itself
@@ -595,10 +618,7 @@ public sealed class RegisterState
         }
         if (typeInfo.Rows > 1)
         {
-            int registers = typeInfo.ParameterClass == ParameterClass.MatrixRows
-                ? typeInfo.Rows
-                : typeInfo.Columns;
-            return registers * elements;
+            return GetD3D9MatrixRegisterCount(typeInfo) * elements;
         }
         return elements;
     }

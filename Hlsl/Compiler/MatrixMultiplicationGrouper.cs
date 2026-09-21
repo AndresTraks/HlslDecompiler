@@ -386,14 +386,22 @@ public class MatrixMultiplicationGrouper
         {
             return new RowMatrix(constant, constant.TypeInfo, null, 0);
         }
-        if (constant.TypeInfo.MemberInfo != null
-            && key.RegisterKey is D3D10RegisterKey d3d10Key)
+        if (constant.TypeInfo.MemberInfo != null)
         {
-            int stride = constant.RegistersPerElement;
-            int registerOffset = _registers.GetConstantBufferElementOffset(d3d10Key, constant);
-            if (RegisterState.TryGetStructMemberAt(constant, "", registerOffset % stride, key.ComponentIndex,
-                    out StructMemberAccess member)
-                && member.IsMatrix)
+            int stride = System.Math.Max(constant.RegistersPerElement, 1);
+            StructMemberAccess member = null;
+            bool found = key.RegisterKey switch
+            {
+                D3D10RegisterKey d3d10Key => RegisterState.TryGetStructMemberAt(
+                    constant, "", _registers.GetConstantBufferElementOffset(d3d10Key, constant) % stride,
+                    key.ComponentIndex, out member),
+                // The Shader Model 3 walk counts registers where the constant buffer
+                // one counts floats, and hands back the matrix whole the same way.
+                D3D9RegisterKey d3d9Key => RegisterState.TryGetStructMemberAtRegister(
+                    constant, "", (d3d9Key.Number - constant.RegisterIndex) % stride, out member),
+                _ => false,
+            };
+            if (found && member.IsMatrix)
             {
                 return new RowMatrix(constant, member.TypeInfo, member.Name, member.StartOffset / 4);
             }

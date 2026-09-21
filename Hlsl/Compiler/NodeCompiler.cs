@@ -1417,6 +1417,11 @@ public sealed class NodeCompiler
                             array, $"{arrayName}[{element}]", registerOffset % stride,
                             out StructMemberAccess member))
                     {
+                        // A matrix comes back whole; the register picks its row.
+                        if (member.IsMatrix)
+                        {
+                            member = RegisterState.MatrixRowOf(member, registerOffset % stride);
+                        }
                         string memberSwizzle = member.Width <= 1
                             ? ""
                             : GetAstSourceSwizzleName(

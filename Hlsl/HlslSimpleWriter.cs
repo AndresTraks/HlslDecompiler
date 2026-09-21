@@ -1936,6 +1936,12 @@ public class HlslSimpleWriter : HlslWriter
                             decl, $"{decl.Name}[{element}]", registerOffset % stride,
                             out StructMemberAccess dynamicMember))
                     {
+                        // A matrix comes back whole; the register picks its row.
+                        if (dynamicMember.IsMatrix)
+                        {
+                            dynamicMember = RegisterState.MatrixRowOf(
+                                dynamicMember, registerOffset % stride);
+                        }
                         string dynamicSource = dynamicMember.Width <= 1
                             ? dynamicMember.Name
                             : dynamicMember.Name

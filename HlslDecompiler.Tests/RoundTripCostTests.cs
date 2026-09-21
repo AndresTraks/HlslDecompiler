@@ -46,6 +46,15 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_3_0/matrix_member_struct"] = (16,
+            "A matrix member of a Shader Model 3 struct does not group back into a "
+            + "mul. The grouper names a matrix member through the constant buffer "
+            + "walk, which has no Shader Model 3 side: the D3D9 walk resolves a "
+            + "matrix member all the way to one row, which is what the writers want "
+            + "and not what the grouper needs. So the four dot products are written "
+            + "out one by one, and the row major one - whose registers are rows, and "
+            + "which is a multiply-accumulate chain rather than dot products - is "
+            + "written out a component at a time."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

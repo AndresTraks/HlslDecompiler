@@ -642,13 +642,19 @@ public sealed class RegisterState
             return false;
         }
         // A matrix member takes a row, or every row of it names the whole matrix -
-        // `dot(position, lights[1].shadowMatrix)` four times over. Stored by
-        // column, the register is a column, which is a row of the transpose.
+        // `dot(position, lights[1].shadowMatrix)` four times over. The register is
+        // a column, or a row where the constant table says it was packed by row;
+        // HLSL subscripts by row whatever the packing, so the column needs the
+        // transpose and the row must not have it. It holds as many components as
+        // the row or the column it is.
         if (access.IsMatrix)
         {
             int row = (target - access.StartOffset) / 4;
-            element = $"transpose({access.Name})[{row}]";
-            memberWidth = access.TypeInfo.Rows;
+            bool rowMajor = access.TypeInfo.ParameterClass == ParameterClass.MatrixRows;
+            element = rowMajor
+                ? $"{access.Name}[{row}]"
+                : $"transpose({access.Name})[{row}]";
+            memberWidth = rowMajor ? access.TypeInfo.Columns : access.TypeInfo.Rows;
             return true;
         }
         element = access.Name;
@@ -724,6 +730,18 @@ public sealed class RegisterState
         int elements = Math.Max(typeInfo.NumElements, 1);
         if (typeInfo.MemberInfo == null)
         {
+            // A matrix takes a whole register per column - per row where it was
+            // packed by row - and what it leaves of that register is its own
+            // padding and not the next member's. float3x4 is four registers and
+            // float4x3 is three, which the twelve floats they both hold say
+            // neither of.
+            if (typeInfo.Rows > 1)
+            {
+                int registers = typeInfo.ParameterClass == ParameterClass.MatrixRows
+                    ? typeInfo.Rows
+                    : typeInfo.Columns;
+                return registers * 4 * elements;
+            }
             int element = typeInfo.Rows * typeInfo.Columns;
             // Every element of an array starts on a register, so `float2 pair[2]`
             // takes two of them and not one: pair[1] is at .x of the second, not at

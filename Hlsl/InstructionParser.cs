@@ -2030,10 +2030,12 @@ public class InstructionParser
                             return new MultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.IMin:
                         case D3D10Opcode.UMin:
-                            return new MinimumOperation(inputs[0], inputs[1]);
+                            return new MinimumOperation(inputs[0], inputs[1],
+                                instruction.Opcode == D3D10Opcode.UMin);
                         case D3D10Opcode.IMax:
                         case D3D10Opcode.UMax:
-                            return new MaximumOperation(inputs[0], inputs[1]);
+                            return new MaximumOperation(inputs[0], inputs[1],
+                                instruction.Opcode == D3D10Opcode.UMax);
                         case D3D10Opcode.INeg:
                             return new NegateOperation(inputs[0]);
                         case D3D10Opcode.RoundNe:

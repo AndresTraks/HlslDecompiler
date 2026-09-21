@@ -1029,6 +1029,11 @@ public class StatementFinalizer
             // the top bits of the value.
             case ShiftRightOperation shift when ReferenceEquals(shift.Value, node):
                 return shift.IsUnsigned;
+            // umin and umax read both operands as unsigned, imin and imax as signed.
+            case MinimumOperation minimum:
+                return minimum.IsUnsigned;
+            case MaximumOperation maximum:
+                return maximum.IsUnsigned;
             // udiv is the only integer divide there is - there is no signed opcode
             // for it - so an integer quotient or remainder is unsigned.
             case DivisionOperation { ConsumesInteger: true }:
@@ -1044,8 +1049,8 @@ public class StatementFinalizer
 
     /// <summary>
     /// Whether the reader is the same instruction signed or unsigned, so that what
-    /// reads its result is what knows. imin and umin are here because the parse
-    /// makes one node of both and it no longer says which.
+    /// reads its result is what knows. imin and umin used to be here because the
+    /// parse made one node of both; the node says which now, above.
     /// </summary>
     private static bool IsSignNeutral(HlslTreeNode reader, HlslTreeNode value)
     {
@@ -1057,7 +1062,7 @@ public class StatementFinalizer
         }
         return reader is MoveOperation or PhiNode
             or AddOperation or SubtractOperation or MultiplyOperation
-            or ShiftLeftOperation or MinimumOperation or MaximumOperation
+            or ShiftLeftOperation
             or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
             or BitwiseNotOperation;
     }
@@ -1076,6 +1081,8 @@ public class StatementFinalizer
                 _ => null,
             },
             ShiftRightOperation shift => shift.IsUnsigned,
+            MinimumOperation minimum => minimum.IsUnsigned,
+            MaximumOperation maximum => maximum.IsUnsigned,
             // ubfe fills the top of the field with zeroes and ibfe with its sign.
             BitFieldExtractOperation extract => extract.IsUnsigned,
             DivisionOperation { ConsumesInteger: true } => true,

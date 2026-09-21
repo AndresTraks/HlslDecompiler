@@ -929,6 +929,17 @@ public sealed class NodeCompiler
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     var value2 = Compile(components.Select(g => g.Inputs[1]));
 
+                    // umin and umax pick their overload from the operands, the way
+                    // ushr does: one unsigned operand makes the call unsigned, so
+                    // where neither says so the first is made to.
+                    bool isUnsigned = operation is MinimumOperation { IsUnsigned: true }
+                        or MaximumOperation { IsUnsigned: true };
+                    if (isUnsigned && !IsUnsignedAlready(operation.Inputs[0]) && !IsUnsignedAlready(operation.Inputs[1]))
+                    {
+                        string size = components.Count > 1 ? components.Count.ToString() : "";
+                        value1 = $"(uint{size}){CompileOperand(components.Select(g => g.Inputs[0]))}";
+                    }
+
                     var name = operation.HlslFunction;
 
                     return $"{name}({value1}, {value2})";
@@ -1895,6 +1906,8 @@ public sealed class NodeCompiler
         {
             case ConvertOperation { TargetType: "uint" }:
             case ShiftRightOperation { IsUnsigned: true }:
+            case MinimumOperation { IsUnsigned: true }:
+            case MaximumOperation { IsUnsigned: true }:
             case TempVariableNode { IsUnsigned: true }:
             case TempAssignmentNode { TempVariable.IsUnsigned: true }:
                 return true;

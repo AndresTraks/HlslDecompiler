@@ -1695,6 +1695,15 @@ public class HlslSimpleWriter : HlslWriter
                     bool hasCompare = instruction.Opcode
                         is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
                     string value = GetOperandName(instruction, first + (hasCompare ? 3 : 2));
+                    // InterlockedMax and InterlockedMin come signed and unsigned,
+                    // chosen by the type of the value, and a register here is an int
+                    // or a float: the unsigned one has to say so at the value or the
+                    // signed one is what is written back.
+                    if (instruction.Opcode is D3D10Opcode.AtomicUMax or D3D10Opcode.AtomicUMin
+                        or D3D10Opcode.ImmAtomicUMax or D3D10Opcode.ImmAtomicUMin)
+                    {
+                        value = $"(uint){value}";
+                    }
                     string arguments = hasCompare
                         ? $"{GetOperandName(instruction, first + 2)}, {value}"
                         : value;

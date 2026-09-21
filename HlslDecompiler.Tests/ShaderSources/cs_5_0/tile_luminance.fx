@@ -43,7 +43,7 @@ void main(CS_IN i)
 	}
 	if (i.sv_groupindex == 0) {
 		luminance[i.sv_groupid.xy] = 0.015625 * g1[0];
-		InterlockedAdd(histogram[min(g0[0], 63)], 1);
+		InterlockedAdd(histogram[min((uint)g0[0], 63)], 1);
 	}
 	if ((all(t2 < size) && step == 0) != 0) {
 		luminance[t2] = t3;

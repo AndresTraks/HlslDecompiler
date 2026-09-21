@@ -13,5 +13,5 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.x = min(r0.x, 15);
 	r0.y = (int)r0.x << 2;
 	histogram.InterlockedAdd(r0.y, 1);
-	histogram.InterlockedMax(64, r0.x);
+	histogram.InterlockedMax(64, (uint)r0.x);
 }

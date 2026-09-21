@@ -30,7 +30,14 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-   };
+        ["cs_4_0/particle_update"] = [("ast",
+            "Two dwords the original stores and the recompilation does not. The "
+            + "particle's velocity is written back a member at a time, and its x and "
+            + "z are the x and z that were loaded from the same element a few lines "
+            + "up, so fxc drops those two stores as writes of what is there. The "
+            + "buffer ends up the same; the store is what is compared, since a "
+            + "buffer is not modelled.")],
+    };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>
     private const int Trials = 8;
@@ -179,6 +186,24 @@ public class EquivalenceTests
                         ? "the original discards the pixel, its decompilation does not."
                         : "its decompilation discards the pixel, the original does not.");
                 continue;
+            }
+
+            // A store or an atomic is named by where it went, so one that went
+            // somewhere else is a result the other side has no key for. Comparing
+            // only the keys both sides had let a histogram bin computed as zero
+            // pass: the original wrote one bin and the decompilation another, and
+            // neither key was on both sides. The outputs proper are compared where
+            // both have them, as before - a signature can name what a side never
+            // writes.
+            foreach (string name in expected.Keys.Concat(actual.Keys).Distinct()
+                .Where(n => n.StartsWith("STORE") || n.StartsWith("ATOMIC"))
+                .Where(n => !expected.ContainsKey(n) || !actual.ContainsKey(n))
+                .OrderBy(n => n))
+            {
+                yield return $"The {writer} writer's output differs on trial {trial}: "
+                    + (expected.ContainsKey(name)
+                        ? $"the original writes {name}, its decompilation does not."
+                        : $"its decompilation writes {name}, the original does not.");
             }
 
             foreach (string name in expected.Keys.Intersect(actual.Keys).OrderBy(n => n))

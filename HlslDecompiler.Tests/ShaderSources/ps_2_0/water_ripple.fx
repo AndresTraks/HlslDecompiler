@@ -11,8 +11,8 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	float3 t0 = normalize(2 * tex2D(normalMap, i.texcoord).xyz - 1).xyz;
-	float3 t1 = normalize(eyePosition.xyz - i.texcoord1).xyz;
+	float3 t0 = normalize(2 * tex2D(normalMap, i.texcoord).xyz - 1);
+	float3 t1 = normalize(eyePosition.xyz - i.texcoord1);
 	float t2 = 1 - saturate(dot(t0, t1));
 	float t3 = t2 * t2;
 	float t4 = t2 * t3 * t3;

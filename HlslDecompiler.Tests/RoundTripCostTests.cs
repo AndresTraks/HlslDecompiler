@@ -129,6 +129,13 @@ public class RoundTripCostTests
             + "cheaper, and that is the bytecode's trick rather than the shader's "
             + "meaning: the constructor says which component the height goes in and "
             + "the mad makes the reader work it out. Kept, knowingly."),
+        ["ps_3_0/point_lights"] = (58,
+            "Two instructions, and they are fxc's. The tangent is `normalize(t3)` "
+            + "in the source and in what is written back, and the original has one "
+            + "nrm for it; recompiled, fxc stores the mad feeding it with its "
+            + "components rotated - to save a swizzle on the cross product after - "
+            + "and spells the normalize out as a dp3, an rsq and a mul. The other "
+            + "two normalizes in the shader come back as nrm."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

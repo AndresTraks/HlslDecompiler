@@ -156,6 +156,13 @@ public class D3D9Machine
                 case RegisterType.Texture:
                     Array.Copy(Named(instruction.GetDeclSemantic()), _texture[number], 4);
                     break;
+                case RegisterType.Sampler:
+                    _samplerDimensions[number] = instruction.GetDeclSamplerTextureType() switch
+                    {
+                        SamplerTextureType.TwoD => 2,
+                        _ => 3,
+                    };
+                    break;
                 case RegisterType.Output:
                     _outputSemantics[number] = instruction.GetDeclSemantic();
                     break;
@@ -483,8 +490,11 @@ public class D3D9Machine
         }
         // A bias or an explicit level changes which mip is read, and there are no
         // mips here. Both programs read the same one.
-        return Texture.Sample(sampler, coordinates);
+        return Texture.Sample(sampler, coordinates, _samplerDimensions.GetValueOrDefault(sampler, 4));
     }
+
+    // How many coordinates each sampler reads, from its dcl.
+    private readonly Dictionary<int, int> _samplerDimensions = [];
 
     private float[] Multiply(D3D9Instruction instruction, int columns, int rows)
     {

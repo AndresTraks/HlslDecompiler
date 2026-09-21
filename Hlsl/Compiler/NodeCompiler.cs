@@ -1581,8 +1581,12 @@ public sealed class NodeCompiler
 
         if (first is NormalizeOutputNode)
         {
+            // As wide as the vector normalized, not the register: nrm writes .xyz
+            // of a four wide register, and swizzling against four wrote
+            // `normalize(n).xyz` of a float3 - which fxc then spelled out as a
+            // dp3, an rsq and a mul instead of the one nrm.
             string input = Compile(first.Inputs);
-            string swizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count);
             return $"normalize({input}){swizzle}";
         }
 

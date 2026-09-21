@@ -10,11 +10,16 @@ namespace HlslDecompiler.Tests.Interpreter;
 /// </summary>
 public static class Texture
 {
-    public static float[] Sample(int sampler, float[] coordinates)
+    /// <param name="dimensions">How many of the coordinates the texture reads:
+    /// two for a 2D texture, three for a cube or a volume or a 2D array. The rest
+    /// of the register is whatever the shader left there, and the two programs
+    /// leave different things - a sample keyed on all four disagreed with itself
+    /// over a z neither shader was reading.</param>
+    public static float[] Sample(int sampler, float[] coordinates, int dimensions = 4)
     {
         float u = coordinates[0];
-        float v = coordinates[1];
-        float w = coordinates[2];
+        float v = dimensions > 1 ? coordinates[1] : 0;
+        float w = dimensions > 2 ? coordinates[2] : 0;
         float seed = sampler * 1.37f;
         return
         [

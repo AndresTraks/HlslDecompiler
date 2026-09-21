@@ -1026,8 +1026,27 @@ public class D3D10Machine
     private uint[] SampleTexture(D3D10Instruction instruction)
     {
         float[] coordinates = WithOffsets(instruction, Floats(instruction, 1));
-        float[] sampled = Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates);
+        int resource = instruction.GetParamRegisterNumber(2);
+        float[] sampled = Texture.Sample(resource, coordinates, TextureDimensions(resource));
         return Pack(ResourceSwizzle(instruction, sampled));
+    }
+
+    // How many coordinates a texture reads, from its dcl_resource; four where
+    // there is none, which reads the whole register as before.
+    private int TextureDimensions(int resource)
+    {
+        D3D10Instruction declaration = _shader.Instructions.OfType<D3D10Instruction>()
+            .FirstOrDefault(i => i.Opcode == D3D10Opcode.DclResource
+                && i.GetParamRegisterNumber(0) == resource);
+        return declaration?.GetResourceDimension() switch
+        {
+            ResourceDimension.Buffer or ResourceDimension.Texture1D => 1,
+            ResourceDimension.Texture2D or ResourceDimension.Texture2Dms
+                or ResourceDimension.Texture1DArray => 2,
+            ResourceDimension.Texture3D or ResourceDimension.TextureCube
+                or ResourceDimension.Texture2DArray or ResourceDimension.Texture2DmsArray => 3,
+            _ => 4,
+        };
     }
 
     // The resource operand carries a swizzle that says which channel of the texture

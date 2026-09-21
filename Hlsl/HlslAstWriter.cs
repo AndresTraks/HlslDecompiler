@@ -1734,9 +1734,13 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private static bool CostsAnInstruction(HlslTreeNode node)
     {
+        // A normalize is a nrm, or a dp3, an rsq and a mul; written twice it is
+        // computed twice - fxc folded `normalize(t)` read by a mad and a cross
+        // into three instructions rather than the one nrm it came from.
         return node is LoadStructuredNode
             or TextureLoadOutputNode
             or SamplePositionNode
+            or NormalizeOutputNode
             or PartialDerivativeXOperation
             or PartialDerivativeYOperation;
     }

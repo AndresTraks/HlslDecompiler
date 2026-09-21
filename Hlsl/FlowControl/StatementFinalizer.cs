@@ -53,6 +53,15 @@ public class StatementFinalizer
             foreach (var output in outputsToRemove)
             {
                 statement.Outputs.Remove(output.Key);
+                // A mova nothing reads - the read through the address register took
+                // the element off the product the mova was given, and reads that
+                // instead - still read the product, and kept `float t0 = 4 * idx`
+                // alive as a name for it.
+                if (output.Key.RegisterKey is D3D9RegisterKey { Type: RegisterType.Addr }
+                    && output.Value is MoveOperation && output.Value.Outputs.Count == 0)
+                {
+                    output.Value.Remove();
+                }
             }
 
             // A phi nobody reads keeps its inputs alive for nothing. It can be the

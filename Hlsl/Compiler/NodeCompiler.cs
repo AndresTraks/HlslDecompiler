@@ -1372,7 +1372,7 @@ public sealed class NodeCompiler
                     // counts rows across the whole array, so the element is that
                     // index over the row count and the row is the constant left over.
                     string element = CompileRegisterIndexAsElement(
-                        relativeAddress.Index, array.RegistersPerElement);
+                        relativeAddress, array.RegistersPerElement);
                     string matrix = $"transpose({arrayName}[{element}])";
                     return $"{matrix}[{registerOffset}]{swizzle}";
                 }

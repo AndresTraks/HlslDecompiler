@@ -2707,7 +2707,35 @@ public class InstructionParser
             relativeType,
             instruction.GetRelativeParamRegisterNumber(parameterIndex),
             instruction.GetRelativeParamComponent(parameterIndex));
-        return new RelativeAddressNode(inputKey, GetActiveOutput(addressKey));
+        HlslTreeNode address = GetActiveOutput(addressKey);
+
+        // The same as the DXBC read: an index into an array of matrices counts
+        // registers, and the mova is given the element times the rows. Taken off
+        // here so that the product is never a value - named, it was `float4 t0 =
+        // 4 * i.blendindices` and `bones[t0.x / 4]` four times over.
+        ConstantDeclaration array = _registerState.FindConstant(inputKey.RegisterKey);
+        int stride = array?.RegistersPerElement ?? 1;
+        HlslTreeNode moved = address is MoveOperation move ? move.Inputs[0] : address;
+        if (stride > 1 && TryStripElementStride(moved, stride, out HlslTreeNode element))
+        {
+            // An input that goes straight into the address register, scaled and
+            // nothing else, is an integer: a source that declared it float would
+            // carry a floor on the way, and this one has none. Declared float
+            // instead, fxc put the floor back - a frc and an add - and
+            // matrix_palette cost two instructions for it.
+            if (element is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D9RegisterKey { Type: RegisterType.Input } } input)
+            {
+                const int SInt32ComponentType = 2;
+                RegisterDeclaration declaration = _registerState.MethodInputRegisters
+                    .FirstOrDefault(d => d.RegisterKey.Equals(input.RegisterComponentKey.RegisterKey));
+                if (declaration != null)
+                {
+                    declaration.ComponentType = SInt32ComponentType;
+                }
+            }
+            return new RelativeAddressNode(inputKey, element) { IndexCountsElements = true };
+        }
+        return new RelativeAddressNode(inputKey, address);
     }
 
     // The element an x# operand names: a literal, a register, or a register plus a

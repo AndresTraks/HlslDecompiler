@@ -6,7 +6,7 @@ struct VS_IN
 	float4 position : POSITION;
 	float4 normal : NORMAL;
 	float4 blendweight : BLENDWEIGHT;
-	float4 blendindices : BLENDINDICES;
+	int4 blendindices : BLENDINDICES;
 };
 
 struct VS_OUT

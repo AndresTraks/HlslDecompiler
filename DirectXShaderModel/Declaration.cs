@@ -109,7 +109,7 @@ public class RegisterDeclaration
     // D3D_REGISTER_COMPONENT_TYPE, from the signature: 1 uint32, 2 sint32,
     // 3 float32. SV_VertexID and its like are integral and will not compile as
     // float, so the type is taken from the signature rather than assumed.
-    public int ComponentType { get; init; }
+    public int ComponentType { get; set; }
 
     // How the rasteriser interpolates the input. Dropping it changed what the
     // shader does: nointerpolation recompiled as a linear interpolant.

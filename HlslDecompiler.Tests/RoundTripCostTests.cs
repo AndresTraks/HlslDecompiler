@@ -97,24 +97,6 @@ public class RoundTripCostTests
             + "the original had one breakc_nz - the same shape conditional_return "
             + "has for retc. The rest of the shader comes back instruction for "
             + "instruction."),
-        ["vs_2_0/matrix_palette"] = (28,
-            "Two instructions, the blend index. A float subscript is floored by fxc "
-            + "with a frc and an add before it reaches the address register, and the "
-            + "original has neither - `mul r0.xy, v3.xy, c28.xx` straight into "
-            + "`mova`. Declaring the input int4 gives 26, the original's count and "
-            + "its instructions; an explicit `(int)` on the subscript gives 31, "
-            + "worse than either, since the cast truncates where mova rounds and fxc "
-            + "has to say so. So the bytecode does tell: a source that said float "
-            + "would carry the floor, and one that said int would not. Reading that "
-            + "means asking whether anything floors the value on its way from the "
-            + "input to the address register, which is a use analysis the "
-            + "declaration side has not got. The difference only shows on a "
-            + "fractional index, which is why the interpreter feeds BLENDINDICES "
-            + "whole numbers and says so where it does. The blend itself is "
-            + "`mul(p, bones[i.x]) * w.x + mul(p, bones[i.y]) * w.y` now, the "
-            + "source; was 38 while a row read through the address register was not "
-            + "a row."),
-
 
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,
@@ -136,6 +118,15 @@ public class RoundTripCostTests
             + "components rotated - to save a swizzle on the cross product after - "
             + "and spells the normalize out as a dp3, an rsq and a mul. The other "
             + "two normalizes in the shader come back as nrm."),
+        ["vs_3_0/skinned_terrain"] = (54,
+            "One instruction, and it is the fourth bone's blend split by the "
+            + "height. The last mad blends all four components of the skinned "
+            + "position at once, and the y of it then takes the height map's "
+            + "offset in a mad of its own; the y is written inside that second "
+            + "expression and the xzw as a vector of their own, so fxc blends "
+            + "twice. The components one instruction wrote are named together "
+            + "where the text writes them apart, but not where one of them is "
+            + "folded into a longer expression."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

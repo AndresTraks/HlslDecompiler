@@ -1971,7 +1971,14 @@ public sealed class NodeCompiler
     {
         if (registerSize == 1 || registerSize > 4)
         {
-            return "";
+            // A scalar has no components to pick, but it can still be spread:
+            // `dp2 r0.z, sigma.ww, sigma.ww` is 2 * sigma * sigma, and written
+            // `dot(sigma, sigma)` it is sigma * sigma, since a dot of two scalars is
+            // one product. The width the caller asks for is the width the value has
+            // to be, and `sigma.xx` is how a scalar is made two wide.
+            return promoteToVectorSize is > 1 and <= 4 && registerSize == 1
+                ? "." + new string('x', promoteToVectorSize)
+                : "";
         }
 
         string swizzleName = "";

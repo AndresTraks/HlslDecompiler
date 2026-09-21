@@ -1055,6 +1055,10 @@ public class InstructionParser
         }
     }
 
+    // One component of an integer operand, with its modifier: `imul null, r3.y,
+    // r1.z, -r1.z` is -(k * k), and reading the register without the negation
+    // made it k * k - the wrong sign on a Gaussian's exponent, and nothing to say
+    // so, since the interpreter's trials happened not to run the loop.
     private HlslTreeNode GetInputComponent(D3D10Instruction instruction, int operandIndex, int component)
     {
         if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
@@ -1063,7 +1067,8 @@ public class InstructionParser
         }
         RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
-        return GetActiveOutput(new RegisterComponentKey(registerKey, swizzle[component]));
+        HlslTreeNode input = GetActiveOutput(new RegisterComponentKey(registerKey, swizzle[component]));
+        return ApplyModifier(input, instruction.GetOperandModifier(operandIndex));
     }
 
     private void ParseSinCosInstruction(D3D10Instruction instruction)

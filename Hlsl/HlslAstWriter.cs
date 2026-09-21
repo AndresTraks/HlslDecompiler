@@ -519,8 +519,15 @@ public class HlslAstWriter : HlslWriter
         exitTest = null;
         foreach (IStatement statement in loop.Body)
         {
+            // The phi assignments that carry values round the loop write nothing,
+            // and neither does a statement whose every value is read inline by
+            // whatever comes after - the comparison an ilt computes for the
+            // breakc that follows it. Both are stepped over.
             if (statement is AssignmentStatement assignment
-                && assignment.Outputs.Values.All(value => value is PhiNode))
+                && assignment.Outputs.All(output =>
+                    output.Value is PhiNode
+                    || (assignment.Inputs.TryGetValue(output.Key, out HlslTreeNode input) && ReferenceEquals(input, output.Value))
+                    || (output.Key.RegisterKey.IsTempRegister && output.Value is not TempAssignmentNode)))
             {
                 continue;
             }

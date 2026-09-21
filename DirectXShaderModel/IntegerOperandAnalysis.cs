@@ -859,6 +859,23 @@ public sealed class IntegerOperandAnalysis
     // buffer, or nothing for groupshared memory, which has none.
     private StoredType LoadedElementType(D3D10Instruction load)
     {
+        // A typed view stores what its element type is, which the reflection data
+        // gives as a return type; there is no struct to ask. Its resource is the
+        // first operand, and asking for a fourth read off the end.
+        if (load.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped)
+        {
+            int typedIndex = load.Opcode == D3D10Opcode.StoreUAVTyped ? 0 : 2;
+            ResourceDefinition view = _shader.ResourceDefinitions?
+                .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.UavRWTyped
+                    && d.BindPoint == load.GetParamRegisterNumber(typedIndex));
+            return view?.ResourceReturnType switch
+            {
+                D3DResourceReturnType.UInt or D3DResourceReturnType.SInt => StoredType.Integer,
+                D3DResourceReturnType.Float or D3DResourceReturnType.UNorm
+                    or D3DResourceReturnType.SNorm => StoredType.Float,
+                _ => StoredType.Unknown,
+            };
+        }
         // The resource is the last operand of a load and the first of a store.
         int ResourceIndex = load.Opcode == D3D10Opcode.StoreStructured ? 0 : 3;
         OperandType type = load.GetOperandType(ResourceIndex);

@@ -90,6 +90,13 @@ public class RoundTripCostTests
             + "itself: fxc has no reason to keep a variable the shader never asked "
             + "for, and the two statements do not fold back into one cmp. Was 17 "
             + "while the if side was empty and the body sat in the else."),
+        ["cs_5_0/tile_luminance"] = (48,
+            "The exit test of a for loop. `for (uint stride = 32; stride > 0; "
+            + "stride >>= 1)` is what the source said and what is written back, "
+            + "and fxc compiles its condition as a compare, an if and a break where "
+            + "the original had one breakc_nz - the same shape conditional_return "
+            + "has for retc. The rest of the shader comes back instruction for "
+            + "instruction."),
         ["vs_2_0/matrix_palette"] = (28,
             "Two instructions, the blend index. A float subscript is floored by fxc "
             + "with a frc and an add before it reaches the address register, and the "

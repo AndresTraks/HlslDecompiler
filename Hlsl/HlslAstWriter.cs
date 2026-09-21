@@ -63,7 +63,57 @@ public class HlslAstWriter : HlslWriter
 
         StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
             CreateIntegerOperandAnalysis());
+        FindDeclaredVariables(ast.Statements);
         WriteStatements(ast.Statements);
+    }
+
+    /// <summary>
+    /// Every variable some assignment declares, anywhere in the function. An
+    /// assignment to a register that held a variable's value is marked as
+    /// reassigning that variable - which is how a loop carries a value round - and
+    /// the assignment that declared it can be inlined away afterwards, leaving a
+    /// name nothing declares: `t5 = index < stride;` in a loop body, undeclared,
+    /// because the load the register held before the loop went into the dot
+    /// product that read it. A reassignment of a variable nothing declares is its
+    /// declaration.
+    /// </summary>
+    private readonly HashSet<HlslTreeNode> _everDeclaredVariables = HlslTreeNode.NewNodeSet();
+
+    private void FindDeclaredVariables(IList<IStatement> statements)
+    {
+        new StatementVisitor(statements).Visit(statement =>
+        {
+            IEnumerable<TempAssignmentNode> assignments = statement.Outputs.Values
+                .OfType<TempAssignmentNode>();
+            if (statement is LoopStatement { Initializer: not null } loop)
+            {
+                assignments = assignments.Append(loop.Initializer);
+            }
+            foreach (TempAssignmentNode assignment in assignments)
+            {
+                if (!assignment.IsReassignment)
+                {
+                    _everDeclaredVariables.Add(assignment.TempVariable);
+                }
+            }
+        });
+    }
+
+    // Compiles an assignment group, declaring the variable where nothing else does.
+    private string CompileAssignment(HlslTreeNode[] group)
+    {
+        if (group[0] is TempAssignmentNode { IsReassignment: true }
+            && group.All(node => node is TempAssignmentNode assignment
+                && !_everDeclaredVariables.Contains(assignment.TempVariable)
+                && !_declaredVariables.Contains(assignment.TempVariable)))
+        {
+            foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
+            {
+                assignment.IsReassignment = false;
+                _everDeclaredVariables.Add(assignment.TempVariable);
+            }
+        }
+        return _compiler.Compile(group);
     }
 
     private void WriteStatements(IList<IStatement> statements)
@@ -155,7 +205,7 @@ public class HlslAstWriter : HlslWriter
     {
         foreach (var group in GetTempAssignmentGroups(statement))
         {
-            WriteLine(_compiler.Compile(group));
+            WriteLine(CompileAssignment(group));
         }
     }
 
@@ -189,7 +239,7 @@ public class HlslAstWriter : HlslWriter
         {
             foreach (var group in tempGroups)
             {
-                WriteLine(_compiler.Compile(group));
+                WriteLine(CompileAssignment(group));
             }
             return;
         }
@@ -213,7 +263,7 @@ public class HlslAstWriter : HlslWriter
         var writes = new List<(HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, Action Write)>();
         foreach (var group in tempGroups)
         {
-            writes.Add((group, [], () => WriteLine(_compiler.Compile(group))));
+            writes.Add((group, [], () => WriteLine(CompileAssignment(group))));
         }
         foreach (var rootGroup in outputs.OrderBy(o => o.Key.RegisterKey.Number).ThenBy(o => o.Key.ComponentIndex))
         {

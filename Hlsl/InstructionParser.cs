@@ -1162,7 +1162,20 @@ public class InstructionParser
         {
             return mask;
         }
-        return new ConstantNode(BitConverter.Int32BitsToSingle(mask.IntegerValue.Value));
+        // A float comparison anded with an integer immediate: the bits of the float
+        // step() selects - 0x3f800000 for 1.0 - or an integer the shader selects
+        // outright, `lum > threshold ? 1u : 0u`. The operand analysis calls both
+        // integer, since a mask is bits, so the number itself has to say. Read as
+        // a float, a small integer is a denormal, and no shader selects one of
+        // those: the 1 printed as 0.000000 and the histogram bin it fed was always
+        // zero. Read as an integer, a float's bits are an eight digit number no
+        // shader selects either. So the bits of a normal float are that float and
+        // anything smaller is the integer it is.
+        const int SmallestNormalFloatBits = 0x00800000;
+        int bits = mask.IntegerValue.Value;
+        return (bits & 0x7FFFFFFF) >= SmallestNormalFloatBits
+            ? new ConstantNode(BitConverter.Int32BitsToSingle(bits))
+            : mask;
     }
 
     // A comparison result. GE is still modelled as an operation rather than a

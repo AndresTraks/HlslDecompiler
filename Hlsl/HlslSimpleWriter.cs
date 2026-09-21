@@ -2102,9 +2102,9 @@ public class HlslSimpleWriter : HlslWriter
                 if (member.IsMatrix)
                 {
                     int row = (elementOffset % stride) - member.StartOffset / 4;
-                    string matrixMember = $"transpose({member.Name})";
+                    string matrixRow = member.MatrixRow(row);
                     member = null;
-                    return $"{matrixMember}[{row}]";
+                    return matrixRow;
                 }
                 return member.Name;
             }

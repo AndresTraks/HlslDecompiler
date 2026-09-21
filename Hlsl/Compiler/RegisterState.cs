@@ -642,19 +642,12 @@ public sealed class RegisterState
             return false;
         }
         // A matrix member takes a row, or every row of it names the whole matrix -
-        // `dot(position, lights[1].shadowMatrix)` four times over. The register is
-        // a column, or a row where the constant table says it was packed by row;
-        // HLSL subscripts by row whatever the packing, so the column needs the
-        // transpose and the row must not have it. It holds as many components as
-        // the row or the column it is.
+        // `dot(position, lights[1].shadowMatrix)` four times over.
         if (access.IsMatrix)
         {
             int row = (target - access.StartOffset) / 4;
-            bool rowMajor = access.TypeInfo.ParameterClass == ParameterClass.MatrixRows;
-            element = rowMajor
-                ? $"{access.Name}[{row}]"
-                : $"transpose({access.Name})[{row}]";
-            memberWidth = rowMajor ? access.TypeInfo.Columns : access.TypeInfo.Rows;
+            element = access.MatrixRow(row);
+            memberWidth = access.MatrixRowWidth;
             return true;
         }
         element = access.Name;

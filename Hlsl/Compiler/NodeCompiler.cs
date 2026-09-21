@@ -1370,10 +1370,9 @@ public sealed class NodeCompiler
                         if (member.IsMatrix)
                         {
                             int row = (elementOffset % stride) - member.StartOffset / 4;
-                            string matrix = $"transpose({member.Name})";
-                            int rowWidth = member.TypeInfo.Rows;
-                            swizzle = GetAstSourceSwizzleName(componentsWithIndices, rowWidth, promoteToVectorSize);
-                            return $"{matrix}[{row}]{swizzle}";
+                            swizzle = GetAstSourceSwizzleName(
+                                componentsWithIndices, member.MatrixRowWidth, promoteToVectorSize);
+                            return $"{member.MatrixRow(row)}{swizzle}";
                         }
                         swizzle = GetAstSourceSwizzleName(
                             componentsWithIndices, member.Width, promoteToVectorSize, member.ComponentBase);

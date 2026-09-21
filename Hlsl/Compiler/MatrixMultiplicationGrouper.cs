@@ -244,9 +244,17 @@ public class MatrixMultiplicationGrouper
         }
 
         // In mul(matrix, vector) each dot is a row and its width the columns; in
-        // mul(vector, matrix) each dot is a column and its width the rows.
-        int rows = matrixByVector ? dotProductNodes.Count : first.Length;
-        int columns = matrixByVector ? first.Length : dotProductNodes.Count;
+        // mul(vector, matrix) each dot is a column and its width the rows. Which it
+        // is was read off the registers, and those are the matrix's rows where it
+        // was packed by row - so the same dots are the other multiplication, the
+        // way the compiler reads them back. Square, the two agree and nothing shows;
+        // a row major float4x3 measured as a float3x4 is no float4x3 and did not
+        // group at all.
+        bool byVector = matrix.MatrixType.ParameterClass == ParameterClass.MatrixRows
+            ? !matrixByVector
+            : matrixByVector;
+        int rows = byVector ? dotProductNodes.Count : first.Length;
+        int columns = byVector ? first.Length : dotProductNodes.Count;
         if (rows > matrix.MatrixType.Rows || columns > matrix.MatrixType.Columns)
         {
             return null;

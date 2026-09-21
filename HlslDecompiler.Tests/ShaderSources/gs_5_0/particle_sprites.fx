@@ -31,8 +31,10 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	}
 	float2 t0 = float2(saturate(i[0].texcoord) * spriteSize, saturate(i[0].texcoord / fadeDistance) * i[0].color.w);
 	for (int t1 = 0; t1 < 4; t1 = t1 + 1) {
-		o.sv_position = mul(float4((cameraRight * (2 * (float3)(t1 & 1) - 1) + (2 * (float3)(t1 >> 1) - 1) * cameraUp) * t0.x + i[0].position, 1), viewProjection);
-		o.texcoord = 0.5 * (2 * float2((float)(t1 & 1), (float)(t1 >> 1)) - 1) + 0.5;
+		float2 t2 = 2 * float2((float)(t1 & 1), (float)(t1 >> 1)) - 1;
+		float3 t3 = (cameraRight * t2.x + t2.y * cameraUp) * t0.x + i[0].position;
+		o.sv_position = mul(float4(t3, 1), viewProjection);
+		o.texcoord = 0.5 * t2 + 0.5;
 		o.color = float4(i[0].color.xyz, t0.y);
 		stream.Append(o);
 	}

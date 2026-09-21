@@ -254,6 +254,23 @@ public class HlslAstWriter : HlslWriter
                         && o.Value == inputNode)))
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
 
+        // What the outputs share among themselves and with the temps is named
+        // here, the way a return names it: a geometry shader writes its vertex
+        // through these statements and never through a return, and the corner
+        // offset a position and a texture coordinate both read was written out
+        // at each.
+        List<RegisterComponentKey> outputKeys = [.. outputs.Keys];
+        List<HlslTreeNode[]> hoistRoots = [.. tempGroups, .. outputKeys.Select(key => outputs[key])];
+        WriteSharedSubexpressions(hoistRoots);
+        for (int i = 0; i < tempGroups.Count; i++)
+        {
+            tempGroups[i] = hoistRoots[i];
+        }
+        for (int i = 0; i < outputKeys.Count; i++)
+        {
+            outputs[outputKeys[i]] = hoistRoots[tempGroups.Count + i];
+        }
+
         // An output that reads a temp's value as this statement computes it prints
         // after that temp's assignment; one that reads what the register held before
         // prints before the reassignment that overwrites it. Which of the two an

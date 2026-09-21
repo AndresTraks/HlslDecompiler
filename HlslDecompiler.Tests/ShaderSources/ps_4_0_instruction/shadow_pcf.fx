@@ -1,5 +1,8 @@
-float4x4 lightViewProj;
-float4 bias;
+cbuffer cb : register(b0)
+{
+	float4x4 lightViewProj;
+	float4 bias;
+};
 
 SamplerComparisonState shadowSamp;
 SamplerState samp;

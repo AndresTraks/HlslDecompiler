@@ -165,8 +165,10 @@ public abstract class HlslWriter
             int written = 0;
             foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
-                // A texture buffer's variables keep their block, below.
-                if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true })
+                // A texture buffer's variables keep their block, below, and so do
+                // a named constant buffer's.
+                if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true }
+                    || IsNamedBuffer(declaration))
                 {
                     continue;
                 }
@@ -178,6 +180,28 @@ public abstract class HlslWriter
             }
             if (written != 0)
             {
+                WriteLine();
+            }
+
+            // The globals are flattened - they bind to the one register the
+            // compiler gives them either way - but a buffer the shader named binds
+            // where it was declared, and with two of them which is which is the
+            // difference between the world matrix and the view projection. So a
+            // named buffer keeps its block and its slot.
+            foreach (var buffer in _registers.ConstantDeclarations
+                .OfType<D3D10ConstantDeclaration>()
+                .Where(IsNamedBuffer)
+                .GroupBy(d => d.BufferName))
+            {
+                WriteLine($"cbuffer {buffer.Key} : register(b{buffer.First().RegisterIndex})");
+                WriteLine("{");
+                indent = "\t";
+                foreach (D3D10ConstantDeclaration member in buffer)
+                {
+                    WriteLine(compiler.Compile(member));
+                }
+                indent = "";
+                WriteLine("};");
                 WriteLine();
             }
 
@@ -339,6 +363,13 @@ public abstract class HlslWriter
     /// float unless every store into the array is an integer, the same rule as an
     /// indexable temp. Nothing in the bytecode names them, so they keep the register.
     /// </summary>
+    // A constant buffer the shader declared and named, as against the $Globals
+    // fxc gathers the loose variables into.
+    private static bool IsNamedBuffer(ConstantDeclaration declaration)
+    {
+        return declaration is D3D10ConstantDeclaration { IsTextureBuffer: false, BufferName: not null and not "$Globals" };
+    }
+
     private void WriteThreadGroupSharedMemoryDeclarations()
     {
         if (_registers.ThreadGroupSharedMemory.Count == 0)

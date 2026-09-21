@@ -4,8 +4,11 @@ struct struct1
 	float4 colour;
 };
 
-struct1 lights[2];
-float4x4 wvp;
+cbuffer Lights : register(b0)
+{
+	struct1 lights[2];
+	float4x4 wvp;
+};
 
 struct VS_OUT
 {

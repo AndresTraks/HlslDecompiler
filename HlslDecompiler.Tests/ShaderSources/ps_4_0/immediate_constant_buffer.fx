@@ -1,4 +1,7 @@
-float4 weights;
+cbuffer cb : register(b0)
+{
+	float4 weights;
+};
 
 static const float4 icb[4] =
 {

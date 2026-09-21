@@ -5,8 +5,11 @@ struct struct1
 	float scale;
 };
 
-struct1 instances[8];
-float4x4 viewProj;
+cbuffer Instances : register(b0)
+{
+	struct1 instances[8];
+	float4x4 viewProj;
+};
 
 struct VS_IN
 {

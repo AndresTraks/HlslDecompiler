@@ -1,5 +1,8 @@
-float3 eye;
-float reflectivity;
+cbuffer cb : register(b0)
+{
+	float3 eye;
+	float reflectivity;
+};
 
 SamplerState samp;
 TextureCube env;

@@ -1,5 +1,8 @@
-float4x4 world;
-float4x4 viewProj;
+cbuffer cb : register(b0)
+{
+	float4x4 world;
+	float4x4 viewProj;
+};
 
 float4 main(float4 position : POSITION) : SV_Position
 {

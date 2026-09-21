@@ -1,4 +1,7 @@
-float4 arr[4];
+cbuffer cb : register(b0)
+{
+	float4 arr[4];
+};
 
 struct VS_IN
 {

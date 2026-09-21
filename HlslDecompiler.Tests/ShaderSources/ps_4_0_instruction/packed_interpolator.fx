@@ -1,8 +1,11 @@
-float4 scale;
-float3 sunDir;
-float fogStart;
-float fogEnd;
-float3 fogColour;
+cbuffer cb : register(b0)
+{
+	float4 scale;
+	float3 sunDir;
+	float fogStart;
+	float fogEnd;
+	float3 fogColour;
+};
 
 SamplerState samp;
 Texture2D layer0;

@@ -1038,7 +1038,124 @@ public class HlslAstWriter : HlslWriter
         }
         resourceInfo.AddRange(NameCandidates(candidates));
         resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
+        if (MergeVectorReads(resourceInfo, _lastRecording))
+        {
+            CloseUpNumbering(resourceInfo);
+        }
         return Renumber(resourceInfo);
+    }
+
+    /// <summary>
+    /// Scalars named apart and only ever read together, as one vector. Four dot
+    /// products are four instructions and four names, and where the shader goes on
+    /// to multiply the vector they make by a matrix, `float4(t13, t9, t5, t2)` was
+    /// written out at every row. Those become one variable, read whole, when every
+    /// read of each of them is a read of all of them in the one order, and there is
+    /// more than one such read. Asked of the compiled text rather than the graph: a
+    /// dot product is four multiplies on the graph and reads its vector nowhere, and
+    /// the graph's reader lists carry nodes that templates have long since replaced.
+    /// </summary>
+    private static bool MergeVectorReads(
+        List<HlslTreeNode[]> assignments, List<(HlslTreeNode[] Nodes, string Text)> recording)
+    {
+        if (recording == null)
+        {
+            return false;
+        }
+        var scalars = new Dictionary<TempVariableNode, HlslTreeNode[]>(ReferenceEqualityComparer.Instance);
+        foreach (HlslTreeNode[] group in assignments)
+        {
+            if (group.Length == 1 && group[0] is TempAssignmentNode assignment
+                && assignment.TempVariable.VariableSize == 1)
+            {
+                scalars[assignment.TempVariable] = group;
+            }
+        }
+        if (scalars.Count < 2)
+        {
+            return false;
+        }
+
+        // Every read of a scalar, and every run of two to four of them read as a
+        // vector, counted.
+        var reads = new Dictionary<TempVariableNode, List<NodeList>>(ReferenceEqualityComparer.Instance);
+        var runs = new Dictionary<NodeList, int>();
+        foreach ((HlslTreeNode[] nodes, _) in recording)
+        {
+            if (!nodes.Any(n => n is TempVariableNode v && scalars.ContainsKey(v)))
+            {
+                continue;
+            }
+            var list = new NodeList(nodes);
+            foreach (TempVariableNode variable in nodes.OfType<TempVariableNode>().Where(scalars.ContainsKey))
+            {
+                if (!reads.TryGetValue(variable, out List<NodeList> variableReads))
+                {
+                    reads[variable] = variableReads = [];
+                }
+                variableReads.Add(list);
+            }
+            if (nodes.Length is >= 2 and <= 4
+                && nodes.All(n => n is TempVariableNode v && scalars.ContainsKey(v))
+                && nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length)
+            {
+                runs[list] = runs.GetValueOrDefault(list) + 1;
+            }
+        }
+
+        var merged = HlslTreeNode.NewNodeSet();
+        foreach ((NodeList run, int count) in runs
+            .Where(r => r.Value > 1)
+            .OrderByDescending(r => r.Value * r.Key.Nodes.Length))
+        {
+            TempVariableNode[] variables = [.. run.Nodes.Cast<TempVariableNode>()];
+            // Read as this run and nowhere else, none of them merged already, and
+            // declared alike, since they are to share a declaration. Compiling the
+            // constructor compiles each component on its own and records that too,
+            // so a scalar is read alone exactly once per read of the run.
+            if (variables.Any(merged.Contains)
+                || variables.Any(v => reads[v].Any(read => !read.Equals(run) && read.Nodes.Length != 1)
+                    || reads[v].Count(read => read.Nodes.Length == 1) != count)
+                || variables.Any(v => v.IsInteger != variables[0].IsInteger
+                    || v.IsBits != variables[0].IsBits || v.IsUnsigned != variables[0].IsUnsigned))
+            {
+                continue;
+            }
+            var group = new HlslTreeNode[variables.Length];
+            for (int i = 0; i < variables.Length; i++)
+            {
+                group[i] = scalars[variables[i]][0];
+                assignments.Remove(scalars[variables[i]]);
+                variables[i].DeclarationIndex = variables[0].DeclarationIndex;
+                variables[i].ComponentIndex = i;
+                variables[i].VariableSize = variables.Length;
+                merged.Add(variables[i]);
+            }
+            assignments.Add(group);
+        }
+        return merged.Count != 0;
+    }
+
+    // Merging leaves the numbers the merged variables had unused, so the ones in
+    // use are closed up and the counter set back to follow them.
+    private void CloseUpNumbering(List<HlslTreeNode[]> assignments)
+    {
+        List<TempVariableNode> variables = [.. assignments
+            .SelectMany(group => group)
+            .OfType<TempAssignmentNode>()
+            .Select(assignment => assignment.TempVariable)];
+        List<int> used = [.. variables.Select(v => v.DeclarationIndex.Value).Distinct().OrderBy(i => i)];
+        if (used.Count == 0)
+        {
+            return;
+        }
+        int first = used[0];
+        var renumbered = used.Select((index, i) => (index, i)).ToDictionary(p => p.index, p => first + p.i);
+        foreach (TempVariableNode variable in variables)
+        {
+            variable.DeclarationIndex = renumbered[variable.DeclarationIndex.Value];
+        }
+        _compiler.NextTempVariableIndex = first + used.Count;
     }
 
     /// <summary>
@@ -1091,6 +1208,10 @@ public class HlslAstWriter : HlslWriter
     /// again: the expressions inside the named one are repeated less now, or not at
     /// all, and are measured afresh.
     /// </summary>
+    // The text of the statement as it stood when nothing was left to name, for the
+    // merge that reads it afterwards.
+    private List<(HlslTreeNode[] Nodes, string Text)> _lastRecording;
+
     private List<HlslTreeNode[]> NameRepeatedText(
         IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots)
     {
@@ -1161,6 +1282,7 @@ public class HlslAstWriter : HlslWriter
                     ?? SharedInstruction(readers, recording, roots);
             if (occurrences == null)
             {
+                _lastRecording = recording;
                 return assignments;
             }
             candidate = occurrences[0];

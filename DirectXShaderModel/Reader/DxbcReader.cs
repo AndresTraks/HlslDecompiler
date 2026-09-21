@@ -74,6 +74,26 @@ public class DxbcReader : BinaryReader
                     variableRecordSize = ReadInt32();
                 }
 
+                // Which cb register each buffer binds to, from the resource
+                // bindings. The buffers are listed in the order fxc found them,
+                // which is not their slot: one declared register(b3) and nothing
+                // else is the first in the list and reads through cb3.
+                var bufferSlots = new Dictionary<string, int>();
+                long bindingsStart = chunkOffset + resourceBindingOffset + 8;
+                for (int i = 0; i < resourceBindingCount; i++)
+                {
+                    BaseStream.Position = bindingsStart + i * 32;
+                    int boundNameOffset = ReadInt32();
+                    var boundType = (D3DShaderInputType)ReadInt32();
+                    BaseStream.Position = bindingsStart + i * 32 + 20;
+                    int boundPoint = ReadInt32();
+                    if (boundType is D3DShaderInputType.CBuffer or D3DShaderInputType.TBuffer)
+                    {
+                        BaseStream.Position = chunkOffset + boundNameOffset + 8;
+                        bufferSlots[ReadStringNullTerminated()] = boundPoint;
+                    }
+                }
+
                 var structuredElements = new Dictionary<string, ShaderTypeInfo>();
                 constantBufferOffset = chunkOffset + constantBufferOffset + 8;
                 for (int i = 0; i < constantBufferCount; i++)
@@ -103,8 +123,7 @@ public class DxbcReader : BinaryReader
 
                         ShaderTypeInfo typeInfo = ReadShaderTypeInfo(chunkOffset, variableTypeOffset);
 
-                        // TODO
-                        short registerNumber = (short)i;
+                        short registerNumber = (short)bufferSlots.GetValueOrDefault(bufferName, i);
                         short elementOffset = (short)j;
                         // A resource bind info buffer describes a structured
                         // buffer rather than being one, and is named after it.

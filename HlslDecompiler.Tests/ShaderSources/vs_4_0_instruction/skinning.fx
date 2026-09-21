@@ -1,5 +1,8 @@
-float4x4 bones[4];
-float4x4 viewProj;
+cbuffer cb : register(b0)
+{
+	float4x4 bones[4];
+	float4x4 viewProj;
+};
 
 struct VS_IN
 {

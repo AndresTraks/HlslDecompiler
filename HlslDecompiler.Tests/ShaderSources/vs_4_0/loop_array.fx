@@ -1,5 +1,8 @@
-float4 arr[8];
-int n;
+cbuffer cb : register(b0)
+{
+	float4 arr[8];
+	int n;
+};
 
 float4 main() : SV_Position
 {

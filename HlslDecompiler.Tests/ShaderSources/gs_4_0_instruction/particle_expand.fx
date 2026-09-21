@@ -1,6 +1,9 @@
-float4x4 viewProj;
-float3 right;
-float3 up;
+cbuffer cb : register(b0)
+{
+	float4x4 viewProj;
+	float3 right;
+	float3 up;
+};
 
 struct GS_IN
 {

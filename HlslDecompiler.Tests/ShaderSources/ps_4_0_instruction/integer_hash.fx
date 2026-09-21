@@ -1,5 +1,8 @@
-uint seed;
-uint count;
+cbuffer cb : register(b0)
+{
+	uint seed;
+	uint count;
+};
 
 float4 main() : SV_Target
 {

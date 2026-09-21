@@ -1,6 +1,9 @@
-﻿int a;
-uint b;
-int4 v;
+cbuffer cb : register(b0)
+{
+	int a;
+	uint b;
+	int4 v;
+};
 
 float4 main() : SV_Target
 {

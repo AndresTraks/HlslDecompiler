@@ -1,9 +1,12 @@
-float3 lightDirection;
-float lightIntensity;
-float3 cameraPosition;
-uint flags;
-float4 fogColor;
-float2 fogRange;
+cbuffer Frame : register(b0)
+{
+	float3 lightDirection;
+	float lightIntensity;
+	float3 cameraPosition;
+	uint flags;
+	float4 fogColor;
+	float2 fogRange;
+};
 
 SamplerState linearSampler;
 Texture2D albedoMap;

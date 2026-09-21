@@ -1,7 +1,10 @@
-float4x4 viewProj;
-float3 right;
-float3 up;
-float size;
+cbuffer cb : register(b0)
+{
+	float4x4 viewProj;
+	float3 right;
+	float3 up;
+	float size;
+};
 
 struct VS_IN
 {

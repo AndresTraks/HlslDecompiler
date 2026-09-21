@@ -1,6 +1,9 @@
-float4 first;
-float4 arr[8];
-int idx;
+cbuffer cb : register(b0)
+{
+	float4 first;
+	float4 arr[8];
+	int idx;
+};
 
 float4 main() : SV_Position
 {

@@ -1,5 +1,8 @@
-uint n;
-uint stride;
+cbuffer cb : register(b0)
+{
+	uint n;
+	uint stride;
+};
 
 RWStructuredBuffer<uint> data : register(u0);
 

@@ -1,6 +1,9 @@
-float time;
-float3 eyePos;
-float4 tint;
+cbuffer cb : register(b0)
+{
+	float time;
+	float3 eyePos;
+	float4 tint;
+};
 
 SamplerState samp;
 Texture2D normal0;

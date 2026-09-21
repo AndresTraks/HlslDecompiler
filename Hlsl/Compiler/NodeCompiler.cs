@@ -14,6 +14,14 @@ public sealed class NodeCompiler
     private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
     private int _tempAssignmentindexCounter = 0;
 
+    /// <summary>The number the next variable is given. Set back where variables
+    /// were merged and their numbers closed up.</summary>
+    public int NextTempVariableIndex
+    {
+        get => _tempAssignmentindexCounter;
+        set => _tempAssignmentindexCounter = value;
+    }
+
     /// <summary>
     /// Variables standing for a shared subexpression rather than for a register, one
     /// per component. They are numbered here because the counter lives here, and

@@ -1,5 +1,8 @@
-uint count;
-float4 k;
+cbuffer cb : register(b0)
+{
+	uint count;
+	float4 k;
+};
 
 StructuredBuffer<float4> input : register(t0);
 RWStructuredBuffer<float4> output : register(u0);

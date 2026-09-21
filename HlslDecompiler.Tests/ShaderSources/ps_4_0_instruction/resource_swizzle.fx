@@ -1,7 +1,10 @@
-float4x4 invViewProj;
-float3 lightPos;
-float lightRange;
-float4 lightColour;
+cbuffer cb : register(b0)
+{
+	float4x4 invViewProj;
+	float3 lightPos;
+	float lightRange;
+	float4 lightColour;
+};
 
 SamplerState samp;
 Texture2D albedoTex;

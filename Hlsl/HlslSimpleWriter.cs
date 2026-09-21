@@ -1589,9 +1589,16 @@ public class HlslSimpleWriter : HlslWriter
                         reinterpret ? $"asfloat({expression})" : expression);
                 }
                 break;
+            // Either half can be dropped: `sincos r0.x, null, r0.y` is a sin alone.
             case D3D10Opcode.SinCos:
-                WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
-                WriteResult(instruction, "{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                if (instruction.GetOperandType(0) != OperandType.Null)
+                {
+                    WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                }
+                if (instruction.GetOperandType(1) != OperandType.Null)
+                {
+                    WriteResult(instruction, "{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                }
                 break;
             case D3D10Opcode.Sqrt:
                 WriteResult(instruction, "{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));

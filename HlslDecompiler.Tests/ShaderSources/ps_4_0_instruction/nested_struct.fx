@@ -10,7 +10,10 @@ struct struct2
 	float4 b;
 };
 
-struct2 o;
+cbuffer cb : register(b0)
+{
+	struct2 o;
+};
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {

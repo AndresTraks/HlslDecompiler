@@ -5,8 +5,11 @@ struct struct1
 	float4 colour;
 };
 
-struct1 lights[2];
-float3 ambient;
+cbuffer cb : register(b0)
+{
+	struct1 lights[2];
+	float3 ambient;
+};
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {

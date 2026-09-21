@@ -1,5 +1,8 @@
-float4x4 viewProj;
-float4x4 instances[8];
+cbuffer cb : register(b0)
+{
+	float4x4 viewProj;
+	float4x4 instances[8];
+};
 
 struct VS_IN
 {

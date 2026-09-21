@@ -369,8 +369,10 @@ public class MatrixMultiplicationGrouper
 
     /// <summary>
     /// The matrix a row register belongs to: a matrix constant, an element of an
-    /// array of them, or a matrix member of a struct element - `instances[id].world`
-    /// read as cb0[r0.x + 2] - or null for a register that is no row of anything.
+    /// array of them, or a matrix member of a struct - `instances[id].world` read as
+    /// cb0[r0.x + 2], or `g_x.world` - or null for a register that is no row of
+    /// anything. A struct that is not an array has the one element, which is what
+    /// the element arithmetic here already amounts to for it.
     /// </summary>
     private RowMatrix GetRowMatrix(HlslTreeNode rowNode)
     {
@@ -385,7 +387,6 @@ public class MatrixMultiplicationGrouper
             return new RowMatrix(constant, constant.TypeInfo, null, 0);
         }
         if (constant.TypeInfo.MemberInfo != null
-            && constant.TypeInfo.NumElements > 1
             && key.RegisterKey is D3D10RegisterKey d3d10Key)
         {
             int stride = constant.RegistersPerElement;

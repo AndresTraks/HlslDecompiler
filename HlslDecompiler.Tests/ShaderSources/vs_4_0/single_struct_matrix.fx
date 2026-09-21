@@ -1,0 +1,29 @@
+struct struct1
+{
+	float4x4 shadowMatrix;
+	float4 colour;
+};
+
+cbuffer Lights : register(b0)
+{
+	struct1 light;
+	float4x4 wvp;
+};
+
+struct VS_OUT
+{
+	float4 sv_position : SV_Position;
+	float4 texcoord : TEXCOORD;
+	float4 color : COLOR;
+};
+
+VS_OUT main(float4 position : POSITION)
+{
+	VS_OUT o;
+
+	o.sv_position = mul(position, wvp);
+	o.texcoord = mul(position, light.shadowMatrix);
+	o.color = light.colour;
+
+	return o;
+}

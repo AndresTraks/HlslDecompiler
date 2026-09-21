@@ -622,9 +622,11 @@ public sealed class RegisterState
             return false;
         }
 
-        int elementCount = Math.Max(declaration.TypeInfo.NumElements, 1);
-        int registersPerElement = Math.Max(
-            d3d10Declaration.VariableSize / elementCount / ConstantRegisterSizeInBytes, 1);
+        // The declaration's own count, which rounds a part-used register up: an
+        // element of 72 bytes takes five and not four. Truncated, the last register
+        // of an element counted as the first of the next, and everything in it was
+        // named after whichever member sits at the top of the struct.
+        int registersPerElement = d3d10Declaration.RegistersPerElement;
         int registerOffset = registerKey.ConstantBufferOffset.Value
             - d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes;
         int elementIndex = registerOffset / registersPerElement;
@@ -634,18 +636,24 @@ public sealed class RegisterState
         string variable = declaration.TypeInfo.NumElements > 1
             ? $"{declaration.Name}[{elementIndex}]"
             : declaration.Name;
+        if (!TryGetMemberAccessAtOffset(
+                declaration.TypeInfo, variable, target, 0, out StructMemberAccess access))
+        {
+            return false;
+        }
         // A matrix member takes a row, or every row of it names the whole matrix -
         // `dot(position, lights[1].shadowMatrix)` four times over. Stored by
         // column, the register is a column, which is a row of the transpose.
-        if (TryGetMemberAccessAtOffset(declaration.TypeInfo, variable, target, 0, out StructMemberAccess access)
-            && access.IsMatrix)
+        if (access.IsMatrix)
         {
             int row = (target - access.StartOffset) / 4;
             element = $"transpose({access.Name})[{row}]";
             memberWidth = access.TypeInfo.Rows;
             return true;
         }
-        return TryGetMemberAtOffset(declaration.TypeInfo, variable, target, out element, out memberWidth);
+        element = access.Name;
+        memberWidth = access.Width;
+        return true;
     }
 
     /// <summary>
@@ -682,45 +690,26 @@ public sealed class RegisterState
             if (target < offset + width)
             {
                 string memberName = $"{name}.{info.Name}";
+                int elements = Math.Max(info.TypeInfo.NumElements, 1);
+                int elementStart = offset;
+                // An array member is named by element, and what the offset has left
+                // over addresses that element the way a lone one of its type would
+                // be addressed. Taken whole, every element reads as the first, and
+                // the member starts where the array does rather than where the
+                // element does - which is the component a swizzle is rebased onto.
+                if (elements > 1)
+                {
+                    int stride = width / elements;
+                    memberName += $"[{(target - offset) / stride}]";
+                    elementStart += (target - offset) / stride * stride;
+                }
                 if (info.TypeInfo.MemberInfo != null)
                 {
                     return TryGetMemberAccessAtOffset(
-                        info.TypeInfo, memberName, target - offset, start + offset, out member);
+                        info.TypeInfo, memberName, target - elementStart,
+                        start + elementStart, out member);
                 }
-                member = new StructMemberAccess(memberName, info.TypeInfo, start + offset);
-                return true;
-            }
-            offset += width;
-        }
-        return false;
-    }
-
-    // The member covering a float offset within a struct, descending into a member
-    // that is a struct itself so that Outer.a.v does not stop at Outer.a.
-    private static bool TryGetMemberAtOffset(
-        ShaderTypeInfo typeInfo, string name, int target, out string element, out int memberWidth)
-    {
-        element = null;
-        memberWidth = 4;
-        if (typeInfo.MemberInfo == null)
-        {
-            return false;
-        }
-
-        int offset = 0;
-        foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
-        {
-            int width = GetTypeWidth(member.TypeInfo);
-            if (target < offset + width)
-            {
-                string memberName = $"{name}.{member.Name}";
-                if (member.TypeInfo.MemberInfo != null)
-                {
-                    return TryGetMemberAtOffset(
-                        member.TypeInfo, memberName, target - offset, out element, out memberWidth);
-                }
-                element = memberName;
-                memberWidth = width;
+                member = new StructMemberAccess(memberName, info.TypeInfo, start + elementStart);
                 return true;
             }
             offset += width;
@@ -735,7 +724,13 @@ public sealed class RegisterState
         int elements = Math.Max(typeInfo.NumElements, 1);
         if (typeInfo.MemberInfo == null)
         {
-            return typeInfo.Rows * typeInfo.Columns * elements;
+            int element = typeInfo.Rows * typeInfo.Columns;
+            // Every element of an array starts on a register, so `float2 pair[2]`
+            // takes two of them and not one: pair[1] is at .x of the second, not at
+            // .z of the first. Packed as though it were tight, everything after the
+            // array is read a register early - and the array's own last elements
+            // fall outside the type altogether, to be named as some other member.
+            return elements > 1 ? (element + 3) / 4 * 4 * elements : element;
         }
 
         int size = 0;

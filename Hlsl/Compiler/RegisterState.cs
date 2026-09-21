@@ -454,16 +454,16 @@ public sealed class RegisterState
         throw new NotImplementedException();
     }
 
-    // A DXBC constant buffer register holds 16 bytes, so several scalars can share
-    // one. Naming by register alone cannot tell `float a, b` apart - both live in
-    // cb0[0], at .x and .y - so the component decides which declaration is meant.
-    // A struct constant occupies components of a register, so `s1.a` arrives as
-    // c0.x. Names the member that component belongs to, rather than letting it be
-    // written as a swizzle. Only scalar members are handled: naming a vector member
-    // would need the swizzle rebased onto it, which the caller cannot express yet.
-    public bool TryGetConstantMemberName(RegisterComponentKey registerComponentKey, out string name)
+    // A Shader Model 3 constant table gives every float-set struct member a register
+    // of its own: fxc packs nothing into a member's leftover components, so the
+    // register within an element names the member outright, and the register's own
+    // swizzle is the member's - there is nothing to rebase. Naming the member rather
+    // than swizzling the struct is what keeps `lights[1].color.xyz` from being
+    // written as `lights[4].xyz`, a field no struct has.
+    public bool TryGetConstantMember(
+        RegisterComponentKey registerComponentKey, out StructMemberAccess member)
     {
-        name = null;
+        member = null;
         if (registerComponentKey.RegisterKey is not D3D9RegisterKey d3d9RegisterKey
             || d3d9RegisterKey.Type != RegisterType.Const)
         {
@@ -476,24 +476,131 @@ public sealed class RegisterState
             return false;
         }
 
-        int component = registerComponentKey.ComponentIndex
-            + (d3d9RegisterKey.Number - declaration.RegisterIndex) * 4;
-        int offset = 0;
-        foreach (ShaderStructMemberInfo member in declaration.TypeInfo.MemberInfo)
+        int registerOffset = d3d9RegisterKey.Number - declaration.RegisterIndex;
+        int registersPerElement = Math.Max(declaration.RegistersPerElement, 1);
+        string variable = declaration.TypeInfo.NumElements > 1
+            ? $"{declaration.Name}[{registerOffset / registersPerElement}]"
+            : declaration.Name;
+        return TryGetStructMemberAtRegister(
+            declaration, variable, registerOffset % registersPerElement, out member);
+    }
+
+    /// <summary>
+    /// Which member of an element of a struct array a register within the element
+    /// falls in, for an element picked at run time - `lights[i]` read as c[aL.x + 4]
+    /// where 4 is the register within the element.
+    /// </summary>
+    public static bool TryGetStructMemberAtRegister(
+        ConstantDeclaration declaration,
+        string element,
+        int registerWithinElement,
+        out StructMemberAccess member)
+    {
+        member = null;
+        if (declaration.TypeInfo.MemberInfo == null)
         {
-            int size = member.TypeInfo.Rows * member.TypeInfo.Columns;
-            if (component < offset + size)
+            return false;
+        }
+        return TryGetD3D9MemberAtRegister(declaration.TypeInfo, element, registerWithinElement, out member);
+    }
+
+    // The member occupying a register of an element, descending into a member that
+    // is a struct itself. The register alone picks it, since each member owns one.
+    private static bool TryGetD3D9MemberAtRegister(
+        ShaderTypeInfo typeInfo, string name, int register, out StructMemberAccess member)
+    {
+        member = null;
+        int offset = 0;
+        foreach (ShaderStructMemberInfo info in typeInfo.MemberInfo)
+        {
+            int registers = GetD3D9MemberRegisterCount(info.TypeInfo);
+            if (register < offset + registers)
             {
-                if (size != 1)
+                string memberName = $"{name}.{info.Name}";
+                int within = register - offset;
+                if (info.TypeInfo.MemberInfo != null)
                 {
-                    return false;
+                    // A member that is an array of structs takes its element count of
+                    // elements, each as many registers as the struct: the register
+                    // picks the element, and what is left over picks the member within
+                    // it. Descending on the register as it stands names every element
+                    // after the first as though it were the first, and then runs off
+                    // the end of the members and names nothing at all.
+                    int perElement = registers / Math.Max(info.TypeInfo.NumElements, 1);
+                    if (info.TypeInfo.NumElements > 1)
+                    {
+                        memberName += $"[{within / perElement}]";
+                    }
+                    return TryGetD3D9MemberAtRegister(
+                        info.TypeInfo, memberName, within % perElement, out member);
                 }
-                name = declaration.Name + "." + member.Name;
+                if (info.TypeInfo.Rows > 1)
+                {
+                    return TryGetD3D9MatrixMemberRow(
+                        info.TypeInfo, memberName, within, out member);
+                }
+                // An array of scalars or vectors takes a register per element, and the
+                // register within the member says which element it reads.
+                if (info.TypeInfo.NumElements > 1)
+                {
+                    memberName += $"[{within}]";
+                }
+                member = new StructMemberAccess(memberName, info.TypeInfo, offset * 4);
                 return true;
             }
-            offset += size;
+            offset += registers;
         }
         return false;
+    }
+
+    // One register of a matrix member is one column - or one row where the matrix is
+    // packed by row. HLSL subscripts by row whatever the packing, so a column is
+    // named through a transpose, whose row is the matrix's column.
+    private static bool TryGetD3D9MatrixMemberRow(
+        ShaderTypeInfo typeInfo, string name, int register, out StructMemberAccess member)
+    {
+        member = null;
+        bool rowMajor = typeInfo.ParameterClass == ParameterClass.MatrixRows;
+        int registersPerMatrix = rowMajor ? typeInfo.Rows : typeInfo.Columns;
+        int elements = Math.Max(typeInfo.NumElements, 1);
+        if (register >= registersPerMatrix * elements)
+        {
+            return false;
+        }
+        string indexed = elements > 1 ? $"{name}[{register / registersPerMatrix}]" : name;
+        int row = register % registersPerMatrix;
+        int rowWidth = rowMajor ? typeInfo.Columns : typeInfo.Rows;
+        ShaderTypeInfo rowType = new ShaderTypeInfo(
+            ParameterClass.Vector, typeInfo.ParameterType, 1, rowWidth, 1, null);
+        member = new StructMemberAccess(
+            rowMajor ? $"{indexed}[{row}]" : $"transpose({indexed})[{row}]",
+            rowType, register * 4);
+        return true;
+    }
+
+    // How many registers a member takes. A leaf vector or scalar has one to itself
+    // and never shares it; a matrix, a struct or an array takes one per row, column,
+    // element or member, and an array multiplies the whole.
+    private static int GetD3D9MemberRegisterCount(ShaderTypeInfo typeInfo)
+    {
+        int elements = Math.Max(typeInfo.NumElements, 1);
+        if (typeInfo.MemberInfo != null)
+        {
+            int registers = 0;
+            foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+            {
+                registers += GetD3D9MemberRegisterCount(member.TypeInfo);
+            }
+            return registers * elements;
+        }
+        if (typeInfo.Rows > 1)
+        {
+            int registers = typeInfo.ParameterClass == ParameterClass.MatrixRows
+                ? typeInfo.Rows
+                : typeInfo.Columns;
+            return registers * elements;
+        }
+        return elements;
     }
 
     // Which member of a struct a register component falls in, and how wide that
@@ -814,10 +921,13 @@ public sealed class RegisterState
                     if (constDecl.TypeInfo.Rows == 1)
                     {
                         // Each element of `float4 m[4]` gets its own register, so the
-                        // element has to be named - every one of them read as `m`.
+                        // element has to be named - every one of them read as `m`. A
+                        // struct spans several registers per element, so the register
+                        // counts elements times registers rather than elements alone.
                         if (constDecl.TypeInfo.NumElements > 1)
                         {
-                            int element = registerKey.Number - constDecl.RegisterIndex;
+                            int element = (registerKey.Number - constDecl.RegisterIndex)
+                                / Math.Max(constDecl.RegistersPerElement, 1);
                             return $"{constDecl.Name}[{element}]";
                         }
                         return constDecl.Name;

@@ -1403,6 +1403,28 @@ public sealed class NodeCompiler
             {
                 arrayName = array.Name;
                 int registerOffset = d3d9ArrayKey.Number - array.RegisterIndex;
+                if (array.TypeInfo.MemberInfo != null)
+                {
+                    // An array of structs: the index counts registers, so the element
+                    // is that over the registers one takes - and the register left over
+                    // within the element names the member, each of which owns one.
+                    int stride = Math.Max(array.RegistersPerElement, 1);
+                    string element = CompileRegisterIndexAsElement(relativeAddress, stride);
+                    if (registerOffset / stride != 0)
+                    {
+                        element += $" + {registerOffset / stride}";
+                    }
+                    if (RegisterState.TryGetStructMemberAtRegister(
+                            array, $"{arrayName}[{element}]", registerOffset % stride,
+                            out StructMemberAccess member))
+                    {
+                        string memberSwizzle = member.Width <= 1
+                            ? ""
+                            : GetAstSourceSwizzleName(
+                                componentsWithIndices, member.Width, promoteToVectorSize);
+                        return $"{member.Name}{memberSwizzle}";
+                    }
+                }
                 if (array.TypeInfo.Rows > 1)
                 {
                     // An array of matrices takes two subscripts. The register index
@@ -1439,11 +1461,18 @@ public sealed class NodeCompiler
                     componentBase);
             }
 
-            // A named struct member already identifies the component, so it takes no
-            // swizzle of its own.
-            if (_registers.TryGetConstantMemberName(shaderInput.RegisterComponentKey, out string memberName))
+            // A named struct member identifies its register outright - each member
+            // owns one - so the swizzle reads the member's own components. A scalar
+            // has none to pick, and broadcasts as it is where a wider value is wanted.
+            if (_registers.TryGetConstantMember(shaderInput.RegisterComponentKey, out StructMemberAccess member))
             {
-                return memberName;
+                if (member.Width <= 1)
+                {
+                    return member.Name;
+                }
+                string memberSwizzle = GetAstSourceSwizzleName(
+                    componentsWithIndices, member.Width, promoteToVectorSize);
+                return $"{member.Name}{memberSwizzle}";
             }
 
             string name = _registers.GetRegisterName(shaderInput.RegisterComponentKey);

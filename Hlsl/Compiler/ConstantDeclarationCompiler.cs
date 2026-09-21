@@ -40,10 +40,13 @@ public sealed class ConstantDeclarationCompiler
         }
     }
 
+    // A member is an array the same way a variable is, and it is read as one -
+    // `g_s.weights[2]`. Declared without the bound it is a field the struct does
+    // not have, and nothing that names an element of it compiles.
     public string Compile(ShaderStructMemberInfo member)
     {
         string typeName = GetTypeName(member.TypeInfo);
-        return $"{typeName} {member.Name};";
+        return $"{typeName} {member.Name}{GetArrayCountSpecifier(member.TypeInfo)};";
     }
 
     public string Compile(ConstantDeclaration declaration)
@@ -53,9 +56,17 @@ public sealed class ConstantDeclarationCompiler
             return Compile(d3D9ConstantDeclaration);
         }
         string typeName = GetTypeName(declaration.TypeInfo);
-        int arrayCount = Math.Max(declaration.TypeInfo.NumElements, 1);
-        string arrayCountSpecifier = arrayCount > 1 ? $"[{arrayCount}]" : "";
-        return $"{typeName} {declaration.Name}{arrayCountSpecifier};";
+        return $"{typeName} {declaration.Name}{GetArrayCountSpecifier(declaration.TypeInfo)};";
+    }
+
+    // Elements is the array length straight from the constant table, and a
+    // non-array reports 0 or 1. RegisterCount cannot stand in for it: `float4
+    // floats[8]` takes 8 registers but each element is one register, not four
+    // components, so dividing by the component count gave [2].
+    private static string GetArrayCountSpecifier(ShaderTypeInfo typeInfo)
+    {
+        int arrayCount = Math.Max(typeInfo.NumElements, 1);
+        return arrayCount > 1 ? $"[{arrayCount}]" : "";
     }
 
     public string Compile(D3D9ConstantDeclaration declaration)
@@ -72,13 +83,8 @@ public sealed class ConstantDeclarationCompiler
             char type = "btcs"[registerSet];
             registerSpecifier = $" : register({type}{declaration.RegisterIndex})";
         }
-        // Elements is the array length straight from the constant table, and a
-        // non-array reports 0 or 1. RegisterCount cannot stand in for it: `float4
-        // floats[8]` takes 8 registers but each element is one register, not four
-        // components, so dividing by the component count gave [2].
-        int arrayCount = Math.Max(declaration.TypeInfo.NumElements, 1);
-        string arrayCountSpecifier = arrayCount > 1 ? $"[{arrayCount}]" : "";
-        return $"{typeName} {declaration.Name}{arrayCountSpecifier}{registerSpecifier};";
+        return $"{typeName} {declaration.Name}"
+            + $"{GetArrayCountSpecifier(declaration.TypeInfo)}{registerSpecifier};";
     }
 
     // bool, int, uint, float and so on, which the enum already spells.

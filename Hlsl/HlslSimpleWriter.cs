@@ -1892,14 +1892,20 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
 
-                // A struct member has a name of its own, and the component it sits in
-                // is not a swizzle of the struct.
-                if (_registers.TryGetConstantMemberName(
+                // A struct member has a name of its own, and the register it owns
+                // swizzles the member rather than the struct. A scalar is named whole:
+                // HLSL broadcasts it where a wider value is wanted. A register indexed
+                // at run time can read any member, so it is left to the naming below.
+                if (!instruction.Params.HasRelativeAddressing(srcIndex)
+                    && _registers.TryGetConstantMember(
                         new RegisterComponentKey(
                             registerKey, instruction.GetSourceSwizzleComponents(srcIndex)[0]),
-                        out string memberName))
+                        out StructMemberAccess member))
                 {
-                    return ApplyModifier(instruction.GetSourceModifier(srcIndex), memberName);
+                    string memberSource = member.Width <= 1
+                        ? member.Name
+                        : member.Name + instruction.GetSourceSwizzleName(srcIndex, destinationLength);
+                    return ApplyModifier(instruction.GetSourceModifier(srcIndex), memberSource);
                 }
 
                 ConstantDeclaration decl = _registers.FindConstant(registerKey);

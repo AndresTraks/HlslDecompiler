@@ -1134,6 +1134,13 @@ public sealed class NodeCompiler
     // The index into an array of matrices counts registers, so it is already the
     // element index times the row count. Undo that multiplication where it is
     // visible rather than emitting a division that only fxc would fold away.
+    public string CompileRegisterIndexAsElement(RelativeAddressNode address, int rows)
+    {
+        return address.IndexCountsElements
+            ? Compile(new[] { address.Index })
+            : CompileRegisterIndexAsElement(address.Index, rows);
+    }
+
     public string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
     {
         // DXBC shifts where D3D9 multiplies: `ishl r0.x, v1.x, l(2)` is the element
@@ -1296,7 +1303,7 @@ public sealed class NodeCompiler
                     // registers one takes, and the constant part of the offset says
                     // which register of the element - which member - is read.
                     int stride = constantBufferArray.RegistersPerElement;
-                    string element = CompileRegisterIndexAsElement(relativeAddress.Index, stride);
+                    string element = CompileRegisterIndexAsElement(relativeAddress, stride);
                     if (elementOffset / stride != 0)
                     {
                         element += $" + {elementOffset / stride}";
@@ -1325,7 +1332,7 @@ public sealed class NodeCompiler
                     // is left. Indexing it as though each register were an element
                     // gives dot(float4, float4x4).
                     string matrixElement = CompileRegisterIndexAsElement(
-                        relativeAddress.Index, constantBufferArray.RegistersPerElement);
+                        relativeAddress, constantBufferArray.RegistersPerElement);
                     string matrixName = $"transpose({arrayName}[{matrixElement}])";
                     return $"{matrixName}[{elementOffset}]{swizzle}";
                 }

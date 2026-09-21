@@ -20,6 +20,14 @@ public class RelativeAddressNode : HlslTreeNode, IHasComponentIndex
 
     public HlslTreeNode Index => Inputs[0];
 
+    /// <summary>
+    /// Whether the index counts elements of the array rather than registers. A
+    /// register index into an array of matrices is the element times the rows,
+    /// and where the bytecode's multiplication was visible it has been taken off
+    /// at the read - so the index is the element and needs no dividing back.
+    /// </summary>
+    public bool IndexCountsElements { get; init; }
+
     public override string ToString()
     {
         return $"{RegisterComponentKey}[{Index}]";

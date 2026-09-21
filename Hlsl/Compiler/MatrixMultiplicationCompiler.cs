@@ -17,8 +17,10 @@ public sealed class MatrixMultiplicationCompiler
         {
             // Rows read through the address register: the index counts registers
             // across the array, and the element is that over the registers one takes.
-            string element = nodeCompiler.CompileRegisterIndexAsElement(
-                context.ElementIndexNode, context.MatrixDeclaration.RegistersPerElement);
+            string element = context.ElementIndexCountsElements
+                ? nodeCompiler.Compile(context.ElementIndexNode)
+                : nodeCompiler.CompileRegisterIndexAsElement(
+                    context.ElementIndexNode, context.MatrixDeclaration.RegistersPerElement);
             if (context.ElementIndex is int and not 0)
             {
                 element += $" + {context.ElementIndex}";

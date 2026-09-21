@@ -2575,8 +2575,44 @@ public class InstructionParser
             (int)operandIndices[0].Immediate,
             (int)operandIndices[ElementIndex].Immediate);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
-        return new RelativeAddressNode(
-            new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
+        var componentKey = new RegisterComponentKey(registerKey, swizzle[componentIndex]);
+
+        // An index into an array of matrices counts registers, so fxc multiplies
+        // the element by the rows first - `ishl r0.x, v1.x, l(2)`, or an imul by 4.
+        // Reading through that here, rather than dividing it back at the write,
+        // keeps the product from being a value: named where four rows read it,
+        // it came out as `int4 t2 = t1 * 4` and `bones[t2.x / 4]` four times over.
+        ConstantDeclaration array = _registerState.FindConstant(registerKey, swizzle[componentIndex]);
+        int stride = array?.RegistersPerElement ?? 1;
+        if (stride > 1 && TryStripElementStride(index, stride, out HlslTreeNode element))
+        {
+            return new RelativeAddressNode(componentKey, element) { IndexCountsElements = true };
+        }
+        return new RelativeAddressNode(componentKey, index);
+    }
+
+    private static bool TryStripElementStride(HlslTreeNode index, int stride, out HlslTreeNode element)
+    {
+        if (index is ShiftLeftOperation shift
+            && shift.Inputs[1] is ConstantNode amount
+            && stride == 1 << (int)amount.Value)
+        {
+            element = shift.Inputs[0];
+            return true;
+        }
+        if (index is MultiplyOperation multiply)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (multiply.Inputs[i] is ConstantNode constant && constant.Value == stride)
+                {
+                    element = multiply.Inputs[1 - i];
+                    return true;
+                }
+            }
+        }
+        element = null;
+        return false;
     }
 
     // v[r0.x][0] reads a vertex of a geometry shader input chosen at run time. The

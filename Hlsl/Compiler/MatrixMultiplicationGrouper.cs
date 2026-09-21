@@ -165,6 +165,7 @@ public class MatrixMultiplicationGrouper
         {
             ElementIndex = GetElementIndex(matrix, firstMatrixRow[0]),
             ElementIndexNode = RowIndex(firstMatrixRow[0]),
+            ElementIndexCountsElements = firstMatrixRow[0] is RelativeAddressNode { IndexCountsElements: true },
             MemberPath = rowMatrix.MemberPath,
             MatrixTypeInfo = rowMatrix.MatrixType,
         };
@@ -450,6 +451,9 @@ public class MatrixMultiplicationContext
     public int? ElementIndex { get; init; }
     // The index expression of rows read through the address register, or null.
     public HlslTreeNode ElementIndexNode { get; init; }
+    // Whether that index already counts elements, the stride having been taken
+    // off at the read.
+    public bool ElementIndexCountsElements { get; init; }
     // For a matrix member of a struct element, the member's name - ".world" -
     // following the element subscript, and the member's own type.
     public string MemberPath { get; init; }

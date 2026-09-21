@@ -512,6 +512,14 @@ public sealed class NodeCompiler
             : compiled;
     }
 
+    // Whether the text is a vector constructor - float2(...), int3(...) - and
+    // nothing beside it.
+    private static bool IsConstructor(string text)
+    {
+        return IsOneCall(text)
+            && System.Text.RegularExpressions.Regex.IsMatch(text, @"^(float|int|uint|bool)[234]\(");
+    }
+
     // Whether the text is one function call and nothing beside it: a name, and a
     // bracket that opens after it and closes at the end.
     private static bool IsOneCall(string text)
@@ -1124,6 +1132,23 @@ public sealed class NodeCompiler
                         }
                     }
 
+                    // A select whose conditions do not make one vector - two unrelated
+                    // tests packed into a register - is two selects, not a select on
+                    // a constructor: `float2(a, b) ? 1.0 : 0` is HLSL, and reads as
+                    // nothing anyone wrote.
+                    if (components.Count > 1 && IsConstructor(value1))
+                    {
+                        string selects = string.Join(", ", components.Select(c =>
+                            $"{Compile([c.Inputs[0]])} ? {Branch(c.Inputs[1])} : {Branch(c.Inputs[2])}"));
+                        return $"float{components.Count}({selects})";
+
+                        // The same point on a float branch as the whole select puts.
+                        string Branch(HlslTreeNode branch)
+                        {
+                            string text = Compile([branch]);
+                            return branch is ConstantNode { IntegerValue: null } ? WithDecimalPoint(text) : text;
+                        }
+                    }
                     return $"{value1} ? {value2} : {value3}";
                 }
             default:

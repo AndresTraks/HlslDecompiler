@@ -25,14 +25,10 @@ public class DotProduct3Template : IGroupTemplate
             return null;
         }
 
-        MultiplyOperation cz;
+        HlslTreeNode third;
         if (addition.Addend1 is DotProductOperation dot && dot.X.Length == 2)
         {
-            cz = addition.Addend2 as MultiplyOperation;
-            if (cz == null)
-            {
-                return null;
-            }
+            third = addition.Addend2;
         }
         else
         {
@@ -41,12 +37,31 @@ public class DotProduct3Template : IGroupTemplate
             {
                 return null;
             }
+            third = addition.Addend1;
+        }
 
-            cz = addition.Addend1 as MultiplyOperation;
-            if (cz == null)
+        // The same folded 1 DotProduct4Template reads back: a point in the plane
+        // transformed by a matrix is float4(xy, 1, 1) against it, and both ones
+        // fold away, so the sum stops at two products and two bare matrix
+        // components. Only where the bare addend is a matrix component, so an
+        // unrelated addend is not taken for one.
+        if (third is not MultiplyOperation cz)
+        {
+            HlslTreeNode xThird = dot.X.Inputs[1];
+            HlslTreeNode yThird = dot.Y.Inputs[1];
+            if (allowMatrixColumn && _templateMatcher.SharesMatrixColumnOrRow(xThird, third))
             {
-                return null;
+                return new DotProductContext(
+                    new GroupNode(dot.X.Inputs[0], xThird, third),
+                    new GroupNode(dot.Y.Inputs[0], yThird, new ConstantNode(1)));
             }
+            if (allowMatrixColumn && _templateMatcher.SharesMatrixColumnOrRow(yThird, third))
+            {
+                return new DotProductContext(
+                    new GroupNode(dot.X.Inputs[0], xThird, new ConstantNode(1)),
+                    new GroupNode(dot.Y.Inputs[0], yThird, third));
+            }
+            return null;
         }
 
         HlslTreeNode b = dot.X.Inputs[1];

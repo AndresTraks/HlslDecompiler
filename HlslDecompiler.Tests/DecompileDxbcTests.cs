@@ -58,6 +58,8 @@ public class DecompileDxbcTests
     [TestCase("ps_4_1", "gather")]
     [TestCase("ps_4_1", "sample_offsets")]
     [TestCase("ps_4_1", "multisample")]
+    [TestCase("ps_4_1", "decal_blend")]
+    [TestCase("ps_4_0", "branch_flag")]
     [TestCase("ps_4_1", "sample_modifier")]
     [TestCase("ps_4_1", "sample_index")]
     [TestCase("ps_4_1", "cascade_shadow")]

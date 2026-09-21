@@ -298,7 +298,13 @@ public class InstructionParser
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareResource(registerKey,
                             instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
-                        SeedResourceComponents(registerKey);
+                        // Every component, the way a texture is declared: a load
+                        // names the view with the swizzle that picks its result.
+                        for (int component = 0; component < 4; component++)
+                        {
+                            var destinationKey = new RegisterComponentKey(registerKey, component);
+                            SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
+                        }
                         break;
                     }
                 case D3D10Opcode.StoreUAVTyped:
@@ -946,6 +952,14 @@ public class InstructionParser
         RegisterKey registerKey = instruction.GetParamRegisterKey(0);
         HlslTreeNode condition = GetActiveOutput(new RegisterComponentKey(registerKey, component));
 
+        // Two conditions combined are a condition: `if (a < b && c < d)`, and not
+        // `if ((a < b && c < d) != 0)`, which fxc compiles with a compare and an
+        // and the original had no need of.
+        if (instruction.TestNonZero && condition is LogicalAndOperation or LogicalOrOperation)
+        {
+            return condition;
+        }
+
         ComparisonNode comparison;
         if (condition is ComparisonNode conditionComparison)
         {
@@ -959,7 +973,10 @@ public class InstructionParser
         }
         else
         {
-            comparison = new ComparisonNode(condition, new ConstantNode(0), IfComparison.NE);
+            comparison = new ComparisonNode(condition, new ConstantNode(0), IfComparison.NE)
+            {
+                IsBitsTest = true,
+            };
         }
         // if_z, breakc_z and the rest take the branch when the register is zero, which
         // for a comparison mask is when the comparison does not hold.
@@ -1848,7 +1865,9 @@ public class InstructionParser
                     pending.Push(reader);
                     continue;
                 }
-                bool? consumed = reader is ComparisonNode comparison ? comparison.IsInteger : reader.ConsumesInteger;
+                bool? consumed = reader is ComparisonNode comparison
+                    ? (comparison.IsBitsTest ? null : comparison.IsInteger)
+                    : reader.ConsumesInteger;
                 if (consumed == null)
                 {
                     continue;
@@ -2204,7 +2223,11 @@ public class InstructionParser
         const int AddressParamIndex = 1;
         const int ResourceParamIndex = 2;
 
-        var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
+        // The resource operand's swizzle says which channel of the texel each
+        // component of the result is: `ld r0.z, r0.z, t2.x` puts the red channel
+        // in z. Reading it at the first component alone named the result by the
+        // destination, and a Texture2D<float> came out read as `.z`.
+        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent] as RegisterInputNode;
         bool isUnorderedAccessView = instruction.Opcode == D3D10Opcode.LdUAVTyped;
         ResourceDefinition definition = _registerState.ResourceDefinitions
             .Where(d => d.ShaderInputType == (isUnorderedAccessView
@@ -2236,7 +2259,7 @@ public class InstructionParser
                 ? new ConstantNode((int)instruction.GetParamInt(SampleIndexParamIndex, 0))
                 : GetInputComponents(instruction, SampleIndexParamIndex, 1)[0];
 
-        return new ResourceLoadNode(resource, address, outputComponent, sampleIndex)
+        return new ResourceLoadNode(resource, address, resource.RegisterComponentKey.ComponentIndex, sampleIndex)
         {
             SampleOffsets = instruction.SampleOffsets,
         };

@@ -31,8 +31,48 @@ public class StatementFinalizer
         RemoveUnusedAssignmentInputOutput();
         RemoveUnusedAssignments(_statements);
         InsertTempVariableAssignments(_statements);
+        LowerResolvedPhis();
         LoopRecovery.Recover(_statements);
         SetReturnStatement(_statements);
+    }
+
+    /// <summary>
+    /// A join phi whose every leaf is one variable is that variable. Most are
+    /// replaced as the branches are lowered; one that merges another join - an if
+    /// inside the then branch of an if/else hands its own join up - is not, since
+    /// the inner join is a phi and not the variable it stands for until the
+    /// branches are unified, and the statements after the outer if went on holding
+    /// it: it reached the writer as a phi of phis.
+    /// </summary>
+    private void LowerResolvedPhis()
+    {
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var entry in statement.Outputs.Concat(statement.Inputs)
+                .Where(e => e.Value is PhiNode { IsLoopHeader: false })
+                .Distinct()
+                .ToList())
+            {
+                TempVariableNode variable = GetExistingVariable(entry.Value);
+                if (variable == null)
+                {
+                    continue;
+                }
+                foreach (var reader in entry.Value.Outputs.ToList())
+                {
+                    for (int j = 0; j < reader.Inputs.Count; j++)
+                    {
+                        if (ReferenceEquals(reader.Inputs[j], entry.Value))
+                        {
+                            reader.Inputs[j] = variable;
+                        }
+                    }
+                    variable.Outputs.Add(reader);
+                }
+                entry.Value.Outputs.Clear();
+                ReplaceInStatementNodes(entry.Value, variable);
+            }
+        });
     }
 
     private void RemoveUnusedAssignmentInputOutput()
@@ -275,8 +315,23 @@ public class StatementFinalizer
                     // readers as much as the maker, and there are none afterwards.
                     bool isBits = IsBitsVariable(tempValue, isInteger);
                     tempValue.Outputs.Clear();
-                    TempVariableNode tempVariable = tempInputAssignment?.TempVariable
-                        ?? tempInputVariable
+                    // A register fxc reuses for a value of the other type is not
+                    // one variable: a flag register that goes on to hold a dot
+                    // product is an int variable assigned asint of a float, and
+                    // every read of it after that reads the bits. Where the value
+                    // says what it is and the variable already there says
+                    // otherwise, the value gets a variable of its own - unless the
+                    // value feeds a phi over the variable, which is what makes it
+                    // that variable in the first place.
+                    TempVariableNode existing = tempInputAssignment?.TempVariable ?? tempInputVariable;
+                    if (existing != null && isIntegerValue != null && existing.IsInteger != isIntegerValue
+                        && !tempUsages.Any(u => u is PhiNode))
+                    {
+                        existing = null;
+                        tempInputAssignment = null;
+                        tempInputVariable = null;
+                    }
+                    TempVariableNode tempVariable = existing
                         ?? new TempVariableNode
                         {
                             IsInteger = isInteger,
@@ -401,13 +456,22 @@ public class StatementFinalizer
             return variable;
         }
         // A loop header phi is left alone: its variable is declared before the loop,
-        // which the backedge handling below already accounts for.
-        if (inputAssignment is PhiNode phi
-            && !phi.IsLoopHeader
-            && phi.Inputs.Count != 0
-            && phi.Inputs[0] is TempVariableNode merged
-            && phi.Inputs.All(i => ReferenceEquals(i, merged)))
+        // which the backedge handling below already accounts for. A join phi may
+        // merge another join phi - an if inside the then branch of an if/else
+        // hands its own join up - so the question is asked of each input in turn:
+        // a phi of phis is the one variable when every leaf is.
+        if (inputAssignment is PhiNode phi && !phi.IsLoopHeader && phi.Inputs.Count != 0)
         {
+            TempVariableNode merged = null;
+            foreach (HlslTreeNode input in phi.Inputs)
+            {
+                TempVariableNode leaf = GetExistingVariable(input);
+                if (leaf == null || (merged != null && !ReferenceEquals(leaf, merged)))
+                {
+                    return null;
+                }
+                merged = leaf;
+            }
             return merged;
         }
         return null;
@@ -1118,6 +1182,10 @@ public class StatementFinalizer
             FloatToHalfOperation => true,
             HalfToFloatOperation => false,
             ConstantNode constant => constant.IntegerValue != null,
+            // A comparison makes a mask, all ones or all zeroes, which is an
+            // integer: a variable holding one beside the -1 the other branch moved
+            // in was declared float, and the -1 printed as the NaN its bits are.
+            ComparisonNode => true,
             // A byte address buffer hands back uints whatever was stored, and a
             // structured one hands back what its element type says, which is
             // asked of the reflection data elsewhere.

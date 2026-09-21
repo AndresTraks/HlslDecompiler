@@ -90,13 +90,14 @@ public class RoundTripCostTests
             + "itself: fxc has no reason to keep a variable the shader never asked "
             + "for, and the two statements do not fold back into one cmp. Was 17 "
             + "while the if side was empty and the body sat in the else."),
-        ["cs_5_0/tile_luminance"] = (48,
+        ["cs_5_0/tile_luminance"] = (47,
             "The exit test of a for loop. `for (uint stride = 32; stride > 0; "
             + "stride >>= 1)` is what the source said and what is written back, "
             + "and fxc compiles its condition as a compare, an if and a break where "
             + "the original had one breakc_nz - the same shape conditional_return "
             + "has for retc. The rest of the shader comes back instruction for "
-            + "instruction."),
+            + "instruction. Was 48 while the if over two conditions was written "
+            + "`!= 0`."),
 
         // fxc's doing: the output is right and it compiles it differently.
         ["vs_3_0/loop_repeat_count"] = (8,
@@ -127,6 +128,15 @@ public class RoundTripCostTests
             + "twice. The components one instruction wrote are named together "
             + "where the text writes them apart, but not where one of them is "
             + "folded into a longer expression."),
+        ["ps_4_1/decal_blend"] = (66,
+            "Five instructions, and they are a register reused. The decal's "
+            + "position is one mul over three rows, and the z of it is compared and "
+            + "its register taken over by the mask, so the xy come back as a "
+            + "float4x2 multiply and the z as a dot on its own, and the one lt over "
+            + "three components is three - twice over, for the two decals. And the "
+            + "flag `decalCount <= 1` is tested again as `decalCount > 1` where the "
+            + "original read the register. Telling a reused register from a carried "
+            + "one is the liveness the finalizer has not got."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

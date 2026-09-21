@@ -14,6 +14,10 @@ public class HlslAstWriter : HlslWriter
     private TemplateMatcher _templateMatcher;
     private int _loopDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
+
+    // The numbers of the variables declared so far, for the declarations that
+    // have to know whether a name is taken whatever nodes stand under it.
+    private readonly HashSet<int> _declaredIndices = [];
     // The variables each Consume call was named into, by the slot that identifies
     // it, so that a second statement reading the same call finds them.
     private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _consumeVariables =
@@ -113,7 +117,64 @@ public class HlslAstWriter : HlslWriter
                 _everDeclaredVariables.Add(assignment.TempVariable);
             }
         }
-        return _compiler.Compile(group);
+        // Declared above the block it is assigned in, or under this name already,
+        // so the assignment is a reassignment however the finalizer marked it.
+        if (group[0] is TempAssignmentNode { IsReassignment: false } declaredAbove
+            && (_declaredVariables.Contains(declaredAbove.TempVariable)
+                || (declaredAbove.TempVariable.DeclarationIndex is int declaredIndex
+                    && _declaredIndices.Contains(declaredIndex))))
+        {
+            foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
+            {
+                assignment.IsReassignment = true;
+            }
+        }
+        // A variable assigned a part at a time - the xy of a register by one
+        // instruction and the zw by another, and named as one - is declared once,
+        // whole, and each part is then assigned by its mask. Compiled as two
+        // declarations it was `int3 t0 = a; int3 t0 = b;`.
+        // Not the calls that fill a whole variable through out parameters, which
+        // are one assignment however wide.
+        if (group[0] is TempAssignmentNode { IsReassignment: false } first
+            && first.Value is not ConsumeNode and not ResourceInfoNode
+            && first.TempVariable.VariableSize is int size && group.Length < size)
+        {
+            string type = first.TempVariable.IsInteger ? first.TempVariable.IntegerTypeName : "float";
+            // Compiling the variable is what numbers it.
+            _compiler.Compile(group.Select(node => ((TempAssignmentNode)node).TempVariable));
+            WriteLine($"{type}{size} t{first.TempVariable.DeclarationIndex};");
+            _declaredIndices.Add(first.TempVariable.DeclarationIndex.Value);
+            foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
+            {
+                assignment.IsReassignment = true;
+                _declaredVariables.Add(assignment.TempVariable);
+            }
+            MarkPartsReassigned(first.TempVariable);
+        }
+        string compiled = _compiler.Compile(group);
+        if (group[0] is TempAssignmentNode { IsReassignment: false, TempVariable.DeclarationIndex: int declared })
+        {
+            _declaredIndices.Add(declared);
+        }
+        return compiled;
+    }
+
+    // The other parts of a variable declared whole are reassignments now, whatever
+    // statement they are in.
+    private void MarkPartsReassigned(TempVariableNode declared)
+    {
+        new StatementVisitor(_ast.Statements).Visit(statement =>
+        {
+            foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
+            {
+                if (assignment.TempVariable.DeclarationIndex == declared.DeclarationIndex
+                    && !ReferenceEquals(assignment.TempVariable, declared))
+                {
+                    assignment.IsReassignment = true;
+                    _declaredVariables.Add(assignment.TempVariable);
+                }
+            }
+        });
     }
 
     private void WriteStatements(IList<IStatement> statements)
@@ -766,9 +827,13 @@ public class HlslAstWriter : HlslWriter
         IDictionary<RegisterComponentKey, HlslTreeNode> outputs,
         IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
     {
+        // Not the variables the block was handed - but a register the block was
+        // handed holding something else, and assigns a fresh variable to, is the
+        // block's to declare: a mask register reused for a flag inside an if/else
+        // had the flag declared inside one branch and read after the join.
         var newAssignments = outputs
             .Where(o => o.Value is TempVariableNode)
-            .Where(o => !inputs.ContainsKey(o.Key))
+            .Where(o => !(inputs.TryGetValue(o.Key, out HlslTreeNode input) && HandsVariable(input, o.Value)))
             .ToDictionary();
         if (newAssignments.Count > 0)
         {
@@ -779,8 +844,11 @@ public class HlslAstWriter : HlslWriter
 
                 var variable = group.First() as TempVariableNode;
                 // An enclosing block may already declare it, when a nested if merged
-                // into the same variable. Declaring it again would shadow it.
-                if (!_declaredVariables.Add(variable))
+                // into the same variable. Declaring it again would shadow it. By
+                // number as well as by node: the xy of a register assigned before
+                // the block and the xyz the block assigns are two sets of nodes
+                // under one name, and the block redeclared it.
+                if (!_declaredVariables.Add(variable) || !_declaredIndices.Add(variable.DeclarationIndex.Value))
                 {
                     continue;
                 }
@@ -789,6 +857,16 @@ public class HlslAstWriter : HlslWriter
                 WriteLine($"{type}{size} t{variable.DeclarationIndex};");
             }
         }
+    }
+
+    // Whether the value a block is handed for a register is the variable the
+    // block assigns: the variable itself, its assignment, or a join that merges it
+    // - the if before this one assigning the same register hands a phi over it.
+    private static bool HandsVariable(HlslTreeNode input, HlslTreeNode variable)
+    {
+        return ReferenceEquals(input, variable)
+            || (input is TempAssignmentNode assignment && ReferenceEquals(assignment.TempVariable, variable))
+            || (input is PhiNode phi && phi.Inputs.Any(i => HandsVariable(i, variable)));
     }
 
     private void WriteReturnStatement(ReturnStatement returnStatement)
@@ -1151,7 +1229,27 @@ public class HlslAstWriter : HlslWriter
     /// dot product is four multiplies on the graph and reads its vector nowhere, and
     /// the graph's reader lists carry nodes that templates have long since replaced.
     /// </summary>
-    private static bool MergeVectorReads(
+    private TempVariableNode[] InMatrixRowOrder(
+        TempVariableNode[] variables, Dictionary<TempVariableNode, HlslTreeNode[]> scalars)
+    {
+        MatrixMultiplicationGrouper matrices = _grouper.MatrixMultiplicationGrouper;
+        var rows = new List<(TempVariableNode Variable, int Register)>();
+        foreach (TempVariableNode variable in variables)
+        {
+            if (((TempAssignmentNode)scalars[variable][0]).Value is not DotProductOperation dot
+                || !variables.All(other => ReferenceEquals(other, variable)
+                    || (((TempAssignmentNode)scalars[other][0]).Value is DotProductOperation otherDot
+                        && matrices.AreRowsOfOneMatrix(dot, otherDot)))
+                || matrices.MatrixRowRegister(dot) is not int register)
+            {
+                return variables;
+            }
+            rows.Add((variable, register));
+        }
+        return [.. rows.OrderBy(r => r.Register).Select(r => r.Variable)];
+    }
+
+    private bool MergeVectorReads(
         List<HlslTreeNode[]> assignments, List<(HlslTreeNode[] Nodes, string Text)> recording)
     {
         if (recording == null)
@@ -1217,6 +1315,10 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
+            // Rows of one matrix in the order the matrix has them, so that the
+            // four dots read as the one mul they are; anything else in the order
+            // it was read.
+            variables = InMatrixRowOrder(variables, scalars);
             var group = new HlslTreeNode[variables.Length];
             for (int i = 0; i < variables.Length; i++)
             {
@@ -1823,7 +1925,7 @@ public class HlslAstWriter : HlslWriter
     /// multi output node have an index apiece, and those one instruction wrote have
     /// the component it wrote them to; either says what order to put them in.
     /// </summary>
-    private static List<HlslTreeNode[]> InWrittenOrder(List<HlslTreeNode[]> occurrences)
+    private List<HlslTreeNode[]> InWrittenOrder(List<HlslTreeNode[]> occurrences)
     {
         HlslTreeNode[] first = occurrences[0];
         if (first.Length < 2)
@@ -1831,7 +1933,19 @@ public class HlslAstWriter : HlslWriter
             return occurrences;
         }
         int[] order = null;
-        if (first.All(n => n is IHasComponentIndex)
+        // Rows of one matrix against one vector in the order the matrix has
+        // them, so that the four dots read as the one mul they are. Found in
+        // reader order they were `float4(row1, row0, row3, row2)`.
+        int?[] rows = [.. first.Select(n => n is DotProductOperation dot
+            && first.All(other => ReferenceEquals(other, n)
+                || (other is DotProductOperation otherDot && _grouper.MatrixMultiplicationGrouper.AreRowsOfOneMatrix(dot, otherDot)))
+            ? _grouper.MatrixMultiplicationGrouper.MatrixRowRegister(dot)
+            : null)];
+        if (rows.All(r => r != null) && rows.Distinct().Count() == first.Length)
+        {
+            order = [.. Enumerable.Range(0, first.Length).OrderBy(i => rows[i])];
+        }
+        else if (first.All(n => n is IHasComponentIndex)
             && first.Select(n => ((IHasComponentIndex)n).ComponentIndex).Distinct().Count() == first.Length
             && first.Select(n => n.GetType()).Distinct().Count() == 1)
         {

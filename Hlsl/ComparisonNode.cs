@@ -36,6 +36,14 @@ public class ComparisonNode : HlslTreeNode
     /// </summary>
     public bool IsUnsigned { get; }
 
+    /// <summary>
+    /// Whether this is an if_z or if_nz over a register that is no comparison - a
+    /// test of the bits for zero. It says nothing about what those bits are, so it
+    /// types nothing: taken as a float comparison, the -1 a branch moved into a
+    /// mask register was retyped as the NaN its bits are.
+    /// </summary>
+    public bool IsBitsTest { get; init; }
+
     /// <summary>The same comparison with the opposite outcome, or null for one
     /// that has none - a stale loop counter test, say.</summary>
     public ComparisonNode Inverted()
@@ -52,7 +60,7 @@ public class ComparisonNode : HlslTreeNode
         };
         return inverted == IfComparison.None
             ? null
-            : new ComparisonNode(Left, Right, inverted, IsInteger, IsUnsigned);
+            : new ComparisonNode(Left, Right, inverted, IsInteger, IsUnsigned) { IsBitsTest = IsBitsTest };
     }
 
     public override string ToString()

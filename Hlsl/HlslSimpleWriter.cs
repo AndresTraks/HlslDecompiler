@@ -2453,7 +2453,11 @@ public class HlslSimpleWriter : HlslWriter
                 && GetDestinationStorage(instruction, instruction.GetDestinationParamIndex() ?? 0)
                     == ComponentStorage.Integer)
             {
-                int length = instruction.GetDestinationMaskLength();
+                // As wide as the operand where it has a width of its own - a load's
+                // address is three wide under a one wide load - and as the
+                // destination otherwise. A scalar cast over a vector takes the first
+                // component and spreads it.
+                int length = maskedLength ?? instruction.GetDestinationMaskLength();
                 string size = length == 1 ? "" : length.ToString();
                 return ApplyModifier(modifier,
                     $"(int{size}){string.Format("{0}{1}", registerName, writeMaskName)}");

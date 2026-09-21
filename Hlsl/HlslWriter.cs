@@ -283,6 +283,13 @@ public abstract class HlslWriter
             }
 
             int declared = 0;
+            // fxc binds a texture or a sampler declared without a register to the
+            // next free slot in declaration order, so one declared with a gap
+            // before it - stencil at t1, scene at t3 - has to say where it goes,
+            // or it comes back bound elsewhere: a different texture, and the app
+            // none the wiser.
+            int nextTexture = 0;
+            int nextSampler = 0;
             foreach (var resource in _registers.ResourceDefinitions)
             {
                 // A texture buffer is declared by its block, with the constants,
@@ -293,7 +300,9 @@ public abstract class HlslWriter
                 }
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
-                    WriteLine($"{resource.TypeName} {resource.Name};");
+                    string slot = resource.BindPoint == nextTexture ? "" : $" : register(t{resource.BindPoint})";
+                    nextTexture = resource.BindPoint + 1;
+                    WriteLine($"{resource.TypeName} {resource.Name}{slot};");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
@@ -302,7 +311,9 @@ public abstract class HlslWriter
                     string samplerType = resource.Flags.HasFlag(D3DShaderInputFlags.ComparisonSampler)
                         ? "SamplerComparisonState"
                         : "SamplerState";
-                    WriteLine($"{samplerType} {resource.Name};");
+                    string slot = resource.BindPoint == nextSampler ? "" : $" : register(s{resource.BindPoint})";
+                    nextSampler = resource.BindPoint + 1;
+                    WriteLine($"{samplerType} {resource.Name}{slot};");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Structured)
                 {

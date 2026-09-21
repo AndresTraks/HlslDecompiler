@@ -410,6 +410,14 @@ public sealed class IntegerOperandAnalysis
                 {
                     consumed = GetStructuredElementKind(reader);
                 }
+                // An immediate a branch tests for zero is a flag - the 0 or -1 fxc
+                // moves into a register to carry a condition past an else - and a
+                // flag is an integer. Read as bits it typed nothing, and where the
+                // register also held a float elsewhere, the -1 printed as NaN.
+                if (reader.Opcode.HasBooleanTest())
+                {
+                    consumed = ValueKind.Integer;
+                }
                 if (consumed != ValueKind.Integer && consumed != ValueKind.Float)
                 {
                     // A mov or a movc reads nothing of its own; it carries the
@@ -908,6 +916,15 @@ public sealed class IntegerOperandAnalysis
         };
     }
 
+    private static bool LoadsIntegerTexels(ShaderModel shader, D3D10Instruction load)
+    {
+        const int ResourceIndex = 2;
+        int resource = load.GetParamRegisterNumber(ResourceIndex);
+        return shader.ResourceDefinitions?
+            .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.Texture && d.BindPoint == resource)
+            ?.IsIntegerReturnType == true;
+    }
+
     private bool IsIntegerIndexableTemp(int register, HashSet<RegisterComponentKey> integerRegisters)
     {
         bool anyStore = false;
@@ -1042,6 +1059,15 @@ public sealed class IntegerOperandAnalysis
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
+            // A texel fetched out of a Texture2D<uint> is an integer, which the
+            // reflection data says and the instruction does not. Without this a
+            // stencil mask anded with 4 had the 4 typed by nothing, and it came
+            // out as the denormal its bits spell.
+            if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS
+                && LoadsIntegerTexels(shader, instruction))
+            {
+                AddDestinationComponents(instruction, integerRegisters);
+            }
             // ftoi and ftou read floats and write integers, so the destination is
             // an integer component but the source is not.
             if (instruction.Opcode != D3D10Opcode.Ftoi
@@ -1082,6 +1108,17 @@ public sealed class IntegerOperandAnalysis
                     }
                     foreach (RegisterComponentKey component in group)
                     {
+                        // Not an input or a constant: those are typed by their
+                        // declarations, seeded above, and a float input moved into
+                        // a register that holds integers elsewhere is still a
+                        // float. Typed as an integer by the move, the move looked
+                        // like a carry between two integer registers and lost the
+                        // asint that puts a float into one.
+                        if (component.RegisterKey is D3D10RegisterKey
+                            { OperandType: OperandType.Input or OperandType.ConstantBuffer })
+                        {
+                            continue;
+                        }
                         changed |= integerRegisters.Add(component);
                     }
                 }

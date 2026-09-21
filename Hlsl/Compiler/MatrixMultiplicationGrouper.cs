@@ -327,6 +327,26 @@ public class MatrixMultiplicationGrouper
         return NodeGrouper.AreNodesEquivalent(vectorA, vectorB);
     }
 
+    /// <summary>
+    /// The register a dot product's matrix row is read from, or null where the dot
+    /// is not a row of a matrix against a vector. Four rows merged into one
+    /// variable in the order they were read come out as a matrix multiply only in
+    /// the order they sit in the matrix.
+    /// </summary>
+    public int? MatrixRowRegister(DotProductOperation dot)
+    {
+        IList<HlslTreeNode> row = TryGetMatrixRow(dot, dot, 0);
+        if (row == null)
+        {
+            return null;
+        }
+        // A constant buffer register is its offset; its number is the buffer.
+        RegisterComponentKey key = RowKey(row[0]);
+        return key.RegisterKey is D3D10RegisterKey { ConstantBufferOffset: int offset }
+            ? offset
+            : key.RegisterKey.Number;
+    }
+
     // A matrix row is read either straight from its register or through the
     // address register - `c1` or `c1[a0.x]` - and a row of the same element is
     // one register on from the row before it, read the same way.

@@ -323,7 +323,7 @@ public sealed class NodeCompiler
         {
             // Phis are an IR construct. StatementFinalizer lowers them to a temp
             // variable plus its assignments; reaching here means that did not happen.
-            throw new InvalidOperationException("Phi node reached compilation without being lowered.");
+            throw new InvalidOperationException($"Phi node reached compilation without being lowered: {first} with inputs {string.Join(", ", first.Inputs.Select(i => i.GetType().Name + ":" + i))}.");
         }
 
         throw new NotImplementedException("Unsupported node: " + first.GetType().Name);
@@ -697,6 +697,10 @@ public sealed class NodeCompiler
         // flag on it, and an operation that makes an integer reads integers. The
         // operators that read bits, and the moves that carry them, are named
         // separately because they make an integer out of whatever they are given.
+        bool wasReadingAsBits = _readingAsBits;
+        _readingAsBits = operation is BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
+            or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
+            or BitFieldExtractOperation or BitFieldInsertOperation;
         _readingAsFloat = operation switch
         {
             BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
@@ -712,8 +716,16 @@ public sealed class NodeCompiler
         finally
         {
             _readingAsFloat = wasReadingAsFloat;
+            _readingAsBits = wasReadingAsBits;
         }
     }
+
+    /// <summary>
+    /// Set while the operands of a bitwise operator or a shift are compiled. What
+    /// those read is the bits of whatever they are given, so an integer texel read
+    /// there is left as the integer it is - `asfloat(mask.Load(p)) & 4` is X3082.
+    /// </summary>
+    private bool _readingAsBits;
 
     private string CompileOperationOperands(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
     {
@@ -1479,7 +1491,7 @@ public sealed class NodeCompiler
             // bits it holds and not the number they make: a G-buffer packs a depth
             // into such a texture beside a normal, and converting the depth would
             // give whatever number its bits happen to be.
-            if (resourceDefinition.IsIntegerReturnType
+            if (resourceDefinition.IsIntegerReturnType && !_readingAsBits && !_assigningToInteger
                 && components.All(c => InstructionParser.GetConsumedType(c) != true))
             {
                 loaded = $"asfloat({loaded})";

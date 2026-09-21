@@ -1146,7 +1146,11 @@ public class D3D10Machine
         int[] address = [.. Ints(instruction, 1)];
         float[] coordinates = WithOffsets(instruction,
             [address[0] * 0.01f, address[1] * 0.01f, address[2] * 0.01f, 0]);
-        return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates));
+        // As many coordinates as the texture has, the way a sample reads: the
+        // component after them is the mip level, which the two programs need not
+        // agree on the way they put it in a register.
+        int resource = instruction.GetParamRegisterNumber(2);
+        return Pack(Texture.Sample(resource, coordinates, TextureDimensions(resource)));
     }
 
     /// <summary>

@@ -110,6 +110,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "sample_position")]
     [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "tangent_lighting")]
+    [TestCase("ps_5_0", "integer_target")]
     [TestCase("vs_5_0", "skinned_instances")]
     [TestCase("cs_5_0", "tile_luminance")]
     [TestCase("cs_5_0", "prefix_flags")]

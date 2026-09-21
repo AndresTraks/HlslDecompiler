@@ -946,11 +946,15 @@ public class HlslAstWriter : HlslWriter
     }
 
     // An output the signature types as a float takes a float, so bits reaching one
-    // are reinterpreted. One it types as an integer takes the integer as it is.
+    // are reinterpreted. One it types as an integer takes the integer as it is - and
+    // as an integer, so that a whole register returned at once builds an intN and not
+    // a floatN: the int-to-float-to-int the float constructor does each way is a
+    // lossy round trip, not the identity it looks like once the value leaves the
+    // range a float holds exactly.
     private string CompileOutput(RegisterKey outputKey, IEnumerable<HlslTreeNode> nodes)
     {
         return _registers.RegisterDeclarations[outputKey].TypeName.Contains("int")
-            ? _compiler.Compile(nodes)
+            ? _compiler.CompileAsInteger(nodes)
             : _compiler.CompileAsFloat(nodes);
     }
 

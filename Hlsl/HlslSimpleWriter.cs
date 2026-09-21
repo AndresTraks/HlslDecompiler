@@ -947,6 +947,15 @@ public class HlslSimpleWriter : HlslWriter
         {
             return true;
         }
+        // An output register is typed by its signature, not by the storage analysis -
+        // which files every output as numeric, since a float register holds whatever
+        // it is given. A bitwise write to an int output is an integer write: it wants
+        // `o.z = x ^ y`, and `o.z = asfloat(x ^ y)` converts the bits it was writing
+        // into the number they happen to make.
+        if (instruction.GetOperandType(destinationIndex.Value) == OperandType.Output)
+        {
+            return !IsFloatOutput(instruction, destinationIndex.Value);
+        }
         return GetDestinationStorage(instruction, destinationIndex.Value) == ComponentStorage.Integer;
     }
 

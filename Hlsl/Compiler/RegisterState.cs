@@ -565,7 +565,7 @@ public sealed class RegisterState
                 // first of those.
                 if (info.TypeInfo.Rows > 1)
                 {
-                    int perMatrix = GetD3D9MatrixRegisterCount(info.TypeInfo);
+                    int perMatrix = MatrixRegisterCount(info.TypeInfo);
                     if (within >= registers)
                     {
                         return false;
@@ -592,13 +592,29 @@ public sealed class RegisterState
         return false;
     }
 
-    // One register of a matrix is one column - or one row where it was packed by
-    // row - so a matrix takes that many, and an array of them that many apiece.
-    private static int GetD3D9MatrixRegisterCount(ShaderTypeInfo typeInfo)
+    /// <summary>
+    /// One register of a matrix is one column - or one row where it was packed by
+    /// row - so a matrix takes that many, and an array of them that many apiece.
+    /// </summary>
+    public static int MatrixRegisterCount(ShaderTypeInfo typeInfo)
     {
         return typeInfo.ParameterClass == ParameterClass.MatrixRows
             ? typeInfo.Rows
             : typeInfo.Columns;
+    }
+
+    /// <summary>
+    /// The row or column one register of a matrix holds, named. HLSL subscripts by
+    /// row whatever the packing, so a column - which is what a register holds
+    /// unless the matrix was packed by row - is reached through the transpose, and
+    /// a row must not be: `transpose(m)[i]` of a float4x3 has only three rows to
+    /// give and the fourth register of one asks for a subscript it has not got.
+    /// </summary>
+    public static string MatrixRegisterName(ShaderTypeInfo typeInfo, string name, int register)
+    {
+        return typeInfo.ParameterClass == ParameterClass.MatrixRows
+            ? $"{name}[{register}]"
+            : $"transpose({name})[{register}]";
     }
 
     // How many registers a member takes. A leaf vector or scalar has one to itself
@@ -618,7 +634,7 @@ public sealed class RegisterState
         }
         if (typeInfo.Rows > 1)
         {
-            return GetD3D9MatrixRegisterCount(typeInfo) * elements;
+            return MatrixRegisterCount(typeInfo) * elements;
         }
         return elements;
     }
@@ -958,8 +974,19 @@ public sealed class RegisterState
                         }
                         return constDecl.Name;
                     }
-                    int column = registerKey.Number - constDecl.RegisterIndex;
-                    return $"transpose({constDecl.Name})[{column}]";
+                    // A matrix takes a register per column, or per row where it was
+                    // packed by row, and an array of them that many apiece - so the
+                    // element and the register within it have to be separated the
+                    // same way the constant buffer side does it.
+                    int matrixOffset = registerKey.Number - constDecl.RegisterIndex;
+                    int registersPerMatrix = MatrixRegisterCount(constDecl.TypeInfo);
+                    string matrix = constDecl.Name;
+                    if (constDecl.TypeInfo.NumElements > 1)
+                    {
+                        matrix += $"[{matrixOffset / registersPerMatrix}]";
+                        matrixOffset %= registersPerMatrix;
+                    }
+                    return MatrixRegisterName(constDecl.TypeInfo, matrix, matrixOffset);
                 case RegisterType.Temp:
                     return "r" + registerKey.Number;
                 case RegisterType.Sampler:
@@ -1002,11 +1029,11 @@ public sealed class RegisterState
                     int rowIndex = registerOffset;
                     if (declaration.TypeInfo.NumElements > 1)
                     {
-                        int rowsPerElement = declaration.TypeInfo.Rows;
+                        int rowsPerElement = MatrixRegisterCount(declaration.TypeInfo);
                         matrixName += $"[{registerOffset / rowsPerElement}]";
                         rowIndex = registerOffset % rowsPerElement;
                     }
-                    return $"transpose({matrixName})[{rowIndex}]";
+                    return MatrixRegisterName(declaration.TypeInfo, matrixName, rowIndex);
                 case OperandType.Immediate32:
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:

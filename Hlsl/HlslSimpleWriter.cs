@@ -1962,25 +1962,19 @@ public class HlslSimpleWriter : HlslWriter
                     string element = instruction.Params.HasRelativeAddressing(srcIndex)
                         ? $"{GetRelativeAddressIndex(instruction, srcIndex)} / {rows}"
                         : (offset / rows).ToString(_culture);
-                    string matrix = $"transpose({decl.Name}[{element}])";
+                    string matrix = RegisterState.MatrixRegisterName(
+                        decl.TypeInfo, $"{decl.Name}[{element}]", offset % rows);
                     return ApplyModifier(instruction.GetSourceModifier(srcIndex),
-                        $"{matrix}[{offset % rows}]"
-                            + instruction.GetSourceSwizzleName(srcIndex, destinationLength));
+                        matrix + instruction.GetSourceSwizzleName(srcIndex, destinationLength));
                 }
 
                 // The registers are the matrix's rows where it was packed row major
-                // and its columns otherwise, and the constant table says which. HLSL
-                // subscripts by row whatever the packing, so a column has to be got
-                // at through a transpose.
-                if (decl.TypeInfo.ParameterClass == ParameterClass.MatrixRows)
+                // and its columns otherwise, and the constant table says which.
+                if (decl.TypeInfo.ParameterClass is ParameterClass.MatrixRows
+                    or ParameterClass.MatrixColumns)
                 {
-                    int row = registerKey.Number - decl.RegisterIndex;
-                    sourceRegisterName = $"{decl.Name}[{row}]";
-                }
-                else if (decl.TypeInfo.ParameterClass == ParameterClass.MatrixColumns)
-                {
-                    int column = registerKey.Number - decl.RegisterIndex;
-                    sourceRegisterName = $"transpose({decl.Name})[{column}]";
+                    sourceRegisterName = RegisterState.MatrixRegisterName(
+                        decl.TypeInfo, decl.Name, registerKey.Number - decl.RegisterIndex);
                 }
                 else if (decl.TypeInfo.NumElements > 1)
                 {
@@ -2120,8 +2114,10 @@ public class HlslSimpleWriter : HlslWriter
             // An array of matrices takes two subscripts. The index counts registers,
             // which is rows across the whole array, so the element is that over the row
             // count - `dot(position, instances[r0.x])` asks for a dot with a matrix.
-            string matrix = $"transpose({declaration.Name}[{index} / {declaration.RegistersPerElement}])";
-            return $"{matrix}[{elementOffset}]";
+            return RegisterState.MatrixRegisterName(
+                declaration.TypeInfo,
+                $"{declaration.Name}[{index} / {declaration.RegistersPerElement}]",
+                elementOffset);
         }
         return elementOffset == 0
             ? $"{declaration.Name}[{index}]"

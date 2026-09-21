@@ -1388,8 +1388,9 @@ public sealed class NodeCompiler
                     // gives dot(float4, float4x4).
                     string matrixElement = CompileRegisterIndexAsElement(
                         relativeAddress, constantBufferArray.RegistersPerElement);
-                    string matrixName = $"transpose({arrayName}[{matrixElement}])";
-                    return $"{matrixName}[{elementOffset}]{swizzle}";
+                    string matrixName = RegisterState.MatrixRegisterName(
+                        constantBufferArray.TypeInfo, $"{arrayName}[{matrixElement}]", elementOffset);
+                    return $"{matrixName}{swizzle}";
                 }
                 if (elementOffset != 0)
                 {
@@ -1436,8 +1437,9 @@ public sealed class NodeCompiler
                     // index over the row count and the row is the constant left over.
                     string element = CompileRegisterIndexAsElement(
                         relativeAddress, array.RegistersPerElement);
-                    string matrix = $"transpose({arrayName}[{element}])";
-                    return $"{matrix}[{registerOffset}]{swizzle}";
+                    string matrix = RegisterState.MatrixRegisterName(
+                        array.TypeInfo, $"{arrayName}[{element}]", registerOffset);
+                    return $"{matrix}{swizzle}";
                 }
                 if (registerOffset != 0)
                 {

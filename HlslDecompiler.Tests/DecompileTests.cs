@@ -128,6 +128,7 @@ public class DecompileTests
     [TestCase("vs_2_0", "fog_lighting")]
     [TestCase("vs_3_0", "dynamic_struct_index")]
     [TestCase("vs_3_0", "dynamic_struct_matrix")]
+    [TestCase("vs_3_0", "row_major_matrix43")]
     [TestCase("vs_3_0", "submatrix43_vector3_multiply")]
     [TestCase("vs_3_0", "vector2_matrix22_multiply")]
     [TestCase("vs_3_0", "vector2_matrix32_multiply")]

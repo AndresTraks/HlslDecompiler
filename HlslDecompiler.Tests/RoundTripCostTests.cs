@@ -46,6 +46,17 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["vs_3_0/row_major_matrix43"] = (32,
+            "Three times over, and it is the grouping rather than the arithmetic. A "
+            + "row major matrix multiplied by a vector gathers its columns across "
+            + "registers - one component of each - and the grouper reads which side "
+            + "the matrix goes on off those registers, which for this packing is the "
+            + "other way round. Square, the two readings agree and the multiply "
+            + "groups; a float4x3 measured as a float3x4 is no float4x3, so every "
+            + "dot product is written out on its own and fxc compiles each gathered "
+            + "column as four movs."),
+        ["vs_4_0/row_major_matrix43"] = (33,
+            "The same as vs_3_0/row_major_matrix43, a constant buffer load apart."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

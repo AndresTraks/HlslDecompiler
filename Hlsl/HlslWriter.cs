@@ -483,8 +483,10 @@ public abstract class HlslWriter
         }
         if (_shader.Type == ShaderType.Geometry)
         {
+            // One member per register across the vertices - and per semantic
+            // within a register, where two are packed into one.
             inputs = inputs
-                .GroupBy(r => (r.RegisterKey as D3D10RegisterKey).GetGSBaseKey())
+                .GroupBy(r => ((r.RegisterKey as D3D10RegisterKey).GetGSBaseKey(), r.Semantic))
                 .Select(g => g.First())
                 .ToList();
         }

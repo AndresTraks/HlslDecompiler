@@ -129,6 +129,14 @@ public class RoundTripCostTests
             + "cheaper, and that is the bytecode's trick rather than the shader's "
             + "meaning: the constructor says which component the height goes in and "
             + "the mad makes the reader work it out. Kept, knowingly."),
+        ["gs_5_0/particle_sprites"] = (39,
+            "One instruction, and it is the corner offset read at two widths. "
+            + "`float2(corner & 1, corner >> 1) * 2 - 1` is one mad over two "
+            + "components, read as .x and .y apart by the position and as .xy by "
+            + "the texture coordinate, in two statements inside the loop, and it "
+            + "is written out at each - so fxc computes the pair twice. The naming "
+            + "that puts a value two statements read under one name does not reach "
+            + "into a loop body yet."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

@@ -792,7 +792,9 @@ public class HlslAstWriter : HlslWriter
         // A compute or geometry shader returns nothing, so an early ret leaves with
         // no value at all. Asking for the one output there threw, and a `return;`
         // guarding the rest of a compute shader is how every one of them starts.
-        if (_registers.MethodOutputRegisters.Count == 0)
+        // A geometry shader has outputs - the vertices it appends - and returns
+        // none of them: `return o;` from it is X3079.
+        if (_registers.MethodOutputRegisters.Count == 0 || _shader.Type == ShaderType.Geometry)
         {
             WriteLine(condition == null ? "return;" : $"if ({condition}) return;");
         }

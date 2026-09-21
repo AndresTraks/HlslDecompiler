@@ -279,8 +279,11 @@ public sealed class RegisterState
     // than one per register so both survive.
     private RegisterDeclaration FindInputDeclaration(D3D10RegisterKey registerKey, int componentIndex)
     {
+        // A geometry shader's declarations are keyed by the register alone, and a
+        // read names the vertex as well; the vertices share the declaration.
+        D3D10RegisterKey baseKey = registerKey.GetGSBaseKey();
         return MethodInputRegisters.FirstOrDefault(d =>
-            d.RegisterKey.Equals(registerKey) && (d.WriteMask & (1 << componentIndex)) != 0);
+            d.RegisterKey.Equals(baseKey) && (d.WriteMask & (1 << componentIndex)) != 0);
     }
 
     // The same for an output: fxc packs o1.xy and o1.z as readily as it packs
@@ -716,7 +719,10 @@ public sealed class RegisterState
             {
                 if (inputRegisterKey.GSVertex.HasValue)
                 {
-                    return $"i[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
+                    // A domain shader's array is the patch it was given; a
+                    // geometry shader's is the primitive's vertices.
+                    string array = _shaderModel.Type == ShaderType.Domain ? "patch" : "i";
+                    return $"{array}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
                 }
                 return MethodInputRegisters.Count == 1
                     ? inputDeclaration.Name
@@ -1409,7 +1415,22 @@ public sealed class RegisterState
 
                     if (RegisterDeclarations.TryGetValue(vertexKey, out var existingDeclaration))
                     {
-                        existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                        // Packed the way a pixel shader's inputs are packed, below:
+                        // `float3 position; float life;` is v[0][0].xyz and
+                        // v[0][0].w, two dcl_inputs and two semantics, and merging
+                        // the masks made one float4 position whose w was the life.
+                        RegisterDeclaration candidate = CreateRegisterDeclarationFromD3D10Dcl(instruction, vertexKey);
+                        if (candidate.Semantic != existingDeclaration.Semantic)
+                        {
+                            candidate.MaskedLengthOverride = CountSetBits(candidate.WriteMask);
+                            existingDeclaration.MaskedLengthOverride =
+                                CountSetBits(existingDeclaration.WriteMask);
+                            MethodInputRegisters.Add(candidate);
+                        }
+                        else
+                        {
+                            existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                        }
                     }
                     else
                     {

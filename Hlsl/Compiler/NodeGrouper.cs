@@ -308,9 +308,23 @@ public class NodeGrouper
         }
 
         ConstantDeclaration constant = _registers.FindConstant(input1);
-        if (constant == null || !IsMatrixConstantRegister(constant))
+        if (constant == null)
         {
             return false;
+        }
+        if (!IsMatrixConstantRegister(constant))
+        {
+            // A matrix member of a struct: the declaration says Struct for every
+            // member it has, so what is at the register decides - and the two have
+            // to be in the one member of the one element, not merely in the one
+            // struct, or two matrices side by side gather as though they were one.
+            return _registers.TryGetStructMatrixAt(
+                    input1.RegisterComponentKey, constant, out StructMemberAccess member1, out int element1)
+                && constant == _registers.FindConstant(input2)
+                && _registers.TryGetStructMatrixAt(
+                    input2.RegisterComponentKey, constant, out StructMemberAccess member2, out int element2)
+                && member1.Name == member2.Name
+                && element1 == element2;
         }
         if (constant is D3D9ConstantDeclaration d3d9Constant)
         {

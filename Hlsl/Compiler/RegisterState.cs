@@ -593,6 +593,45 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// The matrix member a constant register falls in, where the declaration is a
+    /// struct - the `.world` of `instances[id].world`, named from the element so
+    /// that two members of one struct are told apart, and which element it is. A
+    /// struct is what the declaration says for every one of its members, so what
+    /// is at the register is the only thing that answers this.
+    /// </summary>
+    public bool TryGetStructMatrixAt(
+        RegisterComponentKey key,
+        ConstantDeclaration declaration,
+        out StructMemberAccess member,
+        out int elementIndex)
+    {
+        member = null;
+        elementIndex = 0;
+        if (declaration?.TypeInfo.MemberInfo == null)
+        {
+            return false;
+        }
+        int stride = Math.Max(declaration.RegistersPerElement, 1);
+        int registerOffset = key.RegisterKey switch
+        {
+            D3D10RegisterKey d3d10Key => GetConstantBufferElementOffset(d3d10Key, declaration),
+            D3D9RegisterKey d3d9Key => d3d9Key.Number - declaration.RegisterIndex,
+            _ => -1,
+        };
+        if (registerOffset < 0)
+        {
+            return false;
+        }
+        elementIndex = registerOffset / stride;
+        bool found = key.RegisterKey is D3D10RegisterKey
+            ? TryGetStructMemberAt(
+                declaration, "", registerOffset % stride, key.ComponentIndex, out member)
+            : TryGetStructMemberAtRegister(
+                declaration, "", registerOffset % stride, out member);
+        return found && member.IsMatrix;
+    }
+
+    /// <summary>
     /// One register of a matrix is one column - or one row where it was packed by
     /// row - so a matrix takes that many, and an array of them that many apiece.
     /// </summary>

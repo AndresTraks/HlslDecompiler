@@ -25,7 +25,12 @@ public class MatrixMultiplicationGrouper
         {
             HlslTreeNode[] submatrixNodes = components.Select(g => g.Inputs[0]).ToArray();
             MatrixMultiplicationContext submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
-            if (submatrixGroup != null)
+            // A matrix that is a member of a struct has no column past its last for
+            // the addend to be: what sits at that register is the next member, and
+            // taking it for a column makes a float4x5 of a struct and a float5 of
+            // the vector. The registers either side of a matrix member belong to
+            // something else by construction, so the addend is simply an addend.
+            if (submatrixGroup != null && submatrixGroup.MemberPath == null)
             {
                 RegisterInputNode[] wColumnNodes = components
                     .Select(g => g.Inputs[1])
@@ -63,7 +68,7 @@ public class MatrixMultiplicationGrouper
 
             submatrixNodes = components.Select(g => g.Inputs[1]).ToArray();
             submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
-            if (submatrixGroup != null)
+            if (submatrixGroup != null && submatrixGroup.MemberPath == null)
             {
                 RegisterInputNode[] wColumnNodes = components
                     .Select(g => g.Inputs[0])
@@ -394,25 +399,9 @@ public class MatrixMultiplicationGrouper
         {
             return new RowMatrix(constant, constant.TypeInfo, null, 0);
         }
-        if (constant.TypeInfo.MemberInfo != null)
+        if (_registers.TryGetStructMatrixAt(key, constant, out StructMemberAccess member, out _))
         {
-            int stride = System.Math.Max(constant.RegistersPerElement, 1);
-            StructMemberAccess member = null;
-            bool found = key.RegisterKey switch
-            {
-                D3D10RegisterKey d3d10Key => RegisterState.TryGetStructMemberAt(
-                    constant, "", _registers.GetConstantBufferElementOffset(d3d10Key, constant) % stride,
-                    key.ComponentIndex, out member),
-                // The Shader Model 3 walk counts registers where the constant buffer
-                // one counts floats, and hands back the matrix whole the same way.
-                D3D9RegisterKey d3d9Key => RegisterState.TryGetStructMemberAtRegister(
-                    constant, "", (d3d9Key.Number - constant.RegisterIndex) % stride, out member),
-                _ => false,
-            };
-            if (found && member.IsMatrix)
-            {
-                return new RowMatrix(constant, member.TypeInfo, member.Name, member.StartOffset / 4);
-            }
+            return new RowMatrix(constant, member.TypeInfo, member.Name, member.StartOffset / 4);
         }
         return null;
     }

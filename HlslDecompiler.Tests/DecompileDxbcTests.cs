@@ -176,6 +176,7 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "static_struct_matrix")]
     [TestCase("vs_4_0", "single_struct_matrix")]
     [TestCase("vs_4_0", "row_major_matrix43")]
+    [TestCase("vs_4_0", "matrix_member_add")]
     [TestCase("vs_4_0", "bitwise")]
     [TestCase("vs_4_0", "skinning")]
     [TestCase("vs_4_0", "skin_buffer")]

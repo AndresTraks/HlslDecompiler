@@ -111,6 +111,7 @@ public class DecompileDxbcTests
     [TestCase("vs_5_0", "skinned_instances")]
     [TestCase("cs_5_0", "tile_luminance")]
     [TestCase("ps_5_0", "depth_aware_blur")]
+    [TestCase("ps_5_0", "gbuffer_write")]
     [TestCase("ps_5_0", "gather_offset")]
     [TestCase("ps_5_0", "derivative_precision")]
     [TestCase("gs_5_0", "stream_expand")]

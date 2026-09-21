@@ -147,7 +147,11 @@ public class NodeGrouper
                 if (input1.RegisterComponentKey.RegisterKey.Equals(
                     input2.RegisterComponentKey.RegisterKey))
                 {
-                    return true;
+                    // And within a register, the same variable: fxc packs
+                    // `float roughness; float metallic;` into cb0[1].xy, and a mul
+                    // over the pair grouped as one read, which was named after the
+                    // first - `t3.yz * roughness`, where the y of it was metallic.
+                    return IsSameConstant(input1, input2);
                 }
 
                 if (allowMatrixColumn)
@@ -327,6 +331,20 @@ public class NodeGrouper
         var constantRegister = _registers.FindConstant(input1);
         return constantRegister != null
             && IsMatrixConstantRegister(constantRegister);
+    }
+
+    // Whether two components of one constant buffer register belong to one
+    // declared variable. Anything but a constant buffer register is one value.
+    private bool IsSameConstant(RegisterInputNode input1, RegisterInputNode input2)
+    {
+        if (input1.RegisterComponentKey.RegisterKey is not D3D10RegisterKey
+            { OperandType: OperandType.ConstantBuffer } key)
+        {
+            return true;
+        }
+        ConstantDeclaration first = _registers.FindConstant(key, input1.RegisterComponentKey.ComponentIndex);
+        ConstantDeclaration second = _registers.FindConstant(key, input2.RegisterComponentKey.ComponentIndex);
+        return first == null || second == null || ReferenceEquals(first, second);
     }
 
     private static bool IsMatrixConstantRegister(ConstantDeclaration constantRegister)

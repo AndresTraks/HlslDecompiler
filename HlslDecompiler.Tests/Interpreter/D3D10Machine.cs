@@ -1446,6 +1446,12 @@ public class D3D10Machine
                 // Small whole numbers: a thread index taken from float bits would
                 // address somewhere no buffer reaches.
                 return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];
+            case OperandType.InputCoverageMask:
+                // The mask the rasterizer handed this pixel. It is independent of any
+                // mask the shader writes out, so it reads a value of its own - the
+                // same one for a given trial, which is what lets the original and its
+                // recompilation agree on it. A sample mask reaches a few bits at most.
+                return [.. Named("COVERAGEINPUT").Select(v => (uint)Math.Abs(v * 4) % 16)];
             case OperandType.Sampler:
             case OperandType.Resource:
             case OperandType.UnorderedAccessView:

@@ -52,7 +52,9 @@ public class AsmWriter
     private static int GetDestinationSemanticSize(D3D10Instruction instruction)
     {
         OperandType operandType = instruction.GetOperandType(instruction.GetDestinationParamIndex().Value);
-        if (operandType is OperandType.OutputDepth or OperandType.OutputCoverageMask)
+        if (operandType is OperandType.OutputDepth
+            or OperandType.OutputCoverageMask
+            or OperandType.InputCoverageMask)
         {
             return 1;
         }
@@ -1399,6 +1401,9 @@ public class AsmWriter
             OperandType.OutputDepthGreaterEqual => "oDepthGE",
             OperandType.OutputDepthLessEqual => "oDepthLE",
             OperandType.OutputCoverageMask => "oMask",
+            // The coverage read back in, which fxc writes vCoverage - bare in its
+            // dcl, and .x where it is read.
+            OperandType.InputCoverageMask => "vCoverage",
             OperandType.Null => "null",
             _ => throw new NotImplementedException(operandType.ToString()),
         };

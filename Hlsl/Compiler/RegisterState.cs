@@ -1096,6 +1096,9 @@ public sealed class RegisterState
                 case OperandType.InputThreadGroupID:
                 case OperandType.InputThreadIDInGroup:
                 case OperandType.InputThreadIDInGroupFlattened:
+                // Read the way the thread ids are: a named register, in the input
+                // struct beside the others once there is more than one.
+                case OperandType.InputCoverageMask:
                     {
                         // In the input structure with every other input once there
                         // is more than one of them.
@@ -1697,6 +1700,9 @@ public sealed class RegisterState
                         // Where in the patch this run is, which is a parameter of
                         // main beside the patch itself.
                         case OperandType.InputDomainPoint:
+                        // The coverage the rasterizer handed this pixel: read per
+                        // pixel, so a parameter of main like the thread ids.
+                        case OperandType.InputCoverageMask:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
                         // A field of the patch constant struct, which is written
@@ -1918,6 +1924,7 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
             || registerKey.OperandType == OperandType.OutputCoverageMask
+            || registerKey.OperandType == OperandType.InputCoverageMask
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID
             || registerKey.OperandType == OperandType.InputGSInstanceID;
@@ -1930,7 +1937,10 @@ public sealed class RegisterState
         // SV_Coverage is a uint. The signature says so too, but keys it to register
         // -1, which is why the lookup above did not find it.
         const int UInt32ComponentType = 1;
-        int componentType = registerKey.OperandType == OperandType.OutputCoverageMask ? UInt32ComponentType : 0;
+        int componentType =
+            registerKey.OperandType == OperandType.OutputCoverageMask
+            || registerKey.OperandType == OperandType.InputCoverageMask
+            ? UInt32ComponentType : 0;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask)
         {
             ComponentType = componentType,

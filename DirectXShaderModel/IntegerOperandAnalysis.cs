@@ -1029,7 +1029,8 @@ public sealed class IntegerOperandAnalysis
             {
                 OperandType operandType = instruction.GetOperandType(operand);
                 if (D3D10Instruction.IsThreadRegister(operandType)
-                    || operandType == OperandType.OutputCoverageMask)
+                    || operandType == OperandType.OutputCoverageMask
+                    || operandType == OperandType.InputCoverageMask)
                 {
                     RegisterKey key = instruction.GetParamRegisterKey(operand);
                     for (int component = 0; component < 4; component++)

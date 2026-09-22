@@ -453,7 +453,9 @@ public class D3D10Instruction : Instruction
             // the instruction writer with no component to ask the type of, and it
             // cast a uint coverage mask to float.
             OperandType operandType = GetOperandType(operandIndex);
-            return IsThreadRegister(operandType) || operandType == OperandType.OutputCoverageMask
+            return IsThreadRegister(operandType)
+                || operandType == OperandType.OutputCoverageMask
+                || operandType == OperandType.InputCoverageMask
                 ? 1
                 : 0;
         }
@@ -685,6 +687,10 @@ public class D3D10Instruction : Instruction
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
             OperandType.OutputCoverageMask => "SV_Coverage",
+            // The coverage the rasterizer handed this pixel, read where an order-
+            // independent pass wants to weight a fragment by it. Same name as the
+            // mask written out, and - like it - it names no register to index.
+            OperandType.InputCoverageMask => "SV_Coverage",
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
@@ -696,7 +702,8 @@ public class D3D10Instruction : Instruction
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
             && operandType != OperandType.OutputDepthLessEqual
-            && operandType != OperandType.OutputCoverageMask)
+            && operandType != OperandType.OutputCoverageMask
+            && operandType != OperandType.InputCoverageMask)
         {
             int numberIndex = (_isGeometryShader && operandType == OperandType.Input)
                 || operandType == OperandType.InputControlPoint ? 2 : 1;

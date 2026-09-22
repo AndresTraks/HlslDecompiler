@@ -257,6 +257,16 @@ public class HlslSimpleWriter : HlslWriter
                 ? _integerOperandAnalysis.GetStructuredElementKind(instruction)
                 : ValueKind.Integer;
         }
+        // A typed view is addressed by a coordinate: a texel index, whatever the
+        // texel it names is kept as. Read as a float, an integer coordinate in a
+        // register of bits was reinterpreted - `tex[asfloat(coordinate)]`, which
+        // truncates the bits of a float back into an index of a texel nobody asked
+        // for.
+        if (instruction.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped
+            && operandIndex == 1)
+        {
+            return ValueKind.Integer;
+        }
         if (instruction.Opcode == D3D10Opcode.MovC && operandIndex == 1)
         {
             return ValueKind.Bits;
@@ -1344,9 +1354,19 @@ public class HlslSimpleWriter : HlslWriter
                     List<int> read = [.. Enumerable.Range(0, 4)
                         .Where(c => (writeMask & (1 << c)) != 0)
                         .Select(c => (int)elementSwizzle[c])];
-                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
-                        _registers.NameStructuredMembers(buffer, element, offset, read)
-                            ?? _registers.ApplyStructuredElementRow(buffer, element, offset));
+                    string readElement = _registers.NameStructuredMembers(buffer, element, offset, read)
+                        ?? _registers.ApplyStructuredElementRow(buffer, element, offset);
+                    // Where the element is neither a matrix (whose offset picks a row)
+                    // nor a struct (whose offset picks a member), it is a scalar or a
+                    // vector and the byte offset selects a component of it: reading the
+                    // .w of a uint4 is the load at offset twelve, whole components past
+                    // the operand's own.
+                    if (offset != 0 && readElement == element)
+                    {
+                        readElement += "." + new string(
+                            [.. read.Select(c => "xyzw"[(c + offset / 4) % 4])]);
+                    }
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), readElement);
                     break;
                 }
             case D3D10Opcode.LdRaw:
@@ -3005,14 +3025,22 @@ public class HlslSimpleWriter : HlslWriter
         // An interlocked operation reads one component from each of its operands. The
         // address is a whole operand rather than the two a store splits it into, so
         // its second component is the byte offset within the element and is not part
-        // of the subscript.
-        if (instruction.Opcode.IsAtomic() && operandIndex != 0)
+        // of the subscript - unless the resource is a typed texture, which is
+        // addressed by a coordinate as wide as it has dimensions, the same as the
+        // store into it.
+        if (instruction.Opcode.IsAtomic() || instruction.Opcode.IsImmediateAtomic())
         {
-            return 1;
-        }
-        if (instruction.Opcode.IsImmediateAtomic() && operandIndex > 1)
-        {
-            return 1;
+            bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
+            int resourceOperand = keepsOriginal ? 1 : 0;
+            if (operandIndex == resourceOperand + 1)
+            {
+                return _registers.GetAtomicAddressWidth(
+                    instruction.GetParamRegisterKey(resourceOperand));
+            }
+            if (keepsOriginal ? operandIndex > 1 : operandIndex != 0)
+            {
+                return 1;
+            }
         }
         // The offset a gather4_po reads from a register is as wide as the texture,
         // the same as the coordinate before it.

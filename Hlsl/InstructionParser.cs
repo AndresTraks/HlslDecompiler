@@ -508,14 +508,28 @@ public class InstructionParser
                         int first = keepsOriginal ? 1 : 0;
                         var resourceKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(first), 0);
+                        // A typed view written by an interlocked operation holds a
+                        // scalar, and is declared as one.
+                        _registerState.DeclareAtomicTarget(resourceKey.RegisterKey);
                         var destination = new RegisterInputNode(resourceKey);
                         bool hasCompare = instruction.Opcode
                             is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
                         // A structured resource addresses an element and a byte offset
                         // within it, both components of the one operand; a byte address
-                        // one has only the offset.
-                        HlslTreeNode address = GetInputs(instruction, 0)[first];
-                        HlslTreeNode elementByteOffset = _registerState.IsRawResource(resourceKey.RegisterKey)
+                        // one has only the offset. A typed texture addresses a texel by
+                        // a coordinate, as many components as it has dimensions, and
+                        // has no byte offset to name a member with.
+                        int addressWidth = _registerState.GetAtomicAddressWidth(
+                            resourceKey.RegisterKey);
+                        HlslTreeNode[] coordinates = addressWidth > 1
+                            ? [.. Enumerable.Range(0, addressWidth)
+                                .Select(component => GetInputs(instruction, component)[first])]
+                            : null;
+                        // The same node the coordinate starts with, so that a rewrite
+                        // of one is a rewrite of the other.
+                        HlslTreeNode address = coordinates?[0] ?? GetInputs(instruction, 0)[first];
+                        HlslTreeNode elementByteOffset =
+                            _registerState.IsRawResource(resourceKey.RegisterKey) || coordinates != null
                             ? null
                             : GetInputs(instruction, 1)[first];
                         TempVariableNode original = keepsOriginal
@@ -529,6 +543,7 @@ public class InstructionParser
                             ActiveOutputs)
                         {
                             ElementByteOffset = elementByteOffset,
+                            Coordinates = coordinates,
                             Compare = hasCompare ? GetInputs(instruction, 0)[first + 1] : null,
                             Original = original,
                         });

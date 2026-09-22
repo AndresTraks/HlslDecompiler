@@ -614,6 +614,16 @@ public class D3D10Instruction : Instruction
                     destinationMask = 15;
                     destinationLength = 4;
                 }
+                // The address of an interlocked operation is a whole operand too.
+                // fxc writes it as it is stored - the coordinate of a texel, or the
+                // element and the byte offset within one - whatever the width of the
+                // single value the operation keeps.
+                else if ((Opcode.IsAtomic() && srcIndex == 1)
+                    || (Opcode.IsImmediateAtomic() && srcIndex == 2))
+                {
+                    destinationMask = 15;
+                    destinationLength = 4;
+                }
                 else if (HasDestination)
                 {
                     destinationMask = GetDestinationWriteMask();

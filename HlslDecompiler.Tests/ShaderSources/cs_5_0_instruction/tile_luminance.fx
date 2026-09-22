@@ -66,6 +66,6 @@ void main(CS_IN i)
 	r1.x = (step == 0) ? -1 : 0;
 	r0.w = r0.w & r1.x;
 	if (r0.w != 0) {
-		luminance[asfloat(r0.xy)] = asfloat(r0.z);
+		luminance[r0.xy] = asfloat(r0.z);
 	}
 }

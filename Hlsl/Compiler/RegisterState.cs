@@ -22,6 +22,13 @@ public sealed class RegisterState
     public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
 
     /// <summary>
+    /// The typed unordered access views an interlocked operation writes. HLSL has no
+    /// interlocked operation over more than a scalar, so such a view's element is one
+    /// number, whatever the vector the declaration in the bytecode names.
+    /// </summary>
+    private readonly HashSet<ResourceDefinition> _atomicViews = [];
+
+    /// <summary>
     /// A structured buffer whose element is a matrix is loaded a row at a time, and
     /// the byte offset of the load says which row: `ld_structured ..., l(48), t0` is
     /// the fourth of a float4x4. Dropped, every row of an instance transform read as
@@ -1368,6 +1375,56 @@ public sealed class RegisterState
                     ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
                     : d.ShaderInputType is D3DShaderInputType.Texture))
             .GetDimensionSize();
+    }
+
+    /// <summary>
+    /// How many components of an interlocked operation's address operand name what
+    /// it works on. A typed texture is addressed by a coordinate, as wide as it has
+    /// dimensions; a structured buffer takes an element and a byte offset within it,
+    /// a raw one a byte offset alone, and groupshared memory an element and an
+    /// offset - one component each, the second being no part of the subscript.
+    /// </summary>
+    public int GetAtomicAddressWidth(RegisterKey resourceKey)
+    {
+        return FindTypedUavView(resourceKey)?.GetDimensionSize() ?? 1;
+    }
+
+    /// <summary>
+    /// The typed unordered access view a register names, and null when it is a
+    /// structured buffer, a raw one, or groupshared memory - which are none of them
+    /// views of a texture format.
+    /// </summary>
+    private ResourceDefinition FindTypedUavView(RegisterKey resourceKey)
+    {
+        // By the kind of register as well as its number: groupshared memory is g0
+        // and a typed view u0, both number zero, and the one is addressed by an
+        // element while the other is addressed by a coordinate.
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView })
+        {
+            return null;
+        }
+        return ResourceDefinitions.FirstOrDefault(d =>
+            d.ShaderInputType == D3DShaderInputType.UavRWTyped && d.BindPoint == resourceKey.Number);
+    }
+
+    /// <summary>
+    /// Notes that an interlocked operation writes a view. HLSL has none over more
+    /// than a scalar, so the element of such a view is one number - see <see
+    /// cref="ResourceDefinition.ReadWriteAtomicTypeName"/> - and it is declared as
+    /// one.
+    /// </summary>
+    public void DeclareAtomicTarget(RegisterKey resourceKey)
+    {
+        ResourceDefinition view = FindTypedUavView(resourceKey);
+        if (view != null)
+        {
+            _atomicViews.Add(view);
+        }
+    }
+
+    public bool IsAtomicTarget(ResourceDefinition resource)
+    {
+        return _atomicViews.Contains(resource);
     }
 
     public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType, int sampleCount = 0)

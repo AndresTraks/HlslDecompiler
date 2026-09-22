@@ -473,7 +473,12 @@ public class HlslAstWriter : HlslWriter
         RegisterKey resourceKey =
             ((RegisterInputNode)atomic.Destination).RegisterComponentKey.RegisterKey;
         string resource = _registers.GetRegisterName(resourceKey);
-        string address = _compiler.Compile(Reduce(atomic.Address));
+        // A typed texture is addressed by a coordinate, and a vector of integers says
+        // so where a constructor over the components would be typed by nothing - the
+        // same as the store into it.
+        string address = atomic.Coordinates != null
+            ? _compiler.CompileAsInteger([.. atomic.Coordinates.Select(Reduce)])
+            : _compiler.Compile(Reduce(atomic.Address));
         string value = _compiler.Compile(Reduce(atomic.Value));
         string compare = atomic.Compare == null
             ? null
@@ -502,8 +507,10 @@ public class HlslAstWriter : HlslWriter
         // A byte address buffer has the interlocked operations as methods on itself,
         // taking the byte offset. Everything else - a structured buffer, a typed
         // UAV, groupshared memory - has them as free functions over the destination,
-        // which is the element rather than the resource.
-        if (atomic.ElementByteOffset == null)
+        // which is an element or a texel rather than the resource. Asked of the
+        // resource rather than of what the address operand carries, because a typed
+        // texture carries no byte offset either.
+        if (_registers.IsRawResource(resourceKey))
         {
             WriteLine($"{resource}.{atomic.MethodName}({address}, {arguments});");
             return;

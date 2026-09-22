@@ -37,6 +37,15 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["ps_5_0/typed_view_load"] = [("instruction",
+            "The texel coordinate, made by an ftoi of sv_position, and the buffer "
+            + "indices sit in the float register the shader reuses for a float, so "
+            + "the instruction writer's one-variable-per-register model reads them "
+            + "back through an f2u that clamps a negative one to zero where the "
+            + "bytecode's ftoi keeps it negative - and an out of bounds texel write "
+            + "becomes a write to texel zero. Only the machine's negative sv_position "
+            + "inputs reach this; a pixel's position and a buffer's index are never "
+            + "negative. The ast writer names the coordinate a signed int and agrees.")],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

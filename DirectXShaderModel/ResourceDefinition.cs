@@ -100,6 +100,17 @@ public class ResourceDefinition
     public string ReadWriteTypeName =>
         $"RW{Dimension}<{(IsNormalisedReturnType ? NormalisedPrefix + " " : "")}{ReturnScalarTypeName}4>";
 
+    /// <summary>
+    /// The HLSL type a typed view that an interlocked operation writes is declared
+    /// as: the same with a scalar element. HLSL has no interlocked operation over
+    /// more than a scalar - one over a <c>RWTexture2D&lt;uint4&gt;</c> element is
+    /// refused with "interlocked operations on scalar int or uint data only" - so a
+    /// view written by one holds one number, and the four the declaration in the
+    /// bytecode names are that number broadcast.
+    /// </summary>
+    public string ReadWriteAtomicTypeName =>
+        $"RW{Dimension}<{(IsNormalisedReturnType ? NormalisedPrefix + " " : "")}{ReturnScalarTypeName}>";
+
     /// <summary>The HLSL type a texture or buffer resource is declared as.</summary>
     public string TypeName => Dimension switch
     {

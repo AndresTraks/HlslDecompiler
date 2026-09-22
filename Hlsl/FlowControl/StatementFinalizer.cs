@@ -887,7 +887,8 @@ public class StatementFinalizer
                     && (typedStore.Coordinates.Contains(node) || typedStore.Values.Contains(node)))
                 || (statement is BufferAppendStatement append && append.Values.Contains(node))
                 || (statement is AtomicStatement atomic
-                    && (atomic.Address == node || atomic.Value == node || atomic.Compare == node)))
+                    && (atomic.Address == node || atomic.Value == node || atomic.Compare == node
+                        || (atomic.Coordinates?.Contains(node) ?? false))))
             {
                 holders++;
             }
@@ -973,6 +974,16 @@ public class StatementFinalizer
                 {
                     atomic.Address = replacement;
                 }
+                if (atomic.Coordinates != null)
+                {
+                    for (int i = 0; i < atomic.Coordinates.Length; i++)
+                    {
+                        if (atomic.Coordinates[i] == node)
+                        {
+                            atomic.Coordinates[i] = replacement;
+                        }
+                    }
+                }
                 if (atomic.Value == node)
                 {
                     atomic.Value = replacement;
@@ -1032,7 +1043,23 @@ public class StatementFinalizer
         {
             return true;
         }
-        return InstructionParser.GetConsumedType(value) ?? MadeType(value);
+        bool? consumedType = InstructionParser.GetConsumedType(value);
+        bool? madeType = MadeType(value);
+        if (consumedType != null || madeType != null)
+        {
+            return consumedType ?? madeType;
+        }
+        // A variable declared integer but read by nothing the graph can see - only by
+        // the stores a value leaves a statement through, which are not output edges -
+        // still holds an integer. The value an interlocked operation reads out of the
+        // resource is one, and stored on into another: left asking its (absent) readers,
+        // it printed as a float and the store into it converted back. Left null where
+        // nothing says integer, which keeps the float the writers have always written.
+        if (value is TempVariableNode variable && variable.IsInteger)
+        {
+            return true;
+        }
+        return null;
     }
 
     /// <summary>

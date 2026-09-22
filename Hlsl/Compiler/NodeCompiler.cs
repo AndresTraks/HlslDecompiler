@@ -1036,7 +1036,11 @@ public sealed class NodeCompiler
             case LoadStructuredNode load:
                 {
                     // TODO: consider the byte offset in Inputs[1].
-                    var address = Compile(components.Select(g => g.Inputs[0]));
+                    // The element or the byte offset is an index, not a float's bits:
+                    // in a float context the address would be reinterpreted, and
+                    // `buffer[asfloat(element)]` is an index made from the bits of a
+                    // float rather than the element asked for.
+                    var address = CompileAsInteger(components.Select(g => g.Inputs[0]));
                     var resource = (RegisterInputNode)components[0].Inputs[2];
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
                     if (load.IsRaw)
@@ -1054,18 +1058,30 @@ public sealed class NodeCompiler
                     // after it. Naming the buffer with a swizzle gave `In.w[i]`.
                     // The load carries no component index of its own; the resource
                     // operand it reads does.
-                    string swizzle = GetAstSourceSwizzleName(
-                        components.Select(g => (IHasComponentIndex)g.Inputs[2]),
-                        _registers.GetRegisterMaskedLength(resourceKey));
                     // The byte offset picks a row where the element is a matrix and
                     // a member where it is a struct.
                     string element = $"{_registers.GetRegisterName(resourceKey)}[{address}]";
                     string members = _registers.NameStructuredMembers(resourceKey, element,
                         load.ElementByteOffset,
                         [.. components.Select(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex)]);
-                    return members
-                        ?? _registers.ApplyStructuredElementRow(resourceKey, element,
-                            load.ElementByteOffset) + swizzle;
+                    if (members != null)
+                    {
+                        return members;
+                    }
+                    string row = _registers.ApplyStructuredElementRow(resourceKey, element,
+                        load.ElementByteOffset);
+                    // Where the element is neither a matrix (whose byte offset picks a
+                    // row) nor a struct (whose offset picks a member), it is one scalar
+                    // or a vector, and the offset selects a component of it: reading the
+                    // .w of a uint4 is the load at offset twelve. The offset is whole
+                    // components past the operand's own, so it is the swizzle's base.
+                    int componentBase = ReferenceEquals(row, element)
+                        ? -load.ElementByteOffset / 4
+                        : 0;
+                    return row + GetAstSourceSwizzleName(
+                        components.Select(g => (IHasComponentIndex)g.Inputs[2]),
+                        _registers.GetRegisterMaskedLength(resourceKey),
+                        componentBase: componentBase);
                 }
             case LogicalAndOperation _:
             case LogicalOrOperation _:
@@ -1189,11 +1205,12 @@ public sealed class NodeCompiler
 
     // The index into an array of matrices counts registers, so it is already the
     // element index times the row count. Undo that multiplication where it is
-    // visible rather than emitting a division that only fxc would fold away.
+    // visible rather than emitting a division that only fxc would fold away. An
+    // element is a subscript, so it is compiled as an integer.
     public string CompileRegisterIndexAsElement(RelativeAddressNode address, int rows)
     {
         return address.IndexCountsElements
-            ? Compile(new[] { address.Index })
+            ? CompileAsInteger([address.Index])
             : CompileRegisterIndexAsElement(address.Index, rows);
     }
 
@@ -1205,7 +1222,7 @@ public sealed class NodeCompiler
             && shift.Inputs[1] is ConstantNode shiftAmount
             && rows == 1 << (int)shiftAmount.Value)
         {
-            return Compile(new[] { shift.Inputs[0] });
+            return CompileAsInteger([shift.Inputs[0]]);
         }
         if (index is MultiplyOperation multiply)
         {
@@ -1213,11 +1230,11 @@ public sealed class NodeCompiler
             {
                 if (multiply.Inputs[i] is ConstantNode constant && constant.Value == rows)
                 {
-                    return Compile(new[] { multiply.Inputs[1 - i] });
+                    return CompileAsInteger([multiply.Inputs[1 - i]]);
                 }
             }
         }
-        return $"{Compile(new[] { index })} / {rows}";
+        return $"{CompileAsInteger([index])} / {rows}";
     }
 
     // An offset shifts the read by whole texels. Leaving it out compiles and
@@ -1242,7 +1259,11 @@ public sealed class NodeCompiler
     public string CompileIndexableTempIndex(HlslTreeNode index)
     {
         bool wasAssigningToInteger = _assigningToInteger;
+        bool wasReadingAsFloat = _readingAsFloat;
         _assigningToInteger = true;
+        // And the number is what addresses the element: the bits a float value is
+        // standing in for are not. See CompileAsInteger.
+        _readingAsFloat = false;
         try
         {
             return Compile(index);
@@ -1250,6 +1271,7 @@ public sealed class NodeCompiler
         finally
         {
             _assigningToInteger = wasAssigningToInteger;
+            _readingAsFloat = wasReadingAsFloat;
         }
     }
 
@@ -1263,7 +1285,13 @@ public sealed class NodeCompiler
     public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
     {
         bool wasAssigningToInteger = _assigningToInteger;
+        bool wasReadingAsFloat = _readingAsFloat;
         _assigningToInteger = true;
+        // Where an integer is wanted, an integer's bits standing in for a float are
+        // not what is read: an address compiled with the float context still on came
+        // out as `tex[asfloat(coordinate)]`, the bits of a float truncated back into
+        // an index of a texel nobody asked for.
+        _readingAsFloat = false;
         try
         {
             return Compile(group);
@@ -1271,6 +1299,7 @@ public sealed class NodeCompiler
         finally
         {
             _assigningToInteger = wasAssigningToInteger;
+            _readingAsFloat = wasReadingAsFloat;
         }
     }
 
@@ -1298,7 +1327,7 @@ public sealed class NodeCompiler
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                 _registers.GetRegisterMaskedLength(arrayKey.RegisterKey),
                 promoteToVectorSize);
-            string index = Compile(new[] { relativeAddress.Index });
+            string index = CompileAsInteger([relativeAddress.Index]);
 
             // A def-defined array has no declaration to be named from, so it takes
             // the name of the register its run starts at and is declared alongside
@@ -1503,8 +1532,13 @@ public sealed class NodeCompiler
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
             // Load addresses in texels, so its coordinate vector is built as ints:
             // as a float3 fxc converts an integer address to float and straight back.
+            // Read as a float where the load's result is one, the address would be
+            // reinterpreted instead: `tex[asfloat(coordinate)]` truncates the bits
+            // of a float back to an index, which is not the texel asked for.
             bool wasAssigningToInteger = _assigningToInteger;
+            bool wasReadingAsFloat = _readingAsFloat;
             _assigningToInteger = true;
+            _readingAsFloat = false;
             string address;
             try
             {
@@ -1513,10 +1547,11 @@ public sealed class NodeCompiler
             finally
             {
                 _assigningToInteger = wasAssigningToInteger;
+                _readingAsFloat = wasReadingAsFloat;
             }
             string loadOffsets = CompileSampleOffsets(resourceLoad.SampleOffsets, resourceDefinition);
             string sampleIndex = resourceLoad.HasSampleIndex
-                ? $", {Compile(new[] { resourceLoad.SampleIndex })}"
+                ? $", {CompileAsInteger([resourceLoad.SampleIndex])}"
                 : "";
             string loaded = isWritableView
                 ? $"{resourceDefinition.Name}[{address}]{loadSwizzle}"

@@ -17,6 +17,13 @@ public class AtomicStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
     public HlslTreeNode Address { get; set; }
+    /// <summary>
+    /// The coordinate naming the texel, for an operation over a typed texture: as
+    /// many components as the texture has dimensions. Null for the buffers and the
+    /// groupshared memory, which are addressed by the single <see cref="Address"/>.
+    /// Its first component is that node as well.
+    /// </summary>
+    public HlslTreeNode[] Coordinates { get; set; }
     // The element byte offset, which a structured resource carries in the second
     // component of the address operand and a byte address one does not have.
     public HlslTreeNode ElementByteOffset { get; init; }

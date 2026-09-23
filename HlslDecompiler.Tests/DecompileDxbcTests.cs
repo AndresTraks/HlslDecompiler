@@ -124,6 +124,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "derivative_precision")]
     [TestCase("ps_5_0", "coverage_input")]
     [TestCase("ps_5_0", "typed_view_load")]
+    [TestCase("ps_5_0", "packed_input_cross")]
     [TestCase("gs_5_0", "stream_expand")]
     [TestCase("gs_5_0", "instanced_expand")]
     [TestCase("gs_5_0", "particle_sprites")]

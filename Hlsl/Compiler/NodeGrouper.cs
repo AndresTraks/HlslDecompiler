@@ -151,7 +151,7 @@ public class NodeGrouper
                     // `float roughness; float metallic;` into cb0[1].xy, and a mul
                     // over the pair grouped as one read, which was named after the
                     // first - `t3.yz * roughness`, where the y of it was metallic.
-                    return IsSameConstant(input1, input2);
+                    return IsSameVariable(input1, input2);
                 }
 
                 if (allowMatrixColumn)
@@ -347,18 +347,33 @@ public class NodeGrouper
             && IsMatrixConstantRegister(constantRegister);
     }
 
-    // Whether two components of one constant buffer register belong to one
-    // declared variable. Anything but a constant buffer register is one value.
-    private bool IsSameConstant(RegisterInputNode input1, RegisterInputNode input2)
+    // Whether two components of one register belong to one declared variable, where
+    // fxc packs several into it: a constant buffer's `roughness` and `metallic`, or
+    // an input register's TEXCOORD0 and TEXCOORD1. Any other register is one value.
+    private bool IsSameVariable(RegisterInputNode input1, RegisterInputNode input2)
     {
-        if (input1.RegisterComponentKey.RegisterKey is not D3D10RegisterKey
-            { OperandType: OperandType.ConstantBuffer } key)
+        if (input1.RegisterComponentKey.RegisterKey is not D3D10RegisterKey key)
         {
             return true;
         }
-        ConstantDeclaration first = _registers.FindConstant(key, input1.RegisterComponentKey.ComponentIndex);
-        ConstantDeclaration second = _registers.FindConstant(key, input2.RegisterComponentKey.ComponentIndex);
-        return first == null || second == null || ReferenceEquals(first, second);
+        if (key.OperandType == OperandType.ConstantBuffer)
+        {
+            ConstantDeclaration first = _registers.FindConstant(key, input1.RegisterComponentKey.ComponentIndex);
+            ConstantDeclaration second = _registers.FindConstant(key, input2.RegisterComponentKey.ComponentIndex);
+            return first == null || second == null || ReferenceEquals(first, second);
+        }
+        // An input register packs two variables the way a constant does - TEXCOORD0 at
+        // v0.xy and TEXCOORD1 at v0.zw - and grouped as one read they were named after
+        // the first and rebased onto it. Where a later read component belongs to the
+        // earlier-packed variable, that rebase runs below its base: `float3(uv2, uv1.x)`
+        // over v0.zwx tried to name texcoord1's component minus two, off the end.
+        if (key.OperandType == OperandType.Input)
+        {
+            return _registers.IsSameInputVariable(key,
+                input1.RegisterComponentKey.ComponentIndex,
+                input2.RegisterComponentKey.ComponentIndex);
+        }
+        return true;
     }
 
     private static bool IsMatrixConstantRegister(ConstantDeclaration constantRegister)

@@ -396,6 +396,25 @@ public sealed class RegisterState
         return 0;
     }
 
+    /// <summary>
+    /// Whether two components of one input register belong to the same declared
+    /// variable: TEXCOORD0's x and y do, TEXCOORD0's y and TEXCOORD1's z do not.
+    /// Grouped as one read, two different variables become one swizzle of the first,
+    /// and where the later component sits below that variable's base the rebased
+    /// swizzle names a component that variable has not got.
+    /// </summary>
+    /// <remarks>
+    /// Only inputs are packed this way. A patch constant register is not: fxc gives
+    /// each of them its own vpc register rather than packing two into one, and they
+    /// are declared keyed by register alone, so there is nothing here to separate.
+    /// </remarks>
+    public bool IsSameInputVariable(D3D10RegisterKey registerKey, int component1, int component2)
+    {
+        RegisterDeclaration first = FindInputDeclaration(registerKey, component1);
+        RegisterDeclaration second = FindInputDeclaration(registerKey, component2);
+        return first == null || second == null || ReferenceEquals(first, second);
+    }
+
     public int GetRegisterMaskedLength(RegisterKey registerKey)
     {
         // A constant is as wide as it was declared, whichever set it lives in: an

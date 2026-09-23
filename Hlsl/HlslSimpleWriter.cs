@@ -2404,11 +2404,11 @@ public class HlslSimpleWriter : HlslWriter
             // not the struct: `o.a.s` is a float, however wide struct2 is.
             isPackedScalar = _registers.GetRegisterMaskedLength(
                 new RegisterComponentKey(registerKey, component)) == 1;
-            // One operand can read two of those scalars at once. `imax r0.yz,
-            // cb0[0].xy, -cb0[0].xy` reads a and b, and naming it from the first
-            // component alone read a twice.
-            if (isPackedScalar
-                && TryNamePackedScalars(instruction, operandIndex, registerKey, out string packed))
+            // One operand can read across two variables packed into one register.
+            // `imax r0.yz, cb0[0].xy, -cb0[0].xy` reads a and b, and naming it from the
+            // first component alone read a twice.
+            if (_destinationMaskOverride == null
+                && TryNamePackedComponents(instruction, operandIndex, registerKey, out string packed))
             {
                 return ApplyModifier(modifier, packed);
             }
@@ -2423,6 +2423,16 @@ public class HlslSimpleWriter : HlslWriter
             registerName = _registers.GetRegisterName(inputComponentKey);
             isPackedScalar = _registers.IsPackedInputComponent(inputComponentKey)
                 && _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
+            // One read can cross from one packed variable into another: a coordinate
+            // built as `float3(uv2, uv1.x)` reads v0.zw and v0.x. Named from the first
+            // component and rebased onto it, the component that belongs to the
+            // earlier-packed variable runs below its base. A constructor over each
+            // variable, each swizzled as its own, says what is read.
+            if (_destinationMaskOverride == null
+                && TryNamePackedComponents(instruction, operandIndex, registerKey, out string packedInputs))
+            {
+                return ApplyModifier(modifier, packedInputs);
+            }
         }
         else if (registerKey.IsOutput && instruction.IsDestinationOperand(operandIndex))
         {
@@ -2922,10 +2932,31 @@ public class HlslSimpleWriter : HlslWriter
         return instruction.Opcode is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC ? 3 : 2;
     }
 
-    // A constructor over the variables an operand reads, when it reads more than
-    // one and they are not all the same. Each is a scalar of its own, so there is
-    // no name that covers them.
-    private bool TryNamePackedScalars(
+    // Which declared variable a component of a packed register belongs to, told apart
+    // by where that variable starts: two packed constants, or two packed inputs, never
+    // share a starting component.
+    private int GetPackedComponentBase(D3D10RegisterKey registerKey, int component)
+    {
+        var key = new RegisterComponentKey(registerKey, component);
+        return registerKey.OperandType switch
+        {
+            OperandType.ConstantBuffer => _registers.GetConstantComponentBase(key),
+            OperandType.Input => _registers.GetInputComponentBase(key),
+            _ => 0,
+        };
+    }
+
+    /// <summary>
+    /// A constructor over the variables one operand reads, when fxc packed several
+    /// into one register - two scalars, or TEXCOORD0 at v0.xy and TEXCOORD1 at v0.zw -
+    /// and the read crosses from one into another. Naming the operand from its first
+    /// component and rebasing the whole swizzle onto that variable runs a component
+    /// belonging to a differently-packed variable off its end: below the base when it
+    /// sits in the earlier-packed variable, or past it when a later one is read
+    /// through an earlier variable's name. Each run of consecutive components sharing a
+    /// variable is named and swizzled as that variable.
+    /// </summary>
+    private bool TryNamePackedComponents(
         D3D10Instruction instruction,
         int operandIndex,
         D3D10RegisterKey registerKey,
@@ -2939,16 +2970,53 @@ public class HlslSimpleWriter : HlslWriter
             return false;
         }
 
-        string[] names = [.. components.Select(c =>
-            _registers.GetRegisterName(new RegisterComponentKey(registerKey, c)))];
-        if (names.Distinct().Count() < 2)
+        int[] bases = [.. components.Select(c => GetPackedComponentBase(registerKey, c))];
+
+        // Maximal runs of consecutive components that share one variable.
+        var runs = new List<List<int>>();
+        var runBases = new List<int>();
+        for (int i = 0; i < components.Length; i++)
         {
-            // All one variable, which the name alone already says.
+            if (runs.Count > 0 && runBases[^1] == bases[i])
+            {
+                runs[^1].Add(components[i]);
+            }
+            else
+            {
+                runs.Add([components[i]]);
+                runBases.Add(bases[i]);
+            }
+        }
+        if (runs.Count < 2)
+        {
+            // All one variable, which a single rebased swizzle already names.
             return false;
         }
 
+        var parts = new List<string>();
+        for (int r = 0; r < runs.Count; r++)
+        {
+            int variableBase = runBases[r];
+            List<int> run = runs[r];
+            string variable = _registers.GetRegisterName(
+                new RegisterComponentKey(registerKey, run[0]));
+            string letters = "";
+            foreach (int c in run)
+            {
+                letters += "xyzw"[c - variableBase];
+            }
+            // The whole variable read in order needs no swizzle on it.
+            int maskedLength = _registers.GetRegisterMaskedLength(
+                new RegisterComponentKey(registerKey, run[0]));
+            if (letters != "xyzw"[..maskedLength])
+            {
+                variable += "." + letters;
+            }
+            parts.Add(variable);
+        }
+
         string type = _integerOperandAnalysis.IsIntegerOperand(instruction) ? "int" : "float";
-        name = $"{type}{components.Length}({string.Join(", ", names)})";
+        name = $"{type}{components.Length}({string.Join(", ", parts)})";
         return true;
     }
 

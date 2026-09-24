@@ -1928,17 +1928,17 @@ public sealed class NodeCompiler
         // width alone and the mip count in w; its array the element count in y;
         // an array of 2D, a cube array and a 3D the element count or the depth in
         // z. The mip form takes the level in and the count out, and is what was
-        // asked for whenever the level was not the constant nought or the count
-        // was read; reading the depth of something that has none goes there too,
-        // where a 4-wide variable has the component either way.
+        // asked for whenever the level was not the constant nought or the shader
+        // read a component past the ones the shape's no-mip form reports - the mip
+        // count always, the depth of a shape that has none - where a 4-wide
+        // variable has the component either way.
         ResourceDimension? dimension = resource.Dimension;
         bool hasDepth = dimension is ResourceDimension.Texture2DArray
             or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
         bool is1D = dimension == ResourceDimension.Texture1D;
-        bool readsLevels = assignments.Any(a => ((ResourceInfoNode)a.Value).InfoComponent == 3);
-        bool readsDepth = assignments.Any(a => ((ResourceInfoNode)a.Value).InfoComponent == 2);
-        bool mipForm = !(info.MipLevel is ConstantNode zero && zero.Value == 0) || readsLevels
-            || (readsDepth && !hasDepth && !is1D);
+        int noMipComponents = is1D ? 1 : hasDepth ? 3 : 2;
+        bool mipForm = !(info.MipLevel is ConstantNode zero && zero.Value == 0)
+            || assignments.Any(a => ((ResourceInfoNode)a.Value).InfoComponent >= noMipComponents);
         string dimensions = !mipForm && is1D ? name
             : !mipForm && hasDepth ? $"{name}.x, {name}.y, {name}.z"
             : !mipForm ? $"{name}.x, {name}.y"

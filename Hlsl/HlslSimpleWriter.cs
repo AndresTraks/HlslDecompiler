@@ -2768,11 +2768,12 @@ public class HlslSimpleWriter : HlslWriter
             bool hasDepth = dimension is ResourceDimension.Texture2DArray
                 or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
             bool is1D = dimension == ResourceDimension.Texture1D;
-            // Reading the depth of something that has none has no HLSL spelling
-            // either, so that too is left in the mip form, where a 4-wide variable
-            // has the component the swizzle reads either way.
-            bool mipForm = mipLevel != "0" || read[3]
-                || (read[2] && !hasDepth && !is1D);
+            // Anything read past the components the shape's no-mip form reports -
+            // the mip count always, the depth of a shape that has none - has no
+            // no-mip spelling either, so that too is left in the mip form, where a
+            // 4-wide variable has the component the swizzle reads either way.
+            int noMipComponents = is1D ? 1 : hasDepth ? 3 : 2;
+            bool mipForm = mipLevel != "0" || read.Skip(noMipComponents).Any(r => r);
             if (!mipForm && !hasDepth && !is1D)
             {
                 WriteLine($"{type}2 {dimensions};");

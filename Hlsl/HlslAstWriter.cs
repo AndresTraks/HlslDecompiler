@@ -2088,11 +2088,13 @@ public class HlslAstWriter : HlslWriter
             }
 
             // Which GetDimensions overload the call was, which decides how wide the
-            // variable is that its out parameters are written into. Width and height
-            // at mip 0 is the two-argument overload of a 2D; a 1D reports its width
-            // alone; an array of 2D, a cube array and a 3D report the element count
-            // or the depth in z, so their no-mip overload is three wide. The mip
-            // form always reaches w, where the mip count is.
+            // variable is that its out parameters are written into. The no-mip form
+            // reports as many components as the shape has: a 1D its width alone, a
+            // 2D and a cube width and height, and an array of 2D, a cube array and a
+            // 3D the element count or the depth after those. Anything the shader
+            // read past them - the mip count always, the depth of a shape that has
+            // none - has no no-mip spelling, and is what the mip form is for, where
+            // a 4-wide variable has the component either way.
             ResourceDimension? dimension = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
                 .FirstOrDefault(d => d.BindPoint == info.Resource.RegisterComponentKey.RegisterKey.Number)
@@ -2100,24 +2102,17 @@ public class HlslAstWriter : HlslWriter
             bool hasDepth = dimension is ResourceDimension.Texture2DArray
                 or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
             bool is1D = dimension == ResourceDimension.Texture1D;
-            bool readsLevels = call.Any(c => c.InfoComponent == 3);
-            bool readsDepth = call.Any(c => c.InfoComponent == 2);
-            // Reading the depth of something that has none has no HLSL spelling
-            // either, and goes into the mip form, where a 4-wide variable has the
-            // component either way.
-            bool mipForm = !IsConstantZero(info.MipLevel) || readsLevels
-                || (readsDepth && !hasDepth && !is1D);
-            bool isSize = !mipForm && !hasDepth && !is1D;
+            int noMipComponents = is1D ? 1 : hasDepth ? 3 : 2;
+            bool mipForm = !IsConstantZero(info.MipLevel)
+                || call.Any(c => c.InfoComponent >= noMipComponents);
             // A multisampled texture's overload is three wide - width, height and
             // the sample count - and has no mip level to ask about.
             ResourceInfoNode sampleCount = call.FirstOrDefault(c => c.IsSampleCount);
             TempVariableNode[] variables = _compiler.CreateTempVariables(
                 info.IsBuffer ? (info.IsRawBuffer ? 1 : 2)
                 : sampleCount != null ? sampleCount.SampleCountComponent + 1
-                : isSize ? 2
-                : !mipForm && hasDepth ? 3
-                : !mipForm && is1D ? 1
-                : 4);
+                : mipForm ? 4
+                : noMipComponents);
             foreach (TempVariableNode variable in variables)
             {
                 variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;

@@ -2324,9 +2324,17 @@ public class InstructionParser
     // level to ask it at and the resource one operand earlier than resinfo has it.
     // The mip level is a constant zero here so that it joins the resinfo of the
     // same texture, which is the one GetDimensions call the two came from.
-    private ResourceInfoNode CreateSampleInfoNode(D3D10Instruction instruction, int outputComponent)
+    private HlslTreeNode CreateSampleInfoNode(D3D10Instruction instruction, int outputComponent)
     {
         const int ResourceParamIndex = 1;
+
+        // The rasterizer asks about the render target, which is no resource and has
+        // no declaration to look up: reading it as a register found nothing seeded
+        // under that name and threw.
+        if (instruction.GetOperandType(ResourceParamIndex) == OperandType.Rasterizer)
+        {
+            return new RenderTargetSampleCountNode(outputComponent);
+        }
 
         var resource = GetInputComponents(instruction, ResourceParamIndex, 1)[0] as RegisterInputNode;
         ResourceDefinition definition = _registerState.ResourceDefinitions
@@ -2348,8 +2356,14 @@ public class InstructionParser
         const int ResourceParamIndex = 1;
         const int SampleIndexParamIndex = 2;
 
-        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent]
-            as RegisterInputNode;
+        // The rasterizer carries a swizzle picking x or y of the float2 the way a
+        // resource operand does, but nothing seeds it as a register, so the node is
+        // made from the operand itself.
+        var resource = instruction.GetOperandType(ResourceParamIndex) == OperandType.Rasterizer
+            ? new RegisterInputNode(
+                GetParamRegisterComponentKey(instruction, ResourceParamIndex, outputComponent))
+            : GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent]
+                as RegisterInputNode;
         HlslTreeNode sampleIndex = instruction.GetOperandType(SampleIndexParamIndex) == OperandType.Immediate32
             ? new ConstantNode((int)instruction.GetParamInt(SampleIndexParamIndex, 0))
             : GetInputComponents(instruction, SampleIndexParamIndex, 1)[0];

@@ -953,9 +953,19 @@ public class D3D10Machine
             case D3D10Opcode.SampleInfo:
                 return SampleCount(instruction);
             case D3D10Opcode.SamplePos:
-                // Where a sample sits inside the pixel. Made up, but made up the
-                // same way for both programs, which is what is being compared.
-                return Pack([.. Named($"samplepos{instruction.GetParamRegisterNumber(1)}")]);
+                {
+                    // Where a sample sits inside the pixel. Made up, but made up the
+                    // same way for both programs, which is what is being compared.
+                    // The name carries which sample of what: named after the resource
+                    // alone, every sample of it answered alike, so a decompilation
+                    // that asked for the wrong one - or asked the render target where
+                    // the shader asked a texture - read the same made up position and
+                    // was agreed with.
+                    string asked = instruction.GetOperandType(1) == OperandType.Rasterizer
+                        ? "rasterizer"
+                        : $"t{instruction.GetParamRegisterNumber(1)}";
+                    return Pack([.. Named($"samplepos{asked}:{Ints(instruction, 2)[0]}")]);
+                }
             case D3D10Opcode.Lod:
                 return LevelOfDetail(instruction);
             case D3D10Opcode.LdStructured:

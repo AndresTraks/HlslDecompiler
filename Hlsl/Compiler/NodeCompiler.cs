@@ -1569,15 +1569,27 @@ public sealed class NodeCompiler
             return loaded;
         }
 
+        if (first is RenderTargetSampleCountNode)
+        {
+            return "GetRenderTargetSampleCount()";
+        }
+
         if (first is SamplePositionNode samplePosition)
         {
             // From the resource operand, the way a sampled texel's channel is: the
             // destination is .xy and the resource swizzle says which of the two.
             string positionSwizzle = GetAstSourceSwizzleName(
                 components.Select(c => (IHasComponentIndex)((SamplePositionNode)c).Resource), 2);
+            string index = CompileAsInteger([samplePosition.SampleIndex]);
+            // The render target is asked about by a function of its own rather than
+            // by a method on the resource, there being no resource to name.
+            if (samplePosition.Resource.RegisterComponentKey.RegisterKey
+                is D3D10RegisterKey { OperandType: OperandType.Rasterizer })
+            {
+                return $"GetRenderTargetSamplePosition({index}){positionSwizzle}";
+            }
             string sampled = _registers.GetRegisterName(
                 samplePosition.Resource.RegisterComponentKey.RegisterKey);
-            string index = CompileAsInteger([samplePosition.SampleIndex]);
             return $"{sampled}.GetSamplePosition({index}){positionSwizzle}";
         }
 

@@ -110,6 +110,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "attribute_centroid")]
     [TestCase("ps_5_0", "sample_position")]
     [TestCase("ps_5_0", "sample_position_constant")]
+    [TestCase("ps_5_0", "render_target_samples")]
     [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "tangent_lighting")]
     [TestCase("ps_5_0", "integer_target")]

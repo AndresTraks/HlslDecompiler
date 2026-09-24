@@ -1405,6 +1405,10 @@ public class AsmWriter
             // dcl, and .x where it is read.
             OperandType.InputCoverageMask => "vCoverage",
             OperandType.Null => "null",
+            // The render target rather than a resource: what sampleinfo and
+            // samplepos read when the shader asked about where it is drawing. It
+            // carries no register number, the way the depth outputs do not.
+            OperandType.Rasterizer => "rasterizer",
             _ => throw new NotImplementedException(operandType.ToString()),
         };
 

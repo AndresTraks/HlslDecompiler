@@ -1555,8 +1555,15 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;
-            // The resource names itself and the sample index is an integer.
+            // The resource names itself and the sample index is an integer; the
+            // render target has no name, and a function of its own instead.
             case D3D10Opcode.SamplePos:
+                if (instruction.GetOperandType(1) == OperandType.Rasterizer)
+                {
+                    WriteResult(instruction, "{0} = GetRenderTargetSamplePosition({1});",
+                        GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                    break;
+                }
                 WriteResult(instruction, "{0} = {1}.GetSamplePosition({2});",
                     GetOperandName(instruction, 0),
                     _registers.GetRegisterName(instruction.GetParamRegisterKey(1)),
@@ -2835,6 +2842,14 @@ public class HlslSimpleWriter : HlslWriter
     /// </summary>
     private void WriteSampleInfo(D3D10Instruction instruction)
     {
+        // How many samples the render target has, which is asked for on its own and
+        // not read out of a GetDimensions: there is no resource to call one on.
+        if (instruction.GetOperandType(1) == OperandType.Rasterizer)
+        {
+            WriteResult(instruction, "{0} = GetRenderTargetSampleCount();",
+                GetOperandName(instruction, 0));
+            return;
+        }
         string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
         string dimensions = $"dimensions{_resourceInfoCount++}";
         WriteMultisampledDimensions(instruction, 1, type, dimensions);

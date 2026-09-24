@@ -1627,11 +1627,39 @@ public class HlslSimpleWriter : HlslWriter
                     // modulus lowered once - fxc folded the two together and lost it.
                     string dividend = AsUint(instruction, 2);
                     string divisor = AsUint(instruction, 3);
-                    if (instruction.GetOperandType(0) != OperandType.Null)
+                    bool wantsQuotient = instruction.GetOperandType(0) != OperandType.Null;
+                    bool wantsRemainder = instruction.GetOperandType(1) != OperandType.Null;
+                    // One instruction writing two results is two statements here, and
+                    // the quotient is assigned before the remainder reads its
+                    // operands. Where the quotient lands in a register an operand is
+                    // read from - a signed division lowers to
+                    // `udiv r1.xyzw, r2.xyzw, r1.xyzw, r2.xyzw`, the dividend and the
+                    // quotient being the one register - the remainder divided the
+                    // quotient by the divisor. Naming an operand that the quotient is
+                    // about to overwrite keeps the value the instruction read.
+                    if (wantsQuotient && wantsRemainder)
+                    {
+                        RegisterKey quotientKey = instruction.GetParamRegisterKey(0);
+                        int length = instruction.GetDestinationMaskLength();
+                        string size = length == 1 ? "" : length.ToString();
+                        if (IsSameRegister(instruction, 2, quotientKey))
+                        {
+                            string kept = $"dividend{_divideCount++}";
+                            WriteLine("uint{0} {1} = {2};", size, kept, dividend);
+                            dividend = kept;
+                        }
+                        if (IsSameRegister(instruction, 3, quotientKey))
+                        {
+                            string kept = $"divisor{_divideCount++}";
+                            WriteLine("uint{0} {1} = {2};", size, kept, divisor);
+                            divisor = kept;
+                        }
+                    }
+                    if (wantsQuotient)
                     {
                         WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0), dividend, divisor);
                     }
-                    if (instruction.GetOperandType(1) != OperandType.Null)
+                    if (wantsRemainder)
                     {
                         // fxc folds `asfloat(u % 5)` - an unsigned remainder by an
                         // immediate, reinterpreted - to zero, a bug of its own; the
@@ -2638,6 +2666,19 @@ public class HlslSimpleWriter : HlslWriter
     // An operand read as an unsigned integer: bits reinterpreted as such, an int
     // register cast - as wide as the destination, since a bare (uint) over two
     // components is X3014 - and an immediate as it is.
+    // How many operands of a udiv have been named to keep them from its quotient.
+    private int _divideCount;
+
+    /// <summary>
+    /// Whether an operand reads the register given - the one a result is about to be
+    /// written into. An immediate reads no register and can never be overwritten.
+    /// </summary>
+    private static bool IsSameRegister(D3D10Instruction instruction, int operandIndex, RegisterKey registerKey)
+    {
+        return instruction.GetOperandType(operandIndex) != OperandType.Immediate32
+            && instruction.GetParamRegisterKey(operandIndex).Equals(registerKey);
+    }
+
     private string AsUint(D3D10Instruction instruction, int operandIndex)
     {
         string name = GetOperandName(instruction, operandIndex);

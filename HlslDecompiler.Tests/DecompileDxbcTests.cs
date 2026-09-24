@@ -117,6 +117,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "swap_carried")]
     [TestCase("ps_5_0", "struct_members")]
     [TestCase("ps_5_0", "reciprocal_root")]
+    [TestCase("ps_5_0", "masked_shift")]
     [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "tangent_lighting")]
     [TestCase("ps_5_0", "integer_target")]

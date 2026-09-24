@@ -472,15 +472,27 @@ public sealed class NodeCompiler
         string insert = CompileIntegerOperand(components.Select(c => c.Inputs[2]));
         string value = CompileIntegerOperand(components.Select(c => c.Inputs[3]));
 
+        // A bfi keeps the bits of its base that the mask does not cover, and a base
+        // of nothing has none to keep. fxc writes a masked shift that way - the
+        // whole of `(x & 7) << 2` is a bfi over zero - and writing the half that
+        // keeps the base out in full turned one instruction into a not, an and and
+        // an or of a constant that is nothing at all.
+        bool insertsIntoNothing = components.All(c => ConstantMatcher.IsZero(c.Inputs[3]));
         if (AllIntegers(widths, out int[] width) && AllIntegers(offsets, out int[] offset))
         {
             int[] mask = [.. width.Zip(offset, (w, o) => (w >= 32 ? -1 : (1 << w) - 1) << o)];
             string maskText = CompileIntegers(mask);
             string shifted = offset.All(o => o == 0) ? insert : $"({insert} << {CompileIntegers(offset)})";
-            return $"({value} & ~{maskText}) | ({shifted} & {maskText})";
+            // Bracketed: an and binds more loosely than most of what this can sit
+            // inside, and `bfi(...) / 4` written bare is anded with the quotient.
+            return insertsIntoNothing
+                ? $"({shifted} & {maskText})"
+                : $"({value} & ~{maskText}) | ({shifted} & {maskText})";
         }
         string maskExpression = $"(((1 << {CompileOperand(widths)}) - 1) << {CompileOperand(offsets)})";
-        return $"({value} & ~{maskExpression}) | (({insert} << {CompileOperand(offsets)}) & {maskExpression})";
+        return insertsIntoNothing
+            ? $"(({insert} << {CompileOperand(offsets)}) & {maskExpression})"
+            : $"({value} & ~{maskExpression}) | (({insert} << {CompileOperand(offsets)}) & {maskExpression})";
     }
 
     private static bool AllIntegers(List<HlslTreeNode> nodes, out int[] values)

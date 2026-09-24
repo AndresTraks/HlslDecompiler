@@ -1270,6 +1270,32 @@ public sealed class NodeCompiler
                 }
             }
         }
+        // An index fxc has already masked is masked inside the register number
+        // rather than outside it, and in one instruction: `m[(i + 1) & 7]` is
+        // `bfi r0.x, l(3), l(2), i + 1, l(0)`, the mask of three bits shifted up by
+        // the two that multiply the element index by the registers it takes. Taking
+        // the shift back off leaves the mask the shader wrote, where the shift is
+        // exactly the one this index is over. Left as a division, the whole bfi
+        // survived into the output with a divide after it, and fxc rebuilt that as
+        // two instructions rather than the one it had.
+        if (index is BitFieldInsertOperation insert
+            && insert.Inputs[0] is ConstantNode { IntegerValue: int width }
+            && insert.Inputs[1] is ConstantNode { IntegerValue: int offset }
+            && ConstantMatcher.IsZero(insert.Inputs[3])
+            && width < 32 && rows == 1 << offset)
+        {
+            // Bracketed twice over, and neither is spare: an and binds more
+            // loosely than the constant offset a member of the element adds onto
+            // this, and more loosely than an or or an xor the index itself might be
+            // made of - `a | b & 7` ands before it ors.
+            string masked = CompileAsInteger([insert.Inputs[2]]);
+            if (insert.Inputs[2] is not (RegisterInputNode or ConstantNode
+                or TempVariableNode or TempAssignmentNode))
+            {
+                masked = $"({masked})";
+            }
+            return $"({masked} & {(1 << width) - 1})";
+        }
         return $"{CompileAsInteger([index])} / {rows}";
     }
 

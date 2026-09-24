@@ -2147,8 +2147,9 @@ public class InstructionParser
                         case D3D10Opcode.Mov:
                             return new MoveOperation(inputs[0]);
                         case D3D10Opcode.IToF:
+                            return new ConvertOperation(inputs[0], "float") { SourceUnsigned = false };
                         case D3D10Opcode.UTof:
-                            return new ConvertOperation(inputs[0], "float");
+                            return new ConvertOperation(inputs[0], "float") { SourceUnsigned = true };
                         case D3D10Opcode.Ftoi:
                             return new ConvertOperation(inputs[0], "int");
                         case D3D10Opcode.Ftou:

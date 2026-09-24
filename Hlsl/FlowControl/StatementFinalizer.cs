@@ -1148,6 +1148,13 @@ public class StatementFinalizer
             // ineg, which is meaningless on an unsigned value.
             case NegateOperation when IsIntegerValue(reader) == true:
                 return false;
+            // utof and itof, which answer the same float and read their source
+            // differently. A value every reader turns into a float with a utof is
+            // unsigned, and declaring it so is what keeps the one conversion one
+            // instruction: an int among them splits the utof and costs an itof.
+            case ConvertOperation { SourceUnsigned: bool sourceUnsigned } convert
+                when ReferenceEquals(convert.Value, node):
+                return sourceUnsigned;
             default:
                 return null;
         }

@@ -24,7 +24,7 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	int t0 = i.sv_position.w < cascadeSplits.x ? 0 : i.sv_position.w < cascadeSplits.y ? 1 : 2;
+	uint t0 = i.sv_position.w < cascadeSplits.x ? 0 : i.sv_position.w < cascadeSplits.y ? 1 : 2;
 	float t1 = dot(float4(i.position, 1), transpose(lightViewProjection[t0])[3]);
 	float3 t2 = normalize(i.normal);
 	float t3 = saturate(dot(t2, normalize(i.texcoord)));

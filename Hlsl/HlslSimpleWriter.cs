@@ -2481,9 +2481,12 @@ public class HlslSimpleWriter : HlslWriter
             // A texture or a sampler is named, never swizzled. The swizzle a sampling
             // instruction carries on its resource operand selects components of the
             // result, and on the sampler of a gather it selects the channel; neither
-            // belongs on the object itself.
+            // belongs on the object itself. A writable view carries one the same way
+            // - `resinfo r0.xy, l(0), u0.xyzw` - and `tex.xy.GetDimensions(...)` is
+            // not a subscript the object has.
             if (registerKey.OperandType == OperandType.Resource
-                || registerKey.OperandType == OperandType.Sampler)
+                || registerKey.OperandType == OperandType.Sampler
+                || registerKey.OperandType == OperandType.UnorderedAccessView)
             {
                 return ApplyModifier(modifier, registerName);
             }
@@ -2874,10 +2877,8 @@ public class HlslSimpleWriter : HlslWriter
 
     private ResourceDimension? ResourceDimensionOf(D3D10Instruction instruction, int operandIndex)
     {
-        int bindPoint = instruction.GetParamRegisterNumber(operandIndex);
-        return _registers.ResourceDefinitions
-            .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-            .FirstOrDefault(d => d.BindPoint == bindPoint)?.Dimension;
+        return _registers.GetTextureDefinition(
+            instruction.GetParamRegisterKey(operandIndex))?.Dimension;
     }
 
     private static string GetResourceSwizzle(D3D10Instruction instruction)

@@ -228,6 +228,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "texture_accumulate")]
     [TestCase("cs_5_0", "buffer_write")]
     [TestCase("cs_5_0", "buffer_size")]
+    [TestCase("cs_5_0", "uav_dimensions")]
     [TestCase("cs_5_0", "append_filter")]
     [TestCase("cs_5_0", "consume_double")]
     [TestCase("cs_5_0", "luminance_histogram")]

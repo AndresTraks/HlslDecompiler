@@ -1382,18 +1382,28 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// The declaration a texture operand names, read only or writable. t and u
+    /// registers number separately, so which of the two a bind point means has to
+    /// come from the register rather than the number: `t0` and `u0` are two
+    /// resources, and looking only among the read only ones found neither.
+    /// </summary>
+    public ResourceDefinition GetTextureDefinition(RegisterKey registerKey)
+    {
+        bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
+        return ResourceDefinitions
+            .FirstOrDefault(d => d.BindPoint == registerKey.Number
+                && (isUav
+                    ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
+                    : d.ShaderInputType is D3DShaderInputType.Texture));
+    }
+
+    /// <summary>
     /// How many coordinates address one texel of a resource - two for a Texture2D,
     /// three for a Texture3D or a Texture2DArray.
     /// </summary>
     public int GetResourceDimensionSize(RegisterKey registerKey)
     {
-        bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
-        return ResourceDefinitions
-            .First(d => d.BindPoint == registerKey.Number
-                && (isUav
-                    ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
-                    : d.ShaderInputType is D3DShaderInputType.Texture))
-            .GetDimensionSize();
+        return GetTextureDefinition(registerKey).GetDimensionSize();
     }
 
     /// <summary>

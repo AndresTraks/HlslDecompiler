@@ -2095,10 +2095,8 @@ public class HlslAstWriter : HlslWriter
             // read past them - the mip count always, the depth of a shape that has
             // none - has no no-mip spelling, and is what the mip form is for, where
             // a 4-wide variable has the component either way.
-            ResourceDimension? dimension = _registers.ResourceDefinitions
-                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-                .FirstOrDefault(d => d.BindPoint == info.Resource.RegisterComponentKey.RegisterKey.Number)
-                ?.Dimension;
+            ResourceDimension? dimension = _registers
+                .GetTextureDefinition(info.Resource.RegisterComponentKey.RegisterKey)?.Dimension;
             bool hasDepth = dimension is ResourceDimension.Texture2DArray
                 or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
             bool is1D = dimension == ResourceDimension.Texture1D;

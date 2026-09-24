@@ -1888,9 +1888,7 @@ public sealed class NodeCompiler
                 && d.ShaderInputType is D3DShaderInputType.Structured
                     or D3DShaderInputType.ByteAddress or D3DShaderInputType.UavRWStructured
                     or D3DShaderInputType.UavRWByteAddress)
-            : _registers.ResourceDefinitions
-                .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
-                .First(d => d.BindPoint == resourceKey.Number);
+            : _registers.GetTextureDefinition(resourceKey);
 
         string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
         string name = $"t{variable.DeclarationIndex}";

@@ -670,14 +670,7 @@ public class StatementFinalizer
     {
         IStatement lastStatement = statements.Last();
 
-        // These terminate the shader by side effect, so there is nothing to return.
-        if (lastStatement is ReturnStatement
-            || lastStatement is AppendStatement
-            || lastStatement is StoreStructuredStatement
-            || lastStatement is AtomicStatement
-            || lastStatement is IndexableTempStoreStatement
-            || lastStatement is RestartStripStatement
-            || lastStatement is SyncStatement)
+        if (lastStatement is ReturnStatement)
         {
             return;
         }
@@ -711,7 +704,20 @@ public class StatementFinalizer
         if (lastStatement is LoopStatement || lastStatement is ClipStatement
             || lastStatement is DiscardStatement
             || lastStatement is BreakStatement || lastStatement is ContinueStatement
-            || lastStatement is SwitchStatement)
+            || lastStatement is SwitchStatement
+            // A statement that does its work by side effect ends a shader that
+            // returns nothing, and those returned above. One that has a value to
+            // return still has to return it: a pixel shader storing to a buffer and
+            // then answering a colour ends on the store, and left as the end of it
+            // the colour went unwritten - output with no return in it at all.
+            || lastStatement is AppendStatement
+            || lastStatement is StoreStructuredStatement
+            || lastStatement is StoreTypedStatement
+            || lastStatement is BufferAppendStatement
+            || lastStatement is AtomicStatement
+            || lastStatement is IndexableTempStoreStatement
+            || lastStatement is RestartStripStatement
+            || lastStatement is SyncStatement)
         {
             // Return after the statement, not in place of it.
             statements.Add(new ReturnStatement(lastStatement.Outputs));

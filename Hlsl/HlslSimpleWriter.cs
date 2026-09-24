@@ -353,8 +353,10 @@ public class HlslSimpleWriter : HlslWriter
     {
         // The only immediate an eval takes is the place it evaluates the attribute
         // at - a sample index, or an offset in sixteenths of a pixel - whatever the
-        // attribute itself is made of.
-        if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped)
+        // attribute itself is made of. A samplepos takes one immediate too, and it
+        // is the sample it asks about, however much of a float2 it answers with.
+        if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped
+            or D3D10Opcode.SamplePos)
         {
             return true;
         }

@@ -226,6 +226,17 @@ public class NodeGrouper
             }
         }
 
+        // The sample a samplepos asks about is one scalar for the whole float2, not
+        // a component of it. Two constants group as components whatever numbers
+        // they hold - a vector constant's components differ and still belong to one
+        // read - so `l(1)` and `l(2)` grouped, and both samples came out as one
+        // GetSamplePosition(1) answering all four components.
+        if (node1 is SamplePositionNode position1 && node2 is SamplePositionNode position2
+            && !AreNodesEquivalent(position1.SampleIndex, position2.SampleIndex))
+        {
+            return false;
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)

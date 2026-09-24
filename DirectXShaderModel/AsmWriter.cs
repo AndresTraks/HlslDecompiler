@@ -1278,7 +1278,7 @@ public class AsmWriter
         else if (operandType == OperandType.Immediate32)
         {
             bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction)
-                || IsBufferAddressOperand(instruction, index);
+                || IsIntegerIndexOperand(instruction, index);
             // A mov or a movc uses its immediate for nothing itself, so what it is
             // comes from whatever reads the register it lands in - the same question
             // the HLSL writer asks of the same operand. Left to the instruction, the
@@ -1449,13 +1449,20 @@ public class AsmWriter
     /// integers whatever the instruction around them is made of: an element and an
     /// offset into a buffer, or the place an attribute is evaluated at.
     /// </summary>
-    private static bool IsBufferAddressOperand(D3D10Instruction instruction, int index)
+    /// <summary>
+    /// Whether an operand is an integer index rather than a value: the address a
+    /// buffer is read at, and the sample an instruction is asked about. The
+    /// instruction itself is no guide - samplepos answers a float2, and its index
+    /// printed as a float came out l(0.000000), the bits of the integer 1.
+    /// </summary>
+    private static bool IsIntegerIndexOperand(D3D10Instruction instruction, int index)
     {
         return instruction.Opcode switch
         {
             D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured => index is 1 or 2,
             D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw => index == 1,
             D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped => index == 2,
+            D3D10Opcode.SamplePos => index == 2,
             _ => false,
         };
     }

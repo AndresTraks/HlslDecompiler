@@ -35,9 +35,10 @@ public class ResourceInfoNode : HlslTreeNode, IHasComponentIndex
     /// </summary>
     public bool IsBuffer { get; init; }
 
-    /// <summary>Whether that buffer is a byte address one, which reports one number
-    /// where a structured one reports two.</summary>
-    public bool IsRawBuffer { get; init; }
+    /// <summary>Whether that buffer reports its stride beside its element count,
+    /// which a structured one does and a byte address or a typed one does not.
+    /// </summary>
+    public bool ReportsStride { get; init; }
 
     /// <summary>
     /// Which out parameter the sample count is. A multisampled texture reports

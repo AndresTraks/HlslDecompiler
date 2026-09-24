@@ -2301,7 +2301,7 @@ public class InstructionParser
             D3D10ResInfoReturnType.Uint)
         {
             IsBuffer = true,
-            IsRawBuffer = _registerState.IsRawResource(resource.RegisterComponentKey.RegisterKey),
+            ReportsStride = _registerState.IsStructuredResource(resource.RegisterComponentKey.RegisterKey),
         };
     }
 

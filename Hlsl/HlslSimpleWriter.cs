@@ -2809,20 +2809,19 @@ public class HlslSimpleWriter : HlslWriter
     {
         string resource = GetOperandName(instruction, 1);
         string dimensions = $"dimensions{_resourceInfoCount++}";
-        if (_registers.IsRawResource(instruction.GetParamRegisterKey(1)))
-        {
-            WriteLine($"uint {dimensions};");
-            WriteLine($"{resource}.GetDimensions({dimensions});");
-        }
-        else
+        bool reportsStride = _registers.IsStructuredResource(instruction.GetParamRegisterKey(1));
+        if (reportsStride)
         {
             WriteLine($"uint2 {dimensions};");
             WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
         }
+        else
+        {
+            WriteLine($"uint {dimensions};");
+            WriteLine($"{resource}.GetDimensions({dimensions});");
+        }
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
-            _registers.IsRawResource(instruction.GetParamRegisterKey(1))
-                ? dimensions
-                : $"{dimensions}.x");
+            reportsStride ? $"{dimensions}.x" : dimensions);
     }
 
     /// <summary>

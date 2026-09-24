@@ -74,6 +74,44 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// Whether a buffer reports its stride beside its element count, which only a
+    /// structured one does. A byte address buffer reports its size in bytes and a
+    /// typed one how many elements it holds, and each of those is one number.
+    /// </summary>
+    public bool IsStructuredResource(RegisterKey resourceKey)
+    {
+        bool isUav = resourceKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
+        return ResourceDefinitions.Any(r => r.BindPoint == resourceKey.Number
+            && (isUav
+                ? r.ShaderInputType is D3DShaderInputType.UavRWStructured
+                    or D3DShaderInputType.UavRWStucturedWithCounter
+                    or D3DShaderInputType.UavAppendStructured
+                    or D3DShaderInputType.UavConsumeStructured
+                : r.ShaderInputType is D3DShaderInputType.Structured));
+    }
+
+    /// <summary>
+    /// The declaration a buffer operand names. A structured or a byte address
+    /// buffer binds as a kind of its own; a typed one binds the way a texture does,
+    /// so looking only among the first kinds found no declaration at all.
+    /// </summary>
+    public ResourceDefinition GetBufferDefinition(RegisterKey registerKey)
+    {
+        bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
+        return ResourceDefinitions.FirstOrDefault(d => d.BindPoint == registerKey.Number
+            && (isUav
+                ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
+                    or D3DShaderInputType.UavRWStructured
+                    or D3DShaderInputType.UavRWByteAddress
+                    or D3DShaderInputType.UavRWStucturedWithCounter
+                    or D3DShaderInputType.UavAppendStructured
+                    or D3DShaderInputType.UavConsumeStructured
+                : d.ShaderInputType is D3DShaderInputType.Texture
+                    or D3DShaderInputType.Structured
+                    or D3DShaderInputType.ByteAddress));
+    }
+
+    /// <summary>
     /// Names the members a load or a store reaches. An element that is a struct is
     /// addressed by a byte offset and nothing else, so `ld_structured ..., l(0), u0`
     /// over a struct of a float3 and a float reads two members at once and has to be

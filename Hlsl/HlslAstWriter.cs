@@ -2107,7 +2107,7 @@ public class HlslAstWriter : HlslWriter
             // the sample count - and has no mip level to ask about.
             ResourceInfoNode sampleCount = call.FirstOrDefault(c => c.IsSampleCount);
             TempVariableNode[] variables = _compiler.CreateTempVariables(
-                info.IsBuffer ? (info.IsRawBuffer ? 1 : 2)
+                info.IsBuffer ? (info.ReportsStride ? 2 : 1)
                 : sampleCount != null ? sampleCount.SampleCountComponent + 1
                 : mipForm ? 4
                 : noMipComponents);

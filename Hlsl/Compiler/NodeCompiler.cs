@@ -1884,10 +1884,7 @@ public sealed class NodeCompiler
         // A buffer is bound as one of several kinds, and which it is decides the
         // overload below as well as where the name comes from.
         ResourceDefinition resource = info.IsBuffer
-            ? _registers.ResourceDefinitions.First(d => d.BindPoint == resourceKey.Number
-                && d.ShaderInputType is D3DShaderInputType.Structured
-                    or D3DShaderInputType.ByteAddress or D3DShaderInputType.UavRWStructured
-                    or D3DShaderInputType.UavRWByteAddress)
+            ? _registers.GetBufferDefinition(resourceKey)
             : _registers.GetTextureDefinition(resourceKey);
 
         string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
@@ -1909,9 +1906,9 @@ public sealed class NodeCompiler
         // alone and the second out parameter is there to be written into.
         if (info.IsBuffer)
         {
-            return declaration + "\r\n" + (info.IsRawBuffer
-                ? $"{resource.Name}.GetDimensions({name});"
-                : $"{resource.Name}.GetDimensions({name}.x, {name}.y);");
+            return declaration + "\r\n" + (info.ReportsStride
+                ? $"{resource.Name}.GetDimensions({name}.x, {name}.y);"
+                : $"{resource.Name}.GetDimensions({name});");
         }
         bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount);
         if (isMultisampled)

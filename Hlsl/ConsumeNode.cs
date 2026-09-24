@@ -59,3 +59,25 @@ public class ConsumeSlotNode : HlslTreeNode
         return $"consumeSlot({Buffer})";
     }
 }
+
+/// <summary>
+/// What an imm_atomic_alloc leaves in a register: the slot it took, which the
+/// store_structured addressed by it then fills. The two together are one Append,
+/// and an append buffer has no other spelling - no subscript, and no counter to
+/// read the slot out of - so nothing else reads this and the assignment goes away
+/// as dead, the way a consume's does.
+/// </summary>
+public class AppendSlotNode : HlslTreeNode
+{
+    public AppendSlotNode(RegisterInputNode buffer)
+    {
+        AddInput(buffer);
+    }
+
+    public RegisterInputNode Buffer => (RegisterInputNode)Inputs[0];
+
+    public override string ToString()
+    {
+        return $"appendSlot({Buffer})";
+    }
+}

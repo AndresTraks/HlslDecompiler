@@ -50,16 +50,25 @@ public class HlslSimpleWriter : HlslWriter
                 // The one place a statement is two instructions rather than one.
                 // An append buffer has no spelling for half of it: no subscript to
                 // store through, and no counter to keep the slot in - so
-                // imm_atomic_alloc and the store after it are written as the Append
-                // they came from, or neither of them can be written at all.
-                if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
-                    && index + 1 < _shader.Instructions.Count
-                    && _shader.Instructions[index + 1] is D3D10Instruction store
-                    && IsAppendPair(d9d10Instruction, store))
+                // imm_atomic_alloc and the store that fills the slot are written as
+                // the Append they came from, or neither of them can be written at
+                // all. The store is not always the instruction after: what is
+                // appended is computed between the two whenever it reads nothing the
+                // alloc needed, so the slot waits here for the store that fills it.
+                if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc)
                 {
-                    WriteLine("{0}.Append({1});", GetOperandName(d9d10Instruction, 1),
-                        GetOperandName(store, 3));
-                    index++;
+                    _allocatedSlots[d9d10Instruction.GetParamRegisterKey(0)] = d9d10Instruction;
+                    continue;
+                }
+                if (d9d10Instruction.Opcode == D3D10Opcode.StoreStructured
+                    && d9d10Instruction.GetOperandType(1) != OperandType.Immediate32
+                    && _allocatedSlots.TryGetValue(
+                        d9d10Instruction.GetParamRegisterKey(1), out D3D10Instruction alloc)
+                    && IsAppendPair(alloc, d9d10Instruction))
+                {
+                    WriteLine("{0}.Append({1});", GetOperandName(alloc, 1),
+                        GetOperandName(d9d10Instruction, 3));
+                    _allocatedSlots.Remove(d9d10Instruction.GetParamRegisterKey(1));
                     continue;
                 }
                 WriteInstruction(d9d10Instruction);
@@ -84,6 +93,10 @@ public class HlslSimpleWriter : HlslWriter
             && store.GetOperandType(1) != OperandType.Immediate32
             && store.GetParamRegisterKey(1).Equals(alloc.GetParamRegisterKey(0));
     }
+
+    // The alloc that took each slot, by the register it left the slot in, waiting
+    // for the store that fills it.
+    private readonly Dictionary<RegisterKey, D3D10Instruction> _allocatedSlots = [];
 
     // The variable each consume call filled, by the register it left its slot in.
     private readonly Dictionary<RegisterKey, string> _consumedSlots = [];

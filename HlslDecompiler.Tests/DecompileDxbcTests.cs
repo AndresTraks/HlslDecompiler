@@ -233,6 +233,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "uav_dimensions")]
     [TestCase("cs_5_0", "typed_buffer_size")]
     [TestCase("cs_5_0", "append_filter")]
+    [TestCase("cs_5_0", "append_computed")]
     [TestCase("cs_5_0", "consume_double")]
     [TestCase("cs_5_0", "luminance_histogram")]
     [TestCase("cs_5_0", "bit_counts")]

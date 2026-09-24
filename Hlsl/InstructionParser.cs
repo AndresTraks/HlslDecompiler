@@ -428,6 +428,17 @@ public class InstructionParser
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
                         RecordStoredType(instruction, values);
+                        // Storing at a slot an alloc took is the second half of an
+                        // Append, and is written as one rather than as a subscripted
+                        // store - which an append buffer does not have.
+                        if (address is AppendSlotNode appendSlot
+                            && appendSlot.Buffer.RegisterComponentKey.RegisterKey.Number
+                                == instruction.GetParamRegisterNumber(0))
+                        {
+                            InsertStatement(new BufferAppendStatement(
+                                appendSlot.Buffer, values, ActiveOutputs));
+                            break;
+                        }
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs)
                         {
                             ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
@@ -455,29 +466,21 @@ public class InstructionParser
                     }
                 case D3D10Opcode.ImmAtomicAlloc:
                     {
-                        // imm_atomic_alloc takes the next slot and the store after it
-                        // puts the element there: together they are one Append, and
-                        // an append buffer has no other spelling - no subscript, and
-                        // no counter to read the slot out of.
-                        D3D10Instruction store = NextInstruction();
-                        if (store?.Opcode != D3D10Opcode.StoreStructured
-                            || store.GetParamRegisterNumber(0) != instruction.GetParamRegisterNumber(1)
-                            || !ReadsRegister(store, 1, instruction.GetParamRegisterKey(0)))
-                        {
-                            throw new NotImplementedException(
-                                "imm_atomic_alloc without the store that appends the element.");
-                        }
+                        // imm_atomic_alloc takes the next slot and the store
+                        // addressed by it puts the element there: together they are
+                        // one Append. The store is not always the instruction after -
+                        // what is appended is computed between the two whenever it
+                        // reads nothing the alloc needed - so the slot is recorded
+                        // here and the store makes the call, the way a consume's slot
+                        // waits for the loads that read it.
                         var appendKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(1), 0);
-                        RegisterComponentKey[] appendedKeys = GetDestinationKeys(store).ToArray();
-                        HlslTreeNode[] appended = appendedKeys
-                            .Select(key => GetInputs(store, key.ComponentIndex)[2])
-                            .ToArray();
-                        RecordStoredType(store, appended);
-                        InsertStatement(new BufferAppendStatement(
-                            new RegisterInputNode(appendKey), appended, ActiveOutputs));
-                        // Both instructions, the store having been taken with this one.
-                        _instructionPointer++;
+                        var appendSlot = new AppendSlotNode(new RegisterInputNode(appendKey));
+                        var allocKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
+                        _registerState.DeclareRegisterWrite(allocKey, instruction.GetWriteMask(0));
+                        SetActiveOutput(
+                            new RegisterComponentKey(allocKey, FirstWrittenComponent(instruction)),
+                            appendSlot);
                         break;
                     }
                 case D3D10Opcode.AtomicIAdd:

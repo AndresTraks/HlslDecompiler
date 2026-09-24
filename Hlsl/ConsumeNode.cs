@@ -81,3 +81,30 @@ public class AppendSlotNode : HlslTreeNode
         return $"appendSlot({Buffer})";
     }
 }
+
+/// <summary>
+/// imm_atomic_alloc or imm_atomic_consume over a buffer that keeps a counter
+/// without being an append or a consume one. `buf.IncrementCounter()` takes the
+/// next slot and `buf.DecrementCounter()` gives the last one back, and the slot
+/// is then an index like any other - read and written through a subscript, which
+/// is what an RWStructuredBuffer has and the append and consume ones have not. So
+/// this is a value in its own right rather than half of a call.
+/// </summary>
+public class BufferCounterNode : HlslTreeNode
+{
+    public BufferCounterNode(RegisterInputNode buffer, bool isIncrement)
+    {
+        AddInput(buffer);
+        IsIncrement = isIncrement;
+    }
+
+    public RegisterInputNode Buffer => (RegisterInputNode)Inputs[0];
+
+    /// <summary>Increment for an alloc, decrement for a consume.</summary>
+    public bool IsIncrement { get; }
+
+    public override string ToString()
+    {
+        return $"{(IsIncrement ? "increment" : "decrement")}Counter({Buffer})";
+    }
+}

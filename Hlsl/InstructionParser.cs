@@ -456,7 +456,13 @@ public class InstructionParser
                         // and the assignment goes away as dead.
                         var consumeKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(1), 0);
-                        var slot = new ConsumeSlotNode(new RegisterInputNode(consumeKey));
+                        // A buffer that only keeps a counter gives the slot back and
+                        // nothing else: the element is read through a subscript, so
+                        // the slot is a value the shader goes on to use rather than
+                        // half of a Consume.
+                        HlslTreeNode slot = IsConsumeBuffer(instruction.GetParamRegisterKey(1))
+                            ? new ConsumeSlotNode(new RegisterInputNode(consumeKey))
+                            : new BufferCounterNode(new RegisterInputNode(consumeKey), isIncrement: false);
                         var slotKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegisterWrite(slotKey, instruction.GetWriteMask(0));
                         SetActiveOutput(
@@ -475,7 +481,13 @@ public class InstructionParser
                         // waits for the loads that read it.
                         var appendKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(1), 0);
-                        var appendSlot = new AppendSlotNode(new RegisterInputNode(appendKey));
+                        // Only an append buffer has no other spelling. A structured
+                        // one that keeps a counter takes the slot the same way and
+                        // stores through a subscript, which is an ordinary store, so
+                        // the slot is a value rather than half of an Append.
+                        HlslTreeNode appendSlot = IsAppendBuffer(instruction.GetParamRegisterKey(1))
+                            ? new AppendSlotNode(new RegisterInputNode(appendKey))
+                            : new BufferCounterNode(new RegisterInputNode(appendKey), isIncrement: true);
                         var allocKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegisterWrite(allocKey, instruction.GetWriteMask(0));
                         SetActiveOutput(
@@ -761,6 +773,12 @@ public class InstructionParser
     {
         return _registerState.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
             && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
+    }
+
+    private bool IsAppendBuffer(RegisterKey registerKey)
+    {
+        return _registerState.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
+            && d.ShaderInputType == D3DShaderInputType.UavAppendStructured);
     }
 
     /// <summary>The instruction after the one being parsed, or null at the end.</summary>

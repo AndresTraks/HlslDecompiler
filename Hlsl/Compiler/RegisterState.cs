@@ -501,7 +501,12 @@ public sealed class RegisterState
                 return GetStructuredBufferComponents(registerKey);
             }
             if (d3D10RegisterKey.OperandType == OperandType.UnorderedAccessView
-                && ResourceDefinitions.Any(r => r.ShaderInputType is D3DShaderInputType.UavRWStructured or D3DShaderInputType.UavRWByteAddress
+                && ResourceDefinitions.Any(r => r.ShaderInputType is D3DShaderInputType.UavRWStructured
+                    or D3DShaderInputType.UavRWByteAddress
+                    // Keeping a counter does not change how an element is addressed,
+                    // and a store through the slot IncrementCounter gave back is an
+                    // ordinary subscripted store.
+                    or D3DShaderInputType.UavRWStucturedWithCounter
                 && r.BindPoint == registerKey.Number))
             {
                 return GetStructuredBufferComponents(registerKey);

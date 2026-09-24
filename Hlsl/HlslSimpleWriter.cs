@@ -55,7 +55,8 @@ public class HlslSimpleWriter : HlslWriter
                 // all. The store is not always the instruction after: what is
                 // appended is computed between the two whenever it reads nothing the
                 // alloc needed, so the slot waits here for the store that fills it.
-                if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc)
+                if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
+                    && IsAppendResource(d9d10Instruction.GetParamRegisterKey(1)))
                 {
                     _allocatedSlots[d9d10Instruction.GetParamRegisterKey(0)] = d9d10Instruction;
                     continue;
@@ -106,6 +107,12 @@ public class HlslSimpleWriter : HlslWriter
     {
         return _registers.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
             && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
+    }
+
+    private bool IsAppendResource(RegisterKey registerKey)
+    {
+        return _registers.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
+            && d.ShaderInputType == D3DShaderInputType.UavAppendStructured);
     }
 
     private void WriteTemporaryVariableDeclarations()
@@ -1327,6 +1334,17 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Ftou:
                 WriteConversion(instruction, null, "uint");
+                break;
+            // A buffer that keeps a counter without being an append or a consume one
+            // hands the slot back for the shader to subscript with, which is a value
+            // and an ordinary statement.
+            case D3D10Opcode.ImmAtomicAlloc:
+                WriteResult(instruction, "{0} = {1}.IncrementCounter();",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.ImmAtomicConsume when !IsConsumeResource(instruction.GetParamRegisterKey(1)):
+                WriteResult(instruction, "{0} = {1}.DecrementCounter();",
+                    GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.ImmAtomicConsume:
                 {

@@ -299,6 +299,17 @@ public sealed class NodeCompiler
             return CompileConstant(components, promoteToVectorSize);
         }
 
+        // A counter call is a value of its own rather than a component of anything:
+        // the slot it answers with is an index the shader subscripts the buffer by.
+        if (first is BufferCounterNode counter)
+        {
+            string counted = _registers.GetRegisterName(
+                counter.Buffer.RegisterComponentKey.RegisterKey);
+            return counter.IsIncrement
+                ? $"{counted}.IncrementCounter()"
+                : $"{counted}.DecrementCounter()";
+        }
+
         if (first is Operation operation)
         {
             return CompileOperation(operation, components, promoteToVectorSize);

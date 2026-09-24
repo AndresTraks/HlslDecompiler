@@ -1183,7 +1183,11 @@ public class D3D10Machine
         // component after them is the mip level, which the two programs need not
         // agree on the way they put it in a register.
         int resource = instruction.GetParamRegisterNumber(2);
-        return Pack(Texture.Sample(resource, coordinates, TextureDimensions(resource)));
+        // Through the resource swizzle, the same as a sample: a load carries one
+        // too, and reading the texel without it put the channels of the texture in
+        // whichever components the register allocator happened to use.
+        return Pack(ResourceSwizzle(instruction,
+            Texture.Sample(resource, coordinates, TextureDimensions(resource))));
     }
 
     /// <summary>
@@ -1196,8 +1200,9 @@ public class D3D10Machine
     private uint[] LoadViewTexel(D3D10Instruction instruction)
     {
         int[] address = [.. Ints(instruction, 1)];
-        return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2),
-            [address[0] * 0.01f, address[1] * 0.01f, 0, 0]));
+        return Pack(ResourceSwizzle(instruction, Texture.Sample(
+            instruction.GetParamRegisterNumber(2),
+            [address[0] * 0.01f, address[1] * 0.01f, 0, 0])));
     }
 
     // One sample of a multisampled texel. The address has no mip and only its xy
@@ -1210,7 +1215,8 @@ public class D3D10Machine
         int sample = Ints(instruction, 3)[0];
         float[] coordinates = WithOffsets(instruction,
             [address[0] * 0.01f, address[1] * 0.01f, sample * 0.1f, 0]);
-        return Pack(Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates));
+        return Pack(ResourceSwizzle(instruction,
+            Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates)));
     }
 
     private static float[] WithOffsets(D3D10Instruction instruction, float[] coordinates)

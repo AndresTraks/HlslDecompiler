@@ -2522,6 +2522,11 @@ public class HlslSimpleWriter : HlslWriter
         if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
+            // A structured store carries a mask saying which members of the element
+            // it writes, which the members named after the subscript already say:
+            // `store_structured u0.xy, ...` came out as `dst.xy[i].c`, a subscript
+            // the buffer has not got.
+            || (instruction.Opcode == D3D10Opcode.StoreStructured && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.LdUAVTyped && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.BufInfo && operandIndex == 1)

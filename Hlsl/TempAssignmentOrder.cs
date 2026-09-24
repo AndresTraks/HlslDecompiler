@@ -122,6 +122,26 @@ public class TempAssignmentOrder
             wants.Any(fed => ReferenceEquals(fed, assignment)));
     }
 
+    /// <summary>
+    /// Whether <paramref name="later"/>, placed after <paramref name="earlier"/>,
+    /// reads a variable that <paramref name="earlier"/> overwrites and wants the
+    /// value from before it. In that order the read is of the wrong value, and no
+    /// other order puts it right where the two depend on each other in a circle.
+    /// </summary>
+    public static bool ReadsStale(HlslTreeNode[] later, HlslTreeNode[] earlier)
+    {
+        // Wanting the value this statement computes is the other thing entirely:
+        // the order is then exactly what it should be.
+        IEnumerable<TempAssignmentNode> wants = later.OfType<TempAssignmentNode>()
+            .SelectMany(r => r.DependsOnNewValueOf);
+        if (earlier.OfType<TempAssignmentNode>().Any(assignment =>
+            wants.Any(fed => ReferenceEquals(fed, assignment))))
+        {
+            return false;
+        }
+        return ReadsOverwritten(later, earlier);
+    }
+
     private static bool ReadsOverwritten(HlslTreeNode[] readers, HlslTreeNode[] written)
     {
         return written.OfType<TempAssignmentNode>().Any(assignment =>

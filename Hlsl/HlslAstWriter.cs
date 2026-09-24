@@ -1027,7 +1027,64 @@ public class HlslAstWriter : HlslWriter
             groups.AddRange(HoistStaleReads(componentGroups));
             groups.AddRange(componentGroups);
         }
-        return TempAssignmentOrder.Sort(groups);
+        List<HlslTreeNode[]> ordered = TempAssignmentOrder.Sort(groups);
+        List<HlslTreeNode[]> cyclic = HoistCyclicReads(ordered);
+        return cyclic.Count == 0 ? ordered : [.. cyclic, .. ordered];
+    }
+
+    /// <summary>
+    /// Names the reads that no order of these assignments can make right. Components
+    /// that rotate - `mul r0.xyz, r0.yzxy, l(1.5)` taking x from y, y from z and z
+    /// from x - and two variables that swap depend on each other in a circle:
+    /// whichever is written first destroys what the next one reads. The ordering
+    /// pass takes the first of them and moves on, having no order to find, and the
+    /// circle was broken silently - output that compiled and computed something the
+    /// shader did not. Read out before any of them run, the parallel assignment the
+    /// one instruction made is kept.
+    /// </summary>
+    private List<HlslTreeNode[]> HoistCyclicReads(IList<HlslTreeNode[]> ordered)
+    {
+        var assignments = new List<HlslTreeNode[]>();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            HashSet<HlslTreeNode> stale = HlslTreeNode.NewNodeSet();
+            for (int j = 0; j < i; j++)
+            {
+                if (!TempAssignmentOrder.ReadsStale(ordered[i], ordered[j]))
+                {
+                    continue;
+                }
+                foreach (TempAssignmentNode written in ordered[j].OfType<TempAssignmentNode>())
+                {
+                    stale.Add(written.TempVariable);
+                }
+            }
+            if (stale.Count == 0)
+            {
+                continue;
+            }
+            HashSet<HlslTreeNode> visited = HlslTreeNode.NewNodeSet();
+            var stack = new Stack<HlslTreeNode>(ordered[i]);
+            while (stack.Count != 0)
+            {
+                HlslTreeNode node = stack.Pop();
+                if (!visited.Add(node))
+                {
+                    continue;
+                }
+                if (node is Operation && ReadsAnyOf(node, stale))
+                {
+                    // Named, so nothing inside it is read stale either.
+                    assignments.Add([NameSubexpression(node, CreateTempVariables([node])[0])]);
+                    continue;
+                }
+                foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+                {
+                    stack.Push(input);
+                }
+            }
+        }
+        return assignments;
     }
 
     /// <summary>

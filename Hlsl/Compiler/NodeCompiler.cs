@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
+using HlslDecompiler.Hlsl.TemplateMatch;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -934,6 +935,18 @@ public sealed class NodeCompiler
                 {
                     var dividend = components.Select(g => g.Inputs[0]);
                     var divisor = components.Select(g => g.Inputs[1]);
+
+                    // An rsq is reduced to one over a square root, which is what lets
+                    // the templates see through it - a reciprocal of one is the root
+                    // itself, and a length divided by itself is a normalize. Where
+                    // none of them took it, the division is still the rsq it was, and
+                    // written as one it is one instruction rather than a sqrt and a
+                    // div. HLSL spells it rsqrt, the way it spells rcp.
+                    if (ConstantMatcher.IsOne(dividend.First())
+                        && divisor.First() is SquareRootOperation)
+                    {
+                        return $"rsqrt({Compile(divisor.Select(d => d.Inputs[0]))})";
+                    }
 
                     // The dividend needs them as much as the divisor does: an add or a
                     // subtract binds more loosely than the division, so `(a - b) / c`

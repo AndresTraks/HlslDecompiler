@@ -1639,21 +1639,8 @@ public class HlslSimpleWriter : HlslWriter
                     // about to overwrite keeps the value the instruction read.
                     if (wantsQuotient && wantsRemainder)
                     {
-                        RegisterKey quotientKey = instruction.GetParamRegisterKey(0);
-                        int length = instruction.GetDestinationMaskLength();
-                        string size = length == 1 ? "" : length.ToString();
-                        if (IsSameRegister(instruction, 2, quotientKey))
-                        {
-                            string kept = $"dividend{_divideCount++}";
-                            WriteLine("uint{0} {1} = {2};", size, kept, dividend);
-                            dividend = kept;
-                        }
-                        if (IsSameRegister(instruction, 3, quotientKey))
-                        {
-                            string kept = $"divisor{_divideCount++}";
-                            WriteLine("uint{0} {1} = {2};", size, kept, divisor);
-                            divisor = kept;
-                        }
+                        dividend = KeptOperand(instruction, 2, 0, "uint", "dividend", dividend);
+                        divisor = KeptOperand(instruction, 3, 0, "uint", "divisor", divisor);
                     }
                     if (wantsQuotient)
                     {
@@ -1688,15 +1675,26 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             // Either half can be dropped: `sincos r0.x, null, r0.y` is a sin alone.
             case D3D10Opcode.SinCos:
-                if (instruction.GetOperandType(0) != OperandType.Null)
                 {
-                    WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                    string angle = GetOperandName(instruction, 2);
+                    bool wantsSine = instruction.GetOperandType(0) != OperandType.Null;
+                    bool wantsCosine = instruction.GetOperandType(1) != OperandType.Null;
+                    // The sine is assigned before the cosine reads the angle, and fxc
+                    // gives the sine the register the angle is in.
+                    if (wantsSine && wantsCosine)
+                    {
+                        angle = KeptOperand(instruction, 2, 0, "float", "angle", angle);
+                    }
+                    if (wantsSine)
+                    {
+                        WriteResult(instruction, "{0} = sin({1});", GetOperandName(instruction, 0), angle);
+                    }
+                    if (wantsCosine)
+                    {
+                        WriteResult(instruction, 1, "{0} = cos({1});", GetOperandName(instruction, 1), angle);
+                    }
+                    break;
                 }
-                if (instruction.GetOperandType(1) != OperandType.Null)
-                {
-                    WriteResult(instruction, "{0} = cos({1});", GetOperandName(instruction, 1), GetOperandName(instruction, 2));
-                }
-                break;
             case D3D10Opcode.Sqrt:
                 WriteResult(instruction, "{0} = sqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
@@ -2666,8 +2664,8 @@ public class HlslSimpleWriter : HlslWriter
     // An operand read as an unsigned integer: bits reinterpreted as such, an int
     // register cast - as wide as the destination, since a bare (uint) over two
     // components is X3014 - and an immediate as it is.
-    // How many operands of a udiv have been named to keep them from its quotient.
-    private int _divideCount;
+    // How many operands have been named to keep them from a result written over them.
+    private int _keptOperandCount;
 
     /// <summary>
     /// Whether an operand reads the register given - the one a result is about to be
@@ -2677,6 +2675,28 @@ public class HlslSimpleWriter : HlslWriter
     {
         return instruction.GetOperandType(operandIndex) != OperandType.Immediate32
             && instruction.GetParamRegisterKey(operandIndex).Equals(registerKey);
+    }
+
+    /// <summary>
+    /// Names an operand that a result is about to be written over, so that the
+    /// statements after it read the value the instruction read. One instruction
+    /// answering two results is two statements here, and the first can land in a
+    /// register the second still reads: `udiv r1.xyzw, r2.xyzw, r1.xyzw, r2.xyzw`
+    /// and `sincos r0.x, r1.x, r0.x` are both written that way by fxc. Left alone,
+    /// the remainder divided the quotient and the cosine answered cos(sin(x)).
+    /// Returns the expression unchanged where there is nothing to keep.
+    /// </summary>
+    private string KeptOperand(D3D10Instruction instruction, int operandIndex,
+        int writtenIndex, string typeName, string baseName, string expression)
+    {
+        if (!IsSameRegister(instruction, operandIndex, instruction.GetParamRegisterKey(writtenIndex)))
+        {
+            return expression;
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string name = $"{baseName}{_keptOperandCount++}";
+        WriteLine("{0}{1} {2} = {3};", typeName, length == 1 ? "" : length.ToString(), name, expression);
+        return name;
     }
 
     private string AsUint(D3D10Instruction instruction, int operandIndex)

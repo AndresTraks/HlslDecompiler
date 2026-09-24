@@ -112,6 +112,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "sample_position_constant")]
     [TestCase("ps_5_0", "render_target_samples")]
     [TestCase("ps_5_0", "integer_divide")]
+    [TestCase("ps_5_0", "sine_cosine")]
     [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "tangent_lighting")]
     [TestCase("ps_5_0", "integer_target")]

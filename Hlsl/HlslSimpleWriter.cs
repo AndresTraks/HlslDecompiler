@@ -2754,15 +2754,42 @@ public class HlslSimpleWriter : HlslWriter
         {
             WriteMultisampledDimensions(instruction, 2, type, dimensions);
         }
-        else if (!read[2] && !read[3] && mipLevel == "0")
-        {
-            WriteLine($"{type}2 {dimensions};");
-            WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
-        }
         else
         {
-            WriteLine($"{type}4 {dimensions} = 0;");
-            WriteLine($"{resource}.GetDimensions({mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.w);");
+            // The mip form is the one with the level in and the mip count out; the
+            // resinfo's own mip operand says whether the shader asked at a level,
+            // and reading the count says it asked for the mip form whichever way it
+            // was asked at. What else is out, and in which components, is the
+            // resource's shape: a 1D reports width alone and the count in w; its
+            // array the element count in y; an array of 2D, a cube array and a 3D
+            // the element count or the depth in z. Writing them all as the 2D
+            // overload asked for intrinsics those shapes do not have.
+            ResourceDimension? dimension = ResourceDimensionOf(instruction, 2);
+            bool hasDepth = dimension is ResourceDimension.Texture2DArray
+                or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
+            bool is1D = dimension == ResourceDimension.Texture1D;
+            // Reading the depth of something that has none has no HLSL spelling
+            // either, so that too is left in the mip form, where a 4-wide variable
+            // has the component the swizzle reads either way.
+            bool mipForm = mipLevel != "0" || read[3]
+                || (read[2] && !hasDepth && !is1D);
+            if (!mipForm && !hasDepth && !is1D)
+            {
+                WriteLine($"{type}2 {dimensions};");
+                WriteLine($"{resource}.GetDimensions({dimensions}.x, {dimensions}.y);");
+            }
+            else
+            {
+                string width = !mipForm && hasDepth ? "3" : is1D && !mipForm ? "2" : "4";
+                string arguments = mipForm
+                    ? is1D ? $"{mipLevel}, {dimensions}.x, {dimensions}.w"
+                    : hasDepth ? $"{mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.z, {dimensions}.w"
+                    : $"{mipLevel}, {dimensions}.x, {dimensions}.y, {dimensions}.w"
+                    : hasDepth ? $"{dimensions}.x, {dimensions}.y, {dimensions}.z"
+                    : $"{dimensions}.x";
+                WriteLine($"{type}{width} {dimensions} = 0;");
+                WriteLine($"{resource}.GetDimensions({arguments});");
+            }
         }
         WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0), dimensions, GetResourceSwizzle(instruction));
     }

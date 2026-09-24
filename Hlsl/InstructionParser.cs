@@ -363,9 +363,15 @@ public class InstructionParser
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegister(registerKey, 0xF);
-                        var destinationKey = new RegisterComponentKey(registerKey, 0);
-                        var resourceInput = new RegisterInputNode(destinationKey);
-                        SetActiveOutput(destinationKey, resourceInput);
+                        // Every component, the way a texture is declared. A gather
+                        // names its channel on the sampler's swizzle - `s0.w` gathers
+                        // the alpha channel - and reading only the x component asked
+                        // for a component of the sampler that was never seeded.
+                        for (int component = 0; component < 4; component++)
+                        {
+                            var destinationKey = new RegisterComponentKey(registerKey, component);
+                            SetActiveOutput(destinationKey, new RegisterInputNode(destinationKey));
+                        }
                         break;
                     }
                 case D3D10Opcode.DclThreadGroup:

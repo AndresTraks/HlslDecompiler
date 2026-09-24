@@ -1618,16 +1618,27 @@ public sealed class NodeCompiler
                 }
                 else if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
                 {
+                    // The sampler operand's swizzle says which channel is gathered -
+                    // `s0.y` the green one - and only red's method goes without a
+                    // suffix. Leaving the channel out gathered the red one and still
+                    // compiled: output that computes something else.
+                    string channel = textureLoad.Sampler.RegisterComponentKey.ComponentIndex switch
+                    {
+                        1 => "Green",
+                        2 => "Blue",
+                        3 => "Alpha",
+                        _ => "",
+                    };
                     // A comparison gather takes the value to compare against after
                     // the coordinate, the way a comparison sample does.
                     if (textureLoad.Controls.HasFlag(TextureLoadControls.Compare))
                     {
-                        method = "GatherCmp";
+                        method = "GatherCmp" + channel;
                         extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
                     }
                     else
                     {
-                        method = "Gather";
+                        method = "Gather" + channel;
                     }
                 }
                 else if (textureLoad.Controls.HasFlag(TextureLoadControls.Grad))
@@ -1905,13 +1916,38 @@ public sealed class NodeCompiler
                 : $"{resource.Name}.GetDimensions({name}.x, {name}.y);");
         }
         bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount);
-        string call = (isMultisampled, variable.VariableSize) switch
+        if (isMultisampled)
         {
-            (true, 4) => $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z, {name}.w);",
-            (true, _) => $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z);",
-            (false, 2) => $"{resource.Name}.GetDimensions({name}.x, {name}.y);",
-            _ => $"{resource.Name}.GetDimensions({Compile(info.MipLevel)}, {name}.x, {name}.y, {name}.w);",
-        };
+            // Width, height and the sample count, with the element count between
+            // them for an array, and no mip level in either.
+            return declaration + "\r\n" + (variable.VariableSize == 4
+                ? $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z, {name}.w);"
+                : $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z);");
+        }
+        // The same overload table the variable was named with: a 1D reports its
+        // width alone and the mip count in w; its array the element count in y;
+        // an array of 2D, a cube array and a 3D the element count or the depth in
+        // z. The mip form takes the level in and the count out, and is what was
+        // asked for whenever the level was not the constant nought or the count
+        // was read; reading the depth of something that has none goes there too,
+        // where a 4-wide variable has the component either way.
+        ResourceDimension? dimension = resource.Dimension;
+        bool hasDepth = dimension is ResourceDimension.Texture2DArray
+            or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
+        bool is1D = dimension == ResourceDimension.Texture1D;
+        bool readsLevels = assignments.Any(a => ((ResourceInfoNode)a.Value).InfoComponent == 3);
+        bool readsDepth = assignments.Any(a => ((ResourceInfoNode)a.Value).InfoComponent == 2);
+        bool mipForm = !(info.MipLevel is ConstantNode zero && zero.Value == 0) || readsLevels
+            || (readsDepth && !hasDepth && !is1D);
+        string dimensions = !mipForm && is1D ? name
+            : !mipForm && hasDepth ? $"{name}.x, {name}.y, {name}.z"
+            : !mipForm ? $"{name}.x, {name}.y"
+            : is1D ? $"{name}.x, {name}.w"
+            : hasDepth ? $"{name}.x, {name}.y, {name}.z, {name}.w"
+            : $"{name}.x, {name}.y, {name}.w";
+        string call = mipForm
+            ? $"{resource.Name}.GetDimensions({Compile(info.MipLevel)}, {dimensions});"
+            : $"{resource.Name}.GetDimensions({dimensions});";
         return declaration + "\r\n" + call;
     }
 

@@ -876,8 +876,9 @@ public class D3D10Machine
             case D3D10Opcode.SampleL:
             case D3D10Opcode.SampleB:
             case D3D10Opcode.SampleD:
-            case D3D10Opcode.Gather4:
                 return SampleTexture(instruction);
+            case D3D10Opcode.Gather4:
+                return GatherTexture(instruction);
             // A gather whose offset is a register rather than part of the mnemonic.
             // Every operand after the offset is one further along, and the offset is
             // added to the coordinate the way an immediate one is - in texels, which
@@ -896,12 +897,14 @@ public class D3D10Machine
                     ];
                     float[] sampled = Texture.Sample(
                         instruction.GetParamRegisterNumber(3), offsetCoordinates);
+                    // The channel gathered is the sampler's swizzle, one further
+                    // along than it is without the offset operand.
+                    int channel = instruction.GetSourceSwizzleComponents(4)[0];
                     if (instruction.Opcode == D3D10Opcode.Gather4PoC)
                     {
-                        return BroadcastFloat(sampled[0] >= Floats(instruction, 5)[0] ? 1 : 0);
+                        return BroadcastFloat(sampled[channel] >= Floats(instruction, 5)[0] ? 1 : 0);
                     }
-                    byte[] channels = instruction.GetSourceSwizzleComponents(3);
-                    return Pack([.. channels.Select(c => sampled[c])]);
+                    return BroadcastFloat(sampled[channel]);
                 }
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
@@ -1031,6 +1034,21 @@ public class D3D10Machine
         return Pack(ResourceSwizzle(instruction, sampled));
     }
 
+    // A gather reads one channel of the four texels around the coordinate. This
+    // machine has a texture that is a function rather than a grid, so it answers
+    // with the one texel a sample reads, of the channel the sampler operand's
+    // swizzle names - `s0.w` the alpha one - in every component. Ignoring the
+    // channel left this machine unable to see a decompilation that gathered green
+    // where the shader said alpha.
+    private uint[] GatherTexture(D3D10Instruction instruction)
+    {
+        float[] coordinates = WithOffsets(instruction, Floats(instruction, 1));
+        int resource = instruction.GetParamRegisterNumber(2);
+        float[] sampled = Texture.Sample(resource, coordinates, TextureDimensions(resource));
+        int channel = instruction.GetSourceSwizzleComponents(3)[0];
+        return BroadcastFloat(sampled[channel]);
+    }
+
     // How many coordinates a texture reads, from its dcl_resource; four where
     // there is none, which reads the whole register as before.
     private int TextureDimensions(int resource)
@@ -1063,8 +1081,13 @@ public class D3D10Machine
     {
         float[] coordinates = WithOffsets(instruction, Floats(instruction, 1));
         float reference = Floats(instruction, 4)[0];
-        float sampled = Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates)[0];
-        return BroadcastFloat(sampled >= reference ? 1 : 0);
+        float[] sampled = Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates);
+        // A comparison gather tests the channel it gathers, which the sampler's
+        // swizzle names; a comparison sample tests the channel it samples.
+        int channel = instruction.Opcode == D3D10Opcode.Gather4C
+            ? instruction.GetSourceSwizzleComponents(3)[0]
+            : 0;
+        return BroadcastFloat(sampled[channel] >= reference ? 1 : 0);
     }
 
     // A texture's size is whatever both programs agree it is: one made up per

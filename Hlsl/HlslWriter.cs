@@ -748,6 +748,7 @@ public abstract class HlslWriter
             ShaderType.Vertex => "VS_OUT",
             ShaderType.Geometry => "GS_OUT",
             ShaderType.Hull => "HS_OUT",
+            ShaderType.Domain => "DS_OUT",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
         };
     }
@@ -847,8 +848,12 @@ public abstract class HlslWriter
 
     private void WriteOutputStructureDeclaration()
     {
+        // A domain shader among them: it answers a vertex, and a vertex is a
+        // position and whatever else travels with it. Left out, one that answers
+        // anything beyond a bare position had no struct to return and no name for
+        // one, and threw rather than decompiling.
         if (_shader.Type is not (ShaderType.Pixel or ShaderType.Vertex
-            or ShaderType.Geometry or ShaderType.Hull))
+            or ShaderType.Geometry or ShaderType.Hull or ShaderType.Domain))
         {
             return;
         }

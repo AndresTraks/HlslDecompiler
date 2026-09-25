@@ -154,6 +154,12 @@ public class D3D10Instruction : Instruction
     /// <summary>How many control points a patch has, in or out.</summary>
     public int ControlPointCount { get; set; }
 
+    /// <summary>How the tessellator cuts an edge it has a factor for.</summary>
+    public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
+
+    /// <summary>What the tessellator makes of a subdivided patch.</summary>
+    public D3D10TessellatorOutputPrimitive TessellatorOutputPrimitive { get; set; }
+
     public D3D10GlobalFlags GetGlobalFlags()
     {
         return _globalFlags;
@@ -730,7 +736,10 @@ public class D3D10Instruction : Instruction
         // A bare count rather than an operand: the dword after the opcode token is
         // the number itself, with no operand token in front of it to describe it.
         if (Opcode == D3D10Opcode.DclTemps || Opcode == D3D10Opcode.DclGSMaxOutputVertexCount
-            || Opcode == D3D10Opcode.DclGSInstanceCount)
+            || Opcode == D3D10Opcode.DclGSInstanceCount
+            || Opcode == D3D10Opcode.DclHSMaxTessFactor
+            || Opcode == D3D10Opcode.DclHSForkPhaseInstanceCount
+            || Opcode == D3D10Opcode.DclHSJoinPhaseInstanceCount)
         {
             value = span[0];
         }

@@ -417,25 +417,14 @@ public class AsmWriter
             case D3D10Opcode.DclOutput:
                 WriteInstruction(instruction, "dcl_output", 1);
                 break;
+            // The same names an input declaration uses, from the one listing: a
+            // second copy here had neither the tessellation factors nor fxc's
+            // spelling of sampleIndex, so a hull shader's own outputs - which are
+            // all tessellation factors - could not be written at all.
             case D3D10Opcode.DclOutputSiv:
-                {
-                    string name = ((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)) switch
-                    {
-                        D3D10Name.Position => "position",
-                        D3D10Name.ClipDistance => "clip_distance",
-                        D3D10Name.CullDistance => "cull_distance",
-                        D3D10Name.RenderTargetArrayIndex => "rendertarget_array_index",
-                        D3D10Name.ViewportArrayIndex => "viewport_array_index",
-                        D3D10Name.VertexID => "vertex_id",
-                        D3D10Name.PrimitiveID => "primitive_id",
-                        D3D10Name.InstanceID => "instance_id",
-                        D3D10Name.IsFrontFace => "is_front_face",
-                        D3D10Name.SampleIndex => "sample_index",
-                        _ => throw new NotImplementedException(((D3D10Name)instruction.GetParamIndexImmediate32(1, 0)).ToString()),
-                    };
-                    WriteLine("dcl_output_siv {0}, {1}", FormatOperand(instruction, 0), name);
-                    break;
-                }
+                WriteLine("dcl_output_siv {0}, {1}", FormatOperand(instruction, 0),
+                    GetSystemValueName(instruction));
+                break;
             case D3D10Opcode.DclResource:
                 {
                     ResourceDimension resourceDimension = instruction.GetResourceDimension();
@@ -500,6 +489,65 @@ public class AsmWriter
                         _ => throw new NotImplementedException(
                             instruction.TessellatorDomain.ToString()),
                     });
+                break;
+            // A hull shader says what the tessellator does with the factors it
+            // computes, where a domain shader says only the domain: the shader that
+            // produces a factor is the one that decides how it is cut up.
+            case D3D10Opcode.DclTessPartitioning:
+                WriteLine("dcl_tessellator_partitioning partitioning_{0}",
+                    instruction.TessellatorPartitioning switch
+                    {
+                        D3D10TessellatorPartitioning.Integer => "integer",
+                        D3D10TessellatorPartitioning.Pow2 => "pow2",
+                        D3D10TessellatorPartitioning.FractionalOdd => "fractional_odd",
+                        D3D10TessellatorPartitioning.FractionalEven => "fractional_even",
+                        _ => throw new NotImplementedException(
+                            instruction.TessellatorPartitioning.ToString()),
+                    });
+                break;
+            case D3D10Opcode.DclTessOutputPrimitive:
+                WriteLine("dcl_tessellator_output_primitive output_{0}",
+                    instruction.TessellatorOutputPrimitive switch
+                    {
+                        D3D10TessellatorOutputPrimitive.Point => "point",
+                        D3D10TessellatorOutputPrimitive.Line => "line",
+                        D3D10TessellatorOutputPrimitive.TriangleClockwise => "triangle_cw",
+                        D3D10TessellatorOutputPrimitive.TriangleCounterClockwise => "triangle_ccw",
+                        _ => throw new NotImplementedException(
+                            instruction.TessellatorOutputPrimitive.ToString()),
+                    });
+                break;
+            // The bound a hull shader promises its factors keep to, which it clamps
+            // them to itself as well.
+            case D3D10Opcode.DclHSMaxTessFactor:
+                // The bound is the whole of the one token, a float and not an
+                // operand: read as an operand it is a register type, and printed
+                // as one it said the letter r.
+                WriteLine("dcl_hs_max_tessfactor l({0})", ConstantFormatter.Format(
+                    BitConverter.Int32BitsToSingle(instruction.GetParamInt(0))));
+                break;
+            // How many times a phase runs, each run knowing which it is - the same
+            // thing [instance(n)] says of a geometry shader.
+            case D3D10Opcode.DclHSForkPhaseInstanceCount:
+                WriteLine("dcl_hs_fork_phase_instance_count {0}", instruction.GetParamInt(0));
+                break;
+            case D3D10Opcode.DclHSJoinPhaseInstanceCount:
+                WriteLine("dcl_hs_join_phase_instance_count {0}", instruction.GetParamInt(0));
+                break;
+            // A hull shader is several programs in one, and these say where each
+            // begins: the declarations they share, the one that runs per control
+            // point, and the ones that compute the patch's own constants.
+            case D3D10Opcode.HsDecls:
+                WriteLine("hs_decls");
+                break;
+            case D3D10Opcode.HsControlPointPhase:
+                WriteLine("hs_control_point_phase");
+                break;
+            case D3D10Opcode.HsForkPhase:
+                WriteLine("hs_fork_phase");
+                break;
+            case D3D10Opcode.HsJoinPhase:
+                WriteLine("hs_join_phase");
                 break;
             case D3D10Opcode.DclThreadGroup:
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));

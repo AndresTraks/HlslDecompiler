@@ -358,6 +358,18 @@ public class DxbcReader : BinaryReader
         {
             instruction.ControlPointCount = (int)((opcodeToken >> 11) & 0x7F);
         }
+        // A hull shader says these two as well, in the same bits: what the
+        // tessellator does with the factors it computes.
+        if (opcode == D3D10Opcode.DclTessPartitioning)
+        {
+            instruction.TessellatorPartitioning =
+                (D3D10TessellatorPartitioning)((opcodeToken >> 11) & 0x7);
+        }
+        if (opcode == D3D10Opcode.DclTessOutputPrimitive)
+        {
+            instruction.TessellatorOutputPrimitive =
+                (D3D10TessellatorOutputPrimitive)((opcodeToken >> 11) & 0x7);
+        }
         if (opcode == D3D10Opcode.DclConstantBuffer)
         {
             instruction.IsDynamicallyIndexed = ((opcodeToken >> 11) & 0x1) != 0;

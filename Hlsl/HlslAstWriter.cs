@@ -529,8 +529,18 @@ public class HlslAstWriter : HlslWriter
 
     private static int GetElementByteOffset(AtomicStatement atomic)
     {
-        return atomic.ElementByteOffset is ConstantNode constant && constant.IntegerValue.HasValue
-            ? constant.IntegerValue.Value
+        // Through the moves: fxc works the offset out into a register - one mov
+        // writes the offsets of every member the shader touches - so it arrives as
+        // a move of the constant rather than as the constant. Taken as nothing, the
+        // atomic named whichever member sits at the top of the element, and every
+        // one of them in an element came out as that one.
+        HlslTreeNode offset = atomic.ElementByteOffset;
+        while (offset is MoveOperation move)
+        {
+            offset = move.Inputs[0];
+        }
+        return offset is ConstantNode constant
+            ? constant.IntegerValue ?? (int)constant.Value
             : 0;
     }
 

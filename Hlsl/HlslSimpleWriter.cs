@@ -1811,7 +1811,25 @@ public class HlslSimpleWriter : HlslWriter
                         WriteLine("{0}.{1}({2}, {3});", resource, method, address, arguments);
                         break;
                     }
-                    WriteLine("{0}({1}[{2}], {3});", method, resource, address, arguments);
+                    string target = $"{resource}[{address}]";
+                    // An element that is a struct takes the operation on one of its
+                    // members, and which one is the byte offset beside the element
+                    // index in the address. Only where that address is an immediate:
+                    // where fxc works it out into a register, one statement per
+                    // instruction has no way to know what the register holds, and
+                    // the member cannot be named at all.
+                    if (instruction.GetOperandType(first + 1) == OperandType.Immediate32)
+                    {
+                        IList<(string Name, int[] Values)> memberRuns =
+                            _registers.FindStructuredMemberRuns(
+                                instruction.GetParamRegisterKey(first), target,
+                                instruction.GetParamInt(first + 1, 1), [0]);
+                        if (memberRuns != null && memberRuns.Count == 1)
+                        {
+                            target = memberRuns[0].Name;
+                        }
+                    }
+                    WriteLine("{0}({1}, {2});", method, target, arguments);
                     break;
                 }
             case D3D10Opcode.StoreRaw:

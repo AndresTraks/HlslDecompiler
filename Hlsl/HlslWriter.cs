@@ -170,9 +170,7 @@ public abstract class HlslWriter
         // control point registers they happen to touch. So the structs come from it,
         // where there is one - and so do the declarations both phases share, which
         // either has in full.
-        EnterPhase(
-            hull.ControlPoint != null ? HullFunction.ControlPoint : HullFunction.PatchConstant,
-            hull.ControlPoint ?? hull.PatchConstant);
+        EnterPhase(HullFunction.ControlPoint, hull.ControlPoint ?? hull.PatchConstant);
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
         if (hull.ControlPoint != null)
@@ -185,7 +183,7 @@ public abstract class HlslWriter
             // Nothing declared the patch, so the signatures are all there is to go
             // on. They say the whole of it, which is what the missing phase means.
             WriteSignatureStructure(GetInputStructureName(), _shader.InputSignatures);
-            WriteSignatureStructure("HS_OUT", _shader.OutputSignatures);
+            WriteSignatureStructure(GetOutputStructureName(), _shader.OutputSignatures);
         }
         WritePatchConstantStructureDeclaration();
 
@@ -211,7 +209,7 @@ public abstract class HlslWriter
         WriteTessellatorAttributes();
         string controlPointId = CompileRegisterDeclaration(ControlPointIdDeclaration());
         WriteFunction(
-            $"HS_OUT main(InputPatch<{GetInputStructureName()}, "
+            $"{GetOutputStructureName()} main(InputPatch<{GetInputStructureName()}, "
                 + $"{_registers.InputControlPointCount}> patch, {controlPointId})",
             WritePassThroughControlPoint);
     }
@@ -224,7 +222,7 @@ public abstract class HlslWriter
     /// </summary>
     private void WritePassThroughControlPoint()
     {
-        WriteLine("HS_OUT o;");
+        WriteLine($"{GetOutputStructureName()} o;");
         WriteLine();
         RegisterDeclaration id = ControlPointIdDeclaration();
         foreach (RegisterSignature output in _shader.OutputSignatures)

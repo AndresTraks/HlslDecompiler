@@ -131,32 +131,52 @@ public abstract class HlslWriter
         WriteLine("}");
     }
 
+    // The resources whose element is a struct of its own, in declaration order.
+    private IEnumerable<ResourceDefinition> StructuredElementTypes()
+    {
+        if (_registers.ResourceDefinitions == null)
+        {
+            return [];
+        }
+        return _registers.ResourceDefinitions
+            .Where(r => r.ElementType?.MemberInfo != null && r.ElementType.MemberInfo.Count != 0);
+    }
+
     private void WriteConstantDeclarations()
     {
+        // One compiler for the uniforms and for the structured buffer elements
+        // alike: a struct-typed member is declared once, as struct1, struct2 and
+        // so on, and whichever of the two holds it names that one declaration.
+        // With a compiler each, both numbered from 1, a shader with a struct on
+        // both sides had two different structs both called struct1 - and one
+        // with a struct only in a buffer element declared it nowhere at all.
+        var compiler = new ConstantDeclarationCompiler();
+        foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
+        {
+            compiler.SetStructOrder(declaration);
+        }
+        foreach (ResourceDefinition resource in StructuredElementTypes())
+        {
+            compiler.SetMemberStructOrder(resource.ElementType);
+        }
+
+        IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
+        for (int i = 0; i < structs.Count; i++)
+        {
+            WriteLine($"struct struct{i + 1}");
+            WriteLine("{");
+            indent = "\t";
+            foreach (var member in structs[i].MemberInfo)
+            {
+                WriteLine(compiler.Compile(member));
+            }
+            indent = "";
+            WriteLine("};");
+            WriteLine();
+        }
+
         if (_registers.ConstantDeclarations.Count != 0)
         {
-            var compiler = new ConstantDeclarationCompiler();
-
-            foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
-            {
-                compiler.SetStructOrder(declaration);
-            }
-
-            IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
-            for (int i = 0; i < structs.Count; i++)
-            {
-                WriteLine($"struct struct{i + 1}");
-                WriteLine("{");
-                indent = "\t";
-                foreach (var member in structs[i].MemberInfo)
-                {
-                    WriteLine(compiler.Compile(member));
-                }
-                indent = "";
-                WriteLine("};");
-                WriteLine();
-            }
-
             // One variable can occupy a register in more than one set - an int used
             // both as a loop bound and in float arithmetic lands in i# and c# alike -
             // and the constant table lists it once per register. It is still one
@@ -273,16 +293,14 @@ public abstract class HlslWriter
             // A structured buffer whose element is a struct needs that struct named
             // before the buffer that holds it. The reflection data has the members
             // but no name for the type, so one is made from the buffer's.
-            var elementCompiler = new ConstantDeclarationCompiler();
-            foreach (var resource in _registers.ResourceDefinitions
-                .Where(r => r.ElementType?.MemberInfo != null && r.ElementType.MemberInfo.Count != 0))
+            foreach (ResourceDefinition resource in StructuredElementTypes())
             {
                 WriteLine($"struct {GetStructuredElementTypeName(resource)}");
                 WriteLine("{");
                 indent = "	";
                 foreach (ShaderStructMemberInfo member in resource.ElementType.MemberInfo)
                 {
-                    WriteLine(elementCompiler.Compile(member));
+                    WriteLine(compiler.Compile(member));
                 }
                 indent = "";
                 WriteLine("};");

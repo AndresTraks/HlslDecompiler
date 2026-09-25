@@ -237,6 +237,18 @@ public class NodeGrouper
             return false;
         }
 
+        // Where in the element a structured load starts is not a component of what
+        // comes back: `l(32)` and `l(36)` are two reads, of two different members.
+        // Two constants group as components whatever numbers they hold, so the pair
+        // grouped as one read and the components of the second were named at the
+        // offset of the first - a load of `v[2].x` beside one of `v[2].yzw` came out
+        // as `v[2].xxyz`.
+        if (node1 is LoadStructuredNode load1 && node2 is LoadStructuredNode load2
+            && load1.ElementByteOffset != load2.ElementByteOffset)
+        {
+            return false;
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)

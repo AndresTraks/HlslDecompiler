@@ -155,24 +155,26 @@ public sealed class RegisterState
             return null;
         }
 
-        var runs = new List<(ShaderStructMemberInfo Member, int Register,
+        var runs = new List<(ShaderStructMemberInfo Member, string Path, int Register,
             List<int> InRegister, List<int> Values)>();
         for (int i = 0; i < components.Count; i++)
         {
-            ShaderStructMemberInfo member = FindStructuredMember(members, byteOffset + components[i] * 4);
-            if (member == null)
+            var found = FindStructuredMember(members, byteOffset + components[i] * 4, 0);
+            if (found == null)
             {
                 return null;
             }
-            int inMember = (byteOffset + components[i] * 4 - member.ByteOffset) / 4;
-            // A matrix member is a register per row or column rather than one
-            // register, so where a component sits is a register of the matrix and a
-            // component of that: the eighth float of a float4x4 is the last of its
-            // second. Counted straight through the member it ran off the end of
-            // `xyzw`, which is four letters long however many floats the member has.
-            bool isMatrix = member.TypeInfo.Rows > 1;
-            int register = isMatrix ? inMember / 4 : 0;
-            int inRegister = isMatrix ? inMember % 4 : inMember;
+            (ShaderStructMemberInfo member, string path, int memberOffset) = found.Value;
+            int inMember = (byteOffset + components[i] * 4 - memberOffset) / 4;
+            // A matrix or an array member is more than one register rather than
+            // one, so where a component sits is which register of the member and
+            // which component of that: the eighth float of a float4x4 is the last
+            // of its second row, and of a float2 v[4] the second of v[3]. Counted
+            // straight through the member it ran off the end of `xyzw`, which is
+            // four letters long however many floats the member has.
+            int stride = GetRegisterFloatCount(member.TypeInfo);
+            int register = inMember / stride;
+            int inRegister = inMember % stride;
             if (runs.Count != 0 && ReferenceEquals(runs[^1].Member, member)
                 && runs[^1].Register == register)
             {
@@ -181,27 +183,37 @@ public sealed class RegisterState
             }
             else
             {
-                runs.Add((member, register, [inRegister], [i]));
+                runs.Add((member, path, register, [inRegister], [i]));
             }
         }
 
         return [.. runs.Select(run =>
         {
-            bool isMatrix = run.Member.TypeInfo.Rows > 1;
+            ShaderTypeInfo typeInfo = run.Member.TypeInfo;
+            bool isMatrix = typeInfo.Rows > 1;
             // One row of a matrix is as wide as the matrix has columns where it is
-            // stored by row, and as its rows where it is stored by column.
+            // stored by row, and as its rows where it is stored by column. Not the
+            // register it is padded out to: a row of three written `.xyz` says a
+            // swizzle where the whole of it was read.
             int width = isMatrix
-                ? (run.Member.TypeInfo.ParameterClass == ParameterClass.MatrixRows
-                    ? run.Member.TypeInfo.Columns
-                    : run.Member.TypeInfo.Rows)
-                : run.Member.TypeInfo.Columns;
+                ? (typeInfo.ParameterClass == ParameterClass.MatrixRows
+                    ? typeInfo.Columns
+                    : typeInfo.Rows)
+                : typeInfo.Columns;
             // Named in full rather than under the element: a matrix row is
             // `transpose(bones[i].skin)[0]`, and the element cannot be put in front
             // of that afterwards.
-            string member = $"{element}.{run.Member.Name}";
-            string name = isMatrix
-                ? MatrixRegisterName(run.Member.TypeInfo, member, run.Register)
+            string member = $"{element}.{run.Path}";
+            // Which element of an array the register is in, and which register of
+            // that element: a matrix takes a register a row, so an array of them
+            // takes that many each, and a member that is not an array is all one.
+            int perElement = GetMemberRegisterCount(typeInfo);
+            string one = typeInfo.NumElements > 1
+                ? $"{member}[{run.Register / perElement}]"
                 : member;
+            string name = isMatrix
+                ? MatrixRegisterName(typeInfo, one, run.Register % perElement)
+                : one;
             string swizzle = width > 1 && !(run.InRegister.Count == width
                     && run.InRegister.SequenceEqual(Enumerable.Range(0, width)))
                 ? "." + string.Concat(run.InRegister.Select(c => "xyzw"[c]))
@@ -210,20 +222,81 @@ public sealed class RegisterState
         })];
     }
 
-    private static ShaderStructMemberInfo FindStructuredMember(
-        IList<ShaderStructMemberInfo> members, int byteAddress)
+    /// <summary>
+    /// The member a byte address within an element reaches, the path that names it
+    /// under the element, and where that member starts. A member can be a struct of
+    /// its own, and then what the address reaches is a member inside it: `.i.a`, so
+    /// the search descends until it is holding something with no members left.
+    /// </summary>
+    private static (ShaderStructMemberInfo Member, string Path, int ByteOffset)? FindStructuredMember(
+        IList<ShaderStructMemberInfo> members, int byteAddress, int baseOffset)
     {
         foreach (ShaderStructMemberInfo member in members)
         {
-            int size = member.TypeInfo.Rows > 1
-                ? member.TypeInfo.Rows * 16
-                : member.TypeInfo.Columns * 4;
-            if (byteAddress >= member.ByteOffset && byteAddress < member.ByteOffset + size)
+            int offset = baseOffset + member.ByteOffset;
+            if (byteAddress < offset || byteAddress >= offset + GetMemberByteSize(member.TypeInfo))
             {
-                return member;
+                continue;
             }
+            if (member.TypeInfo.MemberInfo is { Count: > 0 } nested)
+            {
+                // An array of structs is addressed by which one of them first: the
+                // members repeat, and what the address reaches is inside the one
+                // its stride puts it in.
+                int stride = GetElementByteSize(member.TypeInfo);
+                int index = (byteAddress - offset) / stride;
+                var inner = FindStructuredMember(nested, byteAddress, offset + index * stride);
+                string name = member.TypeInfo.NumElements > 1
+                    ? $"{member.Name}[{index}]"
+                    : member.Name;
+                return inner == null
+                    ? null
+                    : (inner.Value.Member, $"{name}.{inner.Value.Path}", inner.Value.ByteOffset);
+            }
+            return (member, member.Name, offset);
         }
         return null;
+    }
+
+    // How many floats one register of a member holds: four of a matrix, whose
+    // registers are its rows or its columns and are padded out to a register each,
+    // and as many as it has components of anything else.
+    private static int GetRegisterFloatCount(ShaderTypeInfo typeInfo)
+    {
+        return typeInfo.Rows > 1 ? 4 : Math.Max(typeInfo.Columns, 1);
+    }
+
+    // A matrix is a register a row where it is stored by row and a register a
+    // column where it is stored by column; anything else that is not a struct is
+    // one register.
+    private static int GetMemberRegisterCount(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.Rows <= 1)
+        {
+            return 1;
+        }
+        return typeInfo.ParameterClass == ParameterClass.MatrixRows
+            ? typeInfo.Rows
+            : typeInfo.Columns;
+    }
+
+    // One element of a member: a struct is as big as the end of its last member,
+    // and anything else is its registers.
+    private static int GetElementByteSize(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.MemberInfo is { Count: > 0 } members)
+        {
+            return members.Max(m => m.ByteOffset + GetMemberByteSize(m.TypeInfo));
+        }
+        return typeInfo.Rows > 1
+            ? GetMemberRegisterCount(typeInfo) * 16
+            : typeInfo.Columns * 4;
+    }
+
+    // A member declared as an array is that many elements one after another.
+    private static int GetMemberByteSize(ShaderTypeInfo typeInfo)
+    {
+        return GetElementByteSize(typeInfo) * Math.Max(typeInfo.NumElements, 1);
     }
 
     public string ApplyStructuredElementRow(RegisterKey resourceKey, string element, int byteOffset)

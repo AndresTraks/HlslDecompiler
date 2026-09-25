@@ -21,6 +21,21 @@ public sealed class ConstantDeclarationCompiler
         SetStructOrder(declaration.TypeInfo);
     }
 
+    // A structured buffer's element type is named after the buffer it holds -
+    // SrcElement, not struct1 - so the type itself is not ordered, but a member
+    // of it that is a struct is declared like any other and has to be.
+    public void SetMemberStructOrder(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.MemberInfo == null)
+        {
+            return;
+        }
+        foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+        {
+            SetStructOrder(member.TypeInfo);
+        }
+    }
+
     // A member can be a struct too, and it has to be declared before the struct
     // holding it, so members are ordered first.
     private void SetStructOrder(ShaderTypeInfo typeInfo)

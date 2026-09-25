@@ -902,6 +902,29 @@ public class StatementFinalizer
         return holders > 1 || (holders == 1 && node.Outputs.Count != 0);
     }
 
+    /// <summary>
+    /// Whether a value read by nothing is one a break or a continue carries out of
+    /// the loop rather than one that is simply dead. A copy is the usual shape, and
+    /// so is the step of a counter fxc worked out in the branch - `iadd r0.z, r0.w,
+    /// l(1)` before a continue, and again at the end of the body. Both are read by
+    /// nothing where they stand, because the phi that closes the loop reads the one
+    /// at the end; dropping the one before the jump stops the loop advancing on
+    /// that path. Anything else a jump happens to be live across - the comparison a
+    /// clip beside it tests - is dead where it looks dead, and holding it writes an
+    /// assignment that nothing declared. An add of a constant and nothing looser:
+    /// the row a matrix multiply is read through is `t0 * 4`, dead once the
+    /// multiply is recognised, and a multiply by a constant held that too.
+    /// </summary>
+    private static bool IsCarriedByJump(HlslTreeNode node)
+    {
+        if (node.Outputs.Count != 0)
+        {
+            return false;
+        }
+        return node is MoveOperation
+            || (node is AddOperation && node.Inputs.Any(input => input is ConstantNode));
+    }
+
     private IStatement[] FindHoldingStatements(HlslTreeNode node)
     {
         var holders = new List<IStatement>();
@@ -919,8 +942,8 @@ public class StatementFinalizer
             // and again at the end of the body; the second is read by the phi that
             // closes the loop and the first by nothing, so the first was removed as
             // dead and a ray march lost its last step.
-            else if (node is MoveOperation
-                && statement is BreakStatement or ContinueStatement
+            else if (statement is BreakStatement or ContinueStatement
+                && IsCarriedByJump(node)
                 && statement.Outputs.Values.Contains(node))
             {
                 holders.Add(statement);

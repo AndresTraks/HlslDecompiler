@@ -130,6 +130,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "tangent_lighting")]
     [TestCase("ps_5_0", "integer_target")]
     [TestCase("ps_5_0", "nested_array_cbuffer")]
+    [TestCase("ps_5_0", "continue_carries_step")]
     [TestCase("ps_5_0", "struct_matrix_packing")]
     [TestCase("vs_5_0", "skinned_instances")]
     [TestCase("vs_5_0", "row_major_instances")]

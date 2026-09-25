@@ -9,20 +9,27 @@ public class StatementFinalizer
 {
     private IList<IStatement> _statements;
     private bool _hasReturnValue;
+    // Whether the outputs leave through a struct variable rather than as the one
+    // returned expression. It decides where a return goes when the shader ends on an
+    // if and an else: with a struct they can share one after the branches, and
+    // without one each branch has to carry its own value out.
+    private readonly bool _hasOutputStruct;
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
 
     private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue,
-        IntegerOperandAnalysis integerOperandAnalysis)
+        bool hasOutputStruct, IntegerOperandAnalysis integerOperandAnalysis)
     {
         _statements = statements;
         _hasReturnValue = hasReturnValue;
+        _hasOutputStruct = hasOutputStruct;
         _integerOperandAnalysis = integerOperandAnalysis;
     }
 
     public static void Finalize(IList<IStatement> statements, bool hasReturnValue,
-        IntegerOperandAnalysis integerOperandAnalysis = null)
+        bool hasOutputStruct = false, IntegerOperandAnalysis integerOperandAnalysis = null)
     {
-        var finalizer = new StatementFinalizer(statements, hasReturnValue, integerOperandAnalysis);
+        var finalizer = new StatementFinalizer(
+            statements, hasReturnValue, hasOutputStruct, integerOperandAnalysis);
         finalizer.FinalizeStatements();
     }
 
@@ -689,7 +696,12 @@ public class StatementFinalizer
         }
         if (lastStatement is IfStatement ifStatement)
         {
-            if (ifStatement.FalseBody != null)
+            // One return after the branches where the outputs leave through a struct:
+            // the branches filled it, and returning it once is what the bytecode does
+            // - it falls through the endif to a single ret. Pushed into each branch
+            // instead it cost an instruction apiece, since fxc then writes a ret in
+            // each of them.
+            if (ifStatement.FalseBody != null && !_hasOutputStruct)
             {
                 SetReturnStatement(ifStatement.TrueBody);
                 SetReturnStatement(ifStatement.FalseBody);

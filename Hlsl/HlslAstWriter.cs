@@ -59,7 +59,7 @@ public class HlslAstWriter : HlslWriter
         _templateMatcher = new TemplateMatcher(_grouper);
 
         StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
-            CreateIntegerOperandAnalysis());
+            HasOutputStruct, CreateIntegerOperandAnalysis());
         FindDeclaredVariables(ast.Statements);
         WriteStatements(ast.Statements);
     }
@@ -948,10 +948,11 @@ public class HlslAstWriter : HlslWriter
                 string compiled = CompileOutput(rootGroup.Key.RegisterKey, rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
             }
-            if (outputs.Count != 0)
-            {
-                WriteLine();
-            }
+            // A blank line whether or not anything was written just above: the return
+            // reads as the end of the method either way, and after the closing brace
+            // of an if and an else that filled the struct between them it needs the
+            // separation more, not less.
+            WriteLine();
             WriteLine($"return {_registers.OutputVariableName};");
         }
     }

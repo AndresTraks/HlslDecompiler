@@ -26,11 +26,9 @@ VS_OUT main(VS_IN i)
 			t0 = 2 * t0;
 		}
 		o.color = t0;
-
-		return o;
 	} else {
 		o.color = i.color;
-
-		return o;
 	}
+
+	return o;
 }

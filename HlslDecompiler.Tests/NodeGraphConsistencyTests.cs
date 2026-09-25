@@ -76,6 +76,8 @@ public class NodeGraphConsistencyTests
             and not ShaderType.Geometry
             && ast.RegisterState.MethodOutputRegisters.Count != 0;
         StatementFinalizer.Finalize(ast.Statements, hasReturnValue,
+            ast.RegisterState.MethodOutputRegisters.Count > 1
+                || shader.Type == ShaderType.Geometry,
             shader.Instructions.Count != 0 && shader.Instructions[0] is D3D10Instruction
                 ? new IntegerOperandAnalysis(shader)
                 : null);

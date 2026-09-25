@@ -99,6 +99,68 @@ public static class LoopRecovery
                 && assignment.Value.Inputs.Any(a => a is ConstantNode))
             .Select(o => (Key: o.Key, Assignment: (TempAssignmentNode)o.Value))
             .FirstOrDefault(o => IsTestedBy(o.Assignment.TempVariable, breakCondition));
+        // fxc can work the step out early and copy it in at the end. Where it fuses
+        // the increment with another add of the counter - `iadd r0.yz, r0.xxxx,
+        // l(0, 3, 1, 0)` is an index and the next counter in one instruction - the
+        // body ends on `v = w` with `w = v + 1` above it. That is the same for loop
+        // with one register more, and written as the while it looks like, it costs
+        // the instructions fxc had saved.
+        AssignmentStatement stepStatement = null;
+        RegisterComponentKey stepKey = default;
+        if (increment.Assignment == null)
+        {
+            foreach (var copy in lastStatement.Outputs)
+            {
+                // The copy is a mov, which is a move of the variable rather than
+                // the variable itself.
+                if (copy.Value is not TempAssignmentNode copied
+                    || CopiedVariable(copied.Value) is not TempVariableNode stepVariable
+                    || !IsTestedBy(copied.TempVariable, breakCondition))
+                {
+                    continue;
+                }
+                foreach (IStatement statement in loop.Body)
+                {
+                    // The step can be worked out in the same statement the copy ends
+                    // on - fxc writes both registers with the one iadd - so this is
+                    // not looking above the copy but beside it as well.
+                    if (statement is not AssignmentStatement step)
+                    {
+                        continue;
+                    }
+                    var stepped = step.Outputs.FirstOrDefault(o =>
+                        !ReferenceEquals(o.Value, copied)
+                        && o.Value is TempAssignmentNode assignment
+                        && ReferenceEquals(assignment.TempVariable, stepVariable)
+                        && assignment.Value is AddOperation or ShiftRightOperation
+                            or ShiftLeftOperation or MultiplyOperation
+                        && assignment.Value.Inputs.Any(a => a is ConstantNode)
+                        && assignment.Value.Inputs.Any(a =>
+                            ReferenceEquals(a, copied.TempVariable) || ReferenceEquals(a, stepVariable)));
+                    if (stepped.Value == null
+                        || IsReadElsewhere(loop.Body, stepVariable, copied))
+                    {
+                        continue;
+                    }
+                    // The counter takes the step itself, rather than the register fxc
+                    // worked it out in: that register goes with the write that made it.
+                    increment = (copy.Key, new TempAssignmentNode(
+                        copied.TempVariable, ((TempAssignmentNode)stepped.Value).Value)
+                    {
+                        // The counter is declared by the initializer in the
+                        // header; this one steps it.
+                        IsReassignment = true,
+                    });
+                    stepStatement = step;
+                    stepKey = stepped.Key;
+                    break;
+                }
+                if (stepStatement != null)
+                {
+                    break;
+                }
+            }
+        }
         if (increment.Assignment == null)
         {
             return;
@@ -129,6 +191,7 @@ public static class LoopRecovery
         // Those three now live in the for header rather than in the body.
         initializerStatement.Outputs.Remove(increment.Key);
         lastStatement.Outputs.Remove(increment.Key);
+        stepStatement?.Outputs.Remove(stepKey);
         loop.Body.RemoveAt(guardIndex);
     }
 
@@ -174,6 +237,46 @@ public static class LoopRecovery
             }
         });
         return found;
+    }
+
+
+
+    /// <summary>The variable a copy reads, whether it reads it through a move or
+    /// stands as the variable itself.</summary>
+    private static TempVariableNode CopiedVariable(HlslTreeNode value)
+    {
+        return value switch
+        {
+            TempVariableNode variable => variable,
+            MoveOperation move => move.Inputs[0] as TempVariableNode,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Whether anything but the copy at the end of the body reads the register the
+    /// step was worked out in. Where something else does, that register carries more
+    /// than the counter and cannot be taken away with it.
+    /// </summary>
+    private static bool IsReadElsewhere(
+        IList<IStatement> body, TempVariableNode variable, TempAssignmentNode copy)
+    {
+        bool read = false;
+        new StatementVisitor(body).Visit(statement =>
+        {
+            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values))
+            {
+                if (ReferenceEquals(value, copy))
+                {
+                    continue;
+                }
+                if (ReferenceEquals(value, variable) || variable.IsInputOf(value))
+                {
+                    read = true;
+                }
+            }
+        });
+        return read;
     }
 
     private static bool IsUsedAfter(IList<IStatement> statements, int loopIndex, TempVariableNode variable)

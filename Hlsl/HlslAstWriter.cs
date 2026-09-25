@@ -453,7 +453,8 @@ public class HlslAstWriter : HlslWriter
         // it as one assignment kept only the last.
         RegisterKey bufferKey = ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
-            bufferKey, storeStructured.ElementByteOffset, storeStructured.Components);
+            bufferKey, $"{compiledDestination}[{compiledAddress}]",
+            storeStructured.ElementByteOffset, storeStructured.Components);
         if (runs != null)
         {
             foreach ((string name, int[] values) in runs)
@@ -461,7 +462,7 @@ public class HlslAstWriter : HlslWriter
                 string run = storesIntegers
                     ? _compiler.CompileAsInteger(values.Select(v => storedValues[v]))
                     : _compiler.Compile(values.Select(v => storedValues[v]));
-                WriteLine($"{compiledDestination}[{compiledAddress}].{name} = {run};");
+                WriteLine($"{name} = {run};");
             }
             return;
         }
@@ -518,10 +519,10 @@ public class HlslAstWriter : HlslWriter
 
         string element = $"{resource}[{address}]";
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
-            resourceKey, GetElementByteOffset(atomic), [0]);
+            resourceKey, element, GetElementByteOffset(atomic), [0]);
         if (runs != null && runs.Count == 1)
         {
-            element += "." + runs[0].Name;
+            element = runs[0].Name;
         }
         WriteLine($"{atomic.MethodName}({element}, {arguments});");
     }

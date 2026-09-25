@@ -253,6 +253,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "struct_member_store")]
     [TestCase("cs_5_0", "loop_fused_step")]
     [TestCase("cs_5_0", "raw_buffer_dwords")]
+    [TestCase("cs_5_0", "structured_matrix_member")]
     [TestCase("cs_5_0", "consume_double")]
     [TestCase("cs_5_0", "luminance_histogram")]
     [TestCase("cs_5_0", "bit_counts")]

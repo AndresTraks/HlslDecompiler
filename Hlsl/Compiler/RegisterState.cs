@@ -128,12 +128,13 @@ public sealed class RegisterState
             return null;
         }
 
-        IList<(string Name, int[] Values)> runs = FindStructuredMemberRuns(resourceKey, byteOffset, components);
+        IList<(string Name, int[] Values)> runs =
+            FindStructuredMemberRuns(resourceKey, element, byteOffset, components);
         if (runs == null)
         {
             return null;
         }
-        List<string> named = [.. runs.Select(r => $"{element}.{r.Name}")];
+        List<string> named = [.. runs.Select(r => r.Name)];
         return named.Count == 1
             ? named[0]
             : $"float{components.Count}({string.Join(", ", named)})";
@@ -146,7 +147,7 @@ public sealed class RegisterState
     /// the element is not a struct.
     /// </summary>
     public IList<(string Name, int[] Values)> FindStructuredMemberRuns(
-        RegisterKey resourceKey, int byteOffset, IList<int> components)
+        RegisterKey resourceKey, string element, int byteOffset, IList<int> components)
     {
         IList<ShaderStructMemberInfo> members = FindStructuredBuffer(resourceKey)?.ElementType?.MemberInfo;
         if (members == null || members.Count == 0 || components.Count == 0)
@@ -154,7 +155,8 @@ public sealed class RegisterState
             return null;
         }
 
-        var runs = new List<(ShaderStructMemberInfo Member, List<int> InMember, List<int> Values)>();
+        var runs = new List<(ShaderStructMemberInfo Member, int Register,
+            List<int> InRegister, List<int> Values)>();
         for (int i = 0; i < components.Count; i++)
         {
             ShaderStructMemberInfo member = FindStructuredMember(members, byteOffset + components[i] * 4);
@@ -163,25 +165,48 @@ public sealed class RegisterState
                 return null;
             }
             int inMember = (byteOffset + components[i] * 4 - member.ByteOffset) / 4;
-            if (runs.Count != 0 && ReferenceEquals(runs[^1].Member, member))
+            // A matrix member is a register per row or column rather than one
+            // register, so where a component sits is a register of the matrix and a
+            // component of that: the eighth float of a float4x4 is the last of its
+            // second. Counted straight through the member it ran off the end of
+            // `xyzw`, which is four letters long however many floats the member has.
+            bool isMatrix = member.TypeInfo.Rows > 1;
+            int register = isMatrix ? inMember / 4 : 0;
+            int inRegister = isMatrix ? inMember % 4 : inMember;
+            if (runs.Count != 0 && ReferenceEquals(runs[^1].Member, member)
+                && runs[^1].Register == register)
             {
-                runs[^1].InMember.Add(inMember);
+                runs[^1].InRegister.Add(inRegister);
                 runs[^1].Values.Add(i);
             }
             else
             {
-                runs.Add((member, [inMember], [i]));
+                runs.Add((member, register, [inRegister], [i]));
             }
         }
 
         return [.. runs.Select(run =>
         {
-            int width = run.Member.TypeInfo.Columns;
-            string swizzle = width > 1 && !(run.InMember.Count == width
-                    && run.InMember.SequenceEqual(Enumerable.Range(0, width)))
-                ? "." + string.Concat(run.InMember.Select(c => "xyzw"[c]))
+            bool isMatrix = run.Member.TypeInfo.Rows > 1;
+            // One row of a matrix is as wide as the matrix has columns where it is
+            // stored by row, and as its rows where it is stored by column.
+            int width = isMatrix
+                ? (run.Member.TypeInfo.ParameterClass == ParameterClass.MatrixRows
+                    ? run.Member.TypeInfo.Columns
+                    : run.Member.TypeInfo.Rows)
+                : run.Member.TypeInfo.Columns;
+            // Named in full rather than under the element: a matrix row is
+            // `transpose(bones[i].skin)[0]`, and the element cannot be put in front
+            // of that afterwards.
+            string member = $"{element}.{run.Member.Name}";
+            string name = isMatrix
+                ? MatrixRegisterName(run.Member.TypeInfo, member, run.Register)
+                : member;
+            string swizzle = width > 1 && !(run.InRegister.Count == width
+                    && run.InRegister.SequenceEqual(Enumerable.Range(0, width)))
+                ? "." + string.Concat(run.InRegister.Select(c => "xyzw"[c]))
                 : "";
-            return (run.Member.Name + swizzle, run.Values.ToArray());
+            return (name + swizzle, run.Values.ToArray());
         })];
     }
 

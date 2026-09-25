@@ -1740,7 +1740,7 @@ public class HlslSimpleWriter : HlslWriter
                     int writeMask = instruction.GetWriteMask(0);
                     List<int> written = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
                     IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
-                        buffer, instruction.GetParamInt(2, 0), written);
+                        buffer, element, instruction.GetParamInt(2, 0), written);
                     if (runs == null)
                     {
                         WriteLine("{0} = {1};", element, GetOperandName(instruction, 3));
@@ -1751,7 +1751,7 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         string picked = "." + string.Concat(
                             values.Select(v => "xyzw"[valueSwizzle[written[v]]]));
-                        WriteLine("{0}.{1} = {2}{3};", element, name,
+                        WriteLine("{0} = {1}{2};", name,
                             GetOperandName(instruction, 3).Split('.')[0], picked);
                     }
                     break;

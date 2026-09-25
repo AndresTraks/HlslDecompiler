@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl;
 using System;
 using System.Numerics;
 using System.Collections.Generic;
@@ -74,6 +75,42 @@ public class D3D10Machine
     /// holding one value in different registers still agree on it.
     /// </summary>
     public static Dictionary<string, float[]> Run(ShaderModel shader, int trial)
+    {
+        // A hull shader is two programs, and the results of both are what it
+        // computes: the control point it writes and the constants of the patch. Run
+        // as one program it would stop at the first ret - the end of the control
+        // point phase - and the tessellation factors would never be reached.
+        // Each phase names its outputs from its own signature, so the two sets of
+        // results do not collide.
+        if (shader.Type == ShaderType.Hull)
+        {
+            (ShaderModel controlPoint, ShaderModel patchConstant) =
+                HullShaderPhases.Split(shader);
+            var both = new Dictionary<string, float[]>();
+            foreach (ShaderModel phase in new[] { controlPoint, patchConstant })
+            {
+                if (phase == null)
+                {
+                    continue;
+                }
+                foreach (KeyValuePair<string, float[]> result in RunProgram(phase, trial))
+                {
+                    both[result.Key] = result.Value;
+                }
+            }
+            return both;
+        }
+
+        return RunProgram(shader, trial);
+    }
+
+    /// <summary>
+    /// One program: the whole of a shader, or one phase of a hull shader. Kept apart
+    /// from Run because a phase is still a hull shader by type, and running it
+    /// through the split again found no phases in it and returned nothing at all -
+    /// which the equivalence check read as two shaders agreeing.
+    /// </summary>
+    private static Dictionary<string, float[]> RunProgram(ShaderModel shader, int trial)
     {
         var machine = new D3D10Machine(shader, trial);
         machine.LoadConstants();
@@ -204,6 +241,12 @@ public class D3D10Machine
     {
         return PseudoRandom.Vector(name, _trial);
     }
+
+    // How many control points come out of the patch, which the declarations say.
+    private int ControlPointCount =>
+        _shader.Instructions.OfType<D3D10Instruction>()
+            .FirstOrDefault(i => i.Opcode == D3D10Opcode.DclOutputControlPointCount)
+            ?.ControlPointCount ?? 1;
 
     private void Execute()
     {
@@ -342,6 +385,14 @@ public class D3D10Machine
                     continue;
                 case D3D10Opcode.CustomData:
                     LoadImmediateConstantBuffer(instruction);
+                    pc++;
+                    continue;
+                // The seam a hull shader was cut along. The phase it opened is what
+                // is being run; the marker itself does nothing.
+                case D3D10Opcode.HsDecls:
+                case D3D10Opcode.HsControlPointPhase:
+                case D3D10Opcode.HsForkPhase:
+                case D3D10Opcode.HsJoinPhase:
                     pc++;
                     continue;
             }
@@ -1419,7 +1470,11 @@ public class D3D10Machine
                     // Only a geometry shader indexes by vertex; elsewhere a two
                     // index input is something else and the register number stands.
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
-                    if (indices.Length < 2 || _shader.Type != ShaderType.Geometry)
+                    // A hull shader's control point phase reads the patch the same
+                    // way, and indexes it by the control point it is computing:
+                    // v[r0.x + 0][0].
+                    if (indices.Length < 2
+                        || _shader.Type is not (ShaderType.Geometry or ShaderType.Hull))
                     {
                         // A vertex shader reads a run declared by dcl_indexrange as
                         // `v[r0.x + 0]`: the register is the immediate plus whatever
@@ -1437,7 +1492,8 @@ public class D3D10Machine
                     // counts a token per index from the operand token onwards, which
                     // is neither the right place to start nor right for a nested
                     // operand. It gave vertex numbers in the millions.
-                    int vertex = (int)indices[0].Immediate;
+                    int vertex = (int)indices[0].Immediate
+                        + RelativeIndex(instruction, index, 0);
                     int register = (int)indices[1].Immediate;
                     return VertexInput(vertex, register);
                 }
@@ -1485,6 +1541,12 @@ public class D3D10Machine
                 // Small whole numbers: a thread index taken from float bits would
                 // address somewhere no buffer reaches.
                 return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];
+            case OperandType.OutputControlPointID:
+                // Which control point of the patch this run computes. One point is
+                // run, the same one on both sides because it is named, and it has to
+                // be one the patch has: it subscripts the patch.
+                return [.. Named("vOutputControlPointID")
+                    .Select(v => (uint)Math.Abs(v * 4) % (uint)Math.Max(ControlPointCount, 1))];
             case OperandType.InputCoverageMask:
                 // The mask the rasterizer handed this pixel. It is independent of any
                 // mask the shader writes out, so it reads a value of its own - the

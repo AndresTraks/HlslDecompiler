@@ -122,6 +122,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "texture_channels_uint")]
     [TestCase("ps_5_0", "texture_channels_sint")]
     [TestCase("ps_5_0", "integer_texture_load")]
+    [TestCase("ps_5_0", "constant_packoffset")]
     [TestCase("vs_5_0", "matrix_array_index")]
     [TestCase("ps_5_0", "bit_fields")]
     [TestCase("ps_5_0", "tangent_lighting")]

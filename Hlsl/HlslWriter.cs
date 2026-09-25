@@ -196,9 +196,16 @@ public abstract class HlslWriter
                 WriteLine($"cbuffer {buffer.Key} : register(b{buffer.First().RegisterIndex})");
                 WriteLine("{");
                 indent = "\t";
+                bool saysWhereItGoes = NeedsPackOffset(buffer);
                 foreach (D3D10ConstantDeclaration member in buffer)
                 {
-                    WriteLine(compiler.Compile(member));
+                    string declaration = compiler.Compile(member);
+                    if (saysWhereItGoes)
+                    {
+                        declaration = declaration.TrimEnd(';')
+                            + $" : {PackOffset(member.VariableOffset)};";
+                    }
+                    WriteLine(declaration);
                 }
                 indent = "";
                 WriteLine("};");
@@ -689,6 +696,53 @@ public abstract class HlslWriter
 
     // A geometry shader can only emit strips, so the declared topology names the
     // stream type outright.
+    /// <summary>
+    /// Whether the buffer's variables sit where declaring them in this order would
+    /// put them. A packoffset moves one, or leaves a register empty in front of it,
+    /// and the declaration alone then says something the shader did not: the buffer
+    /// it is handed is laid out one way and the registers it reads are another.
+    /// Where the two agree - which is every buffer fxc packed itself - nothing is
+    /// said, and the declaration stays the one the shader was written with.
+    /// </summary>
+    private static bool NeedsPackOffset(IEnumerable<D3D10ConstantDeclaration> members)
+    {
+        const int RegisterSize = 4 * sizeof(float);
+        int cursor = 0;
+        foreach (D3D10ConstantDeclaration member in members)
+        {
+            int size = member.VariableSize;
+            // An array, a matrix and a struct begin a register of their own; a
+            // scalar or a vector packs in beside what is already there unless it
+            // would run over the end of the register, which none of them may do.
+            bool beginsARegister = member.TypeInfo.NumElements > 1
+                || member.TypeInfo.Rows > 1
+                || member.TypeInfo.MemberInfo != null;
+            if (beginsARegister
+                || cursor / RegisterSize != (cursor + size - 1) / RegisterSize)
+            {
+                cursor = (cursor + RegisterSize - 1) / RegisterSize * RegisterSize;
+            }
+            if (cursor != member.VariableOffset)
+            {
+                return true;
+            }
+            cursor += size;
+        }
+        return false;
+    }
+
+    private static string PackOffset(int offset)
+    {
+        string component = (offset % 16 / 4) switch
+        {
+            1 => ".y",
+            2 => ".z",
+            3 => ".w",
+            _ => "",
+        };
+        return $"packoffset(c{offset / 16}{component})";
+    }
+
     private static string GetStreamType(D3D10PrimitiveTopology? topology)
     {
         return topology switch

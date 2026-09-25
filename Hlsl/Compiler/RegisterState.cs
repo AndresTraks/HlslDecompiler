@@ -1251,20 +1251,29 @@ public sealed class RegisterState
         {
             if (d3D10RegisterKey.OperandType == OperandType.ConstantBuffer)
             {
-                int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * 4 * sizeof(float);
+                const int RegisterSize = 4 * sizeof(float);
+                int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * RegisterSize;
                 ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d =>
                 {
                     if (d.RegisterIndex != d3D10RegisterKey.Number)
                     {
                         return false;
                     }
+                    // Anywhere in the register, not only at the start of it. A
+                    // packoffset can put a variable part of the way in - `float2 b :
+                    // packoffset(c0.z)` begins eight bytes up, with nothing in front
+                    // of it - and looking for the one covering the register's first
+                    // byte found none and threw. Where several share the register the
+                    // first is taken, as before; which of them a component belongs to
+                    // is asked elsewhere, of the component.
                     var constant = d as D3D10ConstantDeclaration;
-                    return constant.VariableOffset <= expectedOffset && expectedOffset < constant.VariableOffset + constant.VariableSize;
+                    return constant.VariableOffset < expectedOffset + RegisterSize
+                        && expectedOffset < constant.VariableOffset + constant.VariableSize;
                 });
-                if (declaration == null)
-                {
-                    throw new InvalidOperationException();
-                }
+                // A register of the buffer that no variable is in: a packoffset can
+                // leave one empty, and the declaration walks every register the
+                // buffer has. Nothing is there to name, which the callers all ask
+                // about rather than assume, so it is answered rather than thrown.
                 return declaration;
             }
             return null;

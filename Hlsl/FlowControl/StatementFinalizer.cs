@@ -1230,7 +1230,7 @@ public class StatementFinalizer
             // structured one hands back what its element type says, which is
             // asked of the reflection data elsewhere.
             LoadStructuredNode { IsRaw: true } => true,
-            LoadStructuredNode => null,
+            LoadStructuredNode load => load.IsIntegerElement,
             // What resinfo and bufinfo report is whatever the instruction asked for
             // them as: a size in texels or a count of elements is a uint, and the
             // same measurement taken as a float is one.

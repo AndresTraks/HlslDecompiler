@@ -256,6 +256,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "structured_matrix_member")]
     [TestCase("cs_5_0", "nested_struct_member")]
     [TestCase("cs_5_0", "array_member")]
+    [TestCase("cs_5_0", "mixed_member_types")]
     [TestCase("cs_5_0", "struct_member_atomic")]
     [TestCase("cs_5_0", "consume_double")]
     [TestCase("cs_5_0", "luminance_histogram")]

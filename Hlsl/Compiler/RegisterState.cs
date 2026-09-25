@@ -223,6 +223,39 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// Whether what a structured load reads at a byte address into the element is an
+    /// integer, or null where the reflection data does not say - groupshared memory,
+    /// or a buffer whose element type it does not carry. An element that is a struct
+    /// answers for the member the address falls in: the element's own type is Struct,
+    /// which says nothing, and a float member of a struct alongside a uint one was
+    /// left to whatever else had touched the register - a component fxc reused for a
+    /// counter afterwards, so the float was declared int and truncated on the way in.
+    /// </summary>
+    public bool? IsIntegerStructuredMember(RegisterKey resourceKey, int byteAddress)
+    {
+        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
+        if (elementType == null)
+        {
+            return null;
+        }
+        if (elementType.MemberInfo is { Count: > 0 } members)
+        {
+            var found = FindStructuredMember(members, byteAddress, 0);
+            if (found == null)
+            {
+                return null;
+            }
+            elementType = found.Value.Member.TypeInfo;
+        }
+        return elementType.ParameterType switch
+        {
+            ParameterType.Int or ParameterType.Uint or ParameterType.Bool => true,
+            ParameterType.Float => false,
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// The member a byte address within an element reaches, the path that names it
     /// under the element, and where that member starts. A member can be a struct of
     /// its own, and then what the address reaches is a member inside it: `.i.a`, so

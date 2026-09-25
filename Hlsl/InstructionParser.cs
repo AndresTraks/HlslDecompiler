@@ -2130,6 +2130,14 @@ public class InstructionParser
                                 return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
                                 {
                                     ElementByteOffset = elementByteOffset,
+                                    // The component the resource operand selects is
+                                    // which part of the element this load is, so the
+                                    // member it reads is the one at that address and
+                                    // not the one the element starts with.
+                                    IsIntegerElement = _registerState.IsIntegerStructuredMember(
+                                        instruction.GetParamRegisterKey(3),
+                                        elementByteOffset
+                                            + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
                                 };
                             }
                         case D3D10Opcode.LdRaw:

@@ -22,5 +22,11 @@ public class LoadStructuredNode : Operation
     // and this is a fact about the load.
     public int ElementByteOffset { get; init; }
 
+    // Whether what it reads is an integer, from the element type the reflection
+    // data gives the buffer - or from the member the byte offset falls in, where
+    // the element is a struct. Null where nothing says, which leaves the value to
+    // be typed by its readers.
+    public bool? IsIntegerElement { get; init; }
+
     public override string Mnemonic => IsRaw ? "ld_raw" : "ld_structured";
 }

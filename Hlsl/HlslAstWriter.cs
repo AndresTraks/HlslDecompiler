@@ -2166,6 +2166,12 @@ public class HlslAstWriter : HlslWriter
             TempVariableNode[] variables = _compiler.CreateTempVariables(
                 info.IsBuffer ? (info.ReportsStride ? 2 : 1)
                 : sampleCount != null ? sampleCount.SampleCountComponent + 1
+                // A multisampled texture whose count is a constant asks for no
+                // sample count and takes the overload with one all the same: width,
+                // height and the count, with the element count between them for an
+                // array.
+                : dimension == ResourceDimension.Texture2DmsArray ? 4
+                : dimension == ResourceDimension.Texture2Dms ? 3
                 : mipForm ? 4
                 : noMipComponents);
             foreach (TempVariableNode variable in variables)

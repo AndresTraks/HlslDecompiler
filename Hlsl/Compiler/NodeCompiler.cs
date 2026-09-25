@@ -1984,7 +1984,15 @@ public sealed class NodeCompiler
                 ? $"{resource.Name}.GetDimensions({name}.x, {name}.y);"
                 : $"{resource.Name}.GetDimensions({name});");
         }
-        bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount);
+        // From what the resource is, not from whether the sample count was asked
+        // for. A multisampled texture declared with its count - `Texture2DMSArray
+        // <float4, 4>` - has that count folded into a constant, so there is no
+        // sampleinfo to go by, and the overloads it has are still the ones without
+        // a mip level in them. Asked for the mip form, the width went into the
+        // level: `GetDimensions(0, ...)` puts a literal where an out parameter goes.
+        bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount)
+            || resource.Dimension is ResourceDimension.Texture2Dms
+                or ResourceDimension.Texture2DmsArray;
         if (isMultisampled)
         {
             // Width, height and the sample count, with the element count between

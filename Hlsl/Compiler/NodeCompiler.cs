@@ -1811,7 +1811,7 @@ public sealed class NodeCompiler
                     type += tempAssignment.TempVariable.VariableSize;
                 }
                 type += " ";
-                variableCompiled = $"t{tempAssignment.TempVariable.DeclarationIndex}";
+                variableCompiled = $"{_registers.TemporaryPrefix}{tempAssignment.TempVariable.DeclarationIndex}";
             }
             bool wasAssigningToInteger = _assigningToInteger;
             _assigningToInteger = tempAssignment.TempVariable.IsInteger;
@@ -1865,7 +1865,7 @@ public sealed class NodeCompiler
             }
 
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, (int)tempVariable.VariableSize);
-            return $"t{tempVariable.DeclarationIndex}{swizzle}";
+            return $"{_registers.TemporaryPrefix}{tempVariable.DeclarationIndex}{swizzle}";
         }
 
         if (first is ConsumeNode consume)
@@ -1947,7 +1947,7 @@ public sealed class NodeCompiler
             .First(d => d.BindPoint == consume.Buffer.RegisterComponentKey.RegisterKey.Number
                 && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
         string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
-        return $"float{width} t{variable.DeclarationIndex} = {buffer.Name}.Consume();";
+        return $"float{width} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
     }
 
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)
@@ -1962,7 +1962,7 @@ public sealed class NodeCompiler
             : _registers.GetTextureDefinition(resourceKey);
 
         string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
-        string name = $"t{variable.DeclarationIndex}";
+        string name = $"{_registers.TemporaryPrefix}{variable.DeclarationIndex}";
         // A byte address buffer reports one number, and `uint1` is not how a scalar
         // is spelled.
         string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();

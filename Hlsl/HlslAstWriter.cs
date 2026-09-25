@@ -142,7 +142,7 @@ public class HlslAstWriter : HlslWriter
             string type = first.TempVariable.IsInteger ? first.TempVariable.IntegerTypeName : "float";
             // Compiling the variable is what numbers it.
             _compiler.Compile(group.Select(node => ((TempAssignmentNode)node).TempVariable));
-            WriteLine($"{type}{size} t{first.TempVariable.DeclarationIndex};");
+            WriteLine($"{type}{size} {_registers.TemporaryPrefix}{first.TempVariable.DeclarationIndex};");
             _declaredIndices.Add(first.TempVariable.DeclarationIndex.Value);
             foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
             {
@@ -861,7 +861,7 @@ public class HlslAstWriter : HlslWriter
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
                 string type = variable.IsInteger ? variable.IntegerTypeName : "float";
-                WriteLine($"{type}{size} t{variable.DeclarationIndex};");
+                WriteLine($"{type}{size} {_registers.TemporaryPrefix}{variable.DeclarationIndex};");
             }
         }
     }

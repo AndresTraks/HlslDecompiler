@@ -1263,6 +1263,43 @@ public sealed class RegisterState
         });
     }
 
+    private string _temporaryPrefix;
+
+    /// <summary>
+    /// What a named temporary is called. `t` unless the shader has something of its
+    /// own by that name and a number - `sampler2D t0` is a natural name for one,
+    /// matching the register it binds to - in which case the temporary would shadow
+    /// it and `tex2D(t0, uv)` would be passing a float4 where a sampler goes.
+    /// </summary>
+    public string TemporaryPrefix
+    {
+        get
+        {
+            if (_temporaryPrefix != null)
+            {
+                return _temporaryPrefix;
+            }
+            HashSet<string> taken =
+            [
+                .. ConstantDeclarations.Select(d => d.Name),
+                .. ResourceDefinitions.Select(d => d.Name),
+            ];
+            _temporaryPrefix = "t";
+            while (taken.Any(name => IsPrefixedNumber(name, _temporaryPrefix)))
+            {
+                _temporaryPrefix += "_";
+            }
+            return _temporaryPrefix;
+        }
+    }
+
+    private static bool IsPrefixedNumber(string name, string prefix)
+    {
+        return name.Length > prefix.Length
+            && name.StartsWith(prefix, StringComparison.Ordinal)
+            && name.Skip(prefix.Length).All(char.IsAsciiDigit);
+    }
+
     public ConstantDeclaration FindConstant(RegisterKey registerKey)
     {
         if (registerKey is D3D10RegisterKey d3D10RegisterKey)

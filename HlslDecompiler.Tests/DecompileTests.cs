@@ -9,6 +9,7 @@ namespace HlslDecompiler.Tests;
 public class DecompileTests
 {
     [TestCase("ps_2_0", "tex2d")]
+    [TestCase("ps_2_0", "shadowed_sampler_name")]
     [TestCase("ps_2_0", "texcoord_struct")]
     [TestCase("ps_2_0", "lerp")]
     [TestCase("ps_2_0", "colour_input")]

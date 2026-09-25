@@ -38,8 +38,35 @@ public class NodeGraphConsistencyTests
     {
         string filename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
         ShaderModel shader = ReadShader(filename);
-        HlslAst ast = InstructionParser.Parse(shader);
 
+        // A hull shader is two graphs, one per function, and each is parsed from a
+        // slice of the bytecode. Parsing the whole of one as if it were a single
+        // program declares the same output register twice and throws.
+        foreach ((ShaderModel phase, HlslAst ast) in Phases(shader))
+        {
+            CheckGraph(phase, ast);
+        }
+    }
+
+    private static IEnumerable<(ShaderModel Shader, HlslAst Ast)> Phases(ShaderModel shader)
+    {
+        if (shader.Type != ShaderType.Hull)
+        {
+            yield return (shader, InstructionParser.Parse(shader));
+            yield break;
+        }
+        HullShaderAst hull = InstructionParser.ParseHullShader(shader);
+        foreach (HullPhase phase in new[] { hull.ControlPoint, hull.PatchConstant })
+        {
+            if (phase != null)
+            {
+                yield return (phase.Shader, phase.Ast);
+            }
+        }
+    }
+
+    private static void CheckGraph(ShaderModel shader, HlslAst ast)
+    {
         // Parsing alone leaves the graph consistent; it is the finalizer that rewires
         // it, so checking before this runs proves nothing.
         // A compute or geometry shader returns nothing - it writes through a

@@ -41,7 +41,9 @@ public class D3D10Instruction : Instruction
     private D3D10GlobalFlags _globalFlags;
     private D3D10Primitive _primitive;
     private D3D10PrimitiveTopology _primitiveTopology;
-    private bool _isGeometryShader;
+    // See DxbcReader: a geometry shader's and a hull shader's input registers are
+    // indexed by vertex as well as by register.
+    private bool _inputsAreVertexArrays;
 
     public D3D10Opcode Opcode { get; }
 
@@ -94,41 +96,41 @@ public class D3D10Instruction : Instruction
     /// </summary>
     public uint[] CustomData { get; private set; }
 
-    public static D3D10Instruction CreateCustomData(uint[] customData, bool isGeometryShader)
+    public static D3D10Instruction CreateCustomData(uint[] customData, bool inputsAreVertexArrays)
     {
-        return new D3D10Instruction(D3D10Opcode.CustomData, [], isGeometryShader)
+        return new D3D10Instruction(D3D10Opcode.CustomData, [], inputsAreVertexArrays)
         {
             CustomData = customData,
         };
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool isGeometryShader)
+    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, bool inputsAreVertexArrays)
     {
         Opcode = opcode;
         OperandTokens = new D3D10OperandTokenCollection(paramTokens, opcode);
-        _isGeometryShader = isGeometryShader;
+        _inputsAreVertexArrays = inputsAreVertexArrays;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension, bool isGeometryShader)
-        : this(opcode, paramTokens, isGeometryShader)
+    public D3D10Instruction(D3D10Opcode opcode, uint[] paramTokens, ResourceDimension resourceDimension, bool inputsAreVertexArrays)
+        : this(opcode, paramTokens, inputsAreVertexArrays)
     {
         _resourceDimension = resourceDimension;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10GlobalFlags globalFlags, bool isGeometryShader)
-        : this(opcode, [], isGeometryShader)
+    public D3D10Instruction(D3D10Opcode opcode, D3D10GlobalFlags globalFlags, bool inputsAreVertexArrays)
+        : this(opcode, [], inputsAreVertexArrays)
     {
         _globalFlags = globalFlags;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10Primitive primitive, bool isGeometryShader)
-        : this(opcode, [], isGeometryShader)
+    public D3D10Instruction(D3D10Opcode opcode, D3D10Primitive primitive, bool inputsAreVertexArrays)
+        : this(opcode, [], inputsAreVertexArrays)
     {
         _primitive = primitive;
     }
 
-    public D3D10Instruction(D3D10Opcode opcode, D3D10PrimitiveTopology primitiveTopology, bool isGeometryShader)
-    : this(opcode, [], isGeometryShader)
+    public D3D10Instruction(D3D10Opcode opcode, D3D10PrimitiveTopology primitiveTopology, bool inputsAreVertexArrays)
+    : this(opcode, [], inputsAreVertexArrays)
     {
         _primitiveTopology = primitiveTopology;
     }
@@ -462,6 +464,11 @@ public class D3D10Instruction : Instruction
             return IsThreadRegister(operandType)
                 || operandType == OperandType.OutputCoverageMask
                 || operandType == OperandType.InputCoverageMask
+                // And so is the control point id a hull shader's control point phase
+                // is given: `dcl_input vOutputControlPointID` declares one number,
+                // and with no component the declaration seeded no value for it, so
+                // the mov that reads it found nothing.
+                || operandType == OperandType.OutputControlPointID
                 ? 1
                 : 0;
         }
@@ -715,13 +722,16 @@ public class D3D10Instruction : Instruction
         // them.
         if (!IsThreadRegister(operandType)
             && operandType != OperandType.InputDomainPoint
+            // The control point id names one register and no number, the way a
+            // domain location does.
+            && operandType != OperandType.OutputControlPointID
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
             && operandType != OperandType.OutputDepthLessEqual
             && operandType != OperandType.OutputCoverageMask
             && operandType != OperandType.InputCoverageMask)
         {
-            int numberIndex = (_isGeometryShader && operandType == OperandType.Input)
+            int numberIndex = (_inputsAreVertexArrays && operandType == OperandType.Input)
                 || operandType == OperandType.InputControlPoint ? 2 : 1;
             int declIndex = (int) GetParamIndexImmediate32(destIndex, numberIndex);
             name += declIndex;
@@ -843,7 +853,7 @@ public class D3D10Instruction : Instruction
                 operandType,
                 (int)OperandTokens.GetOperandIndices(index)[0].Immediate);
         }
-        if ((_isGeometryShader && operandType == OperandType.Input)
+        if ((_inputsAreVertexArrays && operandType == OperandType.Input)
             // vicp[2][0] is the same shape: which control point, then which
             // register of it. The patch is an array of vertices the way a
             // geometry shader's input is.

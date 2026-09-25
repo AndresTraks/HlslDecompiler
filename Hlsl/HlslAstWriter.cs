@@ -32,14 +32,7 @@ public class HlslAstWriter : HlslWriter
     {
         if (HasOutputStruct)
         {
-            string outputStructType = _shader.Type switch
-            {
-                ShaderType.Pixel => "PS_OUT",
-                ShaderType.Vertex => "VS_OUT",
-                ShaderType.Geometry => "GS_OUT",
-                _ => throw new NotImplementedException(),
-            };
-            WriteLine($"{outputStructType} {_registers.OutputVariableName};");
+            WriteLine($"{GetOutputStructureName()} {_registers.OutputVariableName};");
             WriteLine();
         }
 
@@ -54,8 +47,8 @@ public class HlslAstWriter : HlslWriter
 
     private IntegerOperandAnalysis CreateIntegerOperandAnalysis()
     {
-        return _shader.Instructions.Count != 0 && _shader.Instructions[0] is D3D10Instruction
-            ? new IntegerOperandAnalysis(_shader)
+        return _phaseShader.Instructions.Count != 0 && _phaseShader.Instructions[0] is D3D10Instruction
+            ? new IntegerOperandAnalysis(_phaseShader)
             : null;
     }
 

@@ -14,8 +14,25 @@ namespace HlslDecompiler.Hlsl;
 /// </summary>
 public static class PatchConstants
 {
-    public const string StructureName = "DS_CONST";
     public const string ParameterName = "constants";
+
+    /// <summary>
+    /// The name of the function a hull shader computes the patch constants in. Which
+    /// name the shader was written with is not in the bytecode - the attribute that
+    /// names it is compiled away - so any name will do as long as the attribute and
+    /// the definition agree on it.
+    /// </summary>
+    public const string FunctionName = "constants";
+
+    /// <summary>
+    /// What the struct is called. Named after the shader it appears in, the way
+    /// PS_IN and VS_OUT are: the hull shader returns it and the domain shader is
+    /// handed it.
+    /// </summary>
+    public static string StructureName(ShaderType type)
+    {
+        return type == ShaderType.Hull ? "HS_CONST" : "DS_CONST";
+    }
 
     private const string TessFactorSemantic = "SV_TessFactor";
     private const string InsideTessFactorSemantic = "SV_InsideTessFactor";

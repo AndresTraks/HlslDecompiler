@@ -18,6 +18,28 @@ public abstract class HlslWriter
     protected HlslAst _ast;
     protected RegisterState _registers;
 
+    /// <summary>
+    /// Which of a hull shader's two functions is being written. A hull shader is the
+    /// one shader whose bytecode is more than one program, and the two differ in what
+    /// they return and in what their output registers mean, so which one is in hand
+    /// has to be part of the writer's state rather than read off the shader.
+    /// </summary>
+    protected enum HullFunction
+    {
+        None,
+        ControlPoint,
+        PatchConstant,
+    }
+
+    protected HullFunction _hullFunction = HullFunction.None;
+
+    /// <summary>
+    /// The bytecode being written: the whole shader, or one phase of a hull shader
+    /// with the declarations it shares. The instruction writer works through this
+    /// rather than through the shader, so that a phase writes only its own body.
+    /// </summary>
+    protected ShaderModel _phaseShader;
+
     public HlslWriter(ShaderModel shader)
     {
         _shader = shader;
@@ -65,6 +87,13 @@ public abstract class HlslWriter
 
     private void WriteInternal()
     {
+        if (_shader.Type == ShaderType.Hull)
+        {
+            WriteHullShader();
+            return;
+        }
+
+        _phaseShader = _shader;
         _ast = InstructionParser.Parse(_shader);
         _registers = _ast.RegisterState;
 
@@ -121,14 +150,111 @@ public abstract class HlslWriter
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
 
-        WriteLine("{0} main({1}){2}", methodReturnType, methodParameters, methodSemantic);
+        WriteFunction($"{methodReturnType} main({methodParameters}){methodSemantic}");
+    }
+
+    /// <summary>
+    /// A hull shader, which HLSL writes as two functions: the one that runs per
+    /// output control point, and the one that computes the constants of the whole
+    /// patch. The bytecode runs them as phases under one name, so the declarations
+    /// they share are written once, from the phase that has the whole patch in view,
+    /// and each function is then written from its own phase's parse.
+    /// </summary>
+    private void WriteHullShader()
+    {
+        HullShaderAst hull = InstructionParser.ParseHullShader(_shader);
+        if (hull.ControlPoint == null)
+        {
+            // fxc drops a control point phase that only copies its point through,
+            // and nothing in the bytecode then says what the copy was. Rebuilding
+            // main from the signature alone is not done yet.
+            throw new NotImplementedException(
+                "A hull shader whose control point phase fxc dropped");
+        }
+
+        // The control point phase declares the whole of the patch it reads and the
+        // whole of the point it writes; the patch constant phases declare only the
+        // control point registers they happen to touch. So the structs come from it.
+        EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
+        WriteConstantDeclarations();
+        WriteThreadGroupSharedMemoryDeclarations();
+        WriteInputStructureDeclaration();
+        WriteOutputStructureDeclaration();
+        WritePatchConstantStructureDeclaration();
+
+        if (hull.PatchConstant != null)
+        {
+            EnterPhase(HullFunction.PatchConstant, hull.PatchConstant);
+            WriteFunction($"{GetMethodReturnType()} {PatchConstants.FunctionName}"
+                + $"({GetMethodParameters()})");
+            WriteLine();
+        }
+
+        EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
+        WriteTessellatorAttributes();
+        WriteFunction(
+            $"{GetMethodReturnType()} main({GetMethodParameters()}){GetMethodSemantic()}");
+    }
+
+    /// <summary>The signature line, the braces, and the body between them.</summary>
+    private void WriteFunction(string signature)
+    {
+        WriteLine(signature);
         WriteLine("{");
         indent = "\t";
-
         WriteMethodBody();
-
         indent = "";
         WriteLine("}");
+    }
+
+    private void EnterPhase(HullFunction function, HullPhase phase)
+    {
+        _hullFunction = function;
+        _phaseShader = phase.Shader;
+        _ast = phase.Ast;
+        _registers = phase.Ast.RegisterState;
+    }
+
+    /// <summary>
+    /// What the tessellator is to do, which only a hull shader says: what it divides,
+    /// how it cuts an edge, what it makes of the result, how many points come out,
+    /// and which function computes the factors. [maxtessfactor] is not among them.
+    /// fxc emits dcl_hs_max_tessfactor only where it inserted the clamp to that bound
+    /// itself, and a decompilation already carries the clamp as a min, so the
+    /// declaration does not come back whether the attribute is written or not -
+    /// measured both ways. What the shader computes is the same either way; the
+    /// driver loses a hint about how far it will be asked to subdivide.
+    /// </summary>
+    private void WriteTessellatorAttributes()
+    {
+        WriteLine("[domain(\"{0}\")]", _registers.TessellatorDomain switch
+        {
+            D3D10TessellatorDomain.Isoline => "isoline",
+            D3D10TessellatorDomain.Triangle => "tri",
+            _ => "quad",
+        });
+        if (_registers.TessellatorPartitioning != D3D10TessellatorPartitioning.Undefined)
+        {
+            WriteLine("[partitioning(\"{0}\")]", _registers.TessellatorPartitioning switch
+            {
+                D3D10TessellatorPartitioning.Integer => "integer",
+                D3D10TessellatorPartitioning.Pow2 => "pow2",
+                D3D10TessellatorPartitioning.FractionalOdd => "fractional_odd",
+                _ => "fractional_even",
+            });
+        }
+        if (_registers.TessellatorOutputPrimitive != D3D10TessellatorOutputPrimitive.Undefined)
+        {
+            WriteLine("[outputtopology(\"{0}\")]", _registers.TessellatorOutputPrimitive switch
+            {
+                D3D10TessellatorOutputPrimitive.Point => "point",
+                D3D10TessellatorOutputPrimitive.Line => "line",
+                D3D10TessellatorOutputPrimitive.TriangleClockwise => "triangle_cw",
+                _ => "triangle_ccw",
+            });
+        }
+        WriteLine("[outputcontrolpoints({0})]", _registers.OutputControlPointCount);
+        WriteLine("[patchconstantfunc(\"{0}\")]", PatchConstants.FunctionName);
     }
 
     // The resources whose element is a struct of its own, in declaration order.
@@ -499,6 +625,28 @@ public abstract class HlslWriter
             ShaderType.Geometry => "GS_IN",
             ShaderType.Compute => "CS_IN",
             ShaderType.Domain => "DS_IN",
+            ShaderType.Hull => "HS_IN",
+            _ => throw new NotImplementedException(_shader.Type.ToString()),
+        };
+    }
+
+    /// <summary>
+    /// What the shader returns when it returns a struct. A hull shader has two, one
+    /// per function: the control point it computes, and the constants of the whole
+    /// patch.
+    /// </summary>
+    protected string GetOutputStructureName()
+    {
+        if (_hullFunction == HullFunction.PatchConstant)
+        {
+            return PatchConstants.StructureName(ShaderType.Hull);
+        }
+        return _shader.Type switch
+        {
+            ShaderType.Pixel => "PS_OUT",
+            ShaderType.Vertex => "VS_OUT",
+            ShaderType.Geometry => "GS_OUT",
+            ShaderType.Hull => "HS_OUT",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
         };
     }
@@ -514,11 +662,15 @@ public abstract class HlslWriter
         // geometry shader's input is: one declaration per register, not one per
         // control point. Its struct is the control point, so the domain location -
         // which is per run rather than per point - is not a field of it.
-        if (_shader.Type == ShaderType.Domain)
+        // A hull shader's control point phase reads the same patch the same way,
+        // and which control point it is computing is a parameter rather than a
+        // field of the point.
+        if (_shader.Type is ShaderType.Domain or ShaderType.Hull)
         {
             inputs = [.. inputs
                 .Where(r => r.RegisterKey is D3D10RegisterKey
-                    { OperandType: not OperandType.InputDomainPoint })
+                    { OperandType: not OperandType.InputDomainPoint
+                        and not OperandType.OutputControlPointID })
                 .GroupBy(r => (r.RegisterKey as D3D10RegisterKey).GetGSBaseKey())
                 .Select(g => g.First())];
         }
@@ -549,7 +701,7 @@ public abstract class HlslWriter
     /// </summary>
     private void WritePatchConstantStructureDeclaration()
     {
-        WriteLine($"struct {PatchConstants.StructureName}");
+        WriteLine($"struct {PatchConstants.StructureName(_shader.Type)}");
         WriteLine("{");
         indent = "\t";
         IList<RegisterSignature> signatures = _shader.PatchConstantSignatures;
@@ -592,23 +744,12 @@ public abstract class HlslWriter
 
     private void WriteOutputStructureDeclaration()
     {
-        string outputStructType;
-        if (_shader.Type == ShaderType.Pixel)
-        {
-            outputStructType = "PS_OUT";
-        }
-        else if (_shader.Type == ShaderType.Vertex)
-        {
-            outputStructType = "VS_OUT";
-        }
-        else if (_shader.Type == ShaderType.Geometry)
-        {
-            outputStructType = "GS_OUT";
-        }
-        else
+        if (_shader.Type is not (ShaderType.Pixel or ShaderType.Vertex
+            or ShaderType.Geometry or ShaderType.Hull))
         {
             return;
         }
+        string outputStructType = GetOutputStructureName();
 
         WriteLine($"struct {outputStructType}");
         WriteLine("{");
@@ -637,11 +778,18 @@ public abstract class HlslWriter
         {
             return "void";
         }
+        // The patch constant function returns the struct however few registers it
+        // fills: its fields are the tessellation factors, and those are an array
+        // across registers rather than one value with one semantic.
+        if (_hullFunction == HullFunction.PatchConstant)
+        {
+            return GetOutputStructureName();
+        }
         return _registers.MethodOutputRegisters.Count switch
         {
             0 => "void",
             1 => _registers.MethodOutputRegisters.First().TypeName,
-            _ => _shader.Type == ShaderType.Pixel ? "PS_OUT" : "VS_OUT",
+            _ => GetOutputStructureName(),
         };
     }
 
@@ -651,14 +799,17 @@ public abstract class HlslWriter
     /// the stream, so the body says `o.member` however few members there are.
     /// </summary>
     protected bool HasOutputStruct =>
-        _registers.MethodOutputRegisters.Count > 1 || _shader.Type == ShaderType.Geometry;
+        _registers.MethodOutputRegisters.Count > 1
+        || _shader.Type == ShaderType.Geometry
+        || _hullFunction == HullFunction.PatchConstant;
 
     private string GetMethodSemantic()
     {
         // `void main(...) : SV_Position` is an error - X3076, a void function cannot
         // have a semantic - and a geometry or compute shader returns void whatever
         // its one output register might have suggested.
-        if (GetMethodReturnType() != "void" && _registers.MethodOutputRegisters.Count == 1)
+        if (GetMethodReturnType() != "void" && !HasOutputStruct
+            && _registers.MethodOutputRegisters.Count == 1)
         {
             string semantic = _registers.MethodOutputRegisters.First().Semantic;
             return $" : {semantic}";
@@ -682,6 +833,28 @@ public abstract class HlslWriter
             return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}{instanceId}"
                 + $"inout {stream}<GS_OUT> stream";
         }
+        if (_shader.Type == ShaderType.Hull)
+        {
+            // Both functions are handed the patch the tessellator is about to divide.
+            // The control point phase is told which point it is computing as well;
+            // the patch constant function is run once for the patch and is not.
+            var parameters = new List<string>
+            {
+                $"InputPatch<{GetInputStructureName()}, {_registers.InputControlPointCount}> patch",
+            };
+            if (_registers.PrimitiveIdDeclaration != null)
+            {
+                parameters.Add(CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration));
+            }
+            RegisterDeclaration controlPointId = _registers.MethodInputRegisters
+                .FirstOrDefault(r => r.RegisterKey is D3D10RegisterKey
+                    { OperandType: OperandType.OutputControlPointID });
+            if (controlPointId != null)
+            {
+                parameters.Add(CompileRegisterDeclaration(controlPointId));
+            }
+            return string.Join(", ", parameters);
+        }
         if (_shader.Type == ShaderType.Domain)
         {
             // The patch is an array of control points and the domain location says
@@ -695,7 +868,7 @@ public abstract class HlslWriter
             string domainLocation = location == null
                 ? ""
                 : CompileRegisterDeclaration(location) + ", ";
-            return $"{PatchConstants.StructureName} {PatchConstants.ParameterName}, {domainLocation}"
+            return $"{PatchConstants.StructureName(_shader.Type)} {PatchConstants.ParameterName}, {domainLocation}"
                 + $"const OutputPatch<{GetInputStructureName()}, "
                 + $"{_registers.InputControlPointCount}> patch";
         }

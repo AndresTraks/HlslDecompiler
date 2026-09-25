@@ -54,6 +54,103 @@ public class InstructionParser
         return parser.ParseToAst(shader);
     }
 
+    /// <summary>
+    /// A hull shader is several programs under one name, and its bytecode runs them
+    /// together: the declarations they share, then the phase that runs once per
+    /// output control point, then the fork and join phases that compute the patch's
+    /// own constants. HLSL writes that as two functions, so each is parsed on its
+    /// own - shared declarations and one phase's instructions - and gets a register
+    /// state of its own. They have to: both phases write o0, and in one of them that
+    /// is a control point's position and in the other a tessellation factor.
+    /// </summary>
+    public static HullShaderAst ParseHullShader(ShaderModel shader)
+    {
+        int phaseStart = shader.Instructions.Count;
+        for (int i = 0; i < shader.Instructions.Count; i++)
+        {
+            if (IsPhaseStart(shader.Instructions[i]))
+            {
+                phaseStart = i;
+                break;
+            }
+        }
+        IList<Instruction> declarations = [.. shader.Instructions.Take(phaseStart)];
+
+        // The fork and join phases are one HLSL function between them. fxc splits
+        // the patch constant function into a phase per factor it writes - six of
+        // them for a quad domain - and each is a straight line of its own, so
+        // running them together in the order they come reads as the one function
+        // they were written as.
+        List<Instruction> controlPoint = null;
+        List<Instruction> patchConstant = null;
+        List<Instruction> current = null;
+        for (int i = phaseStart; i < shader.Instructions.Count; i++)
+        {
+            Instruction instruction = shader.Instructions[i];
+            if (instruction is D3D10Instruction { Opcode: D3D10Opcode.HsControlPointPhase })
+            {
+                controlPoint ??= [];
+                current = controlPoint;
+                continue;
+            }
+            if (instruction is D3D10Instruction { Opcode: D3D10Opcode.HsForkPhase or D3D10Opcode.HsJoinPhase })
+            {
+                patchConstant ??= [];
+                // Each phase ends with a ret of its own, and run together only the
+                // last of them ends the function. Left in, the instruction writer
+                // wrote `return o;` after the first factor and the rest of the
+                // function was unreachable.
+                if (patchConstant.Count != 0
+                    && patchConstant[^1] is D3D10Instruction { Opcode: D3D10Opcode.Ret })
+                {
+                    patchConstant.RemoveAt(patchConstant.Count - 1);
+                }
+                current = patchConstant;
+                continue;
+            }
+            current?.Add(instruction);
+        }
+
+        return new HullShaderAst(
+            controlPoint == null ? null : ParsePhase(shader, declarations, controlPoint, shader.OutputSignatures),
+            patchConstant == null ? null : ParsePhase(shader, declarations, patchConstant,
+                [.. shader.PatchConstantSignatures.Select(s => s.AsOutput())]));
+    }
+
+    private static bool IsPhaseStart(Instruction instruction)
+    {
+        return instruction is D3D10Instruction
+        {
+            Opcode: D3D10Opcode.HsControlPointPhase or D3D10Opcode.HsForkPhase
+                or D3D10Opcode.HsJoinPhase
+        };
+    }
+
+    /// <summary>
+    /// One phase, parsed as if it were the whole shader. Which signatures its output
+    /// registers answer to is the phase's own business: the control point phase
+    /// writes the output signature, and the fork and join phases write the patch
+    /// constant signature, and both call them o0 upwards.
+    /// </summary>
+    private static HullPhase ParsePhase(
+        ShaderModel shader,
+        IList<Instruction> declarations,
+        IList<Instruction> body,
+        IList<RegisterSignature> outputSignatures)
+    {
+        var phase = new ShaderModel(
+            shader.MajorVersion,
+            shader.MinorVersion,
+            shader.Type,
+            shader.InputSignatures,
+            outputSignatures,
+            shader.PatchConstantSignatures,
+            shader.ConstantDeclarations,
+            shader.ResourceDefinitions,
+            [.. declarations, .. body]);
+        return new HullPhase(phase, Parse(phase));
+    }
+
     private HlslAst ParseToAst(ShaderModel shader)
     {
         _shaderModel = shader;
@@ -616,6 +713,25 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.DclTessDomain:
                     _registerState.TessellatorDomain = instruction.TessellatorDomain;
+                    break;
+                case D3D10Opcode.DclTessPartitioning:
+                    _registerState.TessellatorPartitioning = instruction.TessellatorPartitioning;
+                    break;
+                case D3D10Opcode.DclTessOutputPrimitive:
+                    _registerState.TessellatorOutputPrimitive =
+                        instruction.TessellatorOutputPrimitive;
+                    break;
+                // The bound on a factor, which the shader clamps to itself: the min
+                // is in the instructions, so nothing here has to remember the bound
+                // to reproduce it.
+                case D3D10Opcode.DclHSMaxTessFactor:
+                    break;
+                // A phase boundary. One phase at a time reaches this parser, so the
+                // markers are only the seams they were split along.
+                case D3D10Opcode.HsDecls:
+                case D3D10Opcode.HsControlPointPhase:
+                case D3D10Opcode.HsForkPhase:
+                case D3D10Opcode.HsJoinPhase:
                     break;
                 case D3D10Opcode.DclIndexRange:
                     _registerState.DeclareIndexRange(instruction);

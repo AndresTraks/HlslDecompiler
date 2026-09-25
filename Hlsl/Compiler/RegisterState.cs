@@ -352,6 +352,14 @@ public sealed class RegisterState
     // TEXCOORD1 at v2.z - can share one register, and a plain per-register key could
     // not hold both.
     public IList<RegisterDeclaration> MethodInputRegisters { get; } = [];
+
+    /// <summary>
+    /// What the array of vertices an input register belongs to is called. A domain or
+    /// hull shader is handed the patch it is dividing; a geometry shader is handed the
+    /// vertices of its primitive, and calls them what its input parameter is called.
+    /// </summary>
+    public string InputArrayName =>
+        _shaderModel.Type is ShaderType.Domain or ShaderType.Hull ? "patch" : "i";
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
 
     /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
@@ -376,6 +384,14 @@ public sealed class RegisterState
     /// <summary>What the tessellator subdivides, which the shader declares with
     /// the [domain(...)] attribute.</summary>
     public D3D10TessellatorDomain TessellatorDomain { get; set; }
+
+    /// <summary>
+    /// What the tessellator does with the factors, which only the shader that
+    /// computes them says: the [partitioning(...)] and [outputtopology(...)]
+    /// attributes of a hull shader. A domain shader declares neither.
+    /// </summary>
+    public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
+    public D3D10TessellatorOutputPrimitive TessellatorOutputPrimitive { get; set; }
     public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
@@ -1125,10 +1141,7 @@ public sealed class RegisterState
             {
                 if (inputRegisterKey.GSVertex.HasValue)
                 {
-                    // A domain shader's array is the patch it was given; a
-                    // geometry shader's is the primitive's vertices.
-                    string array = _shaderModel.Type == ShaderType.Domain ? "patch" : "i";
-                    return $"{array}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
+                    return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
                 }
                 return MethodInputRegisters.Count == 1
                     ? inputDeclaration.Name
@@ -1300,10 +1313,7 @@ public sealed class RegisterState
                     // single-input shortcut rather than after it.
                     if (d3d10RegisterKey.GSVertex.HasValue)
                     {
-                        // A domain shader's array is the patch it was given; a
-                        // geometry shader's is the primitive's vertices.
-                        string array = _shaderModel.Type == ShaderType.Domain ? "patch" : "i";
-                        return $"{array}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
+                        return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
                     }
                     if (MethodInputRegisters.Count == 1)
                     {
@@ -2027,6 +2037,9 @@ public sealed class RegisterState
                         // The coverage the rasterizer handed this pixel: read per
                         // pixel, so a parameter of main like the thread ids.
                         case OperandType.InputCoverageMask:
+                        // Which control point this run computes, which is a
+                        // parameter of main beside the patch.
+                        case OperandType.OutputControlPointID:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
                         // A field of the patch constant struct, which is written
@@ -2238,6 +2251,16 @@ public sealed class RegisterState
                 declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
                 declaration.PatchConstantSignature = signature;
             }
+            // And a hull shader writes the same registers, packed the same way. It
+            // names them the same way too: the field of the struct it returns,
+            // subscript and all, rather than the semantic of the one register.
+            if (signature.IsPatchConstant && registerKey.OperandType == OperandType.Output)
+            {
+                declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
+                declaration.PatchConstantSignature = signature;
+                declaration.NameOverride =
+                    PatchConstants.Reference(signature, _shaderModel.PatchConstantSignatures);
+            }
             return declaration;
         }
 
@@ -2251,7 +2274,10 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.InputCoverageMask
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID
-            || registerKey.OperandType == OperandType.InputGSInstanceID;
+            || registerKey.OperandType == OperandType.InputGSInstanceID
+            // Which control point of the patch this run of a hull shader's control
+            // point phase is computing: one number, and an unsigned one.
+            || registerKey.OperandType == OperandType.OutputControlPointID;
         // A domain location is two components on a quad and three on a triangle,
         // and its dcl says which - `dcl_input vDomain.xy` - where the 4 below would
         // make every one of them three wide.
@@ -2264,6 +2290,7 @@ public sealed class RegisterState
         int componentType =
             registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputCoverageMask
+            || registerKey.OperandType == OperandType.OutputControlPointID
             ? UInt32ComponentType : 0;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask)
         {

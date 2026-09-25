@@ -8,7 +8,10 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class DxbcReader : BinaryReader
 {
-    private bool _isGeometryShader = false;
+    // Whether an input operand names a vertex as well as a register - v[2][0] rather
+    // than v0. A geometry shader is handed the vertices of a primitive and a hull
+    // shader the control points of a patch, and both read them that way.
+    private bool _inputsAreVertexArrays = false;
 
     public DxbcReader(Stream input, bool leaveOpen = false)
         : base(input, new UTF8Encoding(false, true), leaveOpen)
@@ -56,7 +59,7 @@ public class DxbcReader : BinaryReader
                 minorVersion = ReadByte();
                 majorVersion = ReadByte();
                 shaderType = (ShaderType)ReadUInt16();
-                _isGeometryShader = shaderType == ShaderType.Geometry;
+                _inputsAreVertexArrays = shaderType is ShaderType.Geometry or ShaderType.Hull;
                 ReadInt32(); // flags
                 ReadInt32(); // creator string offset
 
@@ -243,7 +246,7 @@ public class DxbcReader : BinaryReader
             {
                 customData[i] = ReadUInt32();
             }
-            return D3D10Instruction.CreateCustomData(customData, _isGeometryShader);
+            return D3D10Instruction.CreateCustomData(customData, _inputsAreVertexArrays);
         }
 
         int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
@@ -289,19 +292,19 @@ public class DxbcReader : BinaryReader
         if (opcode == D3D10Opcode.DclGlobalFlags)
         {
             D3D10GlobalFlags globalFlags = (D3D10GlobalFlags)((opcodeToken >> 11) & 0x1ff);
-            return new D3D10Instruction(opcode, globalFlags, _isGeometryShader);
+            return new D3D10Instruction(opcode, globalFlags, _inputsAreVertexArrays);
         }
 
         if (opcode == D3D10Opcode.DclGSInputPrimitive)
         {
             D3D10Primitive inputPrimitive = (D3D10Primitive)((opcodeToken >> 11) & 0xff);
-            return new D3D10Instruction(opcode, inputPrimitive, _isGeometryShader);
+            return new D3D10Instruction(opcode, inputPrimitive, _inputsAreVertexArrays);
         }
 
         if (opcode == D3D10Opcode.DclGSOutputPrimitiveTopology)
         {
             D3D10PrimitiveTopology primitiveTopology = (D3D10PrimitiveTopology)((opcodeToken >> 11) & 0xff);
-            return new D3D10Instruction(opcode, primitiveTopology, _isGeometryShader);
+            return new D3D10Instruction(opcode, primitiveTopology, _inputsAreVertexArrays);
         }
 
         uint[] operandTokens = new uint[operandDwordCount];
@@ -318,13 +321,13 @@ public class DxbcReader : BinaryReader
             // A multisampled texture carries its sample count in the seven bits above
             // the dimension: dcl_resource_texture2dms(4).
             int sampleCount = (int)((opcodeToken >> 16) & 0x7F);
-            return new D3D10Instruction(opcode, operandTokens, resourceDimension, _isGeometryShader)
+            return new D3D10Instruction(opcode, operandTokens, resourceDimension, _inputsAreVertexArrays)
             {
                 ResourceSampleCount = sampleCount,
             };
         }
 
-        var instruction = new D3D10Instruction(opcode, operandTokens, _isGeometryShader);
+        var instruction = new D3D10Instruction(opcode, operandTokens, _inputsAreVertexArrays);
         instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
         instruction.SampleOffsets = sampleOffsets;
         instruction.IndexableResourceDimension = indexableDimension;

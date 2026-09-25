@@ -13,34 +13,31 @@ public class HlslSimpleWriter : HlslWriter
 {
     private int _loopVariableIndex = -1;
     private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
-    private readonly IntegerOperandAnalysis _integerOperandAnalysis;
+    // Over the phase being written rather than the whole shader: what an immediate
+    // means is decided by what reads it, and a hull shader's phases read their own.
+    private IntegerOperandAnalysis _integerOperandAnalysis;
 
     public HlslSimpleWriter(ShaderModel shader)
         : base(shader)
     {
-        _integerOperandAnalysis = new IntegerOperandAnalysis(shader);
     }
 
     protected override void WriteMethodBody()
     {
+        _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);
         if (_registers.MethodOutputRegisters.Count != 0)
         {
-            if (_shader.Type == ShaderType.Geometry)
-            {
-                WriteLine("GS_OUT {0};", _registers.OutputVariableName);
-            }
-            else
-            {
-                WriteLine("{0} {1};", GetMethodReturnType(), _registers.OutputVariableName);
-            }
+            WriteLine("{0} {1};", _shader.Type == ShaderType.Geometry
+                ? GetOutputStructureName() : GetMethodReturnType(),
+                _registers.OutputVariableName);
             WriteLine();
         }
 
         WriteTemporaryVariableDeclarations();
         WriteIndexableTempDeclarations(_integerOperandAnalysis);
-        for (int index = 0; index < _shader.Instructions.Count; index++)
+        for (int index = 0; index < _phaseShader.Instructions.Count; index++)
         {
-            Instruction instruction = _shader.Instructions[index];
+            Instruction instruction = _phaseShader.Instructions[index];
             if (instruction is D3D9Instruction d3d9Instruction)
             {
                 WriteInstruction(d3d9Instruction);
@@ -117,7 +114,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteTemporaryVariableDeclarations()
     {
-        Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(_shader.Instructions);
+        Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(_phaseShader.Instructions);
         foreach (var register in registerWriteMasks)
         {
             int writeMask = register.Value;
@@ -1864,6 +1861,16 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclInputControlPointCount:
             case D3D10Opcode.DclOutputControlPointCount:
             case D3D10Opcode.DclTessDomain:
+            // And so are the rest of a hull shader's tessellation declarations,
+            // beside the phase markers it is split along. The bound on a factor is
+            // written nowhere: the shader clamps to it itself.
+            case D3D10Opcode.DclTessPartitioning:
+            case D3D10Opcode.DclTessOutputPrimitive:
+            case D3D10Opcode.DclHSMaxTessFactor:
+            case D3D10Opcode.HsDecls:
+            case D3D10Opcode.HsControlPointPhase:
+            case D3D10Opcode.HsForkPhase:
+            case D3D10Opcode.HsJoinPhase:
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
             // The stream the emits go to, which is written as the parameter the
             // shader already declares.
@@ -1895,7 +1902,7 @@ public class HlslSimpleWriter : HlslWriter
                 // The last ret is the method returning, which is written after the
                 // body. Anywhere else it is an early return, and dropping it lost the
                 // branch that took it.
-                if (!ReferenceEquals(instruction, _shader.Instructions[_shader.Instructions.Count - 1]))
+                if (!ReferenceEquals(instruction, _phaseShader.Instructions[_phaseShader.Instructions.Count - 1]))
                 {
                     WriteLine(_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
                         ? $"return {_registers.OutputVariableName};"
@@ -2182,7 +2189,7 @@ public class HlslSimpleWriter : HlslWriter
             }
             // The vertex is the dynamic part; the second index names the register.
             var vertexKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
-            return $"i[{index}].{_registers.RegisterDeclarations[vertexKey].Name}";
+            return $"{_registers.InputArrayName}[{index}].{_registers.RegisterDeclarations[vertexKey].Name}";
         }
 
         var registerKey = new D3D10RegisterKey(
@@ -2263,7 +2270,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private bool IsWideAddressRegister(RegisterKey addressKey)
     {
-        _addressWriteMasks ??= FindTemporaryRegisterAssignments(_shader.Instructions);
+        _addressWriteMasks ??= FindTemporaryRegisterAssignments(_phaseShader.Instructions);
         return _addressWriteMasks.TryGetValue(addressKey, out int writeMask)
             && AddressTypeName(writeMask) != "int";
     }
@@ -2751,9 +2758,9 @@ public class HlslSimpleWriter : HlslWriter
         bool samples = false;
         bool counted = false;
         D3D10Instruction lastComparison = null;
-        for (int i = _shader.Instructions.IndexOf(loop); i < _shader.Instructions.Count; i++)
+        for (int i = _phaseShader.Instructions.IndexOf(loop); i < _phaseShader.Instructions.Count; i++)
         {
-            Instruction instruction = _shader.Instructions[i];
+            Instruction instruction = _phaseShader.Instructions[i];
             bool opens = instruction is D3D10Instruction { Opcode: D3D10Opcode.Loop }
                 || instruction is D3D9Instruction { Opcode: Opcode.Loop or Opcode.Rep };
             bool closes = instruction is D3D10Instruction { Opcode: D3D10Opcode.EndLoop }

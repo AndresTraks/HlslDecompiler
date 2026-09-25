@@ -130,7 +130,14 @@ public class RegisterDeclaration
     public string Semantic { get; }
     public ResultModifier ResultModifier { get; }
 
-    public string Name => Semantic.ToLower();
+    /// <summary>
+    /// What the register is called where its semantic does not say it. A hull
+    /// shader's tessellation factors are one HLSL array across several registers,
+    /// so o1.x is edges[1] and not a field called sv_tessfactor1.
+    /// </summary>
+    public string NameOverride { get; set; }
+
+    public string Name => NameOverride ?? Semantic.ToLower();
 
     public string TypeName
     {

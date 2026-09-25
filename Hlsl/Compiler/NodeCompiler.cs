@@ -1422,7 +1422,7 @@ public sealed class NodeCompiler
             {
                 // The vertex array is the subscript and the semantic the member, the
                 // other way round from a constant buffer array.
-                return $"i[{index}].{vertex.Name}{swizzle}";
+                return $"{_registers.InputArrayName}[{index}].{vertex.Name}{swizzle}";
             }
             // A run of input registers declared as one array by dcl_indexrange. Here
             // the semantic is the array and the index its subscript, the way round a

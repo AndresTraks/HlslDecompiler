@@ -283,7 +283,7 @@ public sealed class RegisterState
                 d3d10RegisterKey, registerComponentKey.ComponentIndex);
             if (declaration != null && TryGetStructMember(
                 declaration, d3d10RegisterKey, registerComponentKey.ComponentIndex,
-                out _, out int memberWidth))
+                out _, out int memberWidth, out _))
             {
                 return memberWidth;
             }
@@ -755,10 +755,12 @@ public sealed class RegisterState
         D3D10RegisterKey registerKey,
         int componentIndex,
         out string element,
-        out int memberWidth)
+        out int memberWidth,
+        out int componentBase)
     {
         element = null;
         memberWidth = 4;
+        componentBase = 0;
         if (declaration.TypeInfo.MemberInfo == null
             || declaration is not D3D10ConstantDeclaration d3d10Declaration
             || registerKey.ConstantBufferOffset == null)
@@ -792,10 +794,12 @@ public sealed class RegisterState
             int row = (target - access.StartOffset) / 4;
             element = access.MatrixRow(row);
             memberWidth = access.MatrixRowWidth;
+            // A row of a matrix begins a register of its own.
             return true;
         }
         element = access.Name;
         memberWidth = access.Width;
+        componentBase = access.ComponentBase;
         return true;
     }
 
@@ -938,11 +942,25 @@ public sealed class RegisterState
 
         ConstantDeclaration declaration = FindConstant(
             registerKey, registerComponentKey.ComponentIndex);
-        // An array or a struct is named by element or member, which carries its own
-        // offset; only a plain variable is named whole.
-        if (declaration is not D3D10ConstantDeclaration d3d10
-            || declaration.TypeInfo.NumElements > 1
-            || declaration.TypeInfo.ParameterClass == ParameterClass.Struct)
+        if (declaration is not D3D10ConstantDeclaration d3d10)
+        {
+            return 0;
+        }
+        // A struct is named by member, and its members are packed into a register
+        // the way plain variables are: a float2 and a float share one, and a read
+        // across the two of them is a read of two members. Answering 0 for all of
+        // them made the register look like one variable, and the swizzle of the
+        // whole read went onto the first member - `o.i.a.xyz` off the end of a
+        // float2.
+        if (declaration.TypeInfo.ParameterClass == ParameterClass.Struct)
+        {
+            return TryGetStructMember(declaration, registerKey,
+                registerComponentKey.ComponentIndex, out _, out _, out int memberBase)
+                ? memberBase
+                : 0;
+        }
+        // An array is named by element, which carries its own offset.
+        if (declaration.TypeInfo.NumElements > 1)
         {
             return 0;
         }
@@ -958,7 +976,7 @@ public sealed class RegisterState
                 d3d10RegisterKey, registerComponentKey.ComponentIndex);
             if (declaration != null && TryGetStructMember(
                 declaration, d3d10RegisterKey, registerComponentKey.ComponentIndex,
-                out string member, out _))
+                out string member, out _, out _))
             {
                 return member;
             }

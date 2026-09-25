@@ -150,7 +150,8 @@ public abstract class HlslWriter
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
 
-        WriteFunction($"{methodReturnType} main({methodParameters}){methodSemantic}");
+        WriteFunction($"{methodReturnType} main({methodParameters}){methodSemantic}",
+            WriteMethodBody);
     }
 
     /// <summary>
@@ -163,46 +164,139 @@ public abstract class HlslWriter
     private void WriteHullShader()
     {
         HullShaderAst hull = InstructionParser.ParseHullShader(_shader);
-        if (hull.ControlPoint == null)
-        {
-            // fxc drops a control point phase that only copies its point through,
-            // and nothing in the bytecode then says what the copy was. Rebuilding
-            // main from the signature alone is not done yet.
-            throw new NotImplementedException(
-                "A hull shader whose control point phase fxc dropped");
-        }
 
         // The control point phase declares the whole of the patch it reads and the
         // whole of the point it writes; the patch constant phases declare only the
-        // control point registers they happen to touch. So the structs come from it.
-        EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
+        // control point registers they happen to touch. So the structs come from it,
+        // where there is one - and so do the declarations both phases share, which
+        // either has in full.
+        EnterPhase(
+            hull.ControlPoint != null ? HullFunction.ControlPoint : HullFunction.PatchConstant,
+            hull.ControlPoint ?? hull.PatchConstant);
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
-        WriteInputStructureDeclaration();
-        WriteOutputStructureDeclaration();
+        if (hull.ControlPoint != null)
+        {
+            WriteInputStructureDeclaration();
+            WriteOutputStructureDeclaration();
+        }
+        else
+        {
+            // Nothing declared the patch, so the signatures are all there is to go
+            // on. They say the whole of it, which is what the missing phase means.
+            WriteSignatureStructure(GetInputStructureName(), _shader.InputSignatures);
+            WriteSignatureStructure("HS_OUT", _shader.OutputSignatures);
+        }
         WritePatchConstantStructureDeclaration();
 
         if (hull.PatchConstant != null)
         {
             EnterPhase(HullFunction.PatchConstant, hull.PatchConstant);
             WriteFunction($"{GetMethodReturnType()} {PatchConstants.FunctionName}"
-                + $"({GetMethodParameters()})");
+                + $"({GetMethodParameters()})", WriteMethodBody);
             WriteLine();
         }
 
-        EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
+        if (hull.ControlPoint != null)
+        {
+            EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
+            WriteTessellatorAttributes();
+            WriteFunction(
+                $"{GetMethodReturnType()} main({GetMethodParameters()}){GetMethodSemantic()}",
+                WriteMethodBody);
+            return;
+        }
+
+        _hullFunction = HullFunction.ControlPoint;
         WriteTessellatorAttributes();
+        string controlPointId = CompileRegisterDeclaration(ControlPointIdDeclaration());
         WriteFunction(
-            $"{GetMethodReturnType()} main({GetMethodParameters()}){GetMethodSemantic()}");
+            $"HS_OUT main(InputPatch<{GetInputStructureName()}, "
+                + $"{_registers.InputControlPointCount}> patch, {controlPointId})",
+            WritePassThroughControlPoint);
+    }
+
+    /// <summary>
+    /// A control point phase fxc left out, because the shader's was a copy: every
+    /// point came out as it went in. Nothing in the bytecode says so - there is no
+    /// phase to read - so it is the two signatures agreeing that says it, and the
+    /// copy is written back out a field at a time.
+    /// </summary>
+    private void WritePassThroughControlPoint()
+    {
+        WriteLine("HS_OUT o;");
+        WriteLine();
+        RegisterDeclaration id = ControlPointIdDeclaration();
+        foreach (RegisterSignature output in _shader.OutputSignatures)
+        {
+            RegisterSignature input = _shader.InputSignatures.FirstOrDefault(
+                i => i.Name == output.Name && i.Index == output.Index);
+            if (input == null)
+            {
+                throw new NotImplementedException(
+                    $"A dropped control point phase whose output {output} was not an input");
+            }
+            string field = FromSignature(output).Name;
+            WriteLine($"o.{field} = patch[{id.Name}].{FromSignature(input).Name};");
+        }
+        WriteLine();
+        WriteLine("return o;");
+    }
+
+    /// <summary>
+    /// Which control point this run computes. Where a phase declares it the
+    /// declaration comes from the dcl; where there is no phase it is still a
+    /// parameter of main, and this is what it would have said.
+    /// </summary>
+    private static RegisterDeclaration ControlPointIdDeclaration()
+    {
+        const int UInt32ComponentType = 1;
+        return new RegisterDeclaration(
+            new D3D10RegisterKey(OperandType.OutputControlPointID, 0),
+            "SV_OutputControlPointID",
+            1)
+        {
+            ComponentType = UInt32ComponentType,
+        };
+    }
+
+    /// <summary>
+    /// A struct written from a signature chunk rather than from what the shader
+    /// declared. The chunk names every element and says how wide it is, which is all
+    /// a field needs, and it is there whether any phase read the register or not.
+    /// </summary>
+    private void WriteSignatureStructure(string name, IList<RegisterSignature> signatures)
+    {
+        WriteLine($"struct {name}");
+        WriteLine("{");
+        indent = "\t";
+        foreach (RegisterSignature signature in signatures)
+        {
+            WriteLine(CompileRegisterDeclaration(FromSignature(signature)) + ';');
+        }
+        indent = "";
+        WriteLine("};");
+        WriteLine();
+    }
+
+    private static RegisterDeclaration FromSignature(RegisterSignature signature)
+    {
+        string semantic = signature.Index == 0
+            ? signature.Name
+            : signature.Name + signature.Index;
+        return new RegisterDeclaration(signature.RegisterKey, semantic, signature.Mask)
+        {
+            ComponentType = signature.ComponentType,
+        };
     }
 
     /// <summary>The signature line, the braces, and the body between them.</summary>
-    private void WriteFunction(string signature)
+    private void WriteFunction(string signature, Action writeBody)
     {
         WriteLine(signature);
         WriteLine("{");
         indent = "\t";
-        WriteMethodBody();
+        writeBody();
         indent = "";
         WriteLine("}");
     }

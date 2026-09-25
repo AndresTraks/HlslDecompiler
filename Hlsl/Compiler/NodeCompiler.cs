@@ -1426,7 +1426,11 @@ public sealed class NodeCompiler
             if (arrayKey.RegisterKey is D3D10RegisterKey immediateKey
                 && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
             {
-                return $"icb[{index}]{swizzle}";
+                // The immediate beside the index is the row the read starts at, which
+                // is the array it reads rather than an offset into one: dropped, the
+                // read was of the wrong rows entirely.
+                return $"{_registers.ImmediateConstantBufferName(immediateKey.Number)}"
+                    + $"[{index}]{swizzle}";
             }
 
             // Named from the declaration rather than the register, which would carry

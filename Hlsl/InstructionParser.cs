@@ -2703,6 +2703,7 @@ public class InstructionParser
 
         var registerKey = new D3D10RegisterKey(
             OperandType.ImmediateConstantBuffer, (int)operandIndices[0].Immediate);
+        _registerState.DeclareImmediateConstantBufferRead(registerKey.Number);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         return new RelativeAddressNode(
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);

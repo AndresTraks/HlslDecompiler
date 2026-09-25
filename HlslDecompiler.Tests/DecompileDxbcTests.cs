@@ -40,6 +40,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "reflect_cube")]
     [TestCase("ps_4_0", "resource_swizzle")]
     [TestCase("ps_4_0", "immediate_constant_buffer")]
+    [TestCase("ps_4_0", "immediate_buffer_rows")]
     [TestCase("ps_4_0", "uint_convert")]
     [TestCase("ps_4_0", "do_while")]
     [TestCase("ps_4_0", "depth_output")]

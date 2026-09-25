@@ -2180,8 +2180,11 @@ public class HlslSimpleWriter : HlslWriter
         if (operandType == OperandType.ImmediateConstantBuffer)
         {
             // One index rather than a buffer and an element, and no declaration to be
-            // named from.
-            return $"icb[{index}]";
+            // named from. The immediate beside the index is the row the read starts
+            // at, which names which of the arrays in the buffer it reads; dropped, the
+            // read was of the wrong rows.
+            return $"{_registers.ImmediateConstantBufferName((int)operandIndices[0].Immediate)}"
+                + $"[{index}]";
         }
         if (operandType == OperandType.Input)
         {

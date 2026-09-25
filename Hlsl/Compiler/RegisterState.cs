@@ -15,6 +15,51 @@ public sealed class RegisterState
     /// called icb as the disassembly calls it.
     /// </summary>
     public IList<ConstantRegister> ImmediateConstantBuffer { get; } = [];
+
+    // Which rows a read of it starts at. fxc lays several literal arrays end to end
+    // in the one buffer, so `icb[r0.x + 3]` reads the one beginning at row three: the
+    // bases are where one array ends and the next begins.
+    private readonly SortedSet<int> _immediateConstantBufferBases = [];
+
+    public void DeclareImmediateConstantBufferRead(int baseRow)
+    {
+        _immediateConstantBufferBases.Add(baseRow);
+    }
+
+    /// <summary>
+    /// The literal arrays the buffer holds: one per row a read starts at, each
+    /// running to the next. A buffer read at row zero and nowhere else is the one
+    /// array it looks like, and keeps the plain name.
+    /// </summary>
+    public IEnumerable<(string Name, int Start, int Length)> ImmediateConstantBufferArrays()
+    {
+        List<int> bases = ImmediateConstantBufferStarts();
+        for (int i = 0; i < bases.Count; i++)
+        {
+            int end = i + 1 < bases.Count ? bases[i + 1] : ImmediateConstantBuffer.Count;
+            yield return (ImmediateConstantBufferName(bases[i]), bases[i], end - bases[i]);
+        }
+    }
+
+    /// <summary>What the array beginning at this row is called.</summary>
+    public string ImmediateConstantBufferName(int baseRow)
+    {
+        List<int> bases = ImmediateConstantBufferStarts();
+        return bases.Count <= 1 ? "icb" : "icb" + Math.Max(bases.IndexOf(baseRow), 0);
+    }
+
+    private List<int> ImmediateConstantBufferStarts()
+    {
+        List<int> bases = [.. _immediateConstantBufferBases.Where(
+            b => b >= 0 && b < ImmediateConstantBuffer.Count)];
+        // Whatever is in front of the first row anything reads is still part of the
+        // buffer, and declaring it keeps every later array at the row it belongs to.
+        if (bases.Count == 0 || bases[0] != 0)
+        {
+            bases.Insert(0, 0);
+        }
+        return bases;
+    }
     private readonly HashSet<int> _indexedConstants = [];
     private List<ConstantArray> _constantArrays;
     public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];

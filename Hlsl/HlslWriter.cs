@@ -478,18 +478,27 @@ public abstract class HlslWriter
         // scope, though nothing in a literal array can reference anything anyway.
         if (_registers.ImmediateConstantBuffer.Count != 0)
         {
-            WriteLine("static const float4 icb[{0}] =", _registers.ImmediateConstantBuffer.Count);
-            WriteLine("{");
-            indent = "	";
-            foreach (ConstantRegister row in _registers.ImmediateConstantBuffer)
+            // One declaration per array in it. Written as one array of every row,
+            // the second array's reads carried the offset of its first row -
+            // `icb[i + 3]` - and fxc, given an index it has to work out, spends an
+            // instruction on it where the original folded the row into the read.
+            foreach ((string name, int start, int length) in
+                _registers.ImmediateConstantBufferArrays())
             {
-                string components = string.Join(", ", row.Value.Select(
-                    v => v.ToString(CultureInfo.InvariantCulture)));
-                WriteLine($"float4({components}),");
+                WriteLine("static const float4 {0}[{1}] =", name, length);
+                WriteLine("{");
+                indent = "	";
+                foreach (ConstantRegister row in _registers.ImmediateConstantBuffer
+                    .Skip(start).Take(length))
+                {
+                    string components = string.Join(", ", row.Value.Select(
+                        v => v.ToString(CultureInfo.InvariantCulture)));
+                    WriteLine($"float4({components}),");
+                }
+                indent = "";
+                WriteLine("};");
+                WriteLine();
             }
-            indent = "";
-            WriteLine("};");
-            WriteLine();
         }
 
         foreach (ConstantArray constantArray in _registers.ConstantArrays)

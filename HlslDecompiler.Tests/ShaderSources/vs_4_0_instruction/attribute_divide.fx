@@ -27,8 +27,8 @@ VS_OUT main(VS_IN i)
 	o.sv_position.z = dot(r0, transpose(worldViewProj)[2]);
 	o.sv_position.w = dot(r0, transpose(worldViewProj)[3]);
 	r0.x = (float)(uint)columns;
-	r1 = (uint)i.texcoord.x / (uint)columns;
-	r2.x = (uint)i.texcoord.x % (uint)columns;
+	r1 = (uint)i.texcoord / (uint)columns;
+	r2.x = (uint)i.texcoord % (uint)columns;
 	r2.x = (float)(uint)r2.x;
 	r2.y = (float)(uint)r1.x;
 	o.texcoord = r2.xy / r0.xx;

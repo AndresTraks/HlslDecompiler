@@ -1418,11 +1418,21 @@ public sealed class NodeCompiler
             if (arrayKey.RegisterKey is D3D10RegisterKey vertexKey
                 && vertexKey.OperandType == OperandType.Input
                 && vertexKey.GSVertex.HasValue
-                && _registers.RegisterDeclarations.TryGetValue(vertexKey, out RegisterDeclaration vertex))
+                && _registers.FindInputDeclaration(vertexKey, arrayKey.ComponentIndex)
+                    is RegisterDeclaration vertex)
             {
                 // The vertex array is the subscript and the semantic the member, the
-                // other way round from a constant buffer array.
-                return $"{_registers.InputArrayName}[{index}].{vertex.Name}{swizzle}";
+                // other way round from a constant buffer array. Which member, and how
+                // wide it is, is a question about the component read and not about the
+                // register: two semantics can share one, and the register's own
+                // declaration named the first of them. `patch[id].position.w` was the
+                // texture coordinate packed into the position's register, and a float3
+                // has no w to compile.
+                string memberSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                    _registers.GetRegisterMaskedLength(arrayKey),
+                    promoteToVectorSize,
+                    _registers.GetInputComponentBase(arrayKey));
+                return $"{_registers.InputArrayName}[{index}].{vertex.Name}{memberSwizzle}";
             }
             // A run of input registers declared as one array by dcl_indexrange. Here
             // the semantic is the array and the index its subscript, the way round a

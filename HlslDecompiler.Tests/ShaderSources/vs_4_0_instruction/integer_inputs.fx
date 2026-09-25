@@ -28,7 +28,7 @@ VS_OUT main(VS_IN i)
 	r0.x = asint(asfloat(r0.x) * 0.00392156886);
 	r0.y = (uint)i.blendindices.x >> 4;
 	r0.y = r0.y & 3;
-	r0.z = i.texcoord.x + 1;
+	r0.z = i.texcoord + 1;
 	r0.z = asint((float)r0.z);
 	o.color = palette[r0.y] * asfloat(r0.x) + asfloat(r0.z);
 

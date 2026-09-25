@@ -10,7 +10,7 @@ float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
-	o.xy = source.GetSamplePosition(i.sv_sampleindex.x);
+	o.xy = source.GetSamplePosition(i.sv_sampleindex);
 	o.zw = i.texcoord.xy;
 
 	return o;

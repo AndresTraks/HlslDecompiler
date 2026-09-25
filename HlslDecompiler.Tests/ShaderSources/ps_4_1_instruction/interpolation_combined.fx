@@ -12,7 +12,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 r0;
 	r0.xy = i.texcoord.xy;
 	r0.zw = i.texcoord1.xy;
-	o = r0 * i.texcoord2.x;
+	o = r0 * i.texcoord2;
 
 	return o;
 }

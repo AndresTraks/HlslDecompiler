@@ -42,7 +42,7 @@ VS_OUT main(VS_IN i)
 	float4 r3;
 	float4 r4;
 	float4 r5;
-	r0.x = (float)(uint)i.sv_instanceid.x;
+	r0.x = (float)(uint)i.sv_instanceid;
 	r0.y = r0.x * 0.5 + time;
 	r0.x = r0.x * 0.617999971;
 	r0.x = frac(r0.x);

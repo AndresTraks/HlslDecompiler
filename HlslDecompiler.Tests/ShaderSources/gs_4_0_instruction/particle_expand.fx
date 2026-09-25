@@ -27,8 +27,8 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	float4 r0;
 	float4 r1;
 	float r2;
-	r0.xyz = up.xyz * i[0].psize.xxx;
-	r1.xyz = -(right.xyz) * i[0].psize.xxx + -(r0.xyz);
+	r0.xyz = up.xyz * i[0].psize;
+	r1.xyz = -(right.xyz) * i[0].psize + -(r0.xyz);
 	r1.xyz = r1.xyz + i[0].sv_position.xyz;
 	r1.w = 1;
 	r0.w = dot(r1, transpose(viewProj)[0]);
@@ -42,8 +42,8 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	o.color = i[0].color;
 	o.texcoord = float2(0, 0);
 	stream.Append(o);
-	r1.xyz = right.xyz * i[0].psize.xxx + -(r0.xyz);
-	r0.xyz = right.xyz * i[0].psize.xxx + r0.xyz;
+	r1.xyz = right.xyz * i[0].psize + -(r0.xyz);
+	r0.xyz = right.xyz * i[0].psize + r0.xyz;
 	r0.xyz = r0.xyz + i[0].sv_position.xyz;
 	r1.xyz = r1.xyz + i[0].sv_position.xyz;
 	r1.w = 1;
@@ -58,8 +58,8 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	o.color = i[0].color;
 	o.texcoord = float2(1, 0);
 	stream.Append(o);
-	r1.xyz = right.xyz * i[0].psize.xxx;
-	r1.xyz = up.xyz * i[0].psize.xxx + -(r1.xyz);
+	r1.xyz = right.xyz * i[0].psize;
+	r1.xyz = up.xyz * i[0].psize + -(r1.xyz);
 	r1.xyz = r1.xyz + i[0].sv_position.xyz;
 	r1.w = 1;
 	r2 = dot(r1, transpose(viewProj)[0]);

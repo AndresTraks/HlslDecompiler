@@ -23,12 +23,12 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 	o.texcoord = i[0].sv_position;
 	o.color = i[0].color;
 	o.color3 = i[0].color2;
-	o.texcoord2 = i[0].sv_clipdistance.x;
+	o.texcoord2 = i[0].sv_clipdistance;
 	stream.Append(o);
 	o.texcoord = i[1].sv_position;
 	o.color = i[1].color;
 	o.color3 = i[1].color2;
-	o.texcoord2 = i[1].sv_clipdistance.x;
+	o.texcoord2 = i[1].sv_clipdistance;
 	stream.Append(o);
 	o.texcoord = float4(0, 0, 0, 0);
 	o.color = i[2].sv_position;

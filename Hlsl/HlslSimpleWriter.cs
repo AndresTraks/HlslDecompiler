@@ -2188,8 +2188,15 @@ public class HlslSimpleWriter : HlslWriter
                 return $"{_registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0))}[{index}]";
             }
             // The vertex is the dynamic part; the second index names the register.
+            // Which member of the vertex is a question about the component read, not
+            // about the register: two semantics can share one, and naming the
+            // register's own declaration read the first of them whichever was meant.
             var vertexKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
-            return $"{_registers.InputArrayName}[{index}].{_registers.RegisterDeclarations[vertexKey].Name}";
+            byte vertexComponent = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            RegisterDeclaration vertexDeclaration =
+                _registers.FindInputDeclaration(vertexKey, vertexComponent)
+                ?? _registers.RegisterDeclarations[vertexKey];
+            return $"{_registers.InputArrayName}[{index}].{vertexDeclaration.Name}";
         }
 
         var registerKey = new D3D10RegisterKey(
@@ -2484,6 +2491,14 @@ public class HlslSimpleWriter : HlslWriter
         {
             registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices, out dynamicMember);
             isPackedScalar = dynamicMember != null && dynamicMember.Width == 1;
+            // A vertex of a patch or a primitive, read at an index: the member it
+            // names is as wide as its own declaration, and a member one component
+            // wide has no swizzle to pick from.
+            if (registerKey.OperandType == OperandType.Input && operandIndices.Length > 1)
+            {
+                isPackedScalar = _registers.GetRegisterMaskedLength(new RegisterComponentKey(
+                    registerKey, instruction.GetSourceSwizzleComponents(operandIndex)[0])) == 1;
+            }
         }
         else if (registerKey.OperandType == OperandType.ConstantBuffer)
         {
@@ -2512,8 +2527,10 @@ public class HlslSimpleWriter : HlslWriter
             byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
             var inputComponentKey = new RegisterComponentKey(registerKey, component);
             registerName = _registers.GetRegisterName(inputComponentKey);
-            isPackedScalar = _registers.IsPackedInputComponent(inputComponentKey)
-                && _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
+            // As wide as the declaration covering the component, packed or not: a
+            // lone `float thickness` at v0.w is one component too, and reading it
+            // as `thickness.w` off a float is not HLSL.
+            isPackedScalar = _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
             // One read can cross from one packed variable into another: a coordinate
             // built as `float3(uv2, uv1.x)` reads v0.zw and v0.x. Named from the first
             // component and rebased onto it, the component that belongs to the

@@ -21,7 +21,7 @@ float4 main(VS_IN i) : SV_Position
 
 	float4 r0;
 	float4 r1;
-	r0.x = i.sv_instanceid.x * 5;
+	r0.x = i.sv_instanceid * 5;
 	r0.yzw = i.position.yyy * instances[r0.x / 5].bone[1].xyz;
 	r0.yzw = i.position.xxx * instances[r0.x / 5].bone[0].xyz + r0.yzw;
 	r0.yzw = i.position.zzz * instances[r0.x / 5].bone[2].xyz + r0.yzw;

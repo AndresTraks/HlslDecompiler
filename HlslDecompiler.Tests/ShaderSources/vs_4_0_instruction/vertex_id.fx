@@ -15,9 +15,9 @@ float4 main(VS_IN i) : SV_Position
 
 	float4 r0;
 	float r1;
-	r0.x = (float)(uint)i.sv_instanceid.x;
+	r0.x = (float)(uint)i.sv_instanceid;
 	r0 = r0.x * arr[1];
-	r1 = (float)(uint)i.sv_vertexid.x;
+	r1 = (float)(uint)i.sv_vertexid;
 	o = arr[0] * r1.x + r0;
 
 	return o;

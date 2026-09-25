@@ -10,7 +10,7 @@ float4 main(PS_IN i) : SV_TARGET
 
 	float4 r0;
 	float4 r1;
-	r0 = EvaluateAttributeAtSample(i.texcoord, i.sv_sampleindex.x);
+	r0 = EvaluateAttributeAtSample(i.texcoord, i.sv_sampleindex);
 	r1 = EvaluateAttributeSnapped(i.texcoord, int2(1, -1));
 	o = r0 + r1;
 

@@ -154,6 +154,7 @@ public class DecompileDxbcTests
     [TestCase("hs_5_0", "tri_distance")]
     [TestCase("hs_5_0", "quad_factors")]
     [TestCase("hs_5_0", "passed_through")]
+    [TestCase("hs_5_0", "isoline_detail")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

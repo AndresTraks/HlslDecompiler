@@ -24,10 +24,10 @@ VS_OUT main(uint sv_vertexid : SV_VertexID)
 	int4 r0;
 	float4 r1;
 	float4 r2;
-	r0.xy = sv_vertexid.xx & int2(1, 2);
+	r0.xy = sv_vertexid & int2(1, 2);
 	r0.xy = (r0.xy != 0) ? int2(1, 1) : int2(-1, -1);
 	r0.xy = asint((float2)r0.xy);
-	r0.z = (uint)sv_vertexid.x >> 2;
+	r0.z = (uint)sv_vertexid >> 2;
 	r1.x = particles[r0.z].size;
 	r2 = float4(particles[r0.z].position, particles[r0.z].life);
 	r0.xy = asint(asfloat(r0.xy) * r1.xx);

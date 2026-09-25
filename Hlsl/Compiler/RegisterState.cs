@@ -469,7 +469,7 @@ public sealed class RegisterState
     // fxc can declare TEXCOORD0 at v2.xy and TEXCOORD1 at v2.z, each with its own
     // dcl_input_ps, and MethodInputRegisters holds one entry per declaration rather
     // than one per register so both survive.
-    private RegisterDeclaration FindInputDeclaration(D3D10RegisterKey registerKey, int componentIndex)
+    public RegisterDeclaration FindInputDeclaration(D3D10RegisterKey registerKey, int componentIndex)
     {
         // A geometry shader's declarations are keyed by the register alone, and a
         // read names the vertex as well; the vertices share the declaration.
@@ -533,7 +533,12 @@ public sealed class RegisterState
         {
             return false;
         }
-        return MethodInputRegisters.Count(d => d.RegisterKey.Equals(registerKey)) > 1;
+        // By the base key: a vertex read names the vertex as well, and the vertices
+        // share one declaration apiece.
+        return MethodInputRegisters
+            .Select(d => d.RegisterKey)
+            .Distinct()
+            .Count(k => k.Equals(registerKey.GetGSBaseKey())) > 1;
     }
 
     private static int CountSetBits(int mask)
@@ -2242,6 +2247,17 @@ public sealed class RegisterState
                 ComponentType = signature.ComponentType,
                 InterpolationMode = instruction.GetInterpolationMode(),
             };
+            // A declaration that does not start at the register's x is packed above
+            // something else, whether or not this program declared that something:
+            // `float thickness` at v0.w is one component, and the highest-bit-plus-one
+            // width made it four and read it as `thickness.x` off a float. A hull
+            // shader's patch constant phase reads just such a lone register - it
+            // declares the control point components it uses and no others - which is
+            // where this showed.
+            if ((signature.Mask & 1) == 0)
+            {
+                declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
+            }
             // A patch constant register is packed with the tessellation factors as a
             // matter of course - a float3 lands in a register's yzw because a factor
             // has its x - so its width is the count of its own components rather

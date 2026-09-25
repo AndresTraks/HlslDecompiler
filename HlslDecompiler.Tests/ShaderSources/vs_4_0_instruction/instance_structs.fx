@@ -30,7 +30,7 @@ VS_OUT main(VS_IN i)
 	int r0;
 	float4 r1;
 	float4 r2;
-	r0 = i.sv_instanceid.x * 6;
+	r0 = i.sv_instanceid * 6;
 	r1 = i.position * instances[r0.x / 6].scale;
 	r2.x = dot(r1, transpose(instances[r0.x / 6].world)[0]);
 	r2.y = dot(r1, transpose(instances[r0.x / 6].world)[1]);

@@ -30,13 +30,13 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	float4 r1;
 	float4 r2;
 	float3 r3;
-	r0.x = (0 >= i[0].texcoord.x) ? -1 : 0;
+	r0.x = (0 >= i[0].texcoord) ? -1 : 0;
 	if (r0.x != 0) {
 		return;
 	}
-	r0.x = asint(saturate(i[0].texcoord.x));
+	r0.x = asint(saturate(i[0].texcoord));
 	r0.x = asint(asfloat(r0.x) * spriteSize);
-	r0.y = asint(saturate(i[0].texcoord.x / fadeDistance));
+	r0.y = asint(saturate(i[0].texcoord / fadeDistance));
 	r0.y = asint(asfloat(r0.y) * i[0].color.w);
 	r1.w = 1;
 	r0.z = 0;

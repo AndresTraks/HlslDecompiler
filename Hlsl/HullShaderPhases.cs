@@ -65,6 +65,8 @@ public static class HullShaderPhases
             current?.Add(instruction);
         }
 
+        CoalesceTempDeclarations(patchConstant);
+
         return (
             controlPoint == null
                 ? null
@@ -73,6 +75,35 @@ public static class HullShaderPhases
                 ? null
                 : Phase(shader, declarations, patchConstant,
                     [.. shader.PatchConstantSignatures.Select(s => s.AsOutput())]));
+    }
+
+    /// <summary>
+    /// Leaves one dcl_temps in a body made of several phases: the largest, since the
+    /// function needs as many temps as the hungriest phase in it. Every phase declares
+    /// its own, so two of them declaring r0 was the same register declared twice, and
+    /// the register state would not have it.
+    /// </summary>
+    private static void CoalesceTempDeclarations(List<Instruction> body)
+    {
+        if (body == null)
+        {
+            return;
+        }
+        List<int> declarations = [.. Enumerable.Range(0, body.Count)
+            .Where(i => body[i] is D3D10Instruction { Opcode: D3D10Opcode.DclTemps })];
+        if (declarations.Count < 2)
+        {
+            return;
+        }
+        Instruction largest = declarations
+            .Select(i => body[i])
+            .OrderByDescending(d => ((D3D10Instruction)d).GetParamInt(0))
+            .First();
+        foreach (int i in Enumerable.Reverse(declarations))
+        {
+            body.RemoveAt(i);
+        }
+        body.Insert(declarations[0], largest);
     }
 
     private static bool IsPhaseStart(Instruction instruction)

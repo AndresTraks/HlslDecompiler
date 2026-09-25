@@ -1222,8 +1222,6 @@ public class InstructionParser
             return;
         }
 
-        var returnStatement = new ReturnStatement(ActiveOutputs);
-
         // An assignment immediately before the ret produced the value being returned,
         // so it becomes the return rather than standing as its own statement.
         if (ActiveStatement is AssignmentStatement assignment)
@@ -1232,14 +1230,22 @@ public class InstructionParser
             IList<IStatement> sequence = ActiveStatementSequence;
             if (sequence.Count != 0 && ReferenceEquals(sequence[sequence.Count - 1], assignment))
             {
-                sequence[sequence.Count - 1] = returnStatement;
-                _currentStatements.Push(returnStatement);
+                // Its inputs as well as its outputs: a return whose two are the same
+                // dictionary says it assigns nothing on the way out, which is true of
+                // a return added after a statement and false of one that replaced
+                // it. Told the first, the writer read every output as carried through
+                // unchanged and wrote none of them - so a shader returning a struct
+                // that set its fields and returned early from inside an if lost every
+                // one of those writes, and returned whatever the struct held.
+                var replacement = new ReturnStatement(assignment.Inputs, assignment.Outputs);
+                sequence[sequence.Count - 1] = replacement;
+                _currentStatements.Push(replacement);
                 return;
             }
             _currentStatements.Push(assignment);
         }
 
-        InsertStatement(returnStatement);
+        InsertStatement(new ReturnStatement(ActiveOutputs));
     }
 
     /// <summary>

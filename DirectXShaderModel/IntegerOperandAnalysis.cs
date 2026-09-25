@@ -1069,6 +1069,17 @@ public sealed class IntegerOperandAnalysis
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
+            // A raw buffer holds dwords and nothing else - Load, Load2 and Load4
+            // all answer uint - so what one is read into is an integer however the
+            // shader goes on to read it. Without this, a register a raw load fills
+            // and raw stores empty, with nothing else in it to say what it is, was
+            // declared float: the dwords were converted to the floats nearest their
+            // values on the way in and back on the way out, and what was stored was
+            // not what was loaded.
+            if (instruction.Opcode == D3D10Opcode.LdRaw)
+            {
+                AddDestinationComponents(instruction, integerRegisters);
+            }
             // ftoi and ftou read floats and write integers, so the destination is
             // an integer component but the source is not.
             if (instruction.Opcode != D3D10Opcode.Ftoi

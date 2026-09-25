@@ -157,6 +157,7 @@ public class DecompileDxbcTests
     [TestCase("hs_5_0", "passed_through")]
     [TestCase("hs_5_0", "isoline_detail")]
     [TestCase("hs_5_0", "culled_patch")]
+    [TestCase("hs_5_0", "split_control_points")]
     [TestCase("ps_4_0", "texture_load")]
     [TestCase("ps_4_0", "intrinsics")]
     [TestCase("ps_4_0", "transcend")]

@@ -939,9 +939,24 @@ public sealed class NodeCompiler
                 }
 
             case ModuloOperation _:
-                return string.Format("{0} % {1}",
-                    CompileOperand(components.Select(g => g.Inputs[0])),
-                    CompileOperand(components.Select(g => g.Inputs[1])));
+                {
+                    var dividend = components.Select(g => g.Inputs[0]);
+                    var divisor = components.Select(g => g.Inputs[1]);
+                    string left = CompileOperand(dividend);
+                    string right = CompileOperand(divisor);
+                    // The brackets a division needs, for the reason it needs them: %
+                    // binds as tightly as / does. `(id - 2) % 3` written without them
+                    // is `id - 2 % 3`, which takes two off the index and never wraps
+                    // it - and a divisor that is itself a product or a quotient needs
+                    // them too, since `a % b * c` multiplies the remainder.
+                    bool bracketDividend = IsSum(dividend.First());
+                    bool bracketDivisor = IsSum(divisor.First())
+                        || divisor.First() is MultiplyOperation or ModuloOperation
+                        || IsQuotient(divisor);
+                    return string.Format("{0} % {1}",
+                        bracketDividend ? $"({left})" : left,
+                        bracketDivisor ? $"({right})" : right);
+                }
 
             case DivisionOperation _:
                 {

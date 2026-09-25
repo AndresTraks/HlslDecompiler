@@ -25,6 +25,14 @@ public class HlslSimpleWriter : HlslWriter
     protected override void WriteMethodBody()
     {
         _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);
+        // Per function, not per shader: a hull shader's two functions are written
+        // through one writer, and neither inherits the other's loop counters or the
+        // slots it was still holding.
+        _loopVariableIndex = -1;
+        _allocatedSlots.Clear();
+        _consumedSlots.Clear();
+        _consumeCount = 0;
+        _destinationMaskOverride = null;
         if (_registers.MethodOutputRegisters.Count != 0)
         {
             WriteLine("{0} {1};", _shader.Type == ShaderType.Geometry
@@ -2580,14 +2588,19 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (instruction.IsDestinationOperand(operandIndex))
         {
-            writeMaskName = _destinationMaskOverride == null
-                ? instruction.GetWriteMaskName(
-                    operandIndex, _registers.GetRegisterMaskedLength(registerKey))
-                : instruction.GetWriteMaskName(
-                    operandIndex,
-                    _registers.GetRegisterMaskedLength(new RegisterComponentKey(
-                        registerKey, FirstComponent(_destinationMaskOverride.Value))),
-                    _destinationMaskOverride.Value);
+            // The mask within the field written, not within the register holding it.
+            // A patch constant packed above a tessellation factor - CENTRE at o0.yzw -
+            // was named by the register's own components: the write of its z said
+            // `o.centre.z`, which is its y, and the write of its w said `o.centre`,
+            // assigning a float to a float3. Shifted down by where the field starts,
+            // a write of the whole of it says nothing, as it should.
+            int mask = _destinationMaskOverride ?? instruction.GetWriteMask(operandIndex);
+            var componentKey = new RegisterComponentKey(registerKey, FirstComponent(mask));
+            int fieldBase = _registers.GetOutputComponentBase(componentKey);
+            writeMaskName = instruction.GetWriteMaskName(
+                operandIndex,
+                _registers.GetRegisterMaskedLength(componentKey),
+                mask >> fieldBase);
         }
         else
         {

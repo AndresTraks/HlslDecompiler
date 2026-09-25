@@ -165,6 +165,21 @@ public class RoundTripCostTests
             + "is behind it, as it was behind ps_3_0/temp_assignment - but that one "
             + "was an addend, which the grouper puts back, and this is a multiplier "
             + "in a mad, which it does not."),
+        // fxc's doing.
+        ["hs_5_0/carried_constants"] = (41,
+            "One instruction, and fxc's own arrangement of the phases. The patch "
+            + "constant function computes a centre, keeps it as a field, and works "
+            + "its tessellation factors out from it. From the original source fxc "
+            + "wrote the centre in three fork phases and read it back in the join "
+            + "phase that needs it, which costs nothing; from the decompiled source "
+            + "it puts the factors in a phase of their own that computes the centre "
+            + "again, and spends a mad on it. The decompiled source cannot steer "
+            + "that: writing the read back in by hand costs 43, and naming the "
+            + "centre in a local and assigning the field from it costs 43 as well, "
+            + "so 41 is the best of the three shapes. It is fxc scheduling phases "
+            + "from source higher level than the bytecode, not the decompilation "
+            + "doing work twice - both writers compute the same numbers as the "
+            + "original on every trial."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

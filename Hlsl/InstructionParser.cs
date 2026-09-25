@@ -3259,6 +3259,15 @@ public class InstructionParser
             byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
             componentIndex = swizzle[component];
         }
+        // A hull shader reads a patch constant it computed itself: a join phase's
+        // vpc6 is what a fork phase wrote to o6, and the two are one function here.
+        // Read as a register of its own it was a value from nowhere, and the writer
+        // put the write of it after the reads, since nothing connected them.
+        if (_shaderModel.Type == ShaderType.Hull
+            && registerKey is D3D10RegisterKey { OperandType: OperandType.InputPatchConstant } patchConstant)
+        {
+            registerKey = new D3D10RegisterKey(OperandType.Output, patchConstant.Number);
+        }
         return new RegisterComponentKey(registerKey, componentIndex);
     }
 }

@@ -1506,9 +1506,18 @@ public class D3D10Machine
                     return VertexInput((int)indices[0].Immediate, (int)indices[1].Immediate);
                 }
             case OperandType.InputPatchConstant:
-                // One value per register, whichever field of the struct the register
-                // holds: both programs read the same register and get the same made
-                // up float.
+                // A hull shader is reading back what it wrote: a join phase's vpc0 is
+                // what a fork phase put in o0 a few lines up, and the phases run in
+                // one program here. Read as a made up value instead, the original and
+                // its decompilation were computing their factors from different
+                // numbers, and disagreed for a reason neither of them had.
+                if (_shader.Type == ShaderType.Hull)
+                {
+                    return _output[instruction.GetParamRegisterNumber(index)];
+                }
+                // A domain shader is handed them, and one made up value per register
+                // is enough: both programs read the same register and get the same
+                // float, whichever field of the struct it holds.
                 return [.. Named($"vpc{instruction.GetParamRegisterNumber(index)}")
                     .Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.InputDomainPoint:

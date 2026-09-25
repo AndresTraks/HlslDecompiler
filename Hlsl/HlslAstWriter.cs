@@ -30,6 +30,17 @@ public class HlslAstWriter : HlslWriter
 
     protected override void WriteMethodBody()
     {
+        // A hull shader is written as two functions through one writer, and what has
+        // been named is a question about the function being written: the patch
+        // constant function's t0 is not main's. Left standing, main's first variable
+        // was taken for one declared already and printed as a bare assignment, which
+        // is a name nothing declares.
+        _declaredVariables.Clear();
+        _declaredIndices.Clear();
+        _everDeclaredVariables.Clear();
+        _consumeVariables.Clear();
+        _loopDepth = 0;
+
         if (HasOutputStruct)
         {
             WriteLine($"{GetOutputStructureName()} {_registers.OutputVariableName};");

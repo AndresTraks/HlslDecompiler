@@ -523,9 +523,9 @@ public sealed class RegisterState
             ?? RegisterDeclarations[registerComponentKey.RegisterKey];
     }
 
-    // True only when another declaration actually shares this component's register -
-    // SV_VertexID is one component wide too, but alone in its register, and printing
-    // it as sv_vertexid rather than sv_vertexid.x is what the golden files expect.
+    // Whether another declaration actually shares this component's register, which is
+    // a narrower question than whether the field is a scalar: SV_VertexID is one
+    // component wide too, and alone in its register.
     public bool IsPackedInputComponent(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
@@ -1353,7 +1353,16 @@ public sealed class RegisterState
                         string field = signature == null
                             ? RegisterDeclarations[registerKey].Name
                             : PatchConstants.Reference(signature, _shaderModel.PatchConstantSignatures);
-                        return $"{PatchConstants.ParameterName}.{field}";
+                        // A domain shader is handed these in a parameter; a hull
+                        // shader is computing them, and reads back the struct it is
+                        // filling. A join phase reading vpc6 is reading what a fork
+                        // phase wrote to o6 a few lines up, and naming it after the
+                        // domain shader's parameter named something this shader has
+                        // not got.
+                        string holder = _shaderModel.Type == ShaderType.Hull
+                            ? OutputVariableName
+                            : PatchConstants.ParameterName;
+                        return $"{holder}.{field}";
                     }
                 // A control point of the patch, read the way a geometry shader
                 // reads a vertex of its primitive.

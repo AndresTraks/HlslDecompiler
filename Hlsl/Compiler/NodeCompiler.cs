@@ -1419,7 +1419,10 @@ public sealed class NodeCompiler
                 return $"{literals.Name}[{index}]{swizzle}";
             }
             // The immediate constant buffer has no declaration to be named from; the
-            // disassembly calls it icb and so does the one this writes out.
+            // disassembly calls it icb and so does the one this writes out. The
+            // immediate beside the index is the row the read starts at - fxc puts one
+            // array after another in the one buffer, so `icb[r0.x + 5]` reads the
+            // second of them - and dropped, the read was of the wrong rows entirely.
             if (arrayKey.RegisterKey is D3D10RegisterKey immediateKey
                 && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
             {

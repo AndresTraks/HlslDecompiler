@@ -764,14 +764,16 @@ public abstract class HlslWriter
             inputs = [.. inputs
                 .Where(r => r.RegisterKey is D3D10RegisterKey
                     { OperandType: not OperandType.InputDomainPoint
-                        and not OperandType.OutputControlPointID })
-                .GroupBy(r => (r.RegisterKey as D3D10RegisterKey).GetGSBaseKey())
-                .Select(g => g.First())];
+                        and not OperandType.OutputControlPointID })];
         }
-        if (_shader.Type == ShaderType.Geometry)
+        if (_shader.Type is ShaderType.Geometry or ShaderType.Domain or ShaderType.Hull)
         {
             // One member per register across the vertices - and per semantic
-            // within a register, where two are packed into one.
+            // within a register, where two are packed into one. Grouping a patch's
+            // registers by the register alone, as the domain and hull shaders did,
+            // lost the packed semantic: `float3 position; float thickness;` is
+            // v[2][0].xyz and v[2][0].w, and the struct came out holding the
+            // position alone.
             inputs = inputs
                 .GroupBy(r => ((r.RegisterKey as D3D10RegisterKey).GetGSBaseKey(), r.Semantic))
                 .Select(g => g.First())

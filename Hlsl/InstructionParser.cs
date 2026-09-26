@@ -214,27 +214,22 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.Cut:
                 case D3D10Opcode.CutStream:
-                    InsertRestartStrip();
+                    InsertRestartStrip(instruction.Stream);
                     break;
                 // One stream is the ordinary geometry shader and the only one the
                 // writer has a name for; the instruction names it because shader
                 // model 5 allows up to four.
                 case D3D10Opcode.EmitThenCut:
                 case D3D10Opcode.EmitThenCutStream:
-                    InsertAppend();
-                    InsertRestartStrip();
+                    InsertAppend(instruction.Stream);
+                    InsertRestartStrip(instruction.Stream);
                     break;
+                // Shader model 5 allows four. Each is a parameter of its own with its
+                // own output registers, and the stream travels with the instruction, so
+                // a write of one stream's o1 is a different register from a write of
+                // the other's.
                 case D3D10Opcode.DclStream:
-                    // Shader model 5 allows four, and the writer has a name for one:
-                    // a second stream is a second parameter with output registers of
-                    // its own, and every emit would have to say which it goes to.
-                    // Merging them silently would put both sets of vertices on one
-                    // stream, which is a different shader.
-                    if (++_declaredStreams > 1)
-                    {
-                        throw new NotImplementedException(
-                            "A geometry shader with more than one output stream.");
-                    }
+                    _registerState.DeclareStream(instruction.GetParamRegisterNumber(0));
                     break;
                 case D3D10Opcode.Discard:
                     {
@@ -294,6 +289,11 @@ public class InstructionParser
                 case D3D10Opcode.DclGSOutputPrimitiveTopology:
                     {
                         _registerState.PrimitiveTopology = instruction.GetPrimitiveTopology();
+                        if (instruction.Stream is int topologyStream)
+                        {
+                            _registerState.TopologyByStream[topologyStream] =
+                                instruction.GetPrimitiveTopology();
+                        }
                         break;
                     }
                 case D3D10Opcode.DclResource:
@@ -424,7 +424,7 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.Emit:
                 case D3D10Opcode.EmitStream:
-                    InsertAppend();
+                    InsertAppend(instruction.Stream);
                     break;
                 case D3D10Opcode.Loop:
                     {
@@ -903,14 +903,14 @@ public class InstructionParser
         InsertStatement(new DiscardStatement(condition, ActiveOutputs));
     }
 
-    private void InsertAppend()
+    private void InsertAppend(int? stream = null)
     {
-        InsertStatement(new AppendStatement(ActiveOutputs));
+        InsertStatement(new AppendStatement(ActiveOutputs) { Stream = stream });
     }
 
-    private void InsertRestartStrip()
+    private void InsertRestartStrip(int? stream = null)
     {
-        InsertStatement(new RestartStripStatement(ActiveOutputs));
+        InsertStatement(new RestartStripStatement(ActiveOutputs) { Stream = stream });
     }
 
     /// <summary>

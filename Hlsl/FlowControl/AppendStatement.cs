@@ -14,4 +14,7 @@ public class AppendStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    /// <summary>Which stream the vertex goes to, where the shader writes several.</summary>
+    public int? Stream { get; init; }
 }

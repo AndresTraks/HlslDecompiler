@@ -217,6 +217,8 @@ public class DxbcReader : BinaryReader
             }
         }
 
+        AssignOutputStreams(instructions);
+
         return new ShaderModel(
             majorVersion.Value,
             minorVersion.Value,
@@ -227,6 +229,70 @@ public class DxbcReader : BinaryReader
             constantDeclarations,
             resourceDefinitions,
             instructions);
+    }
+
+    /// <summary>
+    /// Marks each instruction with the output stream it belongs to, where a geometry
+    /// shader writes more than one. Both streams declare o0 upwards and mean different
+    /// things by them, so the stream has to travel with the instruction: it is the only
+    /// thing telling a write of one stream's o1 from a write of the other's.
+    ///
+    /// A declaration belongs to the stream it was declared under - dcl_stream m1 opens
+    /// a run of them. A write belongs to the stream of the emit that sends it, which is
+    /// the next one in program order: fxc fills the output registers and then emits, so
+    /// everything between two emits goes to the later of them.
+    ///
+    /// Left alone for a shader with one stream, whose registers are then keyed exactly
+    /// as they always were.
+    /// </summary>
+    private static void AssignOutputStreams(List<Instruction> instructions)
+    {
+        var d3d10 = new List<D3D10Instruction>();
+        int streamCount = 0;
+        foreach (Instruction instruction in instructions)
+        {
+            if (instruction is D3D10Instruction d3d10Instruction)
+            {
+                d3d10.Add(d3d10Instruction);
+                if (d3d10Instruction.Opcode == D3D10Opcode.DclStream)
+                {
+                    streamCount++;
+                }
+            }
+        }
+        if (streamCount < 2)
+        {
+            return;
+        }
+
+        int? declaredStream = null;
+        foreach (D3D10Instruction instruction in d3d10)
+        {
+            if (instruction.Opcode == D3D10Opcode.DclStream)
+            {
+                declaredStream = instruction.GetParamRegisterNumber(0);
+            }
+            else if (instruction.Opcode.IsDeclaration())
+            {
+                instruction.Stream = declaredStream;
+            }
+        }
+
+        int? emittedStream = null;
+        for (int i = d3d10.Count - 1; i >= 0; i--)
+        {
+            D3D10Instruction instruction = d3d10[i];
+            if (instruction.Opcode is D3D10Opcode.EmitStream or D3D10Opcode.CutStream
+                or D3D10Opcode.EmitThenCutStream)
+            {
+                emittedStream = instruction.GetParamRegisterNumber(0);
+                instruction.Stream = emittedStream;
+            }
+            else if (!instruction.Opcode.IsDeclaration())
+            {
+                instruction.Stream = emittedStream;
+            }
+        }
     }
 
     private D3D10Instruction ReadInstruction()
@@ -464,16 +530,14 @@ public class DxbcReader : BinaryReader
         for (int i = 0; i < elementCount; i++)
         {
             BaseStream.Position = elementOffset + i * elementSize;
-            if (hasStream)
-            {
-                ReadInt32();
-            }
-            RegisterSignature signature = ReadSignature(chunkOffset, operandType);
+            int stream = hasStream ? ReadInt32() : 0;
+            RegisterSignature signature = ReadSignature(chunkOffset, operandType, stream);
             signatures.Add(signature);
         }
     }
 
-    private RegisterSignature ReadSignature(int chunkOffset, OperandType operandType)
+    private RegisterSignature ReadSignature(int chunkOffset, OperandType operandType,
+        int stream = 0)
     {
         int nameOffset = ReadInt32();
         int index = ReadInt32();
@@ -488,7 +552,11 @@ public class DxbcReader : BinaryReader
         name = NormalizeSystemValueRegisterName(name);
 
         var register = new D3D10RegisterKey(operandType, registerNumber);
-        return new RegisterSignature(register, name, index, mask, valueType, componentType, readWriteMask);
+        return new RegisterSignature(register, name, index, mask, valueType, componentType,
+            readWriteMask)
+        {
+            Stream = stream,
+        };
     }
 
     private static string NormalizeSystemValueRegisterName(string name)

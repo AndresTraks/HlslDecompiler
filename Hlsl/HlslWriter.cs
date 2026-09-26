@@ -857,6 +857,17 @@ public abstract class HlslWriter
         {
             return;
         }
+        // A geometry shader writing several streams has a vertex of its own for each,
+        // and both call their registers o0 upwards: one struct apiece, or the fields of
+        // the two came out in the one struct with the same names twice over.
+        if (_registers.HasSeveralStreams)
+        {
+            foreach (int stream in _registers.Streams)
+            {
+                WriteStreamStructureDeclaration(stream);
+            }
+            return;
+        }
         string outputStructType = GetOutputStructureName();
 
         WriteLine($"struct {outputStructType}");
@@ -872,6 +883,21 @@ public abstract class HlslWriter
             outputs = outputs.OrderBy(o => o.Semantic).ToList();
         }
         foreach (var output in outputs)
+        {
+            WriteLine(CompileRegisterDeclaration(output) + ';');
+        }
+        indent = "";
+        WriteLine("};");
+        WriteLine();
+    }
+
+    private void WriteStreamStructureDeclaration(int stream)
+    {
+        WriteLine($"struct {_registers.StreamStructureName(stream)}");
+        WriteLine("{");
+        indent = "\t";
+        foreach (RegisterDeclaration output in _registers.MethodOutputRegisters
+            .Where(o => (o.RegisterKey as D3D10RegisterKey)?.Stream == stream))
         {
             WriteLine(CompileRegisterDeclaration(output) + ';');
         }
@@ -931,15 +957,18 @@ public abstract class HlslWriter
         {
             string primitive = _registers.InputPrimitive.Value.ToHlslString();
             int vertexCount = GetPrimitiveVertexCount(_registers.InputPrimitive.Value);
-            string stream = GetStreamType(_registers.PrimitiveTopology);
+            string stream = _registers.HasSeveralStreams
+                ? string.Join(", ", _registers.Streams.Select(s =>
+                    $"inout {GetStreamType(_registers.TopologyByStream[s])}"
+                        + $"<{_registers.StreamStructureName(s)}> {_registers.StreamParameterName(s)}"))
+                : $"inout {GetStreamType(_registers.PrimitiveTopology)}<GS_OUT> stream";
             string primitiveId = _registers.PrimitiveIdDeclaration == null
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration)}, ";
             string instanceId = _registers.GSInstanceIdDeclaration == null
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.GSInstanceIdDeclaration)}, ";
-            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}{instanceId}"
-                + $"inout {stream}<GS_OUT> stream";
+            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}{instanceId}{stream}";
         }
         if (_shader.Type == ShaderType.Hull)
         {

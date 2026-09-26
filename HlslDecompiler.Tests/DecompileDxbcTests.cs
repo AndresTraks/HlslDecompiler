@@ -154,6 +154,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "get_dimensions_shapes")]
     [TestCase("gs_5_0", "stream_expand")]
     [TestCase("gs_5_0", "cube_faces")]
+    [TestCase("gs_5_0", "two_streams")]
     [TestCase("gs_5_0", "instanced_expand")]
     [TestCase("gs_5_0", "particle_sprites")]
     [TestCase("ds_5_0", "patch_interpolate")]

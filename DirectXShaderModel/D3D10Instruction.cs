@@ -156,6 +156,14 @@ public class D3D10Instruction : Instruction
     /// <summary>How many control points a patch has, in or out.</summary>
     public int ControlPointCount { get; set; }
 
+    /// <summary>
+    /// The output stream this instruction belongs to, in a geometry shader that writes
+    /// more than one: the stream a declaration was declared under, or the one the emit
+    /// after a write sends it to. Null in every shader with a single stream, which
+    /// leaves those keyed exactly as they always were.
+    /// </summary>
+    public int? Stream { get; set; }
+
     /// <summary>How the tessellator cuts an edge it has a factor for.</summary>
     public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
 
@@ -917,7 +925,9 @@ public class D3D10Instruction : Instruction
         }
         return new D3D10RegisterKey(
             operandType,
-            GetParamRegisterNumber(index));
+            GetParamRegisterNumber(index),
+            Stream,
+            operandType == OperandType.Output);
     }
 
     /// <summary>

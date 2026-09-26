@@ -43,7 +43,15 @@ public class HlslAstWriter : HlslWriter
 
         if (HasOutputStruct)
         {
-            WriteLine($"{GetOutputStructureName()} {_registers.OutputVariableName};");
+            // One vertex variable per stream where the shader writes several: the two
+            // structs differ, and so do the registers each stream calls its own.
+            foreach (int? stream in _registers.HasSeveralStreams
+                ? _registers.Streams.Select(s => (int?)s)
+                : [null])
+            {
+                WriteLine($"{(stream == null ? GetOutputStructureName() : _registers.StreamStructureName(stream))} "
+                    + $"{_registers.StreamVariableName(stream)};");
+            }
             WriteLine();
         }
 
@@ -221,11 +229,12 @@ public class HlslAstWriter : HlslWriter
         }
         else if (statement is AppendStatement append)
         {
-            WriteLine("stream.Append(o);");
+            WriteLine($"{_registers.StreamParameterName(append.Stream)}"
+                + $".Append({_registers.StreamVariableName(append.Stream)});");
         }
         else if (statement is RestartStripStatement restartStrip)
         {
-            WriteLine("stream.RestartStrip();");
+            WriteLine($"{_registers.StreamParameterName(restartStrip.Stream)}.RestartStrip();");
         }
         else if (statement is SyncStatement sync)
         {
@@ -355,7 +364,9 @@ public class HlslAstWriter : HlslWriter
                 .Where(o => o.Key.RegisterKey.Equals(rootGroup.Key.RegisterKey))
                 .SelectMany(o => o.Value)
                 .Distinct()];
-            writes.Add((nodes, wants, () => WriteLine($"o.{outputRegister.Name} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
+            string outputVariable = _registers.StreamVariableName(
+                (rootGroup.Key.RegisterKey as D3D10RegisterKey)?.Stream);
+            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {

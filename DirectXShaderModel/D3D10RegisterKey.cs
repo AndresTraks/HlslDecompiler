@@ -10,6 +10,20 @@ public class D3D10RegisterKey : RegisterKey
         Number = registerNumber;
     }
 
+    /// <summary>
+    /// An output of one stream of a geometry shader that writes several. Both streams
+    /// call their registers o0 upwards and mean different things by them, so the stream
+    /// is part of which register this is - the way the vertex is, for an input read
+    /// across a primitive. Null everywhere else, which is every shader with one stream.
+    /// </summary>
+    public D3D10RegisterKey(OperandType operandType, int registerNumber, int? stream, bool onStream)
+        : this(operandType, registerNumber)
+    {
+        Stream = onStream ? stream : null;
+    }
+
+    public int? Stream { get; }
+
     public D3D10RegisterKey(OperandType operandType, int registerNumber, int constantBufferOffset)
         : this(operandType, registerNumber)
     {
@@ -103,6 +117,7 @@ public class D3D10RegisterKey : RegisterKey
         return
             other.Number == Number &&
             other.OperandType == OperandType &&
+            other.Stream == Stream &&
             other.ConstantBufferOffset == ConstantBufferOffset &&
             other.ImmediateInt == ImmediateInt &&
             other.GSVertex == GSVertex;
@@ -132,6 +147,10 @@ public class D3D10RegisterKey : RegisterKey
         {
             hashCode ^= GSVertex.GetHashCode();
         }
+        if (Stream != null)
+        {
+            hashCode ^= Stream.GetHashCode();
+        }
         return hashCode;
     }
 
@@ -154,6 +173,7 @@ public class D3D10RegisterKey : RegisterKey
             return $"{OperandType}[{GSVertex}][{Number}]";
         }
         string constantBufferOffset = ConstantBufferOffset != null ? $"[{ConstantBufferOffset}]" : "";
-        return $"{OperandType}{Number}{constantBufferOffset}";
+        string stream = Stream != null ? $"@m{Stream}" : "";
+        return $"{OperandType}{Number}{constantBufferOffset}{stream}";
     }
 }

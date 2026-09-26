@@ -35,9 +35,20 @@ public class HlslSimpleWriter : HlslWriter
         _destinationMaskOverride = null;
         if (_registers.MethodOutputRegisters.Count != 0)
         {
-            WriteLine("{0} {1};", _shader.Type == ShaderType.Geometry
-                ? GetOutputStructureName() : GetMethodReturnType(),
-                _registers.OutputVariableName);
+            if (_registers.HasSeveralStreams)
+            {
+                foreach (int stream in _registers.Streams)
+                {
+                    WriteLine("{0} {1};", _registers.StreamStructureName(stream),
+                        _registers.StreamVariableName(stream));
+                }
+            }
+            else
+            {
+                WriteLine("{0} {1};", _shader.Type == ShaderType.Geometry
+                    ? GetOutputStructureName() : GetMethodReturnType(),
+                    _registers.OutputVariableName);
+            }
             WriteLine();
         }
 
@@ -1183,12 +1194,13 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Cut:
             case D3D10Opcode.CutStream:
-                WriteLine("stream.RestartStrip();");
+                WriteLine($"{_registers.StreamParameterName(instruction.Stream)}.RestartStrip();");
                 break;
             case D3D10Opcode.EmitThenCut:
             case D3D10Opcode.EmitThenCutStream:
-                WriteLine("stream.Append(o);");
-                WriteLine("stream.RestartStrip();");
+                WriteLine($"{_registers.StreamParameterName(instruction.Stream)}"
+                    + $".Append({_registers.StreamVariableName(instruction.Stream)});");
+                WriteLine($"{_registers.StreamParameterName(instruction.Stream)}.RestartStrip();");
                 break;
             case D3D10Opcode.DerivRtx:
                 WriteResult(instruction, "{0} = ddx({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -1223,7 +1235,8 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Emit:
             case D3D10Opcode.EmitStream:
-                WriteLine("stream.Append(o);");
+                WriteLine($"{_registers.StreamParameterName(instruction.Stream)}"
+                    + $".Append({_registers.StreamVariableName(instruction.Stream)});");
                 break;
             // Control flow was skipped entirely, so a DXBC loop with a guarded break
             // printed as `while (true)` with nothing to end it.

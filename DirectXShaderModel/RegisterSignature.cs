@@ -30,6 +30,13 @@ public class RegisterSignature
     public bool IsPatchConstant { get; init; }
 
     /// <summary>
+    /// Which output stream the element belongs to. Shader model 5 lets a geometry
+    /// shader write up to four, each with a signature of its own, and the stream is
+    /// the only thing telling two elements at the same register apart.
+    /// </summary>
+    public int Stream { get; init; }
+
+    /// <summary>
     /// The same element keyed as an output register, which is what a hull shader's
     /// phases write it as. Read from the chunk it is keyed as a domain shader's
     /// input, and left that way a fork phase's `dcl_output_siv o0.x` found whatever
@@ -42,6 +49,7 @@ public class RegisterSignature
             Name, Index, Mask, ValueType, ComponentType, ReadWriteMask)
         {
             IsPatchConstant = true,
+            Stream = Stream,
         };
     }
 

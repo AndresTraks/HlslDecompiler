@@ -444,6 +444,21 @@ public sealed class RegisterState
     // instances it was declared with.
     public RegisterDeclaration GSInstanceIdDeclaration { get; set; }
 
+    /// <summary>
+    /// The output streams a geometry shader declared, in order. One for almost every
+    /// shader there is; shader model 5 allows up to four, each written through a
+    /// parameter of its own.
+    /// </summary>
+    public IList<int> Streams { get; } = [];
+
+    public void DeclareStream(int stream)
+    {
+        if (!Streams.Contains(stream))
+        {
+            Streams.Add(stream);
+        }
+    }
+
     public int? GSInstanceCount { get; set; }
     public int? MaxOutputVertexCount { get; set; }
 
@@ -470,6 +485,28 @@ public sealed class RegisterState
     public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
+
+    // The topology each stream emits, where a geometry shader writes several: they are
+    // declared a stream at a time and need not agree.
+    public IDictionary<int, D3D10PrimitiveTopology> TopologyByStream { get; }
+        = new Dictionary<int, D3D10PrimitiveTopology>();
+
+    /// <summary>Whether the shader writes more than one output stream.</summary>
+    public bool HasSeveralStreams => Streams.Count > 1;
+
+    /// <summary>
+    /// What the struct of one stream's vertex is called, and the variable it is built
+    /// in. With one stream these are the names they have always been; with several,
+    /// each stream carries its number so that the two never meet.
+    /// </summary>
+    public string StreamStructureName(int? stream) =>
+        HasSeveralStreams ? $"GS_OUT{stream ?? 0}" : "GS_OUT";
+
+    public string StreamVariableName(int? stream) =>
+        HasSeveralStreams ? $"{OutputVariableName}{stream ?? 0}" : OutputVariableName;
+
+    public string StreamParameterName(int? stream) =>
+        HasSeveralStreams ? $"stream{stream ?? 0}" : "stream";
 
     // x# registers: a local array the shader indexes at run time, declared with
     // its element count and how many components each element holds.
@@ -1235,8 +1272,9 @@ public sealed class RegisterState
             if (outputDeclaration != null)
             {
                 return HasOutputStruct
-                    ? OutputVariableName + "." + outputDeclaration.Name
-                    : OutputVariableName;
+                    ? StreamVariableName((registerComponentKey.RegisterKey as D3D10RegisterKey)?.Stream)
+                        + "." + outputDeclaration.Name
+                    : StreamVariableName((registerComponentKey.RegisterKey as D3D10RegisterKey)?.Stream);
             }
         }
         return GetRegisterName(registerComponentKey.RegisterKey);
@@ -2305,6 +2343,19 @@ public sealed class RegisterState
         return new RegisterDeclaration(registerKey, semantic, writeMask);
     }
 
+    /// <summary>
+    /// Whether the signature element describes this register. A geometry shader's
+    /// streams have a signature each and both call their registers o0 upwards, so the
+    /// stream is part of which element a register is - and a register carries none
+    /// where the shader has one stream, which is the same question as stream zero.
+    /// </summary>
+    private static bool MatchesSignature(RegisterSignature signature, D3D10RegisterKey registerKey)
+    {
+        return signature.RegisterKey.OperandType == registerKey.OperandType
+            && signature.RegisterKey.Number == registerKey.Number
+            && signature.Stream == (registerKey.Stream ?? 0);
+    }
+
     private RegisterDeclaration CreateRegisterDeclarationFromD3D10Dcl(D3D10Instruction instruction, D3D10RegisterKey registerKey)
     {
         registerKey = registerKey.GetGSBaseKey();
@@ -2317,8 +2368,8 @@ public sealed class RegisterState
             .Concat(_shaderModel.OutputSignatures)
             .Concat(_shaderModel.PatchConstantSignatures);
         RegisterSignature signature =
-            signatures.FirstOrDefault(i => i.RegisterKey.Equals(registerKey) && (i.Mask & declaredMask) != 0)
-            ?? signatures.FirstOrDefault(i => i.RegisterKey.Equals(registerKey));
+            signatures.FirstOrDefault(i => MatchesSignature(i, registerKey) && (i.Mask & declaredMask) != 0)
+            ?? signatures.FirstOrDefault(i => MatchesSignature(i, registerKey));
         if (signature != null)
         {
             string semantic = signature.Name;

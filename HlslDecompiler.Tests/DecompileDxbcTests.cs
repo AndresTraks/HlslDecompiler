@@ -141,6 +141,7 @@ public class DecompileDxbcTests
     [TestCase("vs_5_0", "instance_clip")]
     [TestCase("vs_5_0", "instance_matrix_mul")]
     [TestCase("vs_5_0", "tight_packed_element")]
+    [TestCase("vs_5_0", "packed_matrix_members")]
     [TestCase("vs_5_0", "row_major_instances")]
     [TestCase("cs_5_0", "tile_luminance")]
     [TestCase("cs_5_0", "prefix_flags")]

@@ -228,27 +228,30 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
-        // One element of one buffer, and the rows in order: sixteen bytes apart, the
-        // first of them where the matrix begins. Anything else is a run of loads that
-        // happens to be dotted, not a matrix multiplication.
-        const int BytesPerRow = 16;
         var first = (LoadStructuredNode)rows[0][0];
         RegisterKey resourceKey = ((RegisterInputNode)first.Value).RegisterComponentKey.RegisterKey;
-        for (int i = 1; i < rows.Count; i++)
-        {
-            var row = (LoadStructuredNode)rows[i][0];
-            if (!ReferenceEquals(row.Address, first.Address)
-                || row.ElementByteOffset != first.ElementByteOffset + i * BytesPerRow
-                || !((RegisterInputNode)row.Value).RegisterComponentKey.RegisterKey.Equals(resourceKey))
-            {
-                return null;
-            }
-        }
-
         if (_registers.FindStructuredMatrixAt(resourceKey, first.ElementByteOffset)
             is not (string memberPath, ShaderTypeInfo matrixType))
         {
             return null;
+        }
+
+        // One element of one buffer, and the rows in order: as far apart as a row is
+        // wide, since a buffer element is packed tight, and the first of them where the
+        // matrix begins. Anything else is a run of loads that happens to be dotted,
+        // not a matrix multiplication.
+        int bytesPerRow = 4 * (matrixType.ParameterClass == ParameterClass.MatrixRows
+            ? matrixType.Columns
+            : matrixType.Rows);
+        for (int i = 1; i < rows.Count; i++)
+        {
+            var row = (LoadStructuredNode)rows[i][0];
+            if (!ReferenceEquals(row.Address, first.Address)
+                || row.ElementByteOffset != first.ElementByteOffset + i * bytesPerRow
+                || !((RegisterInputNode)row.Value).RegisterComponentKey.RegisterKey.Equals(resourceKey))
+            {
+                return null;
+            }
         }
         // As many rows as the matrix has, so that a shader dotting three rows of a
         // float4x4 is not written as the whole of it.

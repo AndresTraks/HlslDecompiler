@@ -336,12 +336,20 @@ public sealed class RegisterState
         return null;
     }
 
-    // How many floats one register of a member holds: four of a matrix, whose
-    // registers are its rows or its columns and are padded out to a register each,
-    // and as many as it has components of anything else.
+    // How many floats one row of a member holds. A buffer element is packed tight,
+    // so a matrix row holds its own floats and no padding: a float3x3's rows are
+    // twelve bytes apart, and fxc reads each of them with a load of its own at
+    // l(0), l(12), l(24). Counted as four, the second row was found a float early
+    // and named as the tail of the first.
     private static int GetRegisterFloatCount(ShaderTypeInfo typeInfo)
     {
-        return typeInfo.Rows > 1 ? 4 : Math.Max(typeInfo.Columns, 1);
+        if (typeInfo.Rows > 1)
+        {
+            return typeInfo.ParameterClass == ParameterClass.MatrixRows
+                ? typeInfo.Columns
+                : typeInfo.Rows;
+        }
+        return Math.Max(typeInfo.Columns, 1);
     }
 
     // A matrix is a register a row where it is stored by row and a register a
@@ -419,9 +427,11 @@ public sealed class RegisterState
         {
             return element;
         }
-        const int BytesPerRow = 16;
+        // As far apart as the row is wide, not a register: an element that is itself
+        // a float3x3 has its rows twelve bytes apart.
+        int bytesPerRow = GetRegisterFloatCount(resource.ElementType) * 4;
         string matrix = $"transpose({element})";
-        return $"{matrix}[{byteOffset / BytesPerRow}]";
+        return $"{matrix}[{byteOffset / bytesPerRow}]";
     }
     public IDictionary<RegisterKey, RegisterInputNode> Samplers { get; } = new Dictionary<RegisterKey, RegisterInputNode>();
 

@@ -3690,15 +3690,38 @@ public class HlslSimpleWriter : HlslWriter
     private string TextureBufferVariable(D3D10Instruction instruction)
     {
         ResourceDefinition buffer = LoadedResource(instruction);
-        if (buffer?.ShaderInputType != D3DShaderInputType.TBuffer
-            || instruction.GetOperandType(1) != OperandType.Immediate32)
+        if (buffer?.ShaderInputType != D3DShaderInputType.TBuffer)
         {
             return null;
         }
-        int register = instruction.GetParamInt(1, 0);
-        return _registers.ConstantDeclarations
+        var declarations = _registers.ConstantDeclarations
             .OfType<D3D10ConstantDeclaration>()
-            .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name)
+            .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name);
+        if (instruction.GetOperandType(1) != OperandType.Immediate32)
+        {
+            // Read at an index the shader works out rather than a constant one, so
+            // no one variable of the block is what is being read: the array it is an
+            // element of is named instead, subscripted by the address. Falling
+            // through to a Load on the buffer's own name does not compile - a
+            // tbuffer is a block like a cbuffer, and the block is not an identifier,
+            // only what it declares.
+            D3D10ConstantDeclaration array = declarations
+                .FirstOrDefault(d => d.TypeInfo.NumElements > 1);
+            if (array == null)
+            {
+                return null;
+            }
+            // The address counts registers within the buffer, so an array whose
+            // element takes more than one register is indexed by however many.
+            string index = GetOperandName(instruction, 1);
+            if (array.RegistersPerElement > 1)
+            {
+                index = $"{index} / {array.RegistersPerElement}";
+            }
+            return $"{array.Name}[{index}]";
+        }
+        int register = instruction.GetParamInt(1, 0);
+        return declarations
             .FirstOrDefault(d => d.VariableOffset / 16 == register)
             ?.Name;
     }

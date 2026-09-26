@@ -1992,9 +1992,18 @@ public sealed class NodeCompiler
             .Where(d => d.ShaderInputType == D3DShaderInputType.TBuffer)
             .FirstOrDefault(d => d.BindPoint
                 == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
-        if (buffer == null || resourceLoad.Address.FirstOrDefault() is not ConstantNode element)
+        if (buffer == null)
         {
             return false;
+        }
+        if (resourceLoad.Address.FirstOrDefault() is not ConstantNode element)
+        {
+            // Read at an index the shader works out rather than a constant one, so
+            // there is no one variable of the buffer to name: the array it is an
+            // element of is named instead, subscripted by the address. Without this
+            // the load fell through to the lookup for a texture, which a texture
+            // buffer is not one of, and that threw for want of a match.
+            return TryCompileTextureBufferArrayLoad(resourceLoad, buffer, swizzle, out compiled);
         }
         int register = element.IntegerValue ?? (int)element.Value;
         D3D10ConstantDeclaration variable = _registers.ConstantDeclarations
@@ -2006,6 +2015,37 @@ public sealed class NodeCompiler
             return false;
         }
         compiled = $"{variable.Name}{swizzle}";
+        return true;
+    }
+
+    /// <summary>
+    /// A texture buffer's array, subscripted by the register the load asks for. The
+    /// address counts registers within the buffer, so an array is indexed by however
+    /// many registers one of its elements takes, and one that does not start at the
+    /// buffer's first register is indexed from where it does start.
+    /// </summary>
+    private bool TryCompileTextureBufferArrayLoad(ResourceLoadNode resourceLoad,
+        ResourceDefinition buffer, string swizzle, out string compiled)
+    {
+        compiled = null;
+        D3D10ConstantDeclaration array = _registers.ConstantDeclarations
+            .OfType<D3D10ConstantDeclaration>()
+            .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name)
+            .FirstOrDefault(d => d.TypeInfo.NumElements > 1);
+        if (array == null)
+        {
+            return false;
+        }
+        HlslTreeNode address = resourceLoad.Address.First();
+        string index = array.RegistersPerElement > 1
+            ? CompileRegisterIndexAsElement(address, array.RegistersPerElement)
+            : CompileAsInteger([address]);
+        int baseRegister = array.VariableOffset / BytesPerConstantRegister;
+        if (baseRegister != 0)
+        {
+            index = $"{index} - {baseRegister / array.RegistersPerElement}";
+        }
+        compiled = $"{array.Name}[{index}]{swizzle}";
         return true;
     }
 

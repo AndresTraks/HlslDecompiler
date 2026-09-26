@@ -154,6 +154,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "typed_view_load")]
     [TestCase("ps_5_0", "packed_input_cross")]
     [TestCase("ps_5_0", "get_dimensions_shapes")]
+    [TestCase("ps_5_0", "texture_buffer_index")]
     [TestCase("gs_5_0", "stream_expand")]
     [TestCase("gs_5_0", "cube_faces")]
     [TestCase("gs_5_0", "two_streams")]

@@ -138,6 +138,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "continue_carries_step")]
     [TestCase("ps_5_0", "struct_matrix_packing")]
     [TestCase("vs_5_0", "skinned_instances")]
+    [TestCase("vs_5_0", "instance_clip")]
     [TestCase("vs_5_0", "row_major_instances")]
     [TestCase("cs_5_0", "tile_luminance")]
     [TestCase("cs_5_0", "prefix_flags")]

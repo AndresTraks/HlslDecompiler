@@ -180,9 +180,14 @@ public sealed class RegisterState
             return null;
         }
         List<string> named = [.. runs.Select(r => r.Name)];
+        // A constructor over double members is a double vector: `float2(low, high)`
+        // rounds both of them, and the buffer holds neither.
+        string constructor = GetStructuredComponentsPerElement(resourceKey) == 2
+            ? "double"
+            : "float";
         return named.Count == 1
             ? named[0]
-            : $"float{components.Count}({string.Join(", ", named)})";
+            : $"{constructor}{components.Count}({string.Join(", ", named)})";
     }
 
     /// <summary>
@@ -482,9 +487,14 @@ public sealed class RegisterState
         // Sized as three registers it ran to forty eight, so every member after it was
         // found twelve bytes early - a float4x4 following one was read as the tail of
         // the matrix, and the output did not compile.
+        // A double is eight bytes where every other scalar is four. Counted as four,
+        // a double member ran to half its length and the second half of the number
+        // fell outside it - into the padding before the next member, or into no
+        // member at all - so nothing knew the component was half of something.
+        int componentSize = typeInfo.ParameterType == ParameterType.Double ? 8 : 4;
         return typeInfo.Rows > 1
-            ? typeInfo.Rows * typeInfo.Columns * 4
-            : typeInfo.Columns * 4;
+            ? typeInfo.Rows * typeInfo.Columns * componentSize
+            : typeInfo.Columns * componentSize;
     }
 
     // A member declared as an array is that many elements one after another.

@@ -252,6 +252,70 @@ public class HlslSimpleWriter : HlslWriter
     /// so that the nth of them is at slot 2n.
     /// </summary>
     /// <summary>
+    /// Whether the member a structured load or store reaches is a double. Asked at
+    /// the first component the mask names rather than of the element as a whole: an
+    /// element with a double in it has other members beside, and a load of the float
+    /// among them is a load of a float.
+    /// </summary>
+    private bool IsDoubleStructuredComponent(D3D10Instruction instruction, int resourceOperand)
+    {
+        int mask = instruction.GetWriteMask(0);
+        int component = FirstComponent(mask);
+        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+            ? instruction.GetParamInt(2, 0)
+            : 0;
+        int elementComponent = resourceOperand == 3
+            ? instruction.GetSourceSwizzleComponents(3)[component]
+            : component;
+        return _registers.IsDoubleStructuredMember(
+            instruction.GetParamRegisterKey(resourceOperand),
+            elementByteOffset + elementComponent * 4);
+    }
+
+    /// <summary>
+    /// A structured load or store that takes a double and another member of the
+    /// element in the one instruction - `ld_structured r1.xyz, i, l(8), t0.xyzx` over
+    /// a struct whose double is followed by a uint. The expression writer splits that
+    /// into an assignment per member; this one writes a statement per instruction,
+    /// and the register it reads or writes would have to be the shadow for part of
+    /// its components and itself for the rest.
+    /// </summary>
+    private void CheckNoMixedDoubleElement(D3D10Instruction instruction)
+    {
+        int resourceOperand = instruction.Opcode switch
+        {
+            D3D10Opcode.LdStructured => 3,
+            D3D10Opcode.StoreStructured => 0,
+            _ => -1,
+        };
+        if (resourceOperand < 0)
+        {
+            return;
+        }
+        int mask = instruction.GetWriteMask(0);
+        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+            ? instruction.GetParamInt(2, 0)
+            : 0;
+        byte[] swizzle = resourceOperand == 3
+            ? instruction.GetSourceSwizzleComponents(3)
+            : null;
+        var components = new List<int>();
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) != 0)
+            {
+                components.Add(swizzle != null ? swizzle[component] : component);
+            }
+        }
+        if (_registers.MixesDoubleStructuredMembers(
+            instruction.GetParamRegisterKey(resourceOperand), elementByteOffset, components))
+        {
+            throw new NotImplementedException(
+                $"{instruction.Opcode} of a double beside another member of the element");
+        }
+    }
+
+    /// <summary>
     /// Which halves of its destination each mov copies a double into, by instruction:
     /// bit 0 for the pair at .xy and bit 1 for the pair at .zw. fxc assembles a
     /// double vector out of movs of the raw halves - `mov r0.zw, r0.xxxy` puts the
@@ -409,9 +473,9 @@ public class HlslSimpleWriter : HlslWriter
         bool isStructuredDouble = instruction.Opcode switch
         {
             D3D10Opcode.LdStructured => operandIndex == 0
-                && _registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(3)),
+                && IsDoubleStructuredComponent(instruction, 3),
             D3D10Opcode.StoreStructured => operandIndex == 3
-                && _registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(0)),
+                && IsDoubleStructuredComponent(instruction, 0),
             _ => false,
         };
         // And a mov says so only through the walk: which of its halves carry a
@@ -1491,6 +1555,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstructionStatement(D3D10Instruction instruction)
     {
+        CheckNoMixedDoubleElement(instruction);
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
@@ -1750,9 +1815,17 @@ public class HlslSimpleWriter : HlslWriter
                     // destination mask writes them.
                     byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
                     int writeMask = instruction.GetDestinationWriteMask();
-                    List<int> read = [.. Enumerable.Range(0, 4)
-                        .Where(c => (writeMask & (1 << c)) != 0)
-                        .Select(c => (int)elementSwizzle[c])];
+                    // One entry per value the load reads, which for a double element
+                    // is one per pair of components: counted per component, a struct
+                    // of two doubles named four members and built a float4 of them.
+                    int loadPerElement = _registers.GetStructuredComponentsPerElement(buffer);
+                    List<int> loaded = [.. Enumerable.Range(0, 4)
+                        .Where(c => (writeMask & (1 << c)) != 0)];
+                    List<int> read = [];
+                    for (int value = 0; value < loaded.Count; value += loadPerElement)
+                    {
+                        read.Add(elementSwizzle[loaded[value]]);
+                    }
                     string readElement = _registers.NameStructuredMembers(buffer, element, offset, read)
                         ?? _registers.ApplyStructuredElementRow(buffer, element, offset);
                     // Where the element is neither a matrix (whose offset picks a row)
@@ -1764,11 +1837,13 @@ public class HlslSimpleWriter : HlslWriter
                     // offset eight of a double2 is its `.y`, not its `.zw`.
                     if (readElement == element)
                     {
-                        int perElement = _registers.GetStructuredComponentsPerElement(buffer);
                         var names = new List<char>();
-                        for (int value = 0; value < read.Count; value += perElement)
+                        // One name per entry, the list already holding one entry per
+                        // value: the component it names is divided down to the value
+                        // it is half of.
+                        foreach (int component in read)
                         {
-                            names.Add("xyzw"[(read[value] + offset / 4) % 4 / perElement]);
+                            names.Add("xyzw"[(component + offset / 4) % 4 / loadPerElement]);
                         }
                         // Left off where it names the element's values in order, which
                         // is the element itself. Written only for the offset before
@@ -1776,7 +1851,7 @@ public class HlslSimpleWriter : HlslWriter
                         // first value is the element's second - came out as the whole
                         // element with its values the wrong way round.
                         string picked = new string([.. names]);
-                        int width = _registers.GetRegisterMaskedLength(buffer) / perElement;
+                        int width = _registers.GetRegisterMaskedLength(buffer) / loadPerElement;
                         if (picked != "xyzw"[..Math.Min(width, 4)])
                         {
                             readElement += "." + picked;
@@ -2188,7 +2263,15 @@ public class HlslSimpleWriter : HlslWriter
                     RegisterKey buffer = instruction.GetParamRegisterKey(0);
                     string element = $"{GetOperandName(instruction, 0)}[{GetOperandName(instruction, 1)}]";
                     int writeMask = instruction.GetWriteMask(0);
-                    List<int> written = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
+                    // One entry per value the store writes, the way the load reads
+                    // them: a double takes two components and is one member.
+                    int storePerElement = _registers.GetStructuredComponentsPerElement(buffer);
+                    List<int> masked = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
+                    List<int> written = [];
+                    for (int value = 0; value < masked.Count; value += storePerElement)
+                    {
+                        written.Add(masked[value]);
+                    }
                     IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
                         buffer, element, instruction.GetParamInt(2, 0), written);
                     if (runs == null)
@@ -2199,8 +2282,11 @@ public class HlslSimpleWriter : HlslWriter
                     byte[] valueSwizzle = instruction.GetSourceSwizzleComponents(3);
                     foreach ((string name, int[] values) in runs)
                     {
+                        // Which part of the value operand goes here, counted in the
+                        // values it holds: the second double of a shadow is its .y,
+                        // where the register's components make it the .z.
                         string picked = "." + string.Concat(
-                            values.Select(v => "xyzw"[valueSwizzle[written[v]]]));
+                            values.Select(v => "xyzw"[valueSwizzle[written[v]] / storePerElement]));
                         WriteLine("{0} = {1}{2};", name,
                             GetOperandName(instruction, 3).Split('.')[0], picked);
                     }

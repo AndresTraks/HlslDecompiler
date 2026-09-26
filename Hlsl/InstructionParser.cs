@@ -1773,12 +1773,6 @@ public class InstructionParser
                 valueMask |= 1 << component;
             }
         }
-        if (_registerState.MixesDoubleStructuredMembers(
-            resourceKey, elementByteOffset, elementComponents))
-        {
-            throw new NotImplementedException(
-                $"{instruction.Opcode} of a double beside another member of the element");
-        }
         return valueMask;
     }
 

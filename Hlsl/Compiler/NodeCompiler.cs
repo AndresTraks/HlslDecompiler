@@ -1130,10 +1130,17 @@ public sealed class NodeCompiler
                     int componentBase = ReferenceEquals(row, element)
                         ? -load.ElementByteOffset / 4
                         : 0;
+                    // A double element takes two components for each value it holds,
+                    // so the element is that many values wide and the swizzle names
+                    // them rather than the components: a StructuredBuffer<double>
+                    // loads r0.xy for its one number, and named by component that
+                    // came out `input[i].x` off a scalar.
+                    int loadPerElement = _registers.GetStructuredComponentsPerElement(resourceKey);
                     return row + GetAstSourceSwizzleName(
                         components.Select(g => (IHasComponentIndex)g.Inputs[2]),
-                        _registers.GetRegisterMaskedLength(resourceKey),
-                        componentBase: componentBase);
+                        _registers.GetRegisterMaskedLength(resourceKey) / loadPerElement,
+                        componentBase: componentBase,
+                        componentsPerElement: loadPerElement);
                 }
             case LogicalAndOperation _:
             case LogicalOrOperation _:

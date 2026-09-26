@@ -301,6 +301,109 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// The type a byte address within a buffer element holds, and where the member
+    /// holding it starts. An element with no members of its own is the whole of it,
+    /// starting at zero; otherwise it is whichever member the address falls in.
+    /// </summary>
+    private (ShaderTypeInfo Type, int ByteOffset)? FindStructuredTypeAt(
+        RegisterKey resourceKey, int byteAddress)
+    {
+        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
+        if (elementType == null)
+        {
+            return null;
+        }
+        if (elementType.MemberInfo is not { Count: > 0 } members)
+        {
+            return (elementType, 0);
+        }
+        var found = FindStructuredMember(members, byteAddress, 0);
+        return found == null
+            ? null
+            : (found.Value.Member.TypeInfo, found.Value.ByteOffset);
+    }
+
+    /// <summary>
+    /// Whether a byte address within a buffer element is the upper half of a double.
+    /// A double is eight bytes where a load and a store count in four, so a value
+    /// begins at every other address and the one between them holds the top half of
+    /// the number before it - a component of the load with no value of its own.
+    /// </summary>
+    public bool IsDoubleStructuredMemberUpperHalf(RegisterKey resourceKey, int byteAddress)
+    {
+        return FindStructuredTypeAt(resourceKey, byteAddress) is var (type, memberOffset)
+            && type.ParameterType == ParameterType.Double
+            && (byteAddress - memberOffset) % 8 != 0;
+    }
+
+    /// <summary>
+    /// Whether a structured load or store takes a double and something else in the
+    /// one instruction - `ld_structured r1.xyz, i, l(8), t0.xyzx` over a struct whose
+    /// double is followed by a uint. Neither writer can say it: a double is named as
+    /// the one value it is and its neighbours as components beside it, and one
+    /// statement cannot be both. Thrown on rather than written wrongly.
+    /// </summary>
+    public bool MixesDoubleStructuredMembers(
+        RegisterKey resourceKey, int elementByteOffset, IEnumerable<int> elementComponents)
+    {
+        if (!HasDoubleStructuredMember(resourceKey))
+        {
+            return false;
+        }
+        bool anyDouble = false;
+        bool anyOther = false;
+        foreach (int component in elementComponents)
+        {
+            int byteAddress = elementByteOffset + component * 4;
+            if (IsDoubleStructuredMemberUpperHalf(resourceKey, byteAddress)
+                || IsDoubleStructuredMember(resourceKey, byteAddress))
+            {
+                anyDouble = true;
+            }
+            else
+            {
+                anyOther = true;
+            }
+        }
+        return anyDouble && anyOther;
+    }
+
+    private bool IsDoubleStructuredMember(RegisterKey resourceKey, int byteAddress)
+    {
+        return FindStructuredTypeAt(resourceKey, byteAddress) is var (type, _)
+            && type.ParameterType == ParameterType.Double;
+    }
+
+    /// <summary>
+    /// How many register components one value of a buffer element takes: two where
+    /// the element holds doubles and one otherwise. The stride counts in floats, so
+    /// a StructuredBuffer&lt;double&gt; declares two components for its one value and
+    /// a double2 four for its two.
+    /// </summary>
+    public int GetStructuredComponentsPerElement(RegisterKey resourceKey)
+    {
+        return HasDoubleStructuredMember(resourceKey) ? 2 : 1;
+    }
+
+    /// <summary>
+    /// Whether the element holds doubles at all, which is what makes the components
+    /// of a load or a store pair up rather than stand for a value each.
+    /// </summary>
+    public bool HasDoubleStructuredMember(RegisterKey resourceKey)
+    {
+        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
+        if (elementType == null)
+        {
+            return false;
+        }
+        if (elementType.MemberInfo is { Count: > 0 } members)
+        {
+            return members.Any(m => m.TypeInfo.ParameterType == ParameterType.Double);
+        }
+        return elementType.ParameterType == ParameterType.Double;
+    }
+
+    /// <summary>
     /// The member a byte address within an element reaches, the path that names it
     /// under the element, and where that member starts. A member can be a struct of
     /// its own, and then what the address reaches is a member inside it: `.i.a`, so

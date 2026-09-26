@@ -157,7 +157,16 @@ public class HlslSimpleWriter : HlslWriter
                 0xF => scalarType + "4",
                 _ => scalarType + "4",// TODO
             };
-            WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
+            // A register nothing but doubles is written to needs no float variable
+            // beside their shadow: every value in it is named through the shadow, and
+            // the float2 a StructuredBuffer<double> loads through was declared and
+            // never read. Asked of the writes rather than of the mask, because fxc
+            // reuses a register freely and one holding a double at .xy and a
+            // comparison mask at .x needs both.
+            if (FindFloatWrittenComponents(register.Key) != 0)
+            {
+                WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
+            }
             WriteDoubleRegisterDeclaration(register.Key);
         }
     }
@@ -179,6 +188,34 @@ public class HlslSimpleWriter : HlslWriter
         }
         WriteLine("{0} {1};", pairs == 1 ? "double" : "double2",
             GetDoubleRegisterName(registerKey));
+    }
+
+    /// <summary>
+    /// The components of a register written by anything that is not a double, as a
+    /// write mask. A write that goes through the shadow variable leaves the float
+    /// components of the register untouched, so a register only doubles are written
+    /// to answers zero and needs no float variable at all.
+    /// </summary>
+    private int FindFloatWrittenComponents(RegisterKey registerKey)
+    {
+        int mask = 0;
+        foreach (Instruction instruction in _phaseShader.Instructions)
+        {
+            if (instruction is not D3D10Instruction d3d10)
+            {
+                return 0b1111;
+            }
+            foreach (int destination in GetDestinationParamIndices(d3d10))
+            {
+                if (!Equals(d3d10.GetParamRegisterKey(destination), registerKey)
+                    || GetDoubleRegisterOperandName(d3d10, destination) != null)
+                {
+                    continue;
+                }
+                mask |= d3d10.GetWriteMask(destination);
+            }
+        }
+        return mask;
     }
 
     // Which halves of a register ever hold a double: bit 0 for the pair at .xy and
@@ -253,7 +290,21 @@ public class HlslSimpleWriter : HlslWriter
     private string GetDoubleRegisterOperandName(D3D10Instruction instruction, int operandIndex)
     {
         bool isDestination = instruction.IsDestinationOperand(operandIndex);
-        if (isDestination ? !instruction.WritesDoubles : !instruction.IsDoubleOperand(operandIndex))
+        // A structured load or store carries a double as plainly as the arithmetic
+        // does, and the element says so where the opcode cannot: a load from a
+        // StructuredBuffer<double> fills a pair, and written to the register's two
+        // float components the arithmetic that follows read a shadow nothing had
+        // assigned to.
+        bool isStructuredDouble = instruction.Opcode switch
+        {
+            D3D10Opcode.LdStructured => operandIndex == 0
+                && _registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(3)),
+            D3D10Opcode.StoreStructured => operandIndex == 3
+                && _registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(0)),
+            _ => false,
+        };
+        if (!isStructuredDouble
+            && (isDestination ? !instruction.WritesDoubles : !instruction.IsDoubleOperand(operandIndex)))
         {
             return null;
         }
@@ -263,7 +314,21 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         var pairs = new List<int>();
-        if (isDestination)
+        // The value a structured store carries is read at the components its mask
+        // names, which is the destination's mask and not this operand's swizzle.
+        if (isStructuredDouble && !isDestination)
+        {
+            int storeMask = instruction.GetWriteMask(0) & 0b0101;
+            byte[] storeSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            for (int component = 0; component < 4; component += 2)
+            {
+                if ((storeMask & (1 << component)) != 0)
+                {
+                    pairs.Add(storeSwizzle[component] / 2);
+                }
+            }
+        }
+        else if (isDestination)
         {
             int mask = instruction.GetWriteMask(operandIndex) & 0b0101;
             for (int component = 0; component < 4; component += 2)
@@ -281,6 +346,10 @@ public class HlslSimpleWriter : HlslWriter
             {
                 pairs.Add(swizzle[value * 2] / 2);
             }
+        }
+        if (pairs.Count == 0)
+        {
+            return null;
         }
         string name = GetDoubleRegisterName(registerKey);
         // A register with only the one pair of doubles in it is declared a double

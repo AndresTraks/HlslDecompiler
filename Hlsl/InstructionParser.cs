@@ -1608,7 +1608,7 @@ public class InstructionParser
         }
     }
 
-    private static IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
+    private IEnumerable<RegisterComponentKey> GetDestinationKeys(Instruction instruction)
     {
         int index = instruction.GetDestinationParamIndex().Value;
         int mask = instruction.GetDestinationWriteMask();
@@ -1616,11 +1616,75 @@ public class InstructionParser
         // each, so a double destination is keyed at the lower component of every
         // pair it writes and the upper ones get no value of their own. The pairs
         // are aligned - .xy and .zw - so what is left of the mask is bits 0 and 2.
-        if (instruction is D3D10Instruction { WritesDoubles: true })
+        if (instruction is D3D10Instruction d3d10)
         {
-            mask &= 0b0101;
+            mask = d3d10.WritesDoubles
+                ? mask & 0b0101
+                : GetStructuredValueMask(d3d10, mask);
         }
         return GetParameterRegisterKeys(instruction, index, mask);
+    }
+
+    /// <summary>
+    /// The components of a structured load or store that begin a value of the
+    /// element, where the element holds doubles. A double is eight bytes and the
+    /// components count in four, so two of them carry one number: a load of a
+    /// StructuredBuffer&lt;double&gt; is `ld_structured r0.xy` for the one value, and
+    /// keyed a value to each component the second one named a member of the element
+    /// that is not there. Unchanged for every other instruction and every element
+    /// without a double in it, which is all but a handful of shaders.
+    /// </summary>
+    private int GetStructuredValueMask(D3D10Instruction instruction, int mask)
+    {
+        const int ByteOffsetOperand = 2;
+        int resourceOperand = instruction.Opcode switch
+        {
+            D3D10Opcode.LdStructured => 3,
+            D3D10Opcode.StoreStructured => 0,
+            _ => -1,
+        };
+        if (resourceOperand < 0)
+        {
+            return mask;
+        }
+        RegisterKey resourceKey = instruction.GetParamRegisterKey(resourceOperand);
+        if (!_registerState.HasDoubleStructuredMember(resourceKey))
+        {
+            return mask;
+        }
+        int elementByteOffset = instruction.GetOperandType(ByteOffsetOperand) == OperandType.Immediate32
+            ? instruction.GetParamInt(ByteOffsetOperand, 0)
+            : 0;
+        // Which part of the element a component is: a load says so on its resource
+        // operand, whose swizzle picks the member each destination component takes,
+        // and a store by the mask's own position - `store_structured u0.xyz, i,
+        // l(8), ...` writes the element from byte eight on.
+        byte[] swizzle = instruction.Opcode == D3D10Opcode.LdStructured
+            ? instruction.GetSourceSwizzleComponents(resourceOperand)
+            : null;
+        var elementComponents = new List<int>();
+        int valueMask = 0;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            int elementComponent = swizzle != null ? swizzle[component] : component;
+            elementComponents.Add(elementComponent);
+            if (!_registerState.IsDoubleStructuredMemberUpperHalf(
+                resourceKey, elementByteOffset + elementComponent * 4))
+            {
+                valueMask |= 1 << component;
+            }
+        }
+        if (_registerState.MixesDoubleStructuredMembers(
+            resourceKey, elementByteOffset, elementComponents))
+        {
+            throw new NotImplementedException(
+                $"{instruction.Opcode} of a double beside another member of the element");
+        }
+        return valueMask;
     }
 
     private static IEnumerable<RegisterComponentKey> GetParameterRegisterKeys(Instruction instruction, int index, int mask)

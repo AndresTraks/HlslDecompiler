@@ -110,6 +110,8 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "gather_channels")]
     [TestCase("ps_5_0", "attribute_evaluate")]
     [TestCase("ps_5_0", "attribute_snapped")]
+    [TestCase("ps_5_0", "microfacet_lighting")]
+    [TestCase("ps_5_0", "occlusion_kernel")]
     [TestCase("ps_5_0", "attribute_centroid")]
     [TestCase("ps_5_0", "sample_position")]
     [TestCase("ps_5_0", "sample_position_constant")]

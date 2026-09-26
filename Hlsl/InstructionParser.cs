@@ -22,6 +22,18 @@ public class InstructionParser
     private readonly Dictionary<HlslTreeNode, bool> _storedTypes =
         new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>
+    /// The values that are doubles. A double is not something a value can be asked -
+    /// an addition of two of them is the same node as an addition of two floats - and
+    /// not something the register can be asked either, because fxc reuses a register
+    /// for a double in one place and a float in another and a set of register
+    /// components has no notion of when. It is a fact about the value, recorded where
+    /// the value is made, and the one thing that needs it is the plain mov fxc copies
+    /// a double's raw halves with.
+    /// </summary>
+    private readonly HashSet<HlslTreeNode> _doubleValues =
+        new(ReferenceEqualityComparer.Instance);
+
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
     private IList<IStatement> ActiveStatementSequence
@@ -98,7 +110,7 @@ public class InstructionParser
         }
 
         ResolvePolymorphicImmediates();
-        return new HlslAst(_statements, _registerState);
+        return new HlslAst(_statements, _registerState, _doubleValues);
     }
 
     private void ParseInstruction(D3D9Instruction instruction)
@@ -1599,6 +1611,10 @@ public class InstructionParser
             {
                 instructionTree = new SaturateOperation(instructionTree);
             }
+            if (IsDoubleResult(instruction, destinationKey))
+            {
+                _doubleValues.Add(instructionTree);
+            }
             newOutputs[destinationKey] = instructionTree;
         }
 
@@ -1620,9 +1636,88 @@ public class InstructionParser
         {
             mask = d3d10.WritesDoubles
                 ? mask & 0b0101
-                : GetStructuredValueMask(d3d10, mask);
+                : GetMovedDoubleMask(d3d10, GetStructuredValueMask(d3d10, mask));
         }
         return GetParameterRegisterKeys(instruction, index, mask);
+    }
+
+    /// <summary>
+    /// Whether the value an instruction writes at a destination is a double. The
+    /// double instructions say so by their opcode; a structured load by the member it
+    /// reads; and a mov by what it is moving, which is the only way to tell - fxc
+    /// assembles a double vector out of plain movs of the raw halves, and nothing
+    /// about `mov r0.zw, r0.xxxy` says it carries one number rather than two floats.
+    /// </summary>
+    private bool IsDoubleResult(D3D10Instruction instruction, RegisterComponentKey destinationKey)
+    {
+        if (instruction.WritesDoubles)
+        {
+            return true;
+        }
+        if (instruction.Opcode == D3D10Opcode.LdStructured)
+        {
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
+            int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                ? instruction.GetParamInt(2, 0)
+                : 0;
+            return _registerState.IsDoubleStructuredMember(
+                instruction.GetParamRegisterKey(3),
+                elementByteOffset + swizzle[destinationKey.ComponentIndex] * 4);
+        }
+        return instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.DMov
+            && IsMovedDouble(instruction, destinationKey.ComponentIndex);
+    }
+
+    /// <summary>
+    /// Whether a mov is carrying a double: the value sitting at the component it
+    /// reads is one. Asked of the live value rather than of the register, so a
+    /// register that held a double earlier and holds a float now answers for the
+    /// float.
+    /// </summary>
+    private bool IsMovedDouble(D3D10Instruction instruction, int destinationComponent)
+    {
+        if (instruction.GetOperandType(1) is OperandType.Immediate32
+            or OperandType.Immediate64)
+        {
+            return false;
+        }
+        RegisterComponentKey sourceKey;
+        try
+        {
+            sourceKey = GetParamRegisterComponentKey(instruction, 1, destinationComponent);
+        }
+        catch (NotImplementedException)
+        {
+            return false;
+        }
+        return ActiveOutputs != null
+            && ActiveOutputs.TryGetValue(sourceKey, out HlslTreeNode source)
+            && _doubleValues.Contains(source);
+    }
+
+    /// <summary>
+    /// The components of a mov that begin a value, where it is copying doubles. fxc
+    /// moves a double as the two raw components it is - `mov r0.zw, r0.xxxy` puts the
+    /// pair at r0.xy into the pair at r0.zw - and keyed a value to each of them the
+    /// upper one asked for a half no value was ever keyed at.
+    /// </summary>
+    private int GetMovedDoubleMask(D3D10Instruction instruction, int mask)
+    {
+        if (instruction.Opcode != D3D10Opcode.Mov)
+        {
+            return mask;
+        }
+        int valueMask = mask;
+        for (int pair = 0; pair < 4; pair += 2)
+        {
+            // Both halves of an aligned pair, and the lower one carrying a double:
+            // anything else is the mov of floats it looks like.
+            if ((mask & (0b11 << pair)) == (0b11 << pair) && IsMovedDouble(instruction, pair))
+            {
+                valueMask &= ~(1 << (pair + 1));
+            }
+        }
+        return valueMask;
     }
 
     /// <summary>

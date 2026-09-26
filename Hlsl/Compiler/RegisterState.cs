@@ -368,7 +368,7 @@ public sealed class RegisterState
         return anyDouble && anyOther;
     }
 
-    private bool IsDoubleStructuredMember(RegisterKey resourceKey, int byteAddress)
+    public bool IsDoubleStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
         return FindStructuredTypeAt(resourceKey, byteAddress) is var (type, _)
             && type.ParameterType == ParameterType.Double;

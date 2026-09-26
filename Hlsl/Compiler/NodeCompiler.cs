@@ -46,13 +46,32 @@ public sealed class NodeCompiler
 
     public const int PromoteToAnyVectorSize = -1;
 
+    // The values the parser recorded as doubles; see HlslAst.DoubleValues.
+    private readonly ISet<HlslTreeNode> _doubleValues;
+
+    /// <summary>
+    /// Whether a value is a double. A variable is not one of the parsed values - it
+    /// was made to stand for one - so it answers from its own declared type, which
+    /// was settled from the record when the variable was created.
+    /// </summary>
+    private bool IsDoubleValued(HlslTreeNode node)
+    {
+        return node switch
+        {
+            TempVariableNode variable => variable.IsDouble,
+            TempAssignmentNode assignment => assignment.TempVariable.IsDouble,
+            _ => _doubleValues.Contains(node),
+        };
+    }
+
     // The variable of the innermost counted loop, which aL refers to. The writer
     // generates that name from the nesting depth, so it has to be handed in.
     public string LoopVariableName { get; set; }
 
-    public NodeCompiler(RegisterState registers)
+    public NodeCompiler(RegisterState registers, ISet<HlslTreeNode> doubleValues = null)
     {
         _registers = registers;
+        _doubleValues = doubleValues ?? new HashSet<HlslTreeNode>();
         _nodeGrouper = new NodeGrouper(registers);
         _constantCompiler = new ConstantCompiler();
         _matrixMultiplicationCompiler = new MatrixMultiplicationCompiler(this);
@@ -672,9 +691,14 @@ public sealed class NodeCompiler
         // of them computes a float - a constructor inside the float half of an
         // integer assignment, `dot(levels.xyz, float3(...))` under a cast to uint -
         // an int constructor truncates it before the arithmetic that wanted it.
-        string type = _assigningToInteger && !components.Any(IsFloatValued)
-            ? "int"
-            : "float";
+        // A vector of doubles is a double vector, whatever the assignment wants:
+        // `float2(a, b)` over two doubles rounds both of them on the way into a
+        // buffer that holds neither.
+        string type = components.All(IsDoubleValued)
+            ? "double"
+            : _assigningToInteger && !components.Any(IsFloatValued)
+                ? "int"
+                : "float";
         IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
         return $"{type}{components.Count}({string.Join(", ", compiledConstructorParts)})";
     }

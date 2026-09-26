@@ -11,6 +11,7 @@ public class HlslAstWriter : HlslWriter
 {
     private NodeCompiler _compiler;
     private NodeGrouper _grouper;
+    private ISet<HlslTreeNode> _doubleValues = new HashSet<HlslTreeNode>();
     private TemplateMatcher _templateMatcher;
     private int _loopDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
@@ -73,12 +74,13 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteAst(HlslAst ast)
     {
-        _compiler = new NodeCompiler(_registers);
+        _doubleValues = ast.DoubleValues;
+        _compiler = new NodeCompiler(_registers, _doubleValues);
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
         StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
-            HasOutputStruct, CreateIntegerOperandAnalysis());
+            HasOutputStruct, CreateIntegerOperandAnalysis(), _doubleValues);
         FindDeclaredVariables(ast.Statements);
         WriteStatements(ast.Statements);
     }
@@ -2135,6 +2137,10 @@ public class HlslAstWriter : HlslWriter
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
         bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
         bool isBits = nodes.All(node => StatementFinalizer.IsBitsVariable(node, isInteger));
+        // A double where every component is one, the way an integer is. The value is
+        // not asked - a multiply of two doubles is the same node either way - so what
+        // answers is the record the parser kept of what the instructions wrote.
+        bool isDouble = !isInteger && nodes.All(_doubleValues.Contains);
         // Unsigned only where every component is, and not for bits: those are a
         // float's, and calling them uint says something about them that is not so.
         bool isUnsigned = isInteger && !isBits
@@ -2144,6 +2150,7 @@ public class HlslAstWriter : HlslWriter
             variable.IsInteger = isInteger;
             variable.IsBits = isBits;
             variable.IsUnsigned = isUnsigned;
+            variable.IsDouble = isDouble;
         }
         return variables;
     }

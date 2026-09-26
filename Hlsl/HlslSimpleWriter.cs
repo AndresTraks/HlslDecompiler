@@ -251,6 +251,48 @@ public class HlslSimpleWriter : HlslWriter
     /// so that the nth of them is at slot 2n.
     /// </summary>
     /// <summary>
+    /// A plain mov carrying a double, which this writer cannot say. fxc assembles a
+    /// double vector out of movs of the raw halves - `mov r0.zw, r0.xxxy` - and the
+    /// shadow variables here are picked per instruction from the opcode and the
+    /// element, neither of which says that a mov is copying one number rather than
+    /// two floats. Saying nothing wrote `r0.zw = r0.xy` beside a shadow holding the
+    /// value, which compiles and computes something else; deciding it needs the
+    /// writer to walk the instructions keeping track of what each register pair holds
+    /// as it goes, the way the expression writer's parser does.
+    /// </summary>
+    private void CheckNoMovedDouble(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode != D3D10Opcode.Mov || _integerOperandAnalysis == null)
+        {
+            return;
+        }
+        RegisterKey destination = instruction.GetParamRegisterKey(0);
+        if (destination is not D3D10RegisterKey { IsTempRegister: true })
+        {
+            return;
+        }
+        int mask = instruction.GetWriteMask(0);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+        RegisterKey source = instruction.GetParamRegisterKey(1);
+        for (int pair = 0; pair < 4; pair += 2)
+        {
+            if ((mask & (0b11 << pair)) != (0b11 << pair))
+            {
+                continue;
+            }
+            bool movesDouble =
+                _integerOperandAnalysis.IsDoubleRegister(new RegisterComponentKey(destination, pair))
+                || (source is D3D10RegisterKey { IsTempRegister: true }
+                    && _integerOperandAnalysis.IsDoubleRegister(
+                        new RegisterComponentKey(source, swizzle[pair])));
+            if (movesDouble)
+            {
+                throw new NotImplementedException("mov of a double's halves");
+            }
+        }
+    }
+
+    /// <summary>
     /// A double a constant buffer holds, named by which element of its variable it is
     /// rather than by the components it takes: the second double of a double2 is at
     /// cb0[0].zw, and the swizzle a register read would give it calls it `.zw`. A
@@ -1362,6 +1404,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstructionStatement(D3D10Instruction instruction)
     {
+        CheckNoMovedDouble(instruction);
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:

@@ -15,21 +15,25 @@ public class StatementFinalizer
     // without one each branch has to carry its own value out.
     private readonly bool _hasOutputStruct;
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
+    private readonly ISet<HlslTreeNode> _doubleValues;
 
     private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue,
-        bool hasOutputStruct, IntegerOperandAnalysis integerOperandAnalysis)
+        bool hasOutputStruct, IntegerOperandAnalysis integerOperandAnalysis,
+        ISet<HlslTreeNode> doubleValues)
     {
         _statements = statements;
         _hasReturnValue = hasReturnValue;
         _hasOutputStruct = hasOutputStruct;
         _integerOperandAnalysis = integerOperandAnalysis;
+        _doubleValues = doubleValues ?? new HashSet<HlslTreeNode>();
     }
 
     public static void Finalize(IList<IStatement> statements, bool hasReturnValue,
-        bool hasOutputStruct = false, IntegerOperandAnalysis integerOperandAnalysis = null)
+        bool hasOutputStruct = false, IntegerOperandAnalysis integerOperandAnalysis = null,
+        ISet<HlslTreeNode> doubleValues = null)
     {
         var finalizer = new StatementFinalizer(
-            statements, hasReturnValue, hasOutputStruct, integerOperandAnalysis);
+            statements, hasReturnValue, hasOutputStruct, integerOperandAnalysis, doubleValues);
         finalizer.FinalizeStatements();
     }
 
@@ -352,12 +356,13 @@ public class StatementFinalizer
                             // Not for bits: those are a float's, and calling them uint
                             // says something about them that is not so.
                             IsUnsigned = isInteger && !isBits && isUnsignedValue == true,
-                            // A double is one because the register holds one: the
-                            // arithmetic over it is the same addition and multiply
-                            // whatever its operands are made of, so the value cannot
-                            // be asked and neither can its readers.
-                            IsDouble = !isInteger
-                                && _integerOperandAnalysis?.IsDoubleRegister(newAssignment.Key) == true,
+                            // A double is one because the instruction that wrote it
+                            // said so: the arithmetic over it is the same addition
+                            // and multiply whatever its operands are made of, so
+                            // neither the value nor its readers can be asked, and
+                            // the register cannot either - fxc reuses one for a
+                            // double here and a float there.
+                            IsDouble = !isInteger && _doubleValues.Contains(tempValue),
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything

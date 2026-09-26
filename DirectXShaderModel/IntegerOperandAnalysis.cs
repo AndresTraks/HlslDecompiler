@@ -957,8 +957,21 @@ public sealed class IntegerOperandAnalysis
             byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
             for (int component = 0; component < 4; component++)
             {
-                if ((writeMask & (1 << component)) != 0
-                    && !integerRegisters.Contains(new RegisterComponentKey(source, swizzle[component])))
+                if ((writeMask & (1 << component)) == 0)
+                {
+                    continue;
+                }
+                var sourceComponent = new RegisterComponentKey(source, swizzle[component]);
+                // Integer, and not float as well. Which registers hold integers is a
+                // question asked of the whole shader at once, so a component used for
+                // an integer anywhere counts as one everywhere - and fxc reuses a
+                // register freely. A local array filled from a float buffer, whose
+                // addresses fxc worked out in the same register the loads came back
+                // in, was declared int4 on the strength of the addresses: every value
+                // stored into it was truncated on the way in and converted back on the
+                // way out, eight ftoi instructions and the wrong numbers.
+                if (!integerRegisters.Contains(sourceComponent)
+                    || IsFloatTouched(sourceComponent))
                 {
                     return false;
                 }

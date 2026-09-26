@@ -254,6 +254,7 @@ public class DecompileDxbcTests
     [TestCase("cs_4_1", "groupshared_struct")]
     [TestCase("cs_5_0", "histogram")]
     [TestCase("cs_5_0", "groupshared_atomic")]
+    [TestCase("cs_5_0", "groupshared_neighbours")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

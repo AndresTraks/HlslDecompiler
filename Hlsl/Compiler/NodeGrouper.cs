@@ -243,10 +243,22 @@ public class NodeGrouper
         // grouped as one read and the components of the second were named at the
         // offset of the first - a load of `v[2].x` beside one of `v[2].yzw` came out
         // as `v[2].xxyz`.
-        if (node1 is LoadStructuredNode load1 && node2 is LoadStructuredNode load2
-            && load1.ElementByteOffset != load2.ElementByteOffset)
+        if (node1 is LoadStructuredNode load1 && node2 is LoadStructuredNode load2)
         {
-            return false;
+            if (load1.ElementByteOffset != load2.ElementByteOffset)
+            {
+                return false;
+            }
+            // And two loads are components of one value only where they read the same
+            // address - the same node, not merely one that groups alongside it. The
+            // components of a single load share their address node; two loads at two
+            // addresses are two reads, and grouping them made the subscript a vector.
+            // `tile[index + 1]` beside `tile[index + 2]` came out as
+            // `tile[index + int2(1, 2)]`, which is not an index HLSL has.
+            if (!ReferenceEquals(load1.Address, load2.Address))
+            {
+                return false;
+            }
         }
 
         if (node1 is IHasComponentIndex ||

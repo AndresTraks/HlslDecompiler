@@ -341,38 +341,6 @@ public sealed class RegisterState
             && (byteAddress - memberOffset) % 8 != 0;
     }
 
-    /// <summary>
-    /// Whether a structured load or store takes a double and something else in the
-    /// one instruction - `ld_structured r1.xyz, i, l(8), t0.xyzx` over a struct whose
-    /// double is followed by a uint. Neither writer can say it: a double is named as
-    /// the one value it is and its neighbours as components beside it, and one
-    /// statement cannot be both. Thrown on rather than written wrongly.
-    /// </summary>
-    public bool MixesDoubleStructuredMembers(
-        RegisterKey resourceKey, int elementByteOffset, IEnumerable<int> elementComponents)
-    {
-        if (!HasDoubleStructuredMember(resourceKey))
-        {
-            return false;
-        }
-        bool anyDouble = false;
-        bool anyOther = false;
-        foreach (int component in elementComponents)
-        {
-            int byteAddress = elementByteOffset + component * 4;
-            if (IsDoubleStructuredMemberUpperHalf(resourceKey, byteAddress)
-                || IsDoubleStructuredMember(resourceKey, byteAddress))
-            {
-                anyDouble = true;
-            }
-            else
-            {
-                anyOther = true;
-            }
-        }
-        return anyDouble && anyOther;
-    }
-
     public bool IsDoubleStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
         return FindStructuredTypeAt(resourceKey, byteAddress) is var (type, _)

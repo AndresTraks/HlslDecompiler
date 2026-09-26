@@ -208,12 +208,30 @@ public class HlslSimpleWriter : HlslWriter
             }
             foreach (int destination in GetDestinationParamIndices(d3d10))
             {
-                if (!Equals(d3d10.GetParamRegisterKey(destination), registerKey)
-                    || GetDoubleRegisterOperandName(d3d10, destination) != null)
+                if (!Equals(d3d10.GetParamRegisterKey(destination), registerKey))
                 {
                     continue;
                 }
-                mask |= d3d10.GetWriteMask(destination);
+                // Per statement, not per instruction: a load that takes a double and
+                // a uint of the element is written as two, and only the double's half
+                // of it goes through the shadow. Counted whole, the uint's component
+                // was held to be a double's and the register went undeclared.
+                int[] split = SplitPackedOutputMasks(d3d10) ?? SplitDoubleElementMasks(d3d10);
+                foreach (int part in split ?? [d3d10.GetWriteMask(destination)])
+                {
+                    _destinationMaskOverride = split == null ? null : part;
+                    try
+                    {
+                        if (GetDoubleRegisterOperandName(d3d10, destination) == null)
+                        {
+                            mask |= part;
+                        }
+                    }
+                    finally
+                    {
+                        _destinationMaskOverride = null;
+                    }
+                }
             }
         }
         return mask;
@@ -246,6 +264,13 @@ public class HlslSimpleWriter : HlslWriter
     /// value the instruction computes, and fxc repeats the pair across the swizzle
     /// so that the nth of them is at slot 2n.
     /// </summary>
+    // The components of the destination this statement writes, which for an
+    // instruction written as several is the part of it being written now.
+    private int DestinationMask(D3D10Instruction instruction)
+    {
+        return _destinationMaskOverride ?? instruction.GetWriteMask(0);
+    }
+
     /// <summary>
     /// Whether the member a structured load or store reaches is a double. Asked at
     /// the first component the mask names rather than of the element as a whole: an
@@ -254,7 +279,7 @@ public class HlslSimpleWriter : HlslWriter
     /// </summary>
     private bool IsDoubleStructuredComponent(D3D10Instruction instruction, int resourceOperand)
     {
-        int mask = instruction.GetWriteMask(0);
+        int mask = DestinationMask(instruction);
         int component = FirstComponent(mask);
         int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
             ? instruction.GetParamInt(2, 0)
@@ -265,49 +290,6 @@ public class HlslSimpleWriter : HlslWriter
         return _registers.IsDoubleStructuredMember(
             instruction.GetParamRegisterKey(resourceOperand),
             elementByteOffset + elementComponent * 4);
-    }
-
-    /// <summary>
-    /// A structured load or store that takes a double and another member of the
-    /// element in the one instruction - `ld_structured r1.xyz, i, l(8), t0.xyzx` over
-    /// a struct whose double is followed by a uint. The expression writer splits that
-    /// into an assignment per member; this one writes a statement per instruction,
-    /// and the register it reads or writes would have to be the shadow for part of
-    /// its components and itself for the rest.
-    /// </summary>
-    private void CheckNoMixedDoubleElement(D3D10Instruction instruction)
-    {
-        int resourceOperand = instruction.Opcode switch
-        {
-            D3D10Opcode.LdStructured => 3,
-            D3D10Opcode.StoreStructured => 0,
-            _ => -1,
-        };
-        if (resourceOperand < 0)
-        {
-            return;
-        }
-        int mask = instruction.GetWriteMask(0);
-        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
-            ? instruction.GetParamInt(2, 0)
-            : 0;
-        byte[] swizzle = resourceOperand == 3
-            ? instruction.GetSourceSwizzleComponents(3)
-            : null;
-        var components = new List<int>();
-        for (int component = 0; component < 4; component++)
-        {
-            if ((mask & (1 << component)) != 0)
-            {
-                components.Add(swizzle != null ? swizzle[component] : component);
-            }
-        }
-        if (_registers.MixesDoubleStructuredMembers(
-            instruction.GetParamRegisterKey(resourceOperand), elementByteOffset, components))
-        {
-            throw new NotImplementedException(
-                $"{instruction.Opcode} of a double beside another member of the element");
-        }
     }
 
     /// <summary>
@@ -517,7 +499,7 @@ public class HlslSimpleWriter : HlslWriter
         // names, which is the destination's mask and not this operand's swizzle.
         else if (isStructuredDouble && !isDestination)
         {
-            int storeMask = instruction.GetWriteMask(0) & 0b0101;
+            int storeMask = DestinationMask(instruction) & 0b0101;
             byte[] storeSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             for (int component = 0; component < 4; component += 2)
             {
@@ -529,7 +511,8 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (isDestination)
         {
-            int mask = instruction.GetWriteMask(operandIndex) & 0b0101;
+            int mask = (operandIndex == 0 ? DestinationMask(instruction)
+                : instruction.GetWriteMask(operandIndex)) & 0b0101;
             for (int component = 0; component < 4; component += 2)
             {
                 if ((mask & (1 << component)) != 0)
@@ -1537,9 +1520,63 @@ public class HlslSimpleWriter : HlslWriter
         return masks.Count > 1 ? [.. masks] : null;
     }
 
+    /// <summary>
+    /// A structured load or store that takes a double and another member of the
+    /// element at once - `ld_structured r1.xyz, i, l(8), t0.xyzx` over a struct whose
+    /// double is followed by a uint - split into the masks each member wants. One
+    /// statement cannot be both: the register is the shadow variable for the double's
+    /// two components and itself for the rest, and a run of each is one statement.
+    /// Null where the element holds no double or the whole mask is one kind.
+    /// </summary>
+    private int[] SplitDoubleElementMasks(D3D10Instruction instruction)
+    {
+        int resourceOperand = instruction.Opcode switch
+        {
+            D3D10Opcode.LdStructured => 3,
+            D3D10Opcode.StoreStructured => 0,
+            _ => -1,
+        };
+        if (resourceOperand < 0
+            || !_registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(resourceOperand)))
+        {
+            return null;
+        }
+        RegisterKey resourceKey = instruction.GetParamRegisterKey(resourceOperand);
+        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+            ? instruction.GetParamInt(2, 0)
+            : 0;
+        byte[] swizzle = resourceOperand == 3
+            ? instruction.GetSourceSwizzleComponents(3)
+            : null;
+        int mask = instruction.GetWriteMask(0);
+        var masks = new List<int>();
+        bool? last = null;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            int elementComponent = swizzle != null ? swizzle[component] : component;
+            int byteAddress = elementByteOffset + elementComponent * 4;
+            bool isDouble = _registers.IsDoubleStructuredMember(resourceKey, byteAddress);
+            // The upper half of a double belongs with the value it is half of, not
+            // with whatever follows: a run breaks where the kind changes, and the
+            // top half of a number is the same kind as its bottom half.
+            if (isDouble != last)
+            {
+                masks.Add(0);
+                last = isDouble;
+            }
+            masks[^1] |= 1 << component;
+        }
+        return masks.Count > 1 ? [.. masks] : null;
+    }
+
     private void WriteInstruction(D3D10Instruction instruction)
     {
-        int[] split = SplitPackedOutputMasks(instruction);
+        int[] split = SplitPackedOutputMasks(instruction)
+            ?? SplitDoubleElementMasks(instruction);
         if (split == null)
         {
             WriteInstructionStatement(instruction);
@@ -1561,7 +1598,6 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstructionStatement(D3D10Instruction instruction)
     {
-        CheckNoMixedDoubleElement(instruction);
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
@@ -1820,11 +1856,14 @@ public class HlslSimpleWriter : HlslWriter
                     // Which components of the element are read, in the order the
                     // destination mask writes them.
                     byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
-                    int writeMask = instruction.GetDestinationWriteMask();
-                    // One entry per value the load reads, which for a double element
-                    // is one per pair of components: counted per component, a struct
-                    // of two doubles named four members and built a float4 of them.
-                    int loadPerElement = _registers.GetStructuredComponentsPerElement(buffer);
+                    int writeMask = DestinationMask(instruction);
+                    // One entry per value the load reads, which for a double is one
+                    // per pair of components: counted per component, a struct of two
+                    // doubles named four members and built a float4 of them. Asked of
+                    // the member this statement reads rather than of the element, so
+                    // that a float beside a double in one is still one value to one
+                    // component.
+                    int loadPerElement = IsDoubleStructuredComponent(instruction, 3) ? 2 : 1;
                     List<int> loaded = [.. Enumerable.Range(0, 4)
                         .Where(c => (writeMask & (1 << c)) != 0)];
                     List<int> read = [];
@@ -2268,10 +2307,10 @@ public class HlslSimpleWriter : HlslWriter
                     // of them, and writing it as one assignment kept only the last.
                     RegisterKey buffer = instruction.GetParamRegisterKey(0);
                     string element = $"{GetOperandName(instruction, 0)}[{GetOperandName(instruction, 1)}]";
-                    int writeMask = instruction.GetWriteMask(0);
+                    int writeMask = DestinationMask(instruction);
                     // One entry per value the store writes, the way the load reads
                     // them: a double takes two components and is one member.
-                    int storePerElement = _registers.GetStructuredComponentsPerElement(buffer);
+                    int storePerElement = IsDoubleStructuredComponent(instruction, 0) ? 2 : 1;
                     List<int> masked = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
                     List<int> written = [];
                     for (int value = 0; value < masked.Count; value += storePerElement)
@@ -2290,11 +2329,18 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         // Which part of the value operand goes here, counted in the
                         // values it holds: the second double of a shadow is its .y,
-                        // where the register's components make it the .z.
-                        string picked = "." + string.Concat(
-                            values.Select(v => "xyzw"[valueSwizzle[written[v]] / storePerElement]));
+                        // where the register's components make it the .z. A shadow
+                        // holding one double has no halves to pick from, and `d0.x`
+                        // off a double is not HLSL.
+                        string valueName = GetOperandName(instruction, 3);
+                        bool isWholeShadow = storePerElement == 2
+                            && GetDoublePairMask(instruction.GetParamRegisterKey(3)) == 1;
+                        string picked = isWholeShadow
+                            ? ""
+                            : "." + string.Concat(
+                                values.Select(v => "xyzw"[valueSwizzle[written[v]] / storePerElement]));
                         WriteLine("{0} = {1}{2};", name,
-                            GetOperandName(instruction, 3).Split('.')[0], picked);
+                            isWholeShadow ? valueName : valueName.Split('.')[0], picked);
                     }
                     break;
                 }

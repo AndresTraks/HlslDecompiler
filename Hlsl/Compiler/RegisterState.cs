@@ -366,8 +366,13 @@ public sealed class RegisterState
         {
             return members.Max(m => m.ByteOffset + GetMemberByteSize(m.TypeInfo));
         }
+        // A matrix in a structured buffer element is packed tight, not a register a
+        // row: a float3x3 is thirty six bytes, which is what its buffer's stride says.
+        // Sized as three registers it ran to forty eight, so every member after it was
+        // found twelve bytes early - a float4x4 following one was read as the tail of
+        // the matrix, and the output did not compile.
         return typeInfo.Rows > 1
-            ? GetMemberRegisterCount(typeInfo) * 16
+            ? typeInfo.Rows * typeInfo.Columns * 4
             : typeInfo.Columns * 4;
     }
 

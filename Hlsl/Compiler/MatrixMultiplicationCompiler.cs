@@ -10,8 +10,38 @@ public sealed class MatrixMultiplicationCompiler
         this.nodeCompiler = nodeCompiler;
     }
 
+    /// <summary>
+    /// A matrix a structured buffer holds, named from the buffer and the element
+    /// rather than from a constant declaration: `instances[id].world`. Which side it
+    /// goes on is the same question as for any other matrix, and asked the same way.
+    /// </summary>
+    private string CompileStructured(MatrixMultiplicationContext context)
+    {
+        string element = nodeCompiler.CompileAsInteger([context.StructuredElement]);
+        string matrixName =
+            $"{context.StructuredBufferName}[{element}]{context.StructuredMemberPath}";
+        ShaderTypeInfo matrixType = context.MatrixTypeInfo;
+        bool matrixByVector = matrixType.ParameterClass == ParameterClass.MatrixRows
+            ? !context.IsMatrixByVector
+            : context.IsMatrixByVector;
+        int rows = matrixByVector ? context.MatrixRowCount : context.MatrixColumnCount;
+        int columns = matrixByVector ? context.MatrixColumnCount : context.MatrixRowCount;
+        if (rows != matrixType.Rows || columns != matrixType.Columns)
+        {
+            matrixName = $"(float{rows}x{columns}){matrixName}";
+        }
+        string vector = nodeCompiler.Compile(context.Vector);
+        return matrixByVector
+            ? $"mul({matrixName}, {vector})"
+            : $"mul({vector}, {matrixName})";
+    }
+
     public string Compile(MatrixMultiplicationContext context)
     {
+        if (context.StructuredElement != null)
+        {
+            return CompileStructured(context);
+        }
         string matrixName = context.MatrixDeclaration.Name;
         if (context.ElementIndexNode != null)
         {

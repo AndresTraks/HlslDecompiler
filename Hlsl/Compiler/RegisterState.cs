@@ -377,6 +377,36 @@ public sealed class RegisterState
         return GetElementByteSize(typeInfo) * Math.Max(typeInfo.NumElements, 1);
     }
 
+    /// <summary>
+    /// The matrix a structured buffer element holds at a byte offset, with the path
+    /// that names it from the element - empty where the element is the matrix, and
+    /// `.world` where a member is. Null where the offset is not a matrix's first row,
+    /// which is what tells a run of dot products over one element apart from a matrix
+    /// multiplication over it.
+    /// </summary>
+    public (string MemberPath, ShaderTypeInfo TypeInfo)? FindStructuredMatrixAt(
+        RegisterKey resourceKey, int byteOffset)
+    {
+        ShaderTypeInfo element = FindStructuredBuffer(resourceKey)?.ElementType;
+        if (element == null)
+        {
+            return null;
+        }
+        if (element.MemberInfo == null || element.MemberInfo.Count == 0)
+        {
+            return element.Rows > 1 && byteOffset == 0 ? ("", element) : null;
+        }
+        foreach (ShaderStructMemberInfo member in element.MemberInfo)
+        {
+            if (member.ByteOffset == byteOffset && member.TypeInfo.Rows > 1
+                && member.TypeInfo.NumElements <= 1)
+            {
+                return ($".{member.Name}", member.TypeInfo);
+            }
+        }
+        return null;
+    }
+
     public string ApplyStructuredElementRow(RegisterKey resourceKey, string element, int byteOffset)
     {
         ResourceDefinition resource = FindStructuredBuffer(resourceKey);

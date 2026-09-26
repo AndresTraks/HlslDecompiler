@@ -110,6 +110,16 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
+        // A matrix in a structured buffer is read as one load per row rather than as a
+        // run of constant registers, so none of the register arithmetic below sees it.
+        // It is recognised on its own terms instead, and cannot collide with that: a
+        // row there is a RegisterInputNode or a RelativeAddressNode, and never a load.
+        MatrixMultiplicationContext structured = TryGetStructuredMultiplicationGroup(components);
+        if (structured != null)
+        {
+            return structured;
+        }
+
         IList<HlslTreeNode> firstMatrixRow = TryGetMatrixRow(firstDot, firstDot, 0);
         if (firstMatrixRow == null)
         {
@@ -174,6 +184,119 @@ public class MatrixMultiplicationGrouper
             MemberPath = rowMatrix.MemberPath,
             MatrixTypeInfo = rowMatrix.MatrixType,
         };
+    }
+
+    /// <summary>
+    /// A vector multiplied by a matrix a structured buffer holds. fxc reads such a
+    /// matrix a row at a time - one ld_structured per row, at byte offsets sixteen
+    /// apart in the one element - and dots the vector against each, which is the same
+    /// shape a constant buffer matrix makes out of consecutive registers. Written as
+    /// the dot products they are, an instance transform came out as four lines of
+    /// `dot(v, transpose(instances[id].world)[row])` where the source said mul.
+    /// </summary>
+    private MatrixMultiplicationContext TryGetStructuredMultiplicationGroup(
+        IList<HlslTreeNode> components)
+    {
+        var rows = new List<IList<HlslTreeNode>>();
+        IList<HlslTreeNode> vector = null;
+        foreach (HlslTreeNode component in components)
+        {
+            if (component is not DotProductOperation dot)
+            {
+                break;
+            }
+            IList<HlslTreeNode> row = TryGetStructuredRow(dot);
+            if (row == null)
+            {
+                break;
+            }
+            IList<HlslTreeNode> other = ReferenceEquals(dot.X.Inputs, row)
+                ? dot.Y.Inputs
+                : dot.X.Inputs;
+            if (vector == null)
+            {
+                vector = other;
+            }
+            else if (!NodeGrouper.AreNodesEquivalent(vector, other))
+            {
+                break;
+            }
+            rows.Add(row);
+        }
+        if (rows.Count < 2)
+        {
+            return null;
+        }
+
+        // One element of one buffer, and the rows in order: sixteen bytes apart, the
+        // first of them where the matrix begins. Anything else is a run of loads that
+        // happens to be dotted, not a matrix multiplication.
+        const int BytesPerRow = 16;
+        var first = (LoadStructuredNode)rows[0][0];
+        RegisterKey resourceKey = ((RegisterInputNode)first.Value).RegisterComponentKey.RegisterKey;
+        for (int i = 1; i < rows.Count; i++)
+        {
+            var row = (LoadStructuredNode)rows[i][0];
+            if (!ReferenceEquals(row.Address, first.Address)
+                || row.ElementByteOffset != first.ElementByteOffset + i * BytesPerRow
+                || !((RegisterInputNode)row.Value).RegisterComponentKey.RegisterKey.Equals(resourceKey))
+            {
+                return null;
+            }
+        }
+
+        if (_registers.FindStructuredMatrixAt(resourceKey, first.ElementByteOffset)
+            is not (string memberPath, ShaderTypeInfo matrixType))
+        {
+            return null;
+        }
+        // As many rows as the matrix has, so that a shader dotting three rows of a
+        // float4x4 is not written as the whole of it.
+        if (matrixType.Rows != rows.Count)
+        {
+            return null;
+        }
+
+        // A load carries no component index of its own; the resource operand it reads
+        // does. Which way the row lies is the same question the constant buffer case
+        // asks - every component the register's first is a matrix read by column - and
+        // one load per row answers it with components zero upwards.
+        bool matrixByVector = rows[0].All(
+            c => ((IHasComponentIndex)((LoadStructuredNode)c).Value).ComponentIndex == 0);
+        return new MatrixMultiplicationContext(
+            [.. vector], null, matrixByVector, rows.Count, rows[0].Count)
+        {
+            StructuredBufferName = _registers.GetRegisterName(resourceKey),
+            StructuredElement = first.Address,
+            StructuredMemberPath = memberPath,
+            MatrixTypeInfo = matrixType,
+        };
+    }
+
+    /// <summary>
+    /// The side of a dot product that is one row of a structured buffer element: every
+    /// component a load from the one element at the one byte offset. The other side is
+    /// the vector.
+    /// </summary>
+    private static IList<HlslTreeNode> TryGetStructuredRow(DotProductOperation dot)
+    {
+        foreach (IList<HlslTreeNode> candidate in new[] { dot.X.Inputs, dot.Y.Inputs })
+        {
+            if (candidate.Count == 0
+                || candidate[0] is not LoadStructuredNode { IsRaw: false } head
+                || head.Value is not RegisterInputNode)
+            {
+                continue;
+            }
+            if (candidate.All(c => c is LoadStructuredNode { IsRaw: false } load
+                && load.Value is RegisterInputNode
+                && ReferenceEquals(load.Address, head.Address)
+                && load.ElementByteOffset == head.ElementByteOffset))
+            {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static IList<HlslTreeNode> SwizzleVector(IList<HlslTreeNode> vector, IList<HlslTreeNode> firstMatrixRow, bool matrixByVector)
@@ -473,7 +596,16 @@ public class MatrixMultiplicationContext
 
     public HlslTreeNode[] Vector { get; }
 
+    // Null for a matrix in a structured buffer, which no constant declares: the
+    // three properties below name it instead.
     public ConstantDeclaration MatrixDeclaration { get; }
+
+    // A matrix in a structured buffer: the buffer's name, the node picking the
+    // element, and the member within it. `instances`, `i.sv_instanceid`, `.world`.
+    public string StructuredBufferName { get; init; }
+    public HlslTreeNode StructuredElement { get; init; }
+    public string StructuredMemberPath { get; init; }
+
     public int? ElementIndex { get; init; }
     // The index expression of rows read through the address register, or null.
     public HlslTreeNode ElementIndexNode { get; init; }

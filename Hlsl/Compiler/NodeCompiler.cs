@@ -394,7 +394,8 @@ public sealed class NodeCompiler
     {
         return operation is AddOperation or SubtractOperation or MultiplyOperation
             or BitFieldExtractOperation or BitFieldInsertOperation
-            or MultiplyAddOperation or DivisionOperation or NegateOperation or AbsoluteOperation
+            or MultiplyAddOperation or FusedMultiplyAddOperation
+            or DivisionOperation or NegateOperation or AbsoluteOperation
             or MinimumOperation or MaximumOperation or SaturateOperation or ClampOperation
             or LinearInterpolateOperation or SmoothStepOperation or StepOperation
             or MoveConditionalOperation
@@ -1153,6 +1154,12 @@ public sealed class NodeCompiler
                     Compile(components.Select(g => g.Inputs[1])),
                     Compile(components.Select(g => g.Inputs[2])));
 
+            case FusedMultiplyAddOperation _:
+                return string.Format("fma({0}, {1}, {2})",
+                    Compile(components.Select(g => g.Inputs[0])),
+                    Compile(components.Select(g => g.Inputs[1])),
+                    Compile(components.Select(g => g.Inputs[2])));
+
             case SmoothStepOperation _:
                 return string.Format("smoothstep({0}, {1}, {2})",
                     Compile(components.Select(g => g.Inputs[0])),
@@ -1587,7 +1594,8 @@ public sealed class NodeCompiler
                 swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                     _registers.GetRegisterMaskedLength(shaderInput.RegisterComponentKey),
                     promoteToVectorSize,
-                    componentBase);
+                    componentBase,
+                    _registers.GetConstantComponentsPerElement(shaderInput.RegisterComponentKey));
             }
 
             // A named struct member identifies its register outright - each member
@@ -1835,9 +1843,7 @@ public sealed class NodeCompiler
             }
             else
             {
-                type = tempAssignment.TempVariable.IsInteger
-                    ? tempAssignment.TempVariable.IntegerTypeName
-                    : "float";
+                type = tempAssignment.TempVariable.TypeName;
                 if (tempAssignment.TempVariable.VariableSize > 1)
                 {
                     type += tempAssignment.TempVariable.VariableSize;
@@ -2230,7 +2236,8 @@ public sealed class NodeCompiler
     private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,
         int registerSize, 
         int promoteToVectorSize = PromoteToAnyVectorSize,
-        int componentBase = 0)
+        int componentBase = 0,
+        int componentsPerElement = 1)
     {
         if (registerSize == 1 || registerSize > 4)
         {
@@ -2245,7 +2252,8 @@ public sealed class NodeCompiler
         }
 
         string swizzleName = "";
-        foreach (int swizzle in inputs.Select(i => i.ComponentIndex - componentBase))
+        foreach (int swizzle in inputs.Select(
+            i => (i.ComponentIndex - componentBase) / componentsPerElement))
         {
             swizzleName += "xyzw"[swizzle];
         }

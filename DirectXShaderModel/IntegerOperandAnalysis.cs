@@ -6,6 +6,7 @@ namespace HlslDecompiler.DirectXShaderModel;
 public sealed class IntegerOperandAnalysis
 {
     private HashSet<RegisterComponentKey> _integerRegisters;
+    private HashSet<RegisterComponentKey> _doubleRegisters;
     private HashSet<RegisterComponentKey> _floatRegisters;
     private HashSet<RegisterComponentKey> _bitsRegisters;
     private HashSet<RegisterComponentKey> _maskRegisters;
@@ -54,6 +55,69 @@ public sealed class IntegerOperandAnalysis
     {
         _integerRegisters ??= FindIntegerRegisters(_shader);
         return _integerRegisters.Contains(registerComponent);
+    }
+
+    /// <summary>
+    /// Whether a register component holds a double - the lower of the two components
+    /// one takes, which is where the value is keyed. Unlike the integer question this
+    /// is not asked of the readers: a double is a double because a double instruction
+    /// wrote it or read it, and the arithmetic in between is the same addition and
+    /// multiplication whatever its operands are made of.
+    /// </summary>
+    public bool IsDoubleRegister(RegisterComponentKey registerComponent)
+    {
+        _doubleRegisters ??= FindDoubleRegisters(_shader);
+        return _doubleRegisters.Contains(registerComponent);
+    }
+
+    private static HashSet<RegisterComponentKey> FindDoubleRegisters(ShaderModel shader)
+    {
+        var doubleRegisters = new HashSet<RegisterComponentKey>();
+        foreach (Instruction instruction in shader.Instructions)
+        {
+            if (instruction is not D3D10Instruction d3d10 || !d3d10.HasDoubleOperands)
+            {
+                continue;
+            }
+            if (d3d10.WritesDoubles && d3d10.GetDestinationParamIndex() is int destination)
+            {
+                AddDoublePairs(doubleRegisters, d3d10, destination,
+                    d3d10.GetDestinationWriteMask());
+            }
+            // The sources as well as the destination: a double a load left in a
+            // register is one before any double instruction writes it, and the pair
+            // an operand names is what says so.
+            for (int operand = 1; operand <= 3; operand++)
+            {
+                if (!d3d10.IsDoubleOperand(operand))
+                {
+                    continue;
+                }
+                byte[] swizzle = d3d10.GetSourceSwizzleComponents(operand);
+                AddDoublePairs(doubleRegisters, d3d10, operand, 1 << swizzle[0]);
+            }
+        }
+        return doubleRegisters;
+    }
+
+    private static void AddDoublePairs(
+        HashSet<RegisterComponentKey> doubleRegisters,
+        D3D10Instruction instruction,
+        int operandIndex,
+        int mask)
+    {
+        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        if (registerKey == null)
+        {
+            return;
+        }
+        for (int component = 0; component < 4; component += 2)
+        {
+            if ((mask & (1 << component)) != 0)
+            {
+                doubleRegisters.Add(new RegisterComponentKey(registerKey, component));
+            }
+        }
     }
 
     /// <summary>

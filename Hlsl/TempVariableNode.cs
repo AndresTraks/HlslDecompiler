@@ -23,6 +23,13 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // what a float reader of it gets: a reinterpretation, not a conversion.
     public bool IsBits { get; set; }
 
+    // Declared double where the register it stands for holds one. Left as a float
+    // the variable threw the precision away at the assignment, and every double the
+    // value went on to be used in was computed in floats from there on.
+    public bool IsDouble { get; set; }
+
+    public string TypeName => IsInteger ? IntegerTypeName : IsDouble ? "double" : "float";
+
     public override string ToString()
     {
         string index = DeclarationIndex?.ToString() ?? string.Empty;

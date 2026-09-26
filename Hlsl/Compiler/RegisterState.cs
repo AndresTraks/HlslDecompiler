@@ -1243,7 +1243,36 @@ public sealed class RegisterState
         {
             return 0;
         }
+        // A double takes two components, so a double vector spills into the next
+        // register: a double4 is cb0[0].xyzw and cb0[1].xyzw. Read as an offset
+        // within one register the base would put the second register's components
+        // back at the start of the declaration - `a.x` where `a.z` was meant - so
+        // it is taken from the register actually being read and counts back over
+        // the registers the declaration has already filled.
+        if (declaration.TypeInfo.ParameterType == ParameterType.Double)
+        {
+            return (d3d10.VariableOffset
+                - registerKey.ConstantBufferOffset.Value * ConstantRegisterSizeInBytes) / 4;
+        }
         return d3d10.VariableOffset % ConstantRegisterSizeInBytes / 4;
+    }
+
+    /// <summary>
+    /// How many register components one element of the declaration takes: two for a
+    /// double and one for everything else. A swizzle names elements where the key
+    /// counts components, and for doubles the two are not the same thing - the second
+    /// element of a double2 is at .zw, and is `.y`.
+    /// </summary>
+    public int GetConstantComponentsPerElement(RegisterComponentKey registerComponentKey)
+    {
+        if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
+            || registerKey.OperandType != OperandType.ConstantBuffer)
+        {
+            return 1;
+        }
+        ConstantDeclaration declaration = FindConstant(
+            registerKey, registerComponentKey.ComponentIndex);
+        return declaration?.TypeInfo.ParameterType == ParameterType.Double ? 2 : 1;
     }
 
     public string GetRegisterName(RegisterComponentKey registerComponentKey)

@@ -352,6 +352,12 @@ public class StatementFinalizer
                             // Not for bits: those are a float's, and calling them uint
                             // says something about them that is not so.
                             IsUnsigned = isInteger && !isBits && isUnsignedValue == true,
+                            // A double is one because the register holds one: the
+                            // arithmetic over it is the same addition and multiply
+                            // whatever its operands are made of, so the value cannot
+                            // be asked and neither can its readers.
+                            IsDouble = !isInteger
+                                && _integerOperandAnalysis?.IsDoubleRegister(newAssignment.Key) == true,
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything

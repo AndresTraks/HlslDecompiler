@@ -1612,6 +1612,14 @@ public class InstructionParser
     {
         int index = instruction.GetDestinationParamIndex().Value;
         int mask = instruction.GetDestinationWriteMask();
+        // A double lives across two components and the tree holds one value for
+        // each, so a double destination is keyed at the lower component of every
+        // pair it writes and the upper ones get no value of their own. The pairs
+        // are aligned - .xy and .zw - so what is left of the mask is bits 0 and 2.
+        if (instruction is D3D10Instruction { WritesDoubles: true })
+        {
+            mask &= 0b0101;
+        }
         return GetParameterRegisterKeys(instruction, index, mask);
     }
 
@@ -1825,6 +1833,10 @@ public class InstructionParser
                 return null;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
+            // A conversion into a double reads an integer the same way one into a
+            // float does; itod of a loop counter is the counter and not its bits.
+            case D3D10Opcode.IToD:
+            case D3D10Opcode.UToD:
                 return true;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
@@ -2050,6 +2062,28 @@ public class InstructionParser
             case D3D10Opcode.BFRev:
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
+            // The double precision arithmetic, which is the arithmetic it is named
+            // after: the type is what the operands are, not what the operation does,
+            // and the pairing of components is already off the keys by here.
+            case D3D10Opcode.DAdd:
+            case D3D10Opcode.DMul:
+            case D3D10Opcode.DDiv:
+            case D3D10Opcode.DMax:
+            case D3D10Opcode.DMin:
+            case D3D10Opcode.DEq:
+            case D3D10Opcode.DGe:
+            case D3D10Opcode.DLt:
+            case D3D10Opcode.DNe:
+            case D3D10Opcode.DMov:
+            case D3D10Opcode.DMovC:
+            case D3D10Opcode.DFMA:
+            case D3D10Opcode.DRCP:
+            case D3D10Opcode.DToF:
+            case D3D10Opcode.DToI:
+            case D3D10Opcode.DToU:
+            case D3D10Opcode.FToD:
+            case D3D10Opcode.IToD:
+            case D3D10Opcode.UToD:
                 {
                     HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
                     switch (instruction.Opcode)
@@ -2208,6 +2242,48 @@ public class InstructionParser
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.Mul:
                             return new MultiplyOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DAdd:
+                            return new AddOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DMul:
+                            return new MultiplyOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DDiv:
+                            return new DivisionOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DMax:
+                            return new MaximumOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DMin:
+                            return new MinimumOperation(inputs[0], inputs[1]);
+                        case D3D10Opcode.DEq:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
+                        case D3D10Opcode.DGe:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.GE);
+                        case D3D10Opcode.DLt:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
+                        case D3D10Opcode.DNe:
+                            return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
+                        case D3D10Opcode.DMov:
+                            return new MoveOperation(inputs[0]);
+                        case D3D10Opcode.DMovC:
+                            return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
+                        // fma rounds the once where a multiply and an add round
+                        // twice, so it is the intrinsic and not the arithmetic: fxc
+                        // compiles `a * b + c` on doubles to dmul and dadd, and only
+                        // a written fma() to this.
+                        case D3D10Opcode.DFMA:
+                            return new FusedMultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
+                        case D3D10Opcode.DRCP:
+                            return new ReciprocalOperation(inputs[0]);
+                        case D3D10Opcode.DToF:
+                            return new ConvertOperation(inputs[0], "float");
+                        case D3D10Opcode.DToI:
+                            return new ConvertOperation(inputs[0], "int");
+                        case D3D10Opcode.DToU:
+                            return new ConvertOperation(inputs[0], "uint");
+                        case D3D10Opcode.FToD:
+                            return new ConvertOperation(inputs[0], "double");
+                        case D3D10Opcode.IToD:
+                            return new ConvertOperation(inputs[0], "double") { SourceUnsigned = false };
+                        case D3D10Opcode.UToD:
+                            return new ConvertOperation(inputs[0], "double") { SourceUnsigned = true };
                         case D3D10Opcode.Rsq:
                             return new ReciprocalSquareRootOperation(inputs[0]);
                         case D3D10Opcode.Sqrt:
@@ -2914,10 +2990,22 @@ public class InstructionParser
     {
         int numInputs = GetNumInputs(instruction.Opcode);
         var inputs = new HlslTreeNode[numInputs];
+        // Which value of the instruction is being built, where that is not the
+        // component it is written at: a double takes two components, so dtof's
+        // second result is written at .y and reads the double at .zw.
+        int valueOrdinal = instruction.HasDoubleOperands
+            ? instruction.GetValueOrdinal(componentIndex)
+            : componentIndex;
         for (int i = 0; i < numInputs; i++)
         {
             int inputParameterIndex = i + 1;
             var operandType = instruction.GetOperandType(inputParameterIndex);
+            if (instruction.HasDoubleOperands)
+            {
+                componentIndex = instruction.IsDoubleOperand(inputParameterIndex)
+                    ? valueOrdinal * 2
+                    : valueOrdinal;
+            }
             D3D10OperandTokenCollection.OperandIndex[] operandIndices =
                 instruction.OperandTokens.GetOperandIndices(inputParameterIndex);
             if (operandType == OperandType.IndexableTemp)
@@ -3142,6 +3230,14 @@ public class InstructionParser
             case D3D10Opcode.BFRev:
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
+            case D3D10Opcode.DMov:
+            case D3D10Opcode.DRCP:
+            case D3D10Opcode.DToF:
+            case D3D10Opcode.DToI:
+            case D3D10Opcode.DToU:
+            case D3D10Opcode.FToD:
+            case D3D10Opcode.IToD:
+            case D3D10Opcode.UToD:
                 return 1;
             case D3D10Opcode.Add:
             case D3D10Opcode.Dp2:
@@ -3172,6 +3268,15 @@ public class InstructionParser
             case D3D10Opcode.Max:
             case D3D10Opcode.Min:
             case D3D10Opcode.Mul:
+            case D3D10Opcode.DAdd:
+            case D3D10Opcode.DMul:
+            case D3D10Opcode.DDiv:
+            case D3D10Opcode.DMax:
+            case D3D10Opcode.DMin:
+            case D3D10Opcode.DEq:
+            case D3D10Opcode.DGe:
+            case D3D10Opcode.DLt:
+            case D3D10Opcode.DNe:
                 return 2;
             case D3D10Opcode.AtomicIAdd:
             case D3D10Opcode.AtomicAnd:
@@ -3222,6 +3327,8 @@ public class InstructionParser
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
             case D3D10Opcode.AtomicCmpStore:
+            case D3D10Opcode.DMovC:
+            case D3D10Opcode.DFMA:
                 return 3;
             case D3D10Opcode.LDMS:
                 return 3;

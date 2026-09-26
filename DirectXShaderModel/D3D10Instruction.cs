@@ -446,6 +446,99 @@ public class D3D10Instruction : Instruction
         return swizzleName.Length == 0 ? "" : "." + swizzleName;
     }
 
+    /// <summary>
+    /// Whether the destination holds doubles, two register components to each. A
+    /// double precision instruction answers a pair for every value it computes, so
+    /// its write mask counts twice as many components as there are values and the
+    /// value belongs to the lower component of each pair - .xy is one double, .xyzw
+    /// two. False for the double instructions that answer something else: a
+    /// comparison's bool and a conversion's float or integer are single components.
+    /// </summary>
+    public bool WritesDoubles => Opcode is
+        D3D10Opcode.DAdd or D3D10Opcode.DMul or D3D10Opcode.DDiv or
+        D3D10Opcode.DMax or D3D10Opcode.DMin or D3D10Opcode.DMov or
+        D3D10Opcode.DMovC or D3D10Opcode.DFMA or D3D10Opcode.DRCP or
+        D3D10Opcode.FToD or D3D10Opcode.IToD or D3D10Opcode.UToD;
+
+    /// <summary>
+    /// Whether a source operand holds doubles. The condition of a dmovc is the one
+    /// operand of a double instruction that does not: it answers a pair with a
+    /// single bool, the way a double comparison does the other way about.
+    /// </summary>
+    public bool IsDoubleOperand(int operandIndex) => Opcode switch
+    {
+        D3D10Opcode.DAdd or D3D10Opcode.DMul or D3D10Opcode.DDiv or
+        D3D10Opcode.DMax or D3D10Opcode.DMin or D3D10Opcode.DEq or
+        D3D10Opcode.DGe or D3D10Opcode.DLt or D3D10Opcode.DNe =>
+            operandIndex is 1 or 2,
+        D3D10Opcode.DFMA => operandIndex is 1 or 2 or 3,
+        D3D10Opcode.DMov or D3D10Opcode.DRCP or D3D10Opcode.DToF or
+        D3D10Opcode.DToI or D3D10Opcode.DToU => operandIndex == 1,
+        D3D10Opcode.DMovC => operandIndex is 2 or 3,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether doubles pass through the instruction at all, on either side of it.
+    /// Where they do, the operands are read by which value of the instruction is
+    /// wanted rather than by which component, because the two stop being the same
+    /// thing as soon as one value takes two components.
+    /// </summary>
+    public bool HasDoubleOperands => WritesDoubles || IsDoubleOperand(1);
+
+    /// <summary>
+    /// Which value of the instruction a destination component is: its position among
+    /// the components the destination writes. fxc writes a double operand with its
+    /// pair repeated across the four swizzle slots - .xyxy for the double at x, and
+    /// .xyzw for the two of a double2 - so the nth double of an operand is at slot
+    /// 2n where the nth single value is at slot n, and neither is the component the
+    /// destination is being written at.
+    /// </summary>
+    /// <summary>
+    /// How many values the instruction computes: one for each double where it writes
+    /// doubles, and one for each component otherwise. A double comparison of a double2
+    /// answers two bools from four components of operand, and the width of everything
+    /// beside the destination is counted from this rather than from the mask.
+    /// </summary>
+    public int ValueCount
+    {
+        get
+        {
+            int mask = GetDestinationWriteMask();
+            if (WritesDoubles)
+            {
+                mask &= 0b0101;
+            }
+            int count = 0;
+            for (int component = 0; component < 4; component++)
+            {
+                if ((mask & (1 << component)) != 0)
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+    }
+
+    public int GetValueOrdinal(int destinationComponent)
+    {
+        int mask = GetDestinationWriteMask();
+        if (WritesDoubles)
+        {
+            mask &= 0b0101;
+        }
+        int ordinal = 0;
+        for (int component = 0; component < destinationComponent; component++)
+        {
+            if ((mask & (1 << component)) != 0)
+            {
+                ordinal++;
+            }
+        }
+        return ordinal;
+    }
+
     public int GetWriteMask(int operandIndex)
     {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
@@ -659,33 +752,19 @@ public class D3D10Instruction : Instruction
                     destinationMask = 15;
                     destinationLength = 4;
                 }
-                // A double comparison answers one component - a bool for the pair -
-                // and reads two components for each double it is given. Narrowed by
-                // the destination, `dlt r0.z, r0.xyxy, r1.xyxy` read r0.x against
-                // r1.x, half of each number, and compared something else.
-                else if (Opcode is D3D10Opcode.DEq or D3D10Opcode.DGe
-                    or D3D10Opcode.DLt or D3D10Opcode.DNe)
+                // Every operand of a double instruction is as wide as the values the
+                // instruction computes, twice over where the operand is doubles
+                // itself. The destination says neither: a comparison answers one
+                // component for a pair and a conversion one for two, or two for one
+                // the other way about. Narrowed by the destination instead, `dlt
+                // r0.z, r0.xyxy, r1.xyxy` read r0.x against r1.x - half of each
+                // number, which is a different question - `ftod r0.xy, r0.x` printed
+                // r0.xx, which is the float twice over, and the condition of a dmovc
+                // over one double came out r0.xx, which is the same bool twice.
+                else if (HasDoubleOperands)
                 {
-                    destinationMask = 3;
-                    destinationLength = 2;
-                }
-                // And a conversion out of a double reads two where it writes one:
-                // dtof, dtoi and dtou.
-                else if (Opcode is D3D10Opcode.DToF or D3D10Opcode.DToI
-                    or D3D10Opcode.DToU)
-                {
-                    destinationMask = 3;
-                    destinationLength = 2;
-                }
-                // The other way round for a conversion into one: ftod reads a single
-                // float and fills the pair, so the destination's two components say
-                // nothing about the source. Read as two, `ftod r0.xy, r0.x` printed
-                // r0.xx, which is the float twice over.
-                else if (Opcode is D3D10Opcode.FToD or D3D10Opcode.IToD
-                    or D3D10Opcode.UToD)
-                {
-                    destinationMask = 1;
-                    destinationLength = 1;
+                    destinationLength = IsDoubleOperand(srcIndex) ? ValueCount * 2 : ValueCount;
+                    destinationMask = (1 << destinationLength.Value) - 1;
                 }
                 // The address of an interlocked operation is a whole operand too.
                 // fxc writes it as it is stored - the coordinate of a texel, or the

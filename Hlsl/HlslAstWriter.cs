@@ -151,7 +151,7 @@ public class HlslAstWriter : HlslWriter
             && first.Value is not ConsumeNode and not ResourceInfoNode
             && first.TempVariable.VariableSize is int size && group.Length < size)
         {
-            string type = first.TempVariable.IsInteger ? first.TempVariable.IntegerTypeName : "float";
+            string type = first.TempVariable.TypeName;
             // Compiling the variable is what numbers it.
             _compiler.Compile(group.Select(node => ((TempAssignmentNode)node).TempVariable));
             WriteLine($"{type}{size} {_registers.TemporaryPrefix}{first.TempVariable.DeclarationIndex};");
@@ -510,7 +510,7 @@ public class HlslAstWriter : HlslWriter
             original = _compiler.Compile(atomic.Original);
             if (_declaredVariables.Add(atomic.Original))
             {
-                string type = atomic.Original.IsInteger ? atomic.Original.IntegerTypeName : "float";
+                string type = atomic.Original.TypeName;
                 WriteLine($"{type} {original};");
             }
         }
@@ -886,7 +886,7 @@ public class HlslAstWriter : HlslWriter
                     continue;
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
-                string type = variable.IsInteger ? variable.IntegerTypeName : "float";
+                string type = variable.TypeName;
                 WriteLine($"{type}{size} {_registers.TemporaryPrefix}{variable.DeclarationIndex};");
             }
         }

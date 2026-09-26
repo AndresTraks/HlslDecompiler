@@ -25,6 +25,7 @@ public class HlslSimpleWriter : HlslWriter
     protected override void WriteMethodBody()
     {
         _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);
+        FindMovedDoubles();
         // Per function, not per shader: a hull shader's two functions are written
         // through one writer, and neither inherits the other's loop counters or the
         // slots it was still holding.
@@ -251,45 +252,113 @@ public class HlslSimpleWriter : HlslWriter
     /// so that the nth of them is at slot 2n.
     /// </summary>
     /// <summary>
-    /// A plain mov carrying a double, which this writer cannot say. fxc assembles a
-    /// double vector out of movs of the raw halves - `mov r0.zw, r0.xxxy` - and the
-    /// shadow variables here are picked per instruction from the opcode and the
-    /// element, neither of which says that a mov is copying one number rather than
-    /// two floats. Saying nothing wrote `r0.zw = r0.xy` beside a shadow holding the
-    /// value, which compiles and computes something else; deciding it needs the
-    /// writer to walk the instructions keeping track of what each register pair holds
-    /// as it goes, the way the expression writer's parser does.
+    /// Which halves of its destination each mov copies a double into, by instruction:
+    /// bit 0 for the pair at .xy and bit 1 for the pair at .zw. fxc assembles a
+    /// double vector out of movs of the raw halves - `mov r0.zw, r0.xxxy` puts the
+    /// pair at r0.xy into the pair at r0.zw - and nothing about the instruction says
+    /// it carries one number rather than two floats. The opcode cannot say and
+    /// neither can a set of register components: fxc uses one for a double here and
+    /// a float there. What says is where the walk below has got to.
     /// </summary>
-    private void CheckNoMovedDouble(D3D10Instruction instruction)
+    private Dictionary<D3D10Instruction, int> _movedDoublePairs =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Walks the instructions in order keeping track of which register pairs hold a
+    /// double, so that a mov between two of them can be told from a mov of two
+    /// floats. A pair holds one from where a double instruction or a load of a double
+    /// member wrote it until something else writes either of its components; a mov
+    /// out of a pair that holds one carries the double on.
+    /// </summary>
+    private void FindMovedDoubles()
     {
-        if (instruction.Opcode != D3D10Opcode.Mov || _integerOperandAnalysis == null)
+        _movedDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
+        var live = new HashSet<(RegisterKey Register, int Pair)>();
+        foreach (Instruction instruction in _phaseShader.Instructions)
         {
-            return;
-        }
-        RegisterKey destination = instruction.GetParamRegisterKey(0);
-        if (destination is not D3D10RegisterKey { IsTempRegister: true })
-        {
-            return;
-        }
-        int mask = instruction.GetWriteMask(0);
-        byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
-        RegisterKey source = instruction.GetParamRegisterKey(1);
-        for (int pair = 0; pair < 4; pair += 2)
-        {
-            if ((mask & (0b11 << pair)) != (0b11 << pair))
+            if (instruction is not D3D10Instruction d3d10
+                || d3d10.GetDestinationParamIndex() is not int destinationIndex
+                || d3d10.GetParamRegisterKey(destinationIndex)
+                    is not D3D10RegisterKey { IsTempRegister: true } destination)
             {
                 continue;
             }
-            bool movesDouble =
-                _integerOperandAnalysis.IsDoubleRegister(new RegisterComponentKey(destination, pair))
-                || (source is D3D10RegisterKey { IsTempRegister: true }
-                    && _integerOperandAnalysis.IsDoubleRegister(
-                        new RegisterComponentKey(source, swizzle[pair])));
-            if (movesDouble)
+            int writeMask = d3d10.GetWriteMask(destinationIndex);
+            int madeDouble = FindDoublesMade(d3d10, destination, writeMask, live);
+            if (d3d10.Opcode == D3D10Opcode.Mov && madeDouble != 0)
             {
-                throw new NotImplementedException("mov of a double's halves");
+                _movedDoublePairs[d3d10] = madeDouble;
+            }
+            // Every pair the instruction touches stops holding what it held, and the
+            // ones it just made doubles start. A write to one component of a pair is
+            // enough to lose the number: half a double is not one.
+            for (int pair = 0; pair < 2; pair++)
+            {
+                if ((writeMask & (0b11 << (pair * 2))) == 0)
+                {
+                    continue;
+                }
+                if ((madeDouble & (1 << pair)) != 0)
+                {
+                    live.Add((destination, pair));
+                }
+                else
+                {
+                    live.Remove((destination, pair));
+                }
             }
         }
+    }
+
+    // The pairs of the destination this instruction leaves holding a double.
+    private int FindDoublesMade(D3D10Instruction instruction, RegisterKey destination,
+        int writeMask, HashSet<(RegisterKey Register, int Pair)> live)
+    {
+        int made = 0;
+        for (int pair = 0; pair < 2; pair++)
+        {
+            int low = pair * 2;
+            // Both halves, or it is not a double being written.
+            if ((writeMask & (0b11 << low)) != (0b11 << low))
+            {
+                continue;
+            }
+            bool isDouble;
+            if (instruction.WritesDoubles)
+            {
+                isDouble = true;
+            }
+            else if (instruction.Opcode == D3D10Opcode.LdStructured)
+            {
+                byte[] resourceSwizzle = instruction.GetSourceSwizzleComponents(3);
+                int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                    ? instruction.GetParamInt(2, 0)
+                    : 0;
+                isDouble = _registers.IsDoubleStructuredMember(
+                    instruction.GetParamRegisterKey(3),
+                    elementByteOffset + resourceSwizzle[low] * 4);
+            }
+            else if (instruction.Opcode == D3D10Opcode.Mov
+                && instruction.GetParamRegisterKey(1)
+                    is D3D10RegisterKey { IsTempRegister: true } source)
+            {
+                // The pair the mov reads for this pair of its destination, which the
+                // swizzle gives at the destination's own position.
+                byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+                isDouble = swizzle[low] % 2 == 0
+                    && swizzle[low + 1] == swizzle[low] + 1
+                    && live.Contains((source, swizzle[low] / 2));
+            }
+            else
+            {
+                isDouble = false;
+            }
+            if (isDouble)
+            {
+                made |= 1 << pair;
+            }
+        }
+        return made;
     }
 
     /// <summary>
@@ -345,7 +414,11 @@ public class HlslSimpleWriter : HlslWriter
                 && _registers.HasDoubleStructuredMember(instruction.GetParamRegisterKey(0)),
             _ => false,
         };
-        if (!isStructuredDouble
+        // And a mov says so only through the walk: which of its halves carry a
+        // double was decided by what the registers held when it was reached.
+        int movedPairs = _movedDoublePairs.TryGetValue(instruction, out int moved) ? moved : 0;
+        bool isMovedDouble = movedPairs != 0 && operandIndex is 0 or 1;
+        if (!isStructuredDouble && !isMovedDouble
             && (isDestination ? !instruction.WritesDoubles : !instruction.IsDoubleOperand(operandIndex)))
         {
             return null;
@@ -356,9 +429,23 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         var pairs = new List<int>();
+        // A mov names the pairs the walk found on both sides of it: the destination's
+        // own, and for the source whichever pair the swizzle reads for each of them.
+        if (isMovedDouble)
+        {
+            byte[] movSwizzle = instruction.GetSourceSwizzleComponents(1);
+            for (int pair = 0; pair < 2; pair++)
+            {
+                if ((movedPairs & (1 << pair)) == 0)
+                {
+                    continue;
+                }
+                pairs.Add(isDestination ? pair : movSwizzle[pair * 2] / 2);
+            }
+        }
         // The value a structured store carries is read at the components its mask
         // names, which is the destination's mask and not this operand's swizzle.
-        if (isStructuredDouble && !isDestination)
+        else if (isStructuredDouble && !isDestination)
         {
             int storeMask = instruction.GetWriteMask(0) & 0b0101;
             byte[] storeSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
@@ -1404,7 +1491,6 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstructionStatement(D3D10Instruction instruction)
     {
-        CheckNoMovedDouble(instruction);
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
@@ -1673,11 +1759,28 @@ public class HlslSimpleWriter : HlslWriter
                     // nor a struct (whose offset picks a member), it is a scalar or a
                     // vector and the byte offset selects a component of it: reading the
                     // .w of a uint4 is the load at offset twelve, whole components past
-                    // the operand's own.
-                    if (offset != 0 && readElement == element)
+                    // the operand's own. A double takes two of those components for
+                    // each value it is, so a pair of them names one - the load at
+                    // offset eight of a double2 is its `.y`, not its `.zw`.
+                    if (readElement == element)
                     {
-                        readElement += "." + new string(
-                            [.. read.Select(c => "xyzw"[(c + offset / 4) % 4])]);
+                        int perElement = _registers.GetStructuredComponentsPerElement(buffer);
+                        var names = new List<char>();
+                        for (int value = 0; value < read.Count; value += perElement)
+                        {
+                            names.Add("xyzw"[(read[value] + offset / 4) % 4 / perElement]);
+                        }
+                        // Left off where it names the element's values in order, which
+                        // is the element itself. Written only for the offset before
+                        // this, a load fxc reordered - `t0.zwxy` over a double2, whose
+                        // first value is the element's second - came out as the whole
+                        // element with its values the wrong way round.
+                        string picked = new string([.. names]);
+                        int width = _registers.GetRegisterMaskedLength(buffer) / perElement;
+                        if (picked != "xyzw"[..Math.Min(width, 4)])
+                        {
+                            readElement += "." + picked;
+                        }
                     }
                     WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), readElement);
                     break;

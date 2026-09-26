@@ -200,6 +200,30 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DerivRtyCoarse:
                 case D3D10Opcode.DerivRtyFine:
                 case D3D10Opcode.Rcp:
+                // The double precision arithmetic, which writes a register the way
+                // any other does - two of its components for each double. Left out,
+                // the destination was formatted as a source: it took a source
+                // swizzle, so `dmul r1.xy` printed as `dmul r1`, and every operand
+                // beside it was read four components wide.
+                case D3D10Opcode.DAdd:
+                case D3D10Opcode.DMul:
+                case D3D10Opcode.DDiv:
+                case D3D10Opcode.DMax:
+                case D3D10Opcode.DMin:
+                case D3D10Opcode.DEq:
+                case D3D10Opcode.DGe:
+                case D3D10Opcode.DLt:
+                case D3D10Opcode.DNe:
+                case D3D10Opcode.DMov:
+                case D3D10Opcode.DMovC:
+                case D3D10Opcode.DFMA:
+                case D3D10Opcode.DRCP:
+                case D3D10Opcode.DToF:
+                case D3D10Opcode.FToD:
+                case D3D10Opcode.DToI:
+                case D3D10Opcode.DToU:
+                case D3D10Opcode.IToD:
+                case D3D10Opcode.UToD:
                 // Two destinations is still destinations. Saying they had none
                 // left both operands looking like sources, so they took source
                 // swizzles and the sources were read four components wide - a udiv
@@ -626,6 +650,34 @@ public class D3D10Instruction : Instruction
                 {
                     destinationMask = 15;
                     destinationLength = 4;
+                }
+                // A double comparison answers one component - a bool for the pair -
+                // and reads two components for each double it is given. Narrowed by
+                // the destination, `dlt r0.z, r0.xyxy, r1.xyxy` read r0.x against
+                // r1.x, half of each number, and compared something else.
+                else if (Opcode is D3D10Opcode.DEq or D3D10Opcode.DGe
+                    or D3D10Opcode.DLt or D3D10Opcode.DNe)
+                {
+                    destinationMask = 3;
+                    destinationLength = 2;
+                }
+                // And a conversion out of a double reads two where it writes one:
+                // dtof, dtoi and dtou.
+                else if (Opcode is D3D10Opcode.DToF or D3D10Opcode.DToI
+                    or D3D10Opcode.DToU)
+                {
+                    destinationMask = 3;
+                    destinationLength = 2;
+                }
+                // The other way round for a conversion into one: ftod reads a single
+                // float and fills the pair, so the destination's two components say
+                // nothing about the source. Read as two, `ftod r0.xy, r0.x` printed
+                // r0.xx, which is the float twice over.
+                else if (Opcode is D3D10Opcode.FToD or D3D10Opcode.IToD
+                    or D3D10Opcode.UToD)
+                {
+                    destinationMask = 1;
+                    destinationLength = 1;
                 }
                 // The address of an interlocked operation is a whole operand too.
                 // fxc writes it as it is stored - the coordinate of a texel, or the

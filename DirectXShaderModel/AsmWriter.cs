@@ -382,8 +382,7 @@ public class AsmWriter
                 {
                     if (flag != D3D10GlobalFlags.None && instruction.GetGlobalFlags().HasFlag(flag))
                     {
-                        string flagString = flag.ToString();
-                        setFlags.Add(char.ToLower(flagString[0]) + flagString.Substring(1));
+                        setFlags.Add(GetGlobalFlagName(flag));
                     }
                 }
                 WriteLine("dcl_globalFlags {0}", string.Join(" | ", setFlags));
@@ -1015,9 +1014,92 @@ public class AsmWriter
             case D3D10Opcode.Sync:
                 WriteLine("sync" + GetSyncSuffix(instruction.SyncFlags));
                 break;
+            // Double precision. A double fills two components of a register, so a
+            // dmul over r0.xy is one number and not two, and fxc writes the pair it
+            // reads as a four wide swizzle - r0.xyxy - where this writer trims it to
+            // the two it is, the way it trims every other swizzle.
+            case D3D10Opcode.DAdd:
+                WriteInstruction(instruction, "dadd", 3);
+                break;
+            case D3D10Opcode.DMul:
+                WriteInstruction(instruction, "dmul", 3);
+                break;
+            case D3D10Opcode.DDiv:
+                WriteInstruction(instruction, "ddiv", 3);
+                break;
+            case D3D10Opcode.DMax:
+                WriteInstruction(instruction, "dmax", 3);
+                break;
+            case D3D10Opcode.DMin:
+                WriteInstruction(instruction, "dmin", 3);
+                break;
+            case D3D10Opcode.DEq:
+                WriteInstruction(instruction, "deq", 3);
+                break;
+            case D3D10Opcode.DGe:
+                WriteInstruction(instruction, "dge", 3);
+                break;
+            case D3D10Opcode.DLt:
+                WriteInstruction(instruction, "dlt", 3);
+                break;
+            case D3D10Opcode.DNe:
+                WriteInstruction(instruction, "dne", 3);
+                break;
+            case D3D10Opcode.DMov:
+                WriteInstruction(instruction, "dmov", 2);
+                break;
+            case D3D10Opcode.DMovC:
+                WriteInstruction(instruction, "dmovc", 4);
+                break;
+            case D3D10Opcode.DFMA:
+                WriteInstruction(instruction, "dfma", 4);
+                break;
+            case D3D10Opcode.DRCP:
+                WriteInstruction(instruction, "drcp", 2);
+                break;
+            // The conversions, which are the one place a double meets a register
+            // component that is not half of one.
+            case D3D10Opcode.DToF:
+                WriteInstruction(instruction, "dtof", 2);
+                break;
+            case D3D10Opcode.FToD:
+                WriteInstruction(instruction, "ftod", 2);
+                break;
+            case D3D10Opcode.DToI:
+                WriteInstruction(instruction, "dtoi", 2);
+                break;
+            case D3D10Opcode.DToU:
+                WriteInstruction(instruction, "dtou", 2);
+                break;
+            case D3D10Opcode.IToD:
+                WriteInstruction(instruction, "itod", 2);
+                break;
+            case D3D10Opcode.UToD:
+                WriteInstruction(instruction, "utod", 2);
+                break;
             default:
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
+    }
+
+    /// <summary>
+    /// What fxc calls a global flag. Camel case with the first letter lowered covers
+    /// all but two: the shader model 11.1 extensions carry the version in the name,
+    /// which no rule derives from the enum, so those two are spelled out the way the
+    /// system value names are.
+    /// </summary>
+    private static string GetGlobalFlagName(D3D10GlobalFlags flag)
+    {
+        if (flag == D3D10GlobalFlags.EnableDoubleExtensions)
+        {
+            return "enable11_1DoubleExtensions";
+        }
+        if (flag == D3D10GlobalFlags.EnableShaderExtensions)
+        {
+            return "enable11_1ShaderExtensions";
+        }
+        string name = flag.ToString();
+        return char.ToLower(name[0]) + name.Substring(1);
     }
 
     // In the order fxc writes them: sync_uglobal_g_t.

@@ -114,8 +114,14 @@ public class StatementFinalizer
             // A phi nobody reads keeps its inputs alive for nothing. It can be the
             // output of any block, not just an assignment - an if whose branches all
             // return still merges what they wrote.
+            // A phi a store still carries is not dead, whatever the node graph says:
+            // the reader is the store rather than a node. Removed on the graph's word
+            // alone it was disconnected from its inputs as well, so the branch value
+            // feeding it lost its only reader, went unnamed, and the phi - still sitting
+            // in the store - reached the compiler unlowered.
             outputsToRemove = statement.Outputs
                 .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
+                .Where(o => !IsRenderedByAnyStatement(o.Value))
                 .ToList();
             foreach (var output in outputsToRemove)
             {
@@ -962,6 +968,48 @@ public class StatementFinalizer
             }
         });
         return [.. holders];
+    }
+
+    /// <summary>
+    /// Whether the statement renders the node in a slot of its own - the value a store
+    /// writes, the address it writes through, the coordinate of a texel, what an
+    /// interlocked operation compares against - rather than merely recording it as
+    /// some register's value in passing.
+    ///
+    /// These are exactly the slots ReplaceInStatementNodes rewires, and the two have
+    /// to agree on the same set: a value a store carries is read by that store, however
+    /// little the node graph says about it, and a register slot on an if is bookkeeping
+    /// that the writer never renders. Listing only indexable temp stores here, while
+    /// rewiring six kinds of statement there, is what let a value a structured store
+    /// carried be judged dead.
+    /// </summary>
+    private bool IsRenderedByAnyStatement(HlslTreeNode node)
+    {
+        bool rendered = false;
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            rendered |= RendersValue(statement, node);
+        });
+        return rendered;
+    }
+
+    private static bool RendersValue(IStatement statement, HlslTreeNode node)
+    {
+        return statement switch
+        {
+            StoreStructuredStatement store =>
+                store.Address == node || store.Values.Contains(node),
+            StoreTypedStatement typed =>
+                typed.Values.Contains(node) || typed.Coordinates.Contains(node),
+            BufferAppendStatement append => append.Values.Contains(node),
+            AtomicStatement atomic =>
+                atomic.Address == node || atomic.Value == node || atomic.Compare == node
+                || (atomic.Coordinates != null && atomic.Coordinates.Contains(node)),
+            ClipStatement clip => clip.Values.Contains(node),
+            IndexableTempStoreStatement indexableTemp =>
+                indexableTemp.Index == node || indexableTemp.Values.Contains(node),
+            _ => false,
+        };
     }
 
     private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)

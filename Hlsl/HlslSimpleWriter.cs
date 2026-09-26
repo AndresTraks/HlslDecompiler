@@ -223,15 +223,10 @@ public class HlslSimpleWriter : HlslWriter
     // bit 1 for the pair at .zw.
     private int GetDoublePairMask(RegisterKey registerKey)
     {
-        if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
-        {
-            return 0;
-        }
         int pairs = 0;
         for (int pair = 0; pair < 2; pair++)
         {
-            if (_integerOperandAnalysis.IsDoubleRegister(
-                new RegisterComponentKey(registerKey, pair * 2)))
+            if (_doubleRegisterPairs.Contains((registerKey, pair)))
             {
                 pairs |= 1 << pair;
             }
@@ -328,6 +323,15 @@ public class HlslSimpleWriter : HlslWriter
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
+    /// Every register pair the walk ever found holding a double, which is what the
+    /// shadow variables are declared from. Asked of the walk rather than of a scan
+    /// for double instructions, because a shader can hold doubles without one: a
+    /// load of a double member and a store of it back is the whole of what some do,
+    /// and their shadow was named and never declared.
+    /// </summary>
+    private HashSet<(RegisterKey Register, int Pair)> _doubleRegisterPairs = [];
+
+    /// <summary>
     /// Walks the instructions in order keeping track of which register pairs hold a
     /// double, so that a mov between two of them can be told from a mov of two
     /// floats. A pair holds one from where a double instruction or a load of a double
@@ -337,6 +341,7 @@ public class HlslSimpleWriter : HlslWriter
     private void FindMovedDoubles()
     {
         _movedDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
+        _doubleRegisterPairs = [];
         var live = new HashSet<(RegisterKey Register, int Pair)>();
         foreach (Instruction instruction in _phaseShader.Instructions)
         {
@@ -365,6 +370,7 @@ public class HlslSimpleWriter : HlslWriter
                 if ((madeDouble & (1 << pair)) != 0)
                 {
                     live.Add((destination, pair));
+                    _doubleRegisterPairs.Add((destination, pair));
                 }
                 else
                 {

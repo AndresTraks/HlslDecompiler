@@ -397,15 +397,19 @@ public sealed class RegisterState
     public bool HasDoubleStructuredMember(RegisterKey resourceKey)
     {
         ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
-        if (elementType == null)
+        return elementType != null && HasDoubleMember(elementType);
+    }
+
+    // All the way down, not only the members the element names itself: a struct of
+    // structs holds its doubles inside them, and asked of the outer members alone the
+    // element looked to have none and every double in it was read as two floats.
+    private static bool HasDoubleMember(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.MemberInfo is { Count: > 0 } members)
         {
-            return false;
+            return members.Any(m => HasDoubleMember(m.TypeInfo));
         }
-        if (elementType.MemberInfo is { Count: > 0 } members)
-        {
-            return members.Any(m => m.TypeInfo.ParameterType == ParameterType.Double);
-        }
-        return elementType.ParameterType == ParameterType.Double;
+        return typeInfo.ParameterType == ParameterType.Double;
     }
 
     /// <summary>
@@ -476,11 +480,34 @@ public sealed class RegisterState
 
     // One element of a member: a struct is as big as the end of its last member,
     // and anything else is its registers.
+    /// <summary>
+    /// What a type is packed to: eight bytes for a double, four for everything else,
+    /// and for a struct whatever the largest of anything in it is. What it is for is
+    /// the padding at the end of a struct - a struct of a double and a float ends at
+    /// twelve and is sixteen long - which only shows up once there is something after
+    /// it. Nothing but a double aligns to more than four, so this rounds nothing for
+    /// a struct without one in it.
+    /// </summary>
+    private static int GetTypeAlignment(ShaderTypeInfo typeInfo)
+    {
+        if (typeInfo.MemberInfo is { Count: > 0 } members)
+        {
+            return members.Max(m => GetTypeAlignment(m.TypeInfo));
+        }
+        return typeInfo.ParameterType == ParameterType.Double ? 8 : 4;
+    }
+
     private static int GetElementByteSize(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.MemberInfo is { Count: > 0 } members)
         {
-            return members.Max(m => m.ByteOffset + GetMemberByteSize(m.TypeInfo));
+            // Out to the end of the last member, and then out again to the struct's
+            // own alignment: the second Inner of `struct Inner { double high; float
+            // low; }` starts at sixteen, not at the twelve its members reach, and
+            // read twelve apart the array's members were found in the padding.
+            int end = members.Max(m => m.ByteOffset + GetMemberByteSize(m.TypeInfo));
+            int alignment = GetTypeAlignment(typeInfo);
+            return (end + alignment - 1) / alignment * alignment;
         }
         // A matrix in a structured buffer element is packed tight, not a register a
         // row: a float3x3 is thirty six bytes, which is what its buffer's stride says.

@@ -756,6 +756,84 @@ public class D3D10Machine
                     uint[] whenClear = Source(instruction, 3);
                     return [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? whenSet[i] : whenClear[i])];
                 }
+            case D3D10Opcode.DAdd:
+                return Double(instruction, (a, b) => a + b);
+            case D3D10Opcode.DMul:
+                return Double(instruction, (a, b) => a * b);
+            case D3D10Opcode.DDiv:
+                return Double(instruction, (a, b) => a / b);
+            case D3D10Opcode.DMin:
+                return Double(instruction, Math.Min);
+            case D3D10Opcode.DMax:
+                return Double(instruction, Math.Max);
+            case D3D10Opcode.DRCP:
+                {
+                    double[] value = Doubles(instruction, 1);
+                    return PackValues(instruction, n => DoubleWords(1 / value[n]));
+                }
+            case D3D10Opcode.DMov:
+                {
+                    double[] moved = Doubles(instruction, 1);
+                    return PackValues(instruction, n => DoubleWords(moved[n]));
+                }
+            case D3D10Opcode.DFMA:
+                {
+                    double[] factor1 = Doubles(instruction, 1);
+                    double[] factor2 = Doubles(instruction, 2);
+                    double[] addend = Doubles(instruction, 3);
+                    return PackValues(instruction,
+                        n => DoubleWords(Math.FusedMultiplyAdd(factor1[n], factor2[n], addend[n])));
+                }
+            case D3D10Opcode.DMovC:
+                {
+                    // The condition is one word for each pair, not one for each
+                    // component: it is read by which value is wanted.
+                    uint[] condition = Source(instruction, 1);
+                    double[] whenSet = Doubles(instruction, 2);
+                    double[] whenClear = Doubles(instruction, 3);
+                    return PackValues(instruction,
+                        n => DoubleWords(condition[n] != 0 ? whenSet[n] : whenClear[n]));
+                }
+            case D3D10Opcode.DEq:
+                return DoubleComparison(instruction, (a, b) => a == b);
+            case D3D10Opcode.DNe:
+                return DoubleComparison(instruction, (a, b) => a != b);
+            case D3D10Opcode.DLt:
+                return DoubleComparison(instruction, (a, b) => a < b);
+            case D3D10Opcode.DGe:
+                return DoubleComparison(instruction, (a, b) => a >= b);
+            case D3D10Opcode.DToF:
+                {
+                    double[] converted = Doubles(instruction, 1);
+                    return PackValues(instruction,
+                        n => [BitConverter.SingleToUInt32Bits((float)converted[n])]);
+                }
+            case D3D10Opcode.DToI:
+                {
+                    double[] converted = Doubles(instruction, 1);
+                    return PackValues(instruction,
+                        n => [unchecked((uint)(int)converted[n])]);
+                }
+            case D3D10Opcode.DToU:
+                {
+                    double[] converted = Doubles(instruction, 1);
+                    return PackValues(instruction, n => [(uint)converted[n]]);
+                }
+            case D3D10Opcode.FToD:
+                {
+                    float[] converted = Floats(instruction, 1);
+                    return PackValues(instruction, n => DoubleWords(converted[n]));
+                }
+            case D3D10Opcode.IToD:
+                {
+                    int[] converted = Ints(instruction, 1);
+                    return PackValues(instruction, n => DoubleWords(converted[n]));
+                }
+            case D3D10Opcode.UToD:
+                {
+                    int[] converted = Ints(instruction, 1);
+                    return PackValues(instruction, n => DoubleWords(unchecked((uint)converted[n])));
+                }
             case D3D10Opcode.Add:
                 return Float(instruction, (a, b) => a + b);
             case D3D10Opcode.Mul:
@@ -1372,6 +1450,75 @@ public class D3D10Machine
     private static uint[] Pack(IEnumerable<float> values)
     {
         return [.. values.Select(BitConverter.SingleToUInt32Bits)];
+    }
+
+    /// <summary>
+    /// The doubles a source operand holds, in the order the instruction computes its
+    /// values. A double is two words of a register, the low half first, and fxc
+    /// repeats the pair across the swizzle so that the nth of them is at slot 2n -
+    /// .xyxy for one double and .xyzw for the two of a double2.
+    /// </summary>
+    private double[] Doubles(D3D10Instruction instruction, int index)
+    {
+        uint[] words = Source(instruction, index);
+        return [
+            BitConverter.UInt64BitsToDouble((ulong)words[1] << 32 | words[0]),
+            BitConverter.UInt64BitsToDouble((ulong)words[3] << 32 | words[2]),
+        ];
+    }
+
+    private static uint[] DoubleWords(double value)
+    {
+        ulong bits = BitConverter.DoubleToUInt64Bits(value);
+        return [(uint)bits, (uint)(bits >> 32)];
+    }
+
+    /// <summary>
+    /// Which component of the destination each value the instruction computes is
+    /// written at: one per component where it writes singles, and one per pair where
+    /// it writes doubles. The results are laid out over the register by this rather
+    /// than one to a slot, a double at .zw being the third and fourth words however
+    /// few of them the instruction answers.
+    /// </summary>
+    private static uint[] PackValues(D3D10Instruction instruction, Func<int, uint[]> value)
+    {
+        int mask = instruction.GetDestinationWriteMask();
+        if (instruction.WritesDoubles)
+        {
+            mask &= 0b0101;
+        }
+        var words = new uint[4];
+        int ordinal = 0;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            uint[] parts = value(ordinal++);
+            for (int part = 0; part < parts.Length; part++)
+            {
+                words[component + part] = parts[part];
+            }
+        }
+        return words;
+    }
+
+    // A double precision operation over the pairs its operands hold.
+    private uint[] Double(D3D10Instruction instruction, Func<double, double, double> combine)
+    {
+        double[] a = Doubles(instruction, 1);
+        double[] b = Doubles(instruction, 2);
+        return PackValues(instruction, n => DoubleWords(combine(a[n], b[n])));
+    }
+
+    // A double comparison, which answers one word of all ones or all zeroes for
+    // each pair it is given.
+    private uint[] DoubleComparison(D3D10Instruction instruction, Func<double, double, bool> compare)
+    {
+        double[] a = Doubles(instruction, 1);
+        double[] b = Doubles(instruction, 2);
+        return PackValues(instruction, n => [compare(a[n], b[n]) ? 0xFFFFFFFF : 0]);
     }
 
     private static uint[] BroadcastFloat(float value)

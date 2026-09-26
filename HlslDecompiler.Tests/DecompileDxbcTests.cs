@@ -291,6 +291,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "stored_select")]
     [TestCase("cs_5_0", "half_pack")]
     [TestCase("cs_5_0", "half_unpack")]
+    [TestCase("cs_5_0", "double_precision")]
+    [TestCase("cs_5_0", "double_select")]
     [TestCase("cs_4_0", "raw_buffer")]
     [TestCase("cs_4_0", "bitpack")]
     [TestCase("cs_4_0", "particle_update")]

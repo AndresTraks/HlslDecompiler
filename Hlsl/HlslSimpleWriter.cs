@@ -158,7 +158,139 @@ public class HlslSimpleWriter : HlslWriter
                 _ => scalarType + "4",// TODO
             };
             WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
+            WriteDoubleRegisterDeclaration(register.Key);
         }
+    }
+
+    /// <summary>
+    /// The shadow variable a register's doubles are kept in. A double takes two
+    /// components, so a register holds two of them where it holds four floats, and
+    /// each one is declared alongside the register: `double2 d0` beside `float4 r0`,
+    /// with r0.xy as d0.x and r0.zw as d0.y. Transcribed as the two float components
+    /// they really are, the arithmetic would be done in floats over each half of
+    /// the number separately, which is not the number at all.
+    /// </summary>
+    private void WriteDoubleRegisterDeclaration(RegisterKey registerKey)
+    {
+        int pairs = GetDoublePairMask(registerKey);
+        if (pairs == 0)
+        {
+            return;
+        }
+        WriteLine("{0} {1};", pairs == 1 ? "double" : "double2",
+            GetDoubleRegisterName(registerKey));
+    }
+
+    // Which halves of a register ever hold a double: bit 0 for the pair at .xy and
+    // bit 1 for the pair at .zw.
+    private int GetDoublePairMask(RegisterKey registerKey)
+    {
+        if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
+        {
+            return 0;
+        }
+        int pairs = 0;
+        for (int pair = 0; pair < 2; pair++)
+        {
+            if (_integerOperandAnalysis.IsDoubleRegister(
+                new RegisterComponentKey(registerKey, pair * 2)))
+            {
+                pairs |= 1 << pair;
+            }
+        }
+        return pairs;
+    }
+
+    private static string GetDoubleRegisterName(RegisterKey registerKey)
+    {
+        return "d" + registerKey.Number;
+    }
+
+    /// <summary>
+    /// The shadow variable an operand's doubles are named by, or null where the
+    /// operand holds none. Which halves of the register it covers is asked of the
+    /// instruction rather than of the operand: a source names one double for each
+    /// value the instruction computes, and fxc repeats the pair across the swizzle
+    /// so that the nth of them is at slot 2n.
+    /// </summary>
+    /// <summary>
+    /// A double a constant buffer holds, named by which element of its variable it is
+    /// rather than by the components it takes: the second double of a double2 is at
+    /// cb0[0].zw, and the swizzle a register read would give it calls it `.zw`. A
+    /// double4 spills into the next register, and the base counts back over the ones
+    /// the variable has already filled, so its `.z` is the second register's first
+    /// pair.
+    /// </summary>
+    private string GetDoubleConstantOperandName(D3D10Instruction instruction, int operandIndex)
+    {
+        if (!instruction.IsDoubleOperand(operandIndex))
+        {
+            return null;
+        }
+        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        if (registerKey is not D3D10RegisterKey { OperandType: OperandType.ConstantBuffer })
+        {
+            return null;
+        }
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        var componentKey = new RegisterComponentKey(registerKey, swizzle[0]);
+        if (_registers.GetConstantComponentsPerElement(componentKey) != 2)
+        {
+            return null;
+        }
+        string name = _registers.GetRegisterName(componentKey);
+        int width = _registers.GetRegisterMaskedLength(componentKey);
+        if (width <= 1)
+        {
+            return name;
+        }
+        int componentBase = _registers.GetConstantComponentBase(componentKey);
+        string elements = string.Concat(Enumerable.Range(0, instruction.ValueCount)
+            .Select(value => "xyzw"[(swizzle[value * 2] - componentBase) / 2]));
+        return elements == "xyzw"[..width] ? name : $"{name}.{elements}";
+    }
+
+    private string GetDoubleRegisterOperandName(D3D10Instruction instruction, int operandIndex)
+    {
+        bool isDestination = instruction.IsDestinationOperand(operandIndex);
+        if (isDestination ? !instruction.WritesDoubles : !instruction.IsDoubleOperand(operandIndex))
+        {
+            return null;
+        }
+        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        if (registerKey is not D3D10RegisterKey { IsTempRegister: true })
+        {
+            return null;
+        }
+        var pairs = new List<int>();
+        if (isDestination)
+        {
+            int mask = instruction.GetWriteMask(operandIndex) & 0b0101;
+            for (int component = 0; component < 4; component += 2)
+            {
+                if ((mask & (1 << component)) != 0)
+                {
+                    pairs.Add(component / 2);
+                }
+            }
+        }
+        else
+        {
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            for (int value = 0; value < instruction.ValueCount; value++)
+            {
+                pairs.Add(swizzle[value * 2] / 2);
+            }
+        }
+        string name = GetDoubleRegisterName(registerKey);
+        // A register with only the one pair of doubles in it is declared a double
+        // and has no halves to name.
+        if (GetDoublePairMask(registerKey) == 1)
+        {
+            return name;
+        }
+        string subscript = string.Concat(pairs.Select(pair => "xy"[pair]));
+        return subscript == "xy" ? name : $"{name}.{subscript}";
     }
 
     // Only when every written component is an integer no float instruction ever
@@ -885,6 +1017,19 @@ public class HlslSimpleWriter : HlslWriter
             GetOperandName(instruction, 0), $"({convertTo}{size}){reinterpreted}");
     }
 
+    /// <summary>
+    /// dtof and dtoi, and ftod and itod the other way about: as wide as the values
+    /// converted rather than as the components they take, one side of the conversion
+    /// filling two components for each value where the other fills one.
+    /// </summary>
+    private void WriteDoubleConversion(D3D10Instruction instruction, string convertTo)
+    {
+        int length = instruction.ValueCount;
+        string size = length == 1 ? "" : length.ToString(_culture);
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+            $"({convertTo}{size}){GetOperandName(instruction, 1)}");
+    }
+
     // A comparison writes all ones for true and all zeroes for false, which is what
     // lets an and with it act as a mask. A mask is bits, so the register holding it
     // is an int one, where -1 and 0 are the numbers wanted; where the mask goes into
@@ -1029,15 +1174,20 @@ public class HlslSimpleWriter : HlslWriter
         // as its bits: a shader packing two half floats ends with `iadd o0.x, ...`,
         // and that is a float's bit pattern and not the number the bits add up to.
         if (GetProducedKind(instruction) == ValueKind.Integer
-            && IsFloatOutput(instruction, destinationIndex))
+            && IsFloatOutput(instruction, destinationIndex)
+            && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
             string expression = format[assignment.Length..^1];
             format = $"{assignment}asfloat({expression});";
         }
         // A float result into an int register keeps its bits the same way, which is
         // how that register holds a float at all. Around the saturate above and not
-        // inside it: what is clamped to [0, 1] is the number, not its bits.
-        if (IsReinterpretedResult(instruction, destinationIndex))
+        // inside it: what is clamped to [0, 1] is the number, not its bits. Never
+        // onto a double: the shadow variable holding one is declared double, so the
+        // register's own storage says nothing about it, and `asint` of a double is
+        // not a conversion the language has.
+        if (IsReinterpretedResult(instruction, destinationIndex)
+            && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
             string expression = format[assignment.Length..^1];
             format = $"{assignment}asint({expression});";
@@ -1459,6 +1609,73 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Mul:
                 WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            // The double precision arithmetic. Each one is the operator or the
+            // intrinsic it is named after, over the shadow variables the doubles
+            // are kept in; only the width of a conversion is its own question.
+            case D3D10Opcode.DAdd:
+                WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.DMul:
+                WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.DDiv:
+                WriteResult(instruction, "{0} = {1} / {2};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.DMax:
+                WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.DMin:
+                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            case D3D10Opcode.DFMA:
+                WriteResult(instruction, "{0} = fma({1}, {2}, {3});", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1), GetOperandName(instruction, 2),
+                    GetOperandName(instruction, 3));
+                break;
+            case D3D10Opcode.DRCP:
+                WriteResult(instruction, "{0} = rcp({1});", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.DMov:
+                WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                    GetOperandName(instruction, 1));
+                break;
+            case D3D10Opcode.DMovC:
+                WriteResult(instruction, "{0} = ({1}) ? {2} : {3};", GetOperandName(instruction, 0),
+                    ZeroTest(instruction, 1, true),
+                    GetOperandName(instruction, 2), GetOperandName(instruction, 3));
+                break;
+            case D3D10Opcode.DEq:
+                WriteComparison(instruction, "==");
+                break;
+            case D3D10Opcode.DNe:
+                WriteComparison(instruction, "!=");
+                break;
+            case D3D10Opcode.DLt:
+                WriteComparison(instruction, "<");
+                break;
+            case D3D10Opcode.DGe:
+                WriteComparison(instruction, ">=");
+                break;
+            case D3D10Opcode.DToF:
+                WriteDoubleConversion(instruction, "float");
+                break;
+            case D3D10Opcode.DToI:
+                WriteDoubleConversion(instruction, "int");
+                break;
+            case D3D10Opcode.DToU:
+                WriteDoubleConversion(instruction, "uint");
+                break;
+            case D3D10Opcode.FToD:
+            case D3D10Opcode.IToD:
+            case D3D10Opcode.UToD:
+                WriteDoubleConversion(instruction, "double");
                 break;
             case D3D10Opcode.Rsq:
                 // The instruction HLSL has for this, rather than the division and
@@ -2500,6 +2717,16 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
+        // A double in a temp register is held in the shadow variable for it rather
+        // than in the two float components it really occupies.
+        if (GetDoubleRegisterOperandName(instruction, operandIndex) is string doubleRegister)
+        {
+            return ApplyModifier(modifier, doubleRegister);
+        }
+        if (GetDoubleConstantOperandName(instruction, operandIndex) is string doubleConstant)
+        {
+            return ApplyModifier(modifier, doubleConstant);
+        }
         // A relatively addressed operand decodes to a meaningless register number,
         // so its element has to be named from the index register instead.
         D3D10OperandTokenCollection.OperandIndex[] operandIndices =
@@ -3322,6 +3549,15 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return 1;
             }
+        }
+        // An operand of a double instruction that is not itself doubles - the
+        // condition of a dmovc, the float a ftod converts - is as wide as the values
+        // the instruction computes. As wide as the destination mask it was read two
+        // components for each of them: the condition of a dmovc over one double came
+        // out `r0.xx`, which is the same bool twice.
+        if (instruction.HasDoubleOperands && !instruction.IsDoubleOperand(operandIndex))
+        {
+            return instruction.ValueCount;
         }
         // The offset a gather4_po reads from a register is as wide as the texture,
         // the same as the coordinate before it.

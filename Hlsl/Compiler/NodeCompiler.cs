@@ -1030,7 +1030,14 @@ public sealed class NodeCompiler
                         || value[0] is ConvertOperation
                         // A call brings its own brackets. Negation is one of these
                         // and needs none either: a cast over it still applies last.
-                        || value[0] is ConsumerOperation;
+                        || value[0] is ConsumerOperation
+                        // And so do the calls that take more than one argument,
+                        // which were bracketed for no reason: `(float)(max(a, b))`.
+                        || value[0] is MaximumOperation or MinimumOperation
+                            or PowerOperation or ClampOperation or SmoothStepOperation
+                            or LinearInterpolateOperation or FusedMultiplyAddOperation
+                            or DotProductOperation or LengthOperation
+                            or FirstBitHighOperation;
                     // As wide as what is being converted: `(float)` on a two
                     // component value asks for a constructor with one argument.
                     string castType = components.Count > 1

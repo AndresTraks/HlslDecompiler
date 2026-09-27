@@ -1334,6 +1334,10 @@ public class StatementFinalizer
             // value through a statement, which the node graph does not carry, so a
             // value only an atomic reads has no readers to be asked.
             LoadStructuredNode load => load.IsUnsignedElement,
+            // msad4 sums differences of bytes into a uint4 - and takes one as the
+            // accumulator, so a second msad over the first declared its variable int4
+            // and handed it back through a conversion.
+            Msad4Node => true,
             _ => null,
         };
     }

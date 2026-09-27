@@ -13,7 +13,6 @@ public class InstructionParser
     private IList<IStatement> _statements;
     private Stack<IStatement> _currentStatements;
     private int _instructionPointer;
-    private int _declaredStreams;
     private IntegerOperandAnalysis _integerOperandAnalysis;
 
     // The immediates a mov or movc writes, with their bits: the instruction says

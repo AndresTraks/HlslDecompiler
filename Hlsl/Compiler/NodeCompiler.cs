@@ -1439,6 +1439,19 @@ public sealed class NodeCompiler
     /// on the way into a RWStructuredBuffer&lt;uint4&gt;, which is a conversion each
     /// way and loses everything above what a float holds exactly.
     /// </summary>
+    /// <summary>
+    /// The value an assignment writes, without the partial precision cast where the
+    /// variable is declared half: the declaration carries the precision then, and
+    /// `half3 t0 = (half3)x;` says it twice.
+    /// </summary>
+    private static HlslTreeNode AssignedValue(TempAssignmentNode assignment)
+    {
+        return assignment.TempVariable.IsHalf
+            && assignment.Value is ConvertOperation { TargetType: "half" } cast
+            ? cast.Value
+            : assignment.Value;
+    }
+
     public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
     {
         bool wasAssigningToInteger = _assigningToInteger;
@@ -1963,7 +1976,7 @@ public sealed class NodeCompiler
             string compiled;
             try
             {
-                compiled = Compile(components.Select(a => (a as TempAssignmentNode).Value));
+                compiled = Compile(components.Select(a => AssignedValue((TempAssignmentNode)a)));
             }
             finally
             {

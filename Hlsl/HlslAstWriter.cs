@@ -117,9 +117,64 @@ public class HlslAstWriter : HlslWriter
         });
     }
 
+    /// <summary>
+    /// Whether a variable holds nothing but partial precision results, which is what
+    /// lets it be declared half: `half3 t0 = saturate(x) * k;` says what
+    /// `float3 t0 = (half3)(saturate(x) * k);` was saying twice over.
+    ///
+    /// Asked of every write and of every component, because there is one declaration
+    /// for all of them. fxc writes a register at partial precision and at full
+    /// precision as it pleases - a mov_sat filling one that a mul_pp then overwrites -
+    /// and declaring that half would narrow the write that was not asking for it.
+    /// </summary>
+    private bool AssignsOnlyPartialPrecision(HlslTreeNode[] group)
+    {
+        if (group.Length == 0 || !group.All(IsPartialPrecisionAssignment))
+        {
+            return false;
+        }
+        List<TempVariableNode> variables =
+            [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.TempVariable)];
+        bool onlyPartialPrecision = true;
+        new StatementVisitor(_ast.Statements).Visit(statement =>
+        {
+            foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
+            {
+                if (variables.Any(variable => ReferenceEquals(variable, assignment.TempVariable))
+                    && !IsPartialPrecisionAssignment(assignment))
+                {
+                    onlyPartialPrecision = false;
+                }
+            }
+        });
+        return onlyPartialPrecision;
+    }
+
+    private static bool IsPartialPrecisionAssignment(HlslTreeNode node)
+    {
+        return node is TempAssignmentNode { Value: ConvertOperation { TargetType: "half" } };
+    }
+
+    // Both kinds of variable are asked the same question: the ones a register is
+    // lowered into, and the ones the writer hoists a shared subexpression into. A
+    // hoisted one is written exactly once, which the walk above finds nothing to
+    // contradict.
+    private void MarkPartialPrecision(HlslTreeNode[] group)
+    {
+        if (!AssignsOnlyPartialPrecision(group))
+        {
+            return;
+        }
+        foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
+        {
+            assignment.TempVariable.IsHalf = true;
+        }
+    }
+
     // Compiles an assignment group, declaring the variable where nothing else does.
     private string CompileAssignment(HlslTreeNode[] group)
     {
+        MarkPartialPrecision(group);
         if (group[0] is TempAssignmentNode { IsReassignment: true }
             && group.All(node => node is TempAssignmentNode assignment
                 && !_everDeclaredVariables.Contains(assignment.TempVariable)
@@ -1030,6 +1085,7 @@ public class HlslAstWriter : HlslWriter
             HoistSharedSubexpressions(roots));
         foreach (HlslTreeNode[] assignment in assignments)
         {
+            MarkPartialPrecision(assignment);
             WriteLine(_compiler.Compile(assignment));
         }
     }

@@ -28,7 +28,14 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // value went on to be used in was computed in floats from there on.
     public bool IsDouble { get; set; }
 
-    public string TypeName => IsInteger ? IntegerTypeName : IsDouble ? "double" : "float";
+    // Declared half where every write of it is a partial precision result - a D3D9
+    // `_pp` destination. The declaration then says the precision the writes were
+    // asking for, and the cast each of them carried comes off.
+    public bool IsHalf { get; set; }
+
+    public string TypeName => IsInteger
+        ? IntegerTypeName
+        : IsDouble ? "double" : IsHalf ? "half" : "float";
 
     public override string ToString()
     {

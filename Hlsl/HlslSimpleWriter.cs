@@ -146,7 +146,7 @@ public class HlslSimpleWriter : HlslWriter
             // bitwise operator will not take a float, however the bits got there.
             string scalarType = isAddressRegister || IsIntegerTempRegister(register.Key, writeMask)
                 ? "int"
-                : "float";
+                : IsHalfTempRegister(register.Key) ? "half" : "float";
             // The address register is as wide as it is written: `mova a0.xy`
             // loads two indices, and reading them both out of a scalar is not
             // possible.
@@ -568,6 +568,37 @@ public class HlslSimpleWriter : HlslWriter
     // an int register holding a float - the float would truncate. What such a
     // component holds, and how the integer instructions get at it, is the
     // register's storage: see IntegerOperandAnalysis.GetStorage.
+    /// <summary>
+    /// Whether every write of a register asks for partial precision, which is what
+    /// lets it be declared half and the half cast come off each of those writes.
+    ///
+    /// Every write, because the modifier is a property of the instruction and not of
+    /// the register: fxc fills one with a mov_sat at full precision and overwrites it
+    /// with a mul_pp, and declaring that half would narrow the write that did not ask
+    /// for it.
+    /// </summary>
+    private bool IsHalfTempRegister(RegisterKey registerKey)
+    {
+        bool written = false;
+        foreach (D3D9Instruction instruction in _phaseShader.Instructions.OfType<D3D9Instruction>())
+        {
+            foreach (int destination in GetDestinationParamIndices(instruction))
+            {
+                if (!instruction.GetParamRegisterKey(destination).Equals(registerKey))
+                {
+                    continue;
+                }
+                if (!instruction.GetDestinationResultModifier()
+                    .HasFlag(ResultModifier.PartialPrecision))
+                {
+                    return false;
+                }
+                written = true;
+            }
+        }
+        return written;
+    }
+
     private bool IsIntegerTempRegister(RegisterKey registerKey, int writeMask)
     {
         if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
@@ -977,7 +1008,7 @@ public class HlslSimpleWriter : HlslWriter
         throw new NotImplementedException();
     }
 
-    private static string GetModifier(D3D9Instruction instruction)
+    private string GetModifier(D3D9Instruction instruction)
     {
         string source = "{1}";
         ResultModifier resultModifier = instruction.GetDestinationResultModifier();
@@ -985,13 +1016,35 @@ public class HlslSimpleWriter : HlslWriter
         {
             source = $"saturate({source})";
         }
-        if (resultModifier.HasFlag(ResultModifier.PartialPrecision))
+        // Not where the register it is written to is declared half: the declaration
+        // asks for the same precision, once, for every write of it.
+        if (resultModifier.HasFlag(ResultModifier.PartialPrecision)
+            && !IsHalfDestination(instruction))
         {
             string size = instruction.GetDestinationMaskLength().ToString();
             size = size == "1" ? "" : size;
             source = $"half{size}({source})";
         }
         return "{0} = " + source + ";";
+    }
+
+    private bool IsHalfDestination(D3D9Instruction instruction)
+    {
+        int? destination = instruction.GetDestinationParamIndex();
+        if (destination == null)
+        {
+            return false;
+        }
+        RegisterKey key = instruction.GetParamRegisterKey(destination.Value);
+        if (key.IsTempRegister)
+        {
+            return IsHalfTempRegister(key);
+        }
+        // An output the signature declares at partial precision is a half already -
+        // `half4 o;` - so a half cast on the way into it says the same thing twice.
+        return _registers.MethodOutputRegisters
+            .Any(declaration => declaration.RegisterKey.Equals(key)
+                && declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision));
     }
 
     private void WriteInstruction(D3D9Instruction instruction)

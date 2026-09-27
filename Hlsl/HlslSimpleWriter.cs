@@ -1992,6 +1992,24 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
                     GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
+            // msad4 takes the two words of an eight byte source; the instruction takes
+            // the four windows fxc slid along them, and HLSL has no intrinsic for that
+            // shape. Both words are in the windows: the first window is the low one
+            // outright, and the fourth is that word's top byte with three bytes of the
+            // high one above it, so shifting the fourth down by a byte gives the high
+            // word's bottom three. Its fourth byte lies past the end of the last window
+            // and is no part of the answer, which is what makes this the same call.
+            case D3D10Opcode.MSAD:
+                {
+                    byte[] windowSwizzle = instruction.GetSourceSwizzleComponents(2);
+                    string windows = GetOperandName(instruction, 2).Split('.')[0];
+                    string low = $"{windows}.{"xyzw"[windowSwizzle[0]]}";
+                    string high = $"{windows}.{"xyzw"[windowSwizzle[3]]}";
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                        $"msad4({GetOperandName(instruction, 1)}, "
+                        + $"uint2({low}, {high} >> 8), {GetOperandName(instruction, 3)})");
+                    break;
+                }
             case D3D10Opcode.Mov:
                 WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
                     Moved(instruction, 1, GetOperandName(instruction, 1)));

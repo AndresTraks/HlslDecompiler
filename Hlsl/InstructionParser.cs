@@ -1801,6 +1801,79 @@ public class InstructionParser
     }
 
     /// <summary>
+    /// One component of an msad4, with the two words of its source recovered. HLSL
+    /// takes the source as a uint2 and the instruction as four windows sliding a byte
+    /// at a time along the eight bytes they make, so fxc builds the windows in front
+    /// of the instruction and there is nothing else the operand can be written as.
+    /// </summary>
+    private HlslTreeNode CreateMsad4Node(D3D10Instruction instruction, int componentIndex)
+    {
+        const int WindowsOperand = 2;
+        HlslTreeNode[] windows = GetInputComponents(instruction, WindowsOperand, 4);
+        HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
+        if (!TryGetMsadSource(windows, out HlslTreeNode low, out HlslTreeNode high))
+        {
+            throw new NotImplementedException(
+                "msad over windows this does not recognise as a uint2");
+        }
+        return new Msad4Node(inputs[0], low, high, inputs[2], componentIndex);
+    }
+
+    /// <summary>
+    /// The two words an msad's windows were built from. The first window is the low
+    /// word as it stands; each of the others shifts it down by a byte more and fills
+    /// the top that empties with the bottom of the high word - a bfi of that many bits
+    /// at the complementary offset. Anything else is not this shape and is not an
+    /// msad4 that can be written.
+    /// </summary>
+    private static bool TryGetMsadSource(
+        HlslTreeNode[] windows, out HlslTreeNode low, out HlslTreeNode high)
+    {
+        low = Unwrap(windows[0]);
+        high = null;
+        for (int window = 1; window < 4; window++)
+        {
+            int bits = window * 8;
+            if (Unwrap(windows[window]) is not BitFieldInsertOperation insert
+                || AsConstantInt(insert.Width) != bits
+                || AsConstantInt(insert.Offset) != 32 - bits
+                || Unwrap(insert.Value) is not ShiftRightOperation shift
+                || AsConstantInt(shift.Amount) != bits
+                || !NodeGrouper.AreNodesEquivalent(Unwrap(shift.Value), low))
+            {
+                return false;
+            }
+            HlslTreeNode inserted = Unwrap(insert.Insert);
+            if (high == null)
+            {
+                high = inserted;
+            }
+            else if (!NodeGrouper.AreNodesEquivalent(high, inserted))
+            {
+                return false;
+            }
+        }
+        return high != null;
+    }
+
+    // Through the moves fxc leaves between a value and where it is read.
+    private static HlslTreeNode Unwrap(HlslTreeNode node)
+    {
+        while (node is MoveOperation move)
+        {
+            node = move.Inputs[0];
+        }
+        return node;
+    }
+
+    private static int? AsConstantInt(HlslTreeNode node)
+    {
+        return Unwrap(node) is ConstantNode constant
+            ? constant.IntegerValue ?? (int)constant.Value
+            : null;
+    }
+
+    /// <summary>
     /// The components of a structured load or store that begin a value of the
     /// element, where the element holds doubles. A double is eight bytes and the
     /// components count in four, so two of them carry one number: a load of a
@@ -2217,6 +2290,11 @@ public class InstructionParser
 
         switch (instruction.Opcode)
         {
+            // The four components are the four windows of one call, so the component
+            // decides the value rather than which part of the source is read - and the
+            // source has to be read back out of the windows fxc built.
+            case D3D10Opcode.MSAD:
+                return CreateMsad4Node(instruction, componentIndex);
             case D3D10Opcode.DclInputPS:
             case D3D10Opcode.DclInputPSSgv:
             case D3D10Opcode.DclInputPSSiv:
@@ -3571,6 +3649,8 @@ public class InstructionParser
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
             case D3D10Opcode.AtomicCmpStore:
+            // The reference, the windows of the source, and what to add.
+            case D3D10Opcode.MSAD:
             case D3D10Opcode.DMovC:
             case D3D10Opcode.DFMA:
                 return 3;

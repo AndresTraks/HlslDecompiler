@@ -654,6 +654,12 @@ public class AsmWriter
             case D3D10Opcode.IMad:
                 WriteInstruction(instruction, "imad", 4);
                 break;
+            // The sum of absolute differences of four bytes against four, once for
+            // each of four windows, added to what it is given: a destination and
+            // three sources, all four wide.
+            case D3D10Opcode.MSAD:
+                WriteInstruction(instruction, "msad", 4);
+                break;
             case D3D10Opcode.IMax:
                 WriteInstruction(instruction, "imax", 3);
                 break;

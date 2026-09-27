@@ -756,6 +756,36 @@ public class D3D10Machine
                     uint[] whenClear = Source(instruction, 3);
                     return [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? whenSet[i] : whenClear[i])];
                 }
+            // The masked sum of absolute differences: for each of the four windows,
+            // the four bytes of the reference against the four of that window, added to
+            // what the instruction is given. Masked because a reference byte of zero
+            // contributes nothing at all - which is the whole point of it, and the one
+            // part of the rule that is not simply arithmetic.
+            case D3D10Opcode.MSAD:
+                {
+                    uint[] reference = Source(instruction, 1);
+                    uint[] windows = Source(instruction, 2);
+                    uint[] accumulator = Source(instruction, 3);
+                    var sums = new uint[4];
+                    for (int window = 0; window < 4; window++)
+                    {
+                        uint sum = accumulator[window];
+                        for (int b = 0; b < 4; b++)
+                        {
+                            uint referenceByte = (reference[window] >> (b * 8)) & 0xFF;
+                            if (referenceByte == 0)
+                            {
+                                continue;
+                            }
+                            uint sourceByte = (windows[window] >> (b * 8)) & 0xFF;
+                            sum += referenceByte > sourceByte
+                                ? referenceByte - sourceByte
+                                : sourceByte - referenceByte;
+                        }
+                        sums[window] = sum;
+                    }
+                    return sums;
+                }
             case D3D10Opcode.DAdd:
                 return Double(instruction, (a, b) => a + b);
             case D3D10Opcode.DMul:

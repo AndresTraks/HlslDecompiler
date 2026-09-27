@@ -1873,6 +1873,22 @@ public sealed class NodeCompiler
             }
         }
 
+        if (first is Msad4Node msad)
+        {
+            // The reference and the source are the same for every component; the
+            // accumulator is a vector like the result, so it is gathered across the
+            // group the way an ordinary operand is. Read as integers throughout: the
+            // intrinsic takes uints, and a reference read as a float would be its bit
+            // pattern rather than the four bytes it is.
+            string reference = CompileAsInteger([msad.Reference]);
+            string sourceLow = CompileAsInteger([msad.SourceLow]);
+            string sourceHigh = CompileAsInteger([msad.SourceHigh]);
+            string accumulator = CompileAsInteger(components.Select(c => ((Msad4Node)c).Accumulator));
+            string msadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            return $"msad4({reference}, uint2({sourceLow}, {sourceHigh}), {accumulator})"
+                + msadSwizzle;
+        }
+
         if (first is LitOutputNode lit)
         {
             // Every component reads the same three inputs, so they are compiled from

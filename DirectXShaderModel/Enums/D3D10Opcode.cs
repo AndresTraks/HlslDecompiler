@@ -363,6 +363,8 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMad:
+            // Four bytes against four, and a sum of them: integers throughout.
+            case D3D10Opcode.MSAD:
             case D3D10Opcode.IMin:
             case D3D10Opcode.IMul:
             // The unsigned arithmetic is as integer as the signed. Leaving udiv out

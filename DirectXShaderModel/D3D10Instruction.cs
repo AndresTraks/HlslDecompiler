@@ -262,6 +262,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.IShl:
                 case D3D10Opcode.IShr:
                 case D3D10Opcode.UShr:
+                case D3D10Opcode.MSAD:
                 case D3D10Opcode.IMad:
                 case D3D10Opcode.IMax:
                 // The unsigned arithmetic writes a destination like the signed.

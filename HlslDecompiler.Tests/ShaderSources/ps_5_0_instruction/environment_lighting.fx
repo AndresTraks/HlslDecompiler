@@ -43,7 +43,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.x = saturate(dot(asfloat(r1.xyz), r0.xyz));
 	r1 = asint(environment.SampleLevel(trilinear, asfloat(r1.xyz), 6).xyz);
 	r0.z = i.texcoord1 * 6;
-	r2 = environment.SampleLevel(trilinear, r2.xyz, r0.zzz).xyz;
+	r2 = environment.SampleLevel(trilinear, r2.xyz, r0.z).xyz;
 	r0.y = i.texcoord1;
 	r0.xy = brdfLut.Sample(trilinear, r0.xy).xy;
 	r0.x = r0.y + r0.x;

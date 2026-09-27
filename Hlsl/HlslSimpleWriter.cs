@@ -3962,6 +3962,24 @@ public class HlslSimpleWriter : HlslWriter
         {
             return instruction.ValueCount;
         }
+        // The gradients a sample_d reads are as wide as the texture, the same as the
+        // coordinate before them: a 2D gradient is a float2, and written as wide as
+        // the destination `SampleGrad(s, c, r0.xyxx, r0.zwzz)` hands it two float4s
+        // and truncates both.
+        if (instruction.Opcode == D3D10Opcode.SampleD && operandIndex is 4 or 5)
+        {
+            return GetTextureDimension(instruction);
+        }
+        // The level a sample_l reads, the bias of a sample_b and the value a
+        // comparison sample tests are one number each, whatever the destination mask
+        // is: `SampleLevel(s, c, r0.zzz)` is a float3 truncated to the one float it
+        // takes, which is not what the shader asked for.
+        if (operandIndex == 4 && instruction.Opcode is D3D10Opcode.SampleL
+            or D3D10Opcode.SampleB or D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ
+            or D3D10Opcode.Gather4C)
+        {
+            return 1;
+        }
         // The offset a gather4_po reads from a register is as wide as the texture,
         // the same as the coordinate before it.
         if (operandIndex == 2

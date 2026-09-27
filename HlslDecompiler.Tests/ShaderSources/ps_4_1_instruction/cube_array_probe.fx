@@ -32,7 +32,7 @@ float4 main(PS_IN i) : SV_Target
 	r2.w = probe.x;
 	r1 = albedoMap.Sample(samp, i.texcoord.xy);
 	r0.y = r1.w * probe.y;
-	r0.yzw = probes.SampleLevel(samp, r2, r0.yyy).xyz;
+	r0.yzw = probes.SampleLevel(samp, r2, r0.y).xyz;
 	r0.yzw = -(r1.xyz) + r0.yzw;
 	r1.w = r0.x * r0.x;
 	r1.w = r1.w * r1.w;

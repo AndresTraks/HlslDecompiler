@@ -28,7 +28,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.xy = r0.xy / parallax.yy;
 	r0.zw = ddx(i.texcoord.xy);
 	r1.xy = ddy(i.texcoord.xy);
-	r2 = heightMap.SampleGrad(samp, i.texcoord.xy, r0.zwzz, r1.xyxx);
+	r2 = heightMap.SampleGrad(samp, i.texcoord.xy, r0.zw, r1.xy);
 	r1.z = 1 / parallax.y;
 	r2.yz = i.texcoord.xy;
 	r1.w = 1;
@@ -43,7 +43,7 @@ float4 main(PS_IN i) : SV_Target
 		}
 		r1.w = -(r1.z) + r1.w;
 		r2.yz = -(r0.xy) + r2.yz;
-		r3 = heightMap.SampleGrad(samp, r2.yz, r0.zwzz, r1.xyxx);
+		r3 = heightMap.SampleGrad(samp, r2.yz, r0.zw, r1.xy);
 		r2.w = r2.w + 1;
 	}
 	r0 = albedoMap.Sample(samp, r2.yz);

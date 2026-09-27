@@ -18,7 +18,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r0 = tex.Load(r0.xyz);
 	r1 = tex.SampleLevel(samp, texcoord.xy, lod);
 	r2 = tex.SampleBias(samp, texcoord.xy, bias);
-	r3 = tex.SampleGrad(samp, texcoord.xy, texcoord.zwzz, texcoord.wzww);
+	r3 = tex.SampleGrad(samp, texcoord.xy, texcoord.zw, texcoord.wz);
 	r1 = r2 * r3 + r1;
 	o = -(r0) + r1;
 

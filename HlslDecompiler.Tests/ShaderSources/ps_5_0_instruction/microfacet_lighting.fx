@@ -79,7 +79,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.w = dot(-(r0.xyz), r2.xyz);
 	r0.w = r0.w + r0.w;
 	r0.xyz = r2.xyz * -(r0.www) + -(r0.xyz);
-	r0.xyz = environment.SampleLevel(linearSampler, r0.xyz, r1.yyy).xyz;
+	r0.xyz = environment.SampleLevel(linearSampler, r0.xyz, r1.y).xyz;
 	r0.xyz = r4.xyz * r0.xyz;
 	o.xyz = r1.xzw * lightIntensity + r0.xyz;
 	o.w = 1;

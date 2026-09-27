@@ -1451,6 +1451,11 @@ public sealed class IntegerOperandAnalysis
             // The width, the offset and the value.
             case D3D10Opcode.UBFE:
             case D3D10Opcode.IBFE:
+            // The reference, the windows and the accumulator. Missing here, an msad
+            // typed none of them: a register holding a window fxc had moved a literal
+            // into was known to be an integer nowhere, so the instruction writer
+            // declared it float4 and `r0.w >> 8` did not compile.
+            case D3D10Opcode.MSAD:
                 return 3;
             // And the bits going in.
             case D3D10Opcode.BFI:

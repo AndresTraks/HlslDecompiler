@@ -1917,6 +1917,36 @@ public class HlslAstWriter : HlslWriter
     private List<HlslTreeNode[]> SplitRead(
         HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> grouped, HashSet<HlslTreeNode> roots)
     {
+        // Every component of an instruction answers for all of them, which is what
+        // the comment below means by counting over the instruction - so the count is
+        // the same number for each of them, and computing it once for the instruction
+        // is the same answer for a fraction of the work. A sample's components share
+        // their first input, and that is what the component walk asks about, so the
+        // input and the kind of node are what an instruction is here. It matters
+        // because the walk is quadratic in how many components answer together: forty
+        // samples of one texture are a hundred and sixty of them, each walking all the
+        // others, and this pass ran once for every name the statement goes on to make.
+        // By reference, the way every node set here is keyed: an equal constant is
+        // not the same operand, and ConstantNode compares by value.
+        var countByInstruction =
+            new Dictionary<HlslTreeNode, Dictionary<Type, int>>(ReferenceEqualityComparer.Instance);
+        int CountForInstruction(HlslTreeNode node)
+        {
+            if (node.Inputs.Count == 0 || node is not IHasComponentIndex)
+            {
+                return CountExpressions(node, readers);
+            }
+            if (!countByInstruction.TryGetValue(node.Inputs[0], out Dictionary<Type, int> byKind))
+            {
+                countByInstruction[node.Inputs[0]] = byKind = [];
+            }
+            if (!byKind.TryGetValue(node.GetType(), out int count))
+            {
+                byKind[node.GetType()] = count = CountExpressions(node, readers);
+            }
+            return count;
+        }
+
         HlslTreeNode chosen = readers
             .Where(node => CostsAnInstruction(node)
                 && !roots.Contains(node)
@@ -1926,7 +1956,7 @@ public class HlslAstWriter : HlslWriter
             // count down - every component still answers for all of them - so
             // without this the pass names the same sample round after round.
             .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode))
-            .Select(node => (Node: node, Read: CountExpressions(node, readers)))
+            .Select(node => (Node: node, Read: CountForInstruction(node)))
             .Where(node => node.Read > 1)
             .OrderByDescending(node => node.Read)
             .Select(node => node.Node)

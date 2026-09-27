@@ -1842,7 +1842,7 @@ public class InstructionParser
     /// at the complementary offset. Anything else is not this shape and is not an
     /// msad4 that can be written.
     /// </summary>
-    private static bool TryGetMsadSource(D3D10Instruction instruction, int operand,
+    private bool TryGetMsadSource(D3D10Instruction instruction, int operand,
         HlslTreeNode[] windows, out HlslTreeNode low, out HlslTreeNode high)
     {
         low = Unwrap(windows[0]);
@@ -1860,15 +1860,27 @@ public class InstructionParser
             high = new ConstantNode(0);
             return true;
         }
+        // Where the high word is the known one, fxc adds it in rather than inserting
+        // it: the top of a shifted low word is zeroes, so an or is an add and an add
+        // of a literal is one instruction where the bfi was three operands of them.
+        if (TryGetAddedMsadSource(windows, low, ref high))
+        {
+            return true;
+        }
+        // And the other way about: the low word known and the high one not, so fxc
+        // shifts the low word itself and inserts the register over the top of the
+        // number that comes to.
+        if (TryGetInsertedOverConstantLow(windows, ref low, ref high))
+        {
+            return true;
+        }
         for (int window = 1; window < 4; window++)
         {
             int bits = window * 8;
             if (Unwrap(windows[window]) is not BitFieldInsertOperation insert
                 || AsConstantInt(insert.Width) != bits
                 || AsConstantInt(insert.Offset) != 32 - bits
-                || Unwrap(insert.Value) is not ShiftRightOperation shift
-                || AsConstantInt(shift.Amount) != bits
-                || !NodeGrouper.AreNodesEquivalent(Unwrap(shift.Value), low))
+                || !IsLowWordShiftedBy(insert.Value, low, bits))
             {
                 return false;
             }
@@ -1924,6 +1936,131 @@ public class InstructionParser
             }
         }
         low = new ConstantNode((int)lowWord);
+        high = new ConstantNode((int)highWord);
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a window's value is the low word shifted down by that many bits - the
+    /// shift fxc emits where the low word is a register, or the number that shift comes
+    /// to where it is a literal and fxc did it itself.
+    /// </summary>
+    private static bool IsLowWordShiftedBy(HlslTreeNode value, HlslTreeNode low, int bits)
+    {
+        if (Unwrap(value) is ShiftRightOperation shift)
+        {
+            return AsConstantInt(shift.Amount) == bits
+                && NodeGrouper.AreNodesEquivalent(Unwrap(shift.Value), low);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The windows where the low word is the literal: fxc shifts it down itself, so
+    /// each window's value is the number that comes to and the register holding the
+    /// high word is inserted over the top of it.
+    ///
+    /// The low word has to be read as the bits it is. An immediate a mov carried here
+    /// is typed by whatever reads it, which happens after parsing, so until then it is
+    /// a float - and 0x01020304 is 2.4e-38 as one, which is zero as a number. The
+    /// constant the node reads from is replaced with those bits for the same reason.
+    /// </summary>
+    private bool TryGetInsertedOverConstantLow(
+        HlslTreeNode[] windows, ref HlslTreeNode low, ref HlslTreeNode high)
+    {
+        if (AsExactImmediate(windows[0]) is not int lowBits)
+        {
+            return false;
+        }
+        HlslTreeNode inserted = null;
+        for (int window = 1; window < 4; window++)
+        {
+            int bits = window * 8;
+            if (Unwrap(windows[window]) is not BitFieldInsertOperation insert
+                || AsConstantInt(insert.Width) != bits
+                || AsConstantInt(insert.Offset) != 32 - bits
+                || AsExactImmediate(insert.Value) is not int shifted
+                || (uint)shifted != (uint)lowBits >> bits)
+            {
+                return false;
+            }
+            HlslTreeNode candidate = Unwrap(insert.Insert);
+            if (inserted == null)
+            {
+                inserted = candidate;
+            }
+            else if (!NodeGrouper.AreNodesEquivalent(inserted, candidate))
+            {
+                return false;
+            }
+        }
+        low = new ConstantNode(lowBits);
+        high = inserted;
+        return true;
+    }
+
+    // A constant's thirty-two bits where they are known exactly: one already typed as
+    // an integer, or one a mov carried in and the parser recorded on the way past. A
+    // float constant is none of those and says so, rather than handing back a number
+    // that is not what the bits are.
+    private int? AsExactImmediate(HlslTreeNode node)
+    {
+        if (Unwrap(node) is not ConstantNode constant)
+        {
+            return null;
+        }
+        if (constant.IntegerValue is int typed)
+        {
+            return typed;
+        }
+        foreach ((ConstantNode immediate, uint bits) in _polymorphicImmediates)
+        {
+            if (ReferenceEquals(immediate, constant))
+            {
+                return (int)bits;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The windows as fxc builds them where the high word is a literal and the low one
+    /// is not: each is the low word shifted down and the high word's contribution added
+    /// on, since the top of the shifted word is zeroes and an or of a literal into
+    /// zeroes is an add of it. The last window carries three bytes of the high word,
+    /// which is all of it that msad4 ever reads, and the other two have to agree with
+    /// those - so the shape is checked rather than taken on the strength of one window.
+    /// </summary>
+    private static bool TryGetAddedMsadSource(
+        HlslTreeNode[] windows, HlslTreeNode low, ref HlslTreeNode high)
+    {
+        var added = new uint[4];
+        for (int window = 1; window < 4; window++)
+        {
+            int bits = window * 8;
+            if (Unwrap(windows[window]) is not AddOperation add)
+            {
+                return false;
+            }
+            HlslTreeNode[] operands = [Unwrap(add.Addend1), Unwrap(add.Addend2)];
+            int shiftedOperand = IsLowWordShiftedBy(operands[0], low, bits) ? 0
+                : IsLowWordShiftedBy(operands[1], low, bits) ? 1
+                : -1;
+            if (shiftedOperand < 0
+                || AsConstantInt(operands[1 - shiftedOperand]) is not int addend)
+            {
+                return false;
+            }
+            added[window] = (uint)addend;
+        }
+        uint highWord = added[3] >> 8;
+        for (int window = 1; window < 3; window++)
+        {
+            if (added[window] != (uint)(highWord << (32 - window * 8)))
+            {
+                return false;
+            }
+        }
         high = new ConstantNode((int)highWord);
         return true;
     }

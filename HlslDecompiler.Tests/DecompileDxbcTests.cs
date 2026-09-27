@@ -275,6 +275,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "masked_zero_word")]
     [TestCase("cs_5_0", "masked_folded_source")]
     [TestCase("cs_5_0", "masked_constant_accumulator")]
+    [TestCase("cs_5_0", "masked_folded_low_word")]
+    [TestCase("cs_5_0", "masked_added_high_word")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

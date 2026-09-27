@@ -1986,6 +1986,32 @@ public class HlslAstWriter : HlslWriter
         return expressions.Count;
     }
 
+    /// <summary>
+    /// The components the count above answers for together: this node, and the nodes
+    /// of its kind reading the same first input.
+    ///
+    /// Which is looser than the components of one instruction, and stays that way on
+    /// purpose. A sample's first input is the sampler, so every sample through that
+    /// sampler answers with it, and the count comes out the same inflated number for
+    /// each of them - which is what gets a sample named even where one expression
+    /// reads it, and is why the fixtures read as a handful of short lines rather than
+    /// one very long one. Narrowing it to the instruction that made the node, which
+    /// SourceInstruction identifies correctly, makes the counts true and costs that:
+    /// tried 2026-09-27, twenty fixtures lost the names of samples read once and grew
+    /// return statements a couple of hundred characters long.
+    ///
+    /// Narrowing also shows what the count would then have to be asked instead. It
+    /// counts the expressions that read an instruction, where what decides whether to
+    /// name it is how many times its text will be written: `sample.y + sample.x` is
+    /// one expression reading two components, and writes the sample twice. With true
+    /// components and that count unchanged, environment_lighting grew a second
+    /// brdfLut.Sample of the same coordinate. Both together - the instruction's own
+    /// components, a count of writes rather than readers, and something to go on
+    /// naming an expensive read that one expression reads - is a change to what the
+    /// writer names, not to how it counts, and none of it is needed to make this fast:
+    /// the count is per instruction and computed once, which is what the quadratic
+    /// walk cost before.
+    /// </summary>
     private static IEnumerable<HlslTreeNode> InstructionComponents(
         HlslTreeNode node, HashSet<HlslTreeNode> readers)
     {

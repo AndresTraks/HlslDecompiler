@@ -2447,6 +2447,10 @@ public class InstructionParser
                                         instruction.GetParamRegisterKey(3),
                                         elementByteOffset
                                             + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
+                                    IsUnsignedElement = _registerState.IsUnsignedStructuredMember(
+                                        instruction.GetParamRegisterKey(3),
+                                        elementByteOffset
+                                            + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
                                 };
                             }
                         case D3D10Opcode.LdRaw:

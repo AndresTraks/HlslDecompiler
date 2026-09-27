@@ -1295,6 +1295,10 @@ public class StatementFinalizer
             DivisionOperation { ConsumesInteger: true } => true,
             ModuloOperation { ConsumesInteger: true } => true,
             NegateOperation => false,
+            // What the buffer holds. Asked of the maker because an atomic reads its
+            // value through a statement, which the node graph does not carry, so a
+            // value only an atomic reads has no readers to be asked.
+            LoadStructuredNode load => load.IsUnsignedElement,
             _ => null,
         };
     }

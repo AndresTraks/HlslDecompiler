@@ -28,5 +28,13 @@ public class LoadStructuredNode : Operation
     // be typed by its readers.
     public bool? IsIntegerElement { get; init; }
 
+    // And whether that integer is unsigned, asked of the same member. HLSL reads an
+    // atomic's overload and a comparison's ordering from the type of what it is
+    // given, and an atomic takes its value through a statement rather than through
+    // the node graph - so the readers cannot be asked and the buffer is the only
+    // thing that knows. A uint loaded into an int variable and handed to
+    // InterlockedMin is a signed/unsigned mismatch that fxc resolves its own way.
+    public bool? IsUnsignedElement { get; init; }
+
     public override string Mnemonic => IsRaw ? "ld_raw" : "ld_structured";
 }

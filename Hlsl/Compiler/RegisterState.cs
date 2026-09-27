@@ -281,6 +281,24 @@ public sealed class RegisterState
     /// left to whatever else had touched the register - a component fxc reused for a
     /// counter afterwards, so the float was declared int and truncated on the way in.
     /// </summary>
+    /// <summary>
+    /// Whether the integer a structured load reads is unsigned, from the same member
+    /// the type comes from. Null where the member is not an integer or nothing says.
+    /// </summary>
+    public bool? IsUnsignedStructuredMember(RegisterKey resourceKey, int byteAddress)
+    {
+        if (FindStructuredTypeAt(resourceKey, byteAddress) is not var (type, _))
+        {
+            return null;
+        }
+        return type.ParameterType switch
+        {
+            ParameterType.Uint or ParameterType.Bool => true,
+            ParameterType.Int => false,
+            _ => null,
+        };
+    }
+
     public bool? IsIntegerStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
         ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;

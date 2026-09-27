@@ -12,7 +12,7 @@ struct CS_IN
 [numthreads(64, 1, 1)]
 void main(CS_IN i)
 {
-	int t0 = input[i.sv_dispatchthreadid.x];
+	uint t0 = input[i.sv_dispatchthreadid.x];
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 1) {

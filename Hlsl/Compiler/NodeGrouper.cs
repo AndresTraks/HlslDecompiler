@@ -218,12 +218,22 @@ public class NodeGrouper
                 && comparison1.Comparison == comparison2.Comparison;
         }
 
+        // Two components of one sample, which is the same operands throughout: the
+        // sampler, the coordinate, the texture, and the texel offsets that shift it.
+        // Asked as equivalence rather than through the grouping below, because grouping
+        // is deliberately looser than sameness where a constant is involved - a
+        // coordinate of uv and one of uv * 2 group, one having had its factor folded -
+        // and two samples of one texture at two coordinates are two instructions. Left
+        // to the grouping, `tex.Sample(s, uv).y` beside `tex.Sample(s, uv * 2).z` came
+        // out as one sample's `.yz`, dropping the second coordinate and computing
+        // something else; where both read the same channel it came out as a constructor
+        // of three arguments, which does not compile at all. The structured load below
+        // is careful about its address for the same reason.
         if (node1 is TextureLoadOutputNode textureload1 && node2 is TextureLoadOutputNode textureload2)
         {
-            if (textureload1.Controls != textureload2.Controls)
-            {
-                return false;
-            }
+            return textureload1.Controls == textureload2.Controls
+                && SameSampleOffsets(textureload1, textureload2)
+                && ReadsSameTexel(textureload1, textureload2);
         }
 
         // The sample a samplepos asks about is one scalar for the whole float2, not
@@ -313,6 +323,57 @@ public class NodeGrouper
     /// is what held the components together. `mul r, c, v` with a 1 in one
     /// component of c writes the whole register in one instruction.
     /// </summary>
+    /// <summary>
+    /// Whether two sample output components read the one texel: the same sampler, the
+    /// same coordinate, the same gradients, offsets and level, out of the same texture.
+    ///
+    /// The texture operand is the exception, compared by register rather than by
+    /// component. Its component is which channel of the texel this output component
+    /// reads - what the swizzle on the view says - so the components of one sample
+    /// differ in it by design, and that is the only thing they may differ in.
+    /// </summary>
+    private static bool ReadsSameTexel(
+        TextureLoadOutputNode load1, TextureLoadOutputNode load2)
+    {
+        if (load1.Inputs.Count != load2.Inputs.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < load1.Inputs.Count; i++)
+        {
+            HlslTreeNode operand1 = load1.Inputs[i];
+            HlslTreeNode operand2 = load2.Inputs[i];
+            if (ReferenceEquals(operand1, load1.Texture) || ReferenceEquals(operand2, load2.Texture))
+            {
+                if (operand1 is not RegisterInputNode texture1
+                    || operand2 is not RegisterInputNode texture2
+                    || !texture1.RegisterComponentKey.RegisterKey.Equals(
+                        texture2.RegisterComponentKey.RegisterKey))
+                {
+                    return false;
+                }
+                continue;
+            }
+            if (!AreNodesEquivalent(operand1, operand2))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The texel offsets of a sample_aoffimmi, which shift where it reads and are part
+    // of what it computes: two samples that differ only in them are two samples.
+    private static bool SameSampleOffsets(
+        TextureLoadOutputNode load1, TextureLoadOutputNode load2)
+    {
+        if (load1.SampleOffsets == null || load2.SampleOffsets == null)
+        {
+            return load1.SampleOffsets == null && load2.SampleOffsets == null;
+        }
+        return load1.SampleOffsets.SequenceEqual(load2.SampleOffsets);
+    }
+
     private bool GroupsWithFoldedFactor(HlslTreeNode node1, HlslTreeNode node2)
     {
         if (node1 is not MultiplyOperation multiply

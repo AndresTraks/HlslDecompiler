@@ -18,7 +18,7 @@ float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 	r0.z = atlas[r0.x].w;
 	r0.z = (float)(uint)r0.z;
 	r1 = r0.z + r1;
-	r0.z = tiles[r0.y];
+	r0.z = tiles[r0.y].x;
 	r0.z = (float)(uint)r0.z;
 	r1 = r0.z * sv_position.w + r1;
 	marked[r0.xy] = r1;

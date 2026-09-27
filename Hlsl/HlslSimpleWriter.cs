@@ -1289,6 +1289,16 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.Comment:
             case Opcode.End:
                 break;
+            // What reaches here is the part of the shader model 1 to 3 instruction set
+            // that fxc does not emit: the matrix multiplies m4x4 to m3x2, crs, sgn, dst,
+            // cnd, expp, logp, bem, the ps_1_x texture addressing instructions, and
+            // call, callnz and setp. The expression writer handles several of them
+            // already, so a shader assembled by hand - which is where they come from,
+            // there being no HLSL that compiles to them - decompiles as an expression
+            // and throws here. Filling them in is not the difficulty; having nothing to
+            // check it against is. This fxc refuses ps_1_x outright (X3539) and never
+            // chooses the others, so no fixture can be made for any of them the way
+            // every other one here was.
             default:
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
@@ -2421,10 +2431,22 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = f16tof32({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.LdUAVTyped:
-                // The same subscript a store uses, read rather than written.
-                WriteResult(instruction, "{0} = {1}[{2}];", GetOperandName(instruction, 0),
-                    GetOperandName(instruction, 2), GetOperandName(instruction, 1));
-                break;
+                {
+                    // The same subscript a store uses, read rather than written - and
+                    // the components of the texel it asks for, which the operand on the
+                    // view says and the destination mask counts. A uint4 buffer read
+                    // into one register component is `tiles[i].x`; without the swizzle
+                    // the whole texel was assigned to the one component, which is the
+                    // implicit truncation fxc warns about with X3206.
+                    string texel = instruction.GetSourceSwizzleNameForMask(
+                        2, instruction.GetDestinationWriteMask());
+                    // A texel read whole keeps no swizzle: `.xyzw` off a float4 says
+                    // nothing, the way the structured load says it below.
+                    WriteResult(instruction, "{0} = {1}[{2}]{3};", GetOperandName(instruction, 0),
+                        GetOperandName(instruction, 2), GetOperandName(instruction, 1),
+                        texel == ".xyzw" ? "" : texel);
+                    break;
+                }
             case D3D10Opcode.StoreUAVTyped:
                 // A texel, addressed by as many coordinates as the resource has
                 // dimensions - which is what GetSourceLength answers for it.

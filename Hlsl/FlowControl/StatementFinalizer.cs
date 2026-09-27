@@ -1172,7 +1172,25 @@ public class StatementFinalizer
     /// </summary>
     internal static bool? IsUnsignedValue(HlslTreeNode value)
     {
-        return ConsumedAsUnsigned(value) ?? MadeUnsigned(value);
+        return ConsumedAsUnsigned(value) ?? MadeUnsigned(value) ?? IndexesABuffer(value);
+    }
+
+    /// <summary>
+    /// Whether the only thing that reads a value is a buffer subscript, which is an
+    /// index and so unsigned. Weaker evidence than the rest and asked last: being
+    /// used as an index says how it is used, not what it is, so a value something
+    /// made signed stays signed - `(int)sv_position.x` is an ftoi and keeps a
+    /// negative, whatever it goes on to index. Where nothing else says anything, an
+    /// index computed from a thread id has no other reader at all, and left with no
+    /// opinion it was declared int and then compared against a uint with a ult a few
+    /// lines later.
+    /// </summary>
+    private static bool? IndexesABuffer(HlslTreeNode value)
+    {
+        return value.Outputs.Any(reader => reader is LoadStructuredNode load
+            && ReferenceEquals(load.Address, value))
+            ? true
+            : null;
     }
 
     /// <summary>

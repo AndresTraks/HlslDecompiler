@@ -232,8 +232,19 @@ public class NodeGrouper
         if (node1 is TextureLoadOutputNode textureload1 && node2 is TextureLoadOutputNode textureload2)
         {
             return textureload1.Controls == textureload2.Controls
-                && SameSampleOffsets(textureload1, textureload2)
-                && ReadsSameTexel(textureload1, textureload2);
+                && SameSampleOffsets(textureload1.SampleOffsets, textureload2.SampleOffsets)
+                && ReadsSameTexel(textureload1, textureload2,
+                    textureload1.Texture, textureload2.Texture);
+        }
+
+        // A typed load asks it too, and answered it the same way: `tex.Load(p).y` beside
+        // `tex.Load(p * 2).z` came out as one load's `.yz`, seventeen instructions in and
+        // twelve out.
+        if (node1 is ResourceLoadNode resourceLoad1 && node2 is ResourceLoadNode resourceLoad2)
+        {
+            return SameSampleOffsets(resourceLoad1.SampleOffsets, resourceLoad2.SampleOffsets)
+                && ReadsSameTexel(resourceLoad1, resourceLoad2,
+                    resourceLoad1.Resource, resourceLoad2.Resource);
         }
 
         // The sample a samplepos asks about is one scalar for the whole float2, not
@@ -333,7 +344,8 @@ public class NodeGrouper
     /// differ in it by design, and that is the only thing they may differ in.
     /// </summary>
     private static bool ReadsSameTexel(
-        TextureLoadOutputNode load1, TextureLoadOutputNode load2)
+        HlslTreeNode load1, HlslTreeNode load2,
+        HlslTreeNode resource1, HlslTreeNode resource2)
     {
         if (load1.Inputs.Count != load2.Inputs.Count)
         {
@@ -343,7 +355,7 @@ public class NodeGrouper
         {
             HlslTreeNode operand1 = load1.Inputs[i];
             HlslTreeNode operand2 = load2.Inputs[i];
-            if (ReferenceEquals(operand1, load1.Texture) || ReferenceEquals(operand2, load2.Texture))
+            if (ReferenceEquals(operand1, resource1) || ReferenceEquals(operand2, resource2))
             {
                 if (operand1 is not RegisterInputNode texture1
                     || operand2 is not RegisterInputNode texture2
@@ -354,7 +366,14 @@ public class NodeGrouper
                 }
                 continue;
             }
-            if (!AreNodesEquivalent(operand1, operand2))
+            // The one node, before asking whether two of them say the same thing: the
+            // components of one load share their address, and AreNodesEquivalent is not
+            // reflexive over every kind of node - it ends in false for anything that is
+            // neither an operation nor a component of one, so an address holding a value
+            // carried round a loop answered false against itself, and the four components
+            // of a skinning matrix load stopped grouping into the dot products they were.
+            if (!ReferenceEquals(operand1, operand2)
+                && !AreNodesEquivalent(operand1, operand2))
             {
                 return false;
             }
@@ -364,14 +383,13 @@ public class NodeGrouper
 
     // The texel offsets of a sample_aoffimmi, which shift where it reads and are part
     // of what it computes: two samples that differ only in them are two samples.
-    private static bool SameSampleOffsets(
-        TextureLoadOutputNode load1, TextureLoadOutputNode load2)
+    private static bool SameSampleOffsets(int[] offsets1, int[] offsets2)
     {
-        if (load1.SampleOffsets == null || load2.SampleOffsets == null)
+        if (offsets1 == null || offsets2 == null)
         {
-            return load1.SampleOffsets == null && load2.SampleOffsets == null;
+            return offsets1 == null && offsets2 == null;
         }
-        return load1.SampleOffsets.SequenceEqual(load2.SampleOffsets);
+        return offsets1.SequenceEqual(offsets2);
     }
 
     private bool GroupsWithFoldedFactor(HlslTreeNode node1, HlslTreeNode node2)

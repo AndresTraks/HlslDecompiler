@@ -154,6 +154,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "derivative_precision")]
     [TestCase("ps_5_0", "coverage_input")]
     [TestCase("ps_5_0", "typed_view_load")]
+    [TestCase("ps_5_0", "load_two_addresses")]
     [TestCase("ps_5_0", "packed_input_cross")]
     [TestCase("ps_5_0", "get_dimensions_shapes")]
     [TestCase("ps_5_0", "texture_buffer_index")]

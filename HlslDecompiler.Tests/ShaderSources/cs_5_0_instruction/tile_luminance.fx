@@ -37,7 +37,7 @@ void main(CS_IN i)
 	while (true) {
 		r1.x = (0 >= (uint)r0.w) ? -1 : 0;
 		if (r1.x != 0) break;
-		r1.x = (i.sv_groupindex.x < r0.w) ? -1 : 0;
+		r1.x = (i.sv_groupindex.x < (uint)r0.w) ? -1 : 0;
 		if (r1.x != 0) {
 			r1.x = r0.w + i.sv_groupindex.x;
 			r1.y = asint(g1[r1.x]);
@@ -61,7 +61,7 @@ void main(CS_IN i)
 		r1.y = 0;
 		InterlockedAdd(histogram[r1.x], 1);
 	}
-	r1.xy = (r0.xy < size.xy) ? -1 : 0;
+	r1.xy = ((uint2)r0.xy < size.xy) ? -1 : 0;
 	r0.w = r1.y & r1.x;
 	r1.x = (step == 0) ? -1 : 0;
 	r0.w = r0.w & r1.x;

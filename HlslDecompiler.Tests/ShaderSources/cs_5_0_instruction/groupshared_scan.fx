@@ -17,7 +17,7 @@ void main(CS_IN i)
 	r0.x = input[i.sv_dispatchthreadid.x];
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
-	r1 = (i.sv_groupindex.x >= int4(1, 2, 4, 8)) ? -1 : 0;
+	r1 = (i.sv_groupindex.x >= uint4(1, 2, 4, 8)) ? -1 : 0;
 	if (r1.x != 0) {
 		r0.y = i.sv_groupindex.x + -1;
 		r0.y = g0[r0.y];
@@ -50,7 +50,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
-	r0.yz = (i.sv_groupindex.xx >= int2(16, 32)) ? -1 : 0;
+	r0.yz = (i.sv_groupindex.xx >= uint2(16, 32)) ? -1 : 0;
 	if (r0.y != 0) {
 		r0.y = i.sv_groupindex.x + -16;
 		r0.y = g0[r0.y];

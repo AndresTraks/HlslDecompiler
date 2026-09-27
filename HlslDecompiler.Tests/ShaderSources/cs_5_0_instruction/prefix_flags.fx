@@ -28,7 +28,7 @@ void main(CS_IN i)
 	r0.w = (r0.w != 0) ? 1 : 0;
 	g0[i.sv_groupindex.x] = r0.w;
 	GroupMemoryBarrierWithGroupSync();
-	r1 = (i.sv_groupindex.x >= int4(1, 2, 4, 8)) ? -1 : 0;
+	r1 = (i.sv_groupindex.x >= uint4(1, 2, 4, 8)) ? -1 : 0;
 	r2 = i.sv_groupindex.x + int4(-1, -2, -4, -8);
 	r2.x = g0[r2.x];
 	r1.x = r1.x & r2.x;
@@ -54,7 +54,7 @@ void main(CS_IN i)
 	r0.w = r0.w + r1.x;
 	g0[i.sv_groupindex.x] = r0.w;
 	GroupMemoryBarrierWithGroupSync();
-	r1.xy = (i.sv_groupindex.xx >= int2(16, 32)) ? -1 : 0;
+	r1.xy = (i.sv_groupindex.xx >= uint2(16, 32)) ? -1 : 0;
 	r1.zw = i.sv_groupindex.xx + int2(-16, -32);
 	r1.z = g0[r1.z];
 	r1.x = r1.z & r1.x;

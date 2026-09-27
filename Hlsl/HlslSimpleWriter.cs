@@ -1296,23 +1296,40 @@ public class HlslSimpleWriter : HlslWriter
         // promoted to match whichever is unsigned - so a register already declared
         // one needs nothing, and the cast goes on the side that is not an immediate,
         // where it says something.
-        if (unsigned
-            && !IsUnsignedOperand(instruction, 1)
-            && !IsUnsignedOperand(instruction, 2))
+        if (unsigned)
         {
             int length = instruction.GetDestinationMaskLength();
             string size = length == 1 ? "" : length.ToString();
-            if (instruction.GetOperandType(1) != OperandType.Immediate32)
+            // Whichever side is not unsigned already, rather than one of them where
+            // neither is. One was enough to make the comparison unsigned - HLSL
+            // promotes the other to match - but a signed operand beside an unsigned
+            // one is a mismatch it resolves by assuming unsigned and warns about, and
+            // this writer says what it means everywhere else. An immediate is left
+            // alone: a literal takes the type it is compared against, and `(uint)0 <=
+            // x` is a tautology fxc warns about in its own right.
+            if (!IsUnsignedOperand(instruction, 1)
+                && instruction.GetOperandType(1) != OperandType.Immediate32)
             {
                 left = $"(uint{size}){left}";
             }
-            else
+            if (!IsUnsignedOperand(instruction, 2)
+                && instruction.GetOperandType(2) != OperandType.Immediate32)
             {
                 right = $"(uint{size}){right}";
             }
         }
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
             $"({left} {op} {right}) ? -1 : 0");
+    }
+
+    // Whether the instruction reads its integer operands as unsigned. Only the
+    // opcodes that come in both forms need asking: the unsigned one of a pair says
+    // what its operands are, where an opcode with no signed counterpart says nothing
+    // about them either way.
+    private static bool ReadsUnsignedImmediates(D3D10Instruction instruction)
+    {
+        return instruction.Opcode is D3D10Opcode.ULT or D3D10Opcode.UGE
+            or D3D10Opcode.UMax or D3D10Opcode.UMin or D3D10Opcode.UShr;
     }
 
     /// <summary>
@@ -3086,7 +3103,14 @@ public class HlslSimpleWriter : HlslWriter
                 .Select(s => isInteger
                     ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
-            string immediateType = isInteger ? "int" : "float";
+            // Unsigned where the instruction reads it so. A bare literal takes the
+            // type of what it is compared against, which is why one of those is left
+            // alone, but a vector immediate is written out as a constructor and an
+            // int4 of it really is signed: `(uint)i >= int4(1, 2, 4, 8)` is the
+            // mismatch fxc resolves by assuming unsigned and warns about.
+            string immediateType = isInteger
+                ? (ReadsUnsignedImmediates(instruction) ? "uint" : "int")
+                : "float";
             // One component is a scalar, not a one wide vector. `int1(0)` is legal
             // HLSL almost everywhere and not as a subscript, where fxc wants a
             // scalar: `bounds[int1(0)]` is an invalid index.

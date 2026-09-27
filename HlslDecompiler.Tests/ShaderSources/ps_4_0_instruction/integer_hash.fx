@@ -12,7 +12,7 @@ float4 main() : SV_Target
 	r0.x = seed;
 	r0.y = 0;
 	while (true) {
-		r0.z = (r0.y >= count) ? -1 : 0;
+		r0.z = ((uint)r0.y >= count) ? -1 : 0;
 		if (r0.z != 0) break;
 		r0.z = r0.x * 1664525 + 1013904223;
 		r0.w = (uint)r0.x >> 16;

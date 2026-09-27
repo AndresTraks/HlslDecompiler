@@ -16,7 +16,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0 = float4(0, 0, 0, 0);
 	r1.x = 0;
 	while (true) {
-		r1.y = (r1.x >= count) ? -1 : 0;
+		r1.y = ((uint)r1.x >= count) ? -1 : 0;
 		if (r1.y != 0) break;
 		r2 = input[r1.x];
 		r0 = r2 * k + r0;

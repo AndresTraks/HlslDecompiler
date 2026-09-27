@@ -51,7 +51,7 @@ float4 main(PS_IN i) : SV_Target
 	r1.x = r1.x & 3;
 	r1.yz = int2(0, 0);
 	while (true) {
-		r1.w = (r1.z >= sampleCount) ? -1 : 0;
+		r1.w = ((uint)r1.z >= sampleCount) ? -1 : 0;
 		if (r1.w != 0) break;
 		r1.w = r1.z & 7;
 		r2.x = asint(icb0[r1.x].y * icb1[r1.w].y);

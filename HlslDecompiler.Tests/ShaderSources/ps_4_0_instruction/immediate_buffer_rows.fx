@@ -26,7 +26,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	float3 r1;
 	r0 = int4(0, 0, 0, 0);
 	while (true) {
-		r1.x = (r0.w >= count) ? -1 : 0;
+		r1.x = ((uint)r0.w >= count) ? -1 : 0;
 		if (asint(r1.x) != 0) break;
 		r1 = icb0[r0.w].xyz * scale + icb1[r0.w].xyz;
 		r0.xyz = r0.xyz + r1.xyz;

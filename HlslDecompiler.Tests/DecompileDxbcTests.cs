@@ -301,6 +301,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "mixed_member_types")]
     [TestCase("cs_5_0", "struct_member_atomic")]
     [TestCase("cs_5_0", "consume_double")]
+    [TestCase("cs_5_0", "consume_two_calls")]
     [TestCase("cs_5_0", "luminance_histogram")]
     [TestCase("cs_5_0", "bit_counts")]
     [TestCase("cs_5_0", "high_bit")]

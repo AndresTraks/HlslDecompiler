@@ -2384,7 +2384,15 @@ public class HlslAstWriter : HlslWriter
     {
         var assignments = new List<HlslTreeNode[]>();
         var named = HlslTreeNode.NewNodeSet();
-        foreach (ConsumeNode consume in order.OfType<ConsumeNode>())
+        // In the order the buffer was consumed, which is the order the instructions
+        // did it in and nothing else. Two calls are independent in the graph - neither
+        // reads what the other left - so the walk reaches them in whatever order it
+        // reaches them, and naming them in that order wrote the second call's variable
+        // first. Both calls say `queue.Consume()`, so the text does not show it: what
+        // shows is that the components come out of the wrong one, and each call takes a
+        // different element off the counter.
+        foreach (ConsumeNode consume in order.OfType<ConsumeNode>()
+            .OrderBy(candidate => candidate.Slot.SourceInstruction))
         {
             if (named.Contains(consume) || consume.NamedAs != null)
             {

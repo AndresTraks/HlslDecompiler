@@ -500,6 +500,11 @@ public class InstructionParser
                         HlslTreeNode slot = IsConsumeBuffer(instruction.GetParamRegisterKey(1))
                             ? new ConsumeSlotNode(new RegisterInputNode(consumeKey))
                             : new BufferCounterNode(new RegisterInputNode(consumeKey), isIncrement: false);
+                        // Which instruction took the slot. Two calls are independent in
+                        // the graph - neither reads what the other left - so this is the
+                        // only thing that says which consumed first, and with a consume
+                        // buffer the order is the whole difference between them.
+                        StampSourceInstruction(slot, FirstWrittenComponent(instruction));
                         var slotKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegisterWrite(slotKey, instruction.GetWriteMask(0));
                         SetActiveOutput(

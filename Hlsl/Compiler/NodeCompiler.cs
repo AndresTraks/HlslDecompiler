@@ -54,6 +54,24 @@ public sealed class NodeCompiler
     /// was made to stand for one - so it answers from its own declared type, which
     /// was settled from the record when the variable was created.
     /// </summary>
+    /// <summary>
+    /// The member of a groupshared element a byte offset reaches, or null where the
+    /// register is not groupshared memory or its element fits in one register - which
+    /// is every one that has a name of its own already.
+    /// </summary>
+    private (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
+        RegisterKey resourceKey, int byteOffset)
+    {
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || !_registers.ThreadGroupSharedMemory.TryGetValue(resourceKey.Number,
+                out (int Stride, int Elements) shared)
+            || shared.Stride <= 16)
+        {
+            return null;
+        }
+        return RegisterState.ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
+    }
+
     private bool IsDoubleValued(HlslTreeNode node)
     {
         return node switch
@@ -1155,6 +1173,18 @@ public sealed class NodeCompiler
                     if (members != null)
                     {
                         return members;
+                    }
+                    // Groupshared memory wider than one register is written as a
+                    // struct of them, and the byte offset picks which. There is no
+                    // reflection entry to name the members from, so they are named for
+                    // where they start and the offset is counted in them.
+                    if (ThreadGroupSharedMember(resourceKey, load.ElementByteOffset)
+                        is var (memberName, memberComponents, memberBase))
+                    {
+                        return $"{element}.{memberName}" + GetAstSourceSwizzleName(
+                            components.Select(g => (IHasComponentIndex)g.Inputs[2]),
+                            memberComponents,
+                            componentBase: -memberBase);
                     }
                     string row = _registers.ApplyStructuredElementRow(resourceKey, element,
                         load.ElementByteOffset);

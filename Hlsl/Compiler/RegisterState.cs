@@ -2097,6 +2097,49 @@ public sealed class RegisterState
         }
     }
 
+    /// <summary>
+    /// The members a groupshared element is written as, where it is wider than one
+    /// register. Nothing describes it - groupshared memory has no reflection entry, so
+    /// the stride is all there is to go on - and the only shape that fits any stride is
+    /// as many whole registers as it holds and then whatever is left over: twenty bytes
+    /// is a four wide member and a scalar. Each is named for where it starts, so the
+    /// byte offset a load or a store asks for picks one of them.
+    /// </summary>
+    public static IList<(string Name, int ByteOffset, int Components)> ThreadGroupSharedMembers(int stride)
+    {
+        var members = new List<(string, int, int)>();
+        for (int offset = 0; offset < stride; offset += ConstantRegisterSizeInBytes)
+        {
+            int components = Math.Min(stride - offset, ConstantRegisterSizeInBytes) / 4;
+            members.Add(($"m{offset / 4}", offset, components));
+        }
+        return members;
+    }
+
+    /// <summary>
+    /// The member a byte offset into a groupshared element reaches, and which of its
+    /// components the offset starts at.
+    /// </summary>
+    public static (string Name, int Components, int ComponentBase)? ThreadGroupSharedMemberAt(
+        int stride, int byteOffset)
+    {
+        foreach ((string name, int offset, int components) in ThreadGroupSharedMembers(stride))
+        {
+            if (byteOffset >= offset && byteOffset < offset + components * 4)
+            {
+                return (name, components, (byteOffset - offset) / 4);
+            }
+        }
+        return null;
+    }
+
+    // The type name a groupshared element of several members is declared as. Named
+    // after the register, there being nothing else to name it after.
+    public static string ThreadGroupSharedElementType(int register)
+    {
+        return $"G{register}Element";
+    }
+
     public void DeclareThreadGroupSharedMemory(D3D10RegisterKey registerKey, uint stride, uint elements)
     {
         DeclareStructuredStride(registerKey, stride);

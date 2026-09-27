@@ -647,12 +647,34 @@ public abstract class HlslWriter
         var integerOperandAnalysis = new IntegerOperandAnalysis(_shader);
         foreach ((int register, (int stride, int elements)) in _registers.ThreadGroupSharedMemory.OrderBy(t => t.Key))
         {
-            int components = stride / sizeof(float);
-            if (components < 1 || components > 4 || stride % sizeof(float) != 0)
+            if (stride < 4 || stride % sizeof(float) != 0)
             {
                 throw new NotImplementedException($"groupshared element stride {stride}");
             }
             string type = integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(register) ? "int" : "float";
+            int components = stride / sizeof(float);
+            // Wider than one register, so the element is written as a struct of them:
+            // a stride of twenty bytes is a four wide member and a scalar, which is
+            // the only shape that fits any stride at all. Refusing it left a
+            // groupshared array of anything bigger than a float4 undecompilable.
+            if (components > 4)
+            {
+                string elementType = RegisterState.ThreadGroupSharedElementType(register);
+                WriteLine($"struct {elementType}");
+                WriteLine("{");
+                foreach ((string name, _, int memberComponents) in
+                    RegisterState.ThreadGroupSharedMembers(stride))
+                {
+                    string memberSize = memberComponents == 1
+                        ? ""
+                        : memberComponents.ToString(CultureInfo.InvariantCulture);
+                    WriteLine($"	{type}{memberSize} {name};");
+                }
+                WriteLine("};");
+                WriteLine();
+                WriteLine($"groupshared {elementType} g{register}[{elements}];");
+                continue;
+            }
             string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
             WriteLine($"groupshared {type}{size} g{register}[{elements}];");
         }

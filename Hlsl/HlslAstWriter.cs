@@ -483,7 +483,32 @@ public class HlslAstWriter : HlslWriter
             }
             return;
         }
-        WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
+        // Groupshared memory wider than one register is a struct of them, and the
+        // byte offset picks which. Written as the element itself, a store of one
+        // member assigned to the whole of it - and a store of the second member
+        // overwrote the first.
+        string sharedMember = ThreadGroupSharedMemberName(bufferKey,
+            storeStructured.ElementByteOffset);
+        WriteLine($"{compiledDestination}[{compiledAddress}]{sharedMember} = {compiledValue};");
+    }
+
+    /// <summary>
+    /// The `.mN` a store into groupshared memory writes, or nothing where the element
+    /// fits in one register and is the whole of what a store reaches.
+    /// </summary>
+    private string ThreadGroupSharedMemberName(RegisterKey bufferKey, int byteOffset)
+    {
+        if (bufferKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || !_registers.ThreadGroupSharedMemory.TryGetValue(bufferKey.Number,
+                out (int Stride, int Elements) shared)
+            || shared.Stride <= 16)
+        {
+            return "";
+        }
+        return RegisterState.ThreadGroupSharedMemberAt(shared.Stride, byteOffset)
+            is var (name, _, _)
+            ? $".{name}"
+            : "";
     }
 
     private void WriteAtomicStatement(AtomicStatement atomic)

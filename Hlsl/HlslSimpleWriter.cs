@@ -239,6 +239,24 @@ public class HlslSimpleWriter : HlslWriter
 
     // Which halves of a register ever hold a double: bit 0 for the pair at .xy and
     // bit 1 for the pair at .zw.
+    /// <summary>
+    /// The member of a groupshared element a byte offset reaches, or null where the
+    /// register is not groupshared memory or its element fits in one register, which is
+    /// every one that is named without a member.
+    /// </summary>
+    private (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
+        RegisterKey resourceKey, int byteOffset)
+    {
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || !_registers.ThreadGroupSharedMemory.TryGetValue(resourceKey.Number,
+                out (int Stride, int Elements) shared)
+            || shared.Stride <= 16)
+        {
+            return null;
+        }
+        return RegisterState.ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
+    }
+
     private int GetDoublePairMask(RegisterKey registerKey)
     {
         int pairs = 0;
@@ -1888,6 +1906,31 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         read.Add(elementSwizzle[loaded[value]]);
                     }
+                    // Groupshared memory wider than one register is a struct of them,
+                    // and the byte offset picks which. Named as the element itself, a
+                    // read of one member was a whole struct assigned to a register and
+                    // a swizzle taken off a struct besides.
+                    if (ThreadGroupSharedMember(buffer, offset)
+                        is var (sharedName, sharedComponents, sharedBase))
+                    {
+                        string sharedSwizzle = sharedComponents == 1
+                            ? ""
+                            : Rebased(
+                                instruction.GetSourceSwizzleNameForMask(3,
+                                    instruction.GetDestinationWriteMask()),
+                                sharedBase, sharedComponents);
+                        // Rebased only drops a swizzle that names the whole of what it
+                        // is on when it has rebasing to do; a member read whole from
+                        // its first component keeps it otherwise, and `.m0.xyzw` off a
+                        // float4 says nothing.
+                        if (sharedSwizzle == "." + "xyzw"[..sharedComponents])
+                        {
+                            sharedSwizzle = "";
+                        }
+                        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                            $"{element}.{sharedName}{sharedSwizzle}");
+                        break;
+                    }
                     string readElement = _registers.NameStructuredMembers(buffer, element, offset, read)
                         ?? _registers.ApplyStructuredElementRow(buffer, element, offset);
                     // Where the element is neither a matrix (whose offset picks a row)
@@ -2338,7 +2381,16 @@ public class HlslSimpleWriter : HlslWriter
                         buffer, element, instruction.GetParamInt(2, 0), written);
                     if (runs == null)
                     {
-                        WriteLine("{0} = {1};", element, GetOperandName(instruction, 3));
+                        // And the same for a store: written as the element, a store of
+                        // one member assigned the whole of it, and the second member's
+                        // store overwrote the first's.
+                        string storedMember = ThreadGroupSharedMember(
+                                buffer, instruction.GetParamInt(2, 0))
+                            is var (storeName, _, _)
+                            ? $".{storeName}"
+                            : "";
+                        WriteLine("{0}{1} = {2};", element, storedMember,
+                            GetOperandName(instruction, 3));
                         break;
                     }
                     byte[] valueSwizzle = instruction.GetSourceSwizzleComponents(3);

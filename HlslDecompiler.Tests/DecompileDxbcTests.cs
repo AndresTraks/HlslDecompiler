@@ -266,6 +266,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "groupshared_neighbours")]
     [TestCase("cs_5_0", "local_array_window")]
     [TestCase("cs_5_0", "groupshared_scan")]
+    [TestCase("cs_5_0", "groupshared_wide")]
+    [TestCase("cs_5_0", "groupshared_pair")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

@@ -43,6 +43,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "immediate_buffer_rows")]
     [TestCase("ps_4_0", "uint_convert")]
     [TestCase("ps_4_0", "do_while")]
+    [TestCase("ps_4_0", "switch_case_loop")]
     [TestCase("ps_4_0", "depth_output")]
     [TestCase("ps_4_0", "conditional_return")]
     [TestCase("ps_4_0", "return_struct_early")]

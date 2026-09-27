@@ -665,13 +665,25 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Points every assignment of one variable inside these statements at another,
-    /// for a case that carries its result out of a nested statement while an earlier
-    /// case already owns the variable the switch will carry.
+    /// Points every assignment and every read of one variable inside these statements
+    /// at another, for a case that carries its result out of a nested statement while
+    /// an earlier case already owns the variable the switch will carry.
     /// </summary>
     private static void Reassign(
         IList<IStatement> body, TempVariableNode from, TempVariableNode to)
     {
+        if (ReferenceEquals(from, to))
+        {
+            return;
+        }
+
+        // The reads as well as the assignments. A loop inside the case reads the
+        // variable it carries over its own backedge, and that read is a graph edge
+        // rather than an assignment: rewriting only the assignments left it naming
+        // the variable this pass has just stopped anything from declaring, and the
+        // writer numbered that name for itself on the way past.
+        from.Replace(to);
+
         new StatementVisitor(body).Visit(statement =>
         {
             foreach (var output in statement.Outputs.ToList())
@@ -686,6 +698,11 @@ public class StatementFinalizer
                 {
                     statement.Outputs[output.Key] = to;
                 }
+            }
+            foreach (var input in statement.Inputs
+                .Where(i => ReferenceEquals(i.Value, from)).ToList())
+            {
+                statement.Inputs[input.Key] = to;
             }
         });
     }

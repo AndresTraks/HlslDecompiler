@@ -1815,7 +1815,23 @@ public class InstructionParser
             throw new NotImplementedException(
                 "msad over windows this does not recognise as a uint2");
         }
-        return new Msad4Node(inputs[0], low, high, inputs[2], componentIndex);
+        var node = new Msad4Node(inputs[0], low, high, inputs[2], componentIndex);
+        // The node reads the two words, so the bfi over each window is read by nothing
+        // from here on. The register it was written to says nothing about that - the
+        // msad overwrites it, and a value a register no longer holds is only as dead as
+        // the graph says - so left attached it counts as a reader of the shifts under
+        // it, and the writer went on naming `uint3 t0 = source >> uint3(8, 16, 24)` for
+        // a value nothing reads. Only the windows themselves: what they read is either
+        // the two words, which the node reads now, or the shifts, which fall out as
+        // unread assignments on their own once nothing holds them here.
+        for (int window = 1; window < windows.Length; window++)
+        {
+            if (windows[window].Outputs.Count == 0)
+            {
+                windows[window].Remove();
+            }
+        }
+        return node;
     }
 
     /// <summary>

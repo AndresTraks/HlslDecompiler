@@ -1880,10 +1880,26 @@ public sealed class NodeCompiler
             // group the way an ordinary operand is. Read as integers throughout: the
             // intrinsic takes uints, and a reference read as a float would be its bit
             // pattern rather than the four bytes it is.
-            string reference = CompileAsInteger([msad.Reference]);
-            string sourceLow = CompileAsInteger([msad.SourceLow]);
-            string sourceHigh = CompileAsInteger([msad.SourceHigh]);
-            string accumulator = CompileAsInteger(components.Select(c => ((Msad4Node)c).Accumulator));
+            // And as unsigned integers, since every parameter of msad4 is a uint: a
+            // folded source word of 0xF1F2F3F4 is -235736076 as an int, which wraps to
+            // the same bits and says the opposite of what the number is.
+            bool wasAssigningToUnsigned = _assigningToUnsigned;
+            _assigningToUnsigned = true;
+            string reference;
+            string sourceLow;
+            string sourceHigh;
+            string accumulator;
+            try
+            {
+                reference = CompileAsInteger([msad.Reference]);
+                sourceLow = CompileAsInteger([msad.SourceLow]);
+                sourceHigh = CompileAsInteger([msad.SourceHigh]);
+                accumulator = CompileAsInteger(components.Select(c => ((Msad4Node)c).Accumulator));
+            }
+            finally
+            {
+                _assigningToUnsigned = wasAssigningToUnsigned;
+            }
             string msadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
             return $"msad4({reference}, uint2({sourceLow}, {sourceHigh}), {accumulator})"
                 + msadSwizzle;

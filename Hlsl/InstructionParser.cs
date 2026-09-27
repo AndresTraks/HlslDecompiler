@@ -1810,7 +1810,8 @@ public class InstructionParser
         const int WindowsOperand = 2;
         HlslTreeNode[] windows = GetInputComponents(instruction, WindowsOperand, 4);
         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
-        if (!TryGetMsadSource(windows, out HlslTreeNode low, out HlslTreeNode high))
+        if (!TryGetMsadSource(instruction, WindowsOperand, windows,
+            out HlslTreeNode low, out HlslTreeNode high))
         {
             throw new NotImplementedException(
                 "msad over windows this does not recognise as a uint2");
@@ -1841,11 +1842,24 @@ public class InstructionParser
     /// at the complementary offset. Anything else is not this shape and is not an
     /// msad4 that can be written.
     /// </summary>
-    private static bool TryGetMsadSource(
+    private static bool TryGetMsadSource(D3D10Instruction instruction, int operand,
         HlslTreeNode[] windows, out HlslTreeNode low, out HlslTreeNode high)
     {
         low = Unwrap(windows[0]);
         high = null;
+        if (TryGetFoldedMsadSource(instruction, operand, ref low, ref high))
+        {
+            return true;
+        }
+        // Nothing inserted over the top of any window: the high word was zero, so
+        // there was nothing to insert and fxc folded the bfi away. Asked of all three
+        // together, since a real high word needs one at every window and a zero one
+        // needs none - a shader with some of each is not this shape.
+        if (AllWindowsAreShiftsOf(windows, low))
+        {
+            high = new ConstantNode(0);
+            return true;
+        }
         for (int window = 1; window < 4; window++)
         {
             int bits = window * 8;
@@ -1872,6 +1886,62 @@ public class InstructionParser
     }
 
     // Through the moves fxc leaves between a value and where it is read.
+    /// <summary>
+    /// The windows as fxc folds them where it knows both words: four literals, each
+    /// the eight byte source shifted down by one byte more than the last. The low word
+    /// is the first of them and the high word's bottom three bytes are the top three
+    /// of the last; the high word's fourth byte slides past the end of the windows and
+    /// is no part of what msad4 computes, so zero stands in for it. The literal that
+    /// comes back is therefore not always the one the shader was written with, and is
+    /// always one that computes the same thing - fxc folds it to these same four
+    /// windows again.
+    /// </summary>
+    private static bool TryGetFoldedMsadSource(D3D10Instruction instruction, int operand,
+        ref HlslTreeNode low, ref HlslTreeNode high)
+    {
+        if (instruction.GetOperandType(operand) != OperandType.Immediate32)
+        {
+            return false;
+        }
+        // The bits, from the instruction rather than off the nodes. An immediate's
+        // thirty-two bits are typed by what consumes them and these reach the graph as
+        // floats, which is lossy for a number this size: 0x08010203 came back as
+        // 0x08010200, and the sliding relation below then holds for nothing.
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operand);
+        var values = new uint[4];
+        for (int window = 0; window < 4; window++)
+        {
+            values[window] = (uint)instruction.GetParamInt(operand, swizzle[window]);
+        }
+        uint lowWord = values[0];
+        uint highWord = values[3] >> 8;
+        ulong source = lowWord | ((ulong)highWord << 32);
+        for (int window = 1; window < 4; window++)
+        {
+            if (values[window] != (uint)(source >> (window * 8)))
+            {
+                return false;
+            }
+        }
+        low = new ConstantNode((int)lowWord);
+        high = new ConstantNode((int)highWord);
+        return true;
+    }
+
+    private static bool AllWindowsAreShiftsOf(HlslTreeNode[] windows, HlslTreeNode low)
+    {
+        for (int window = 1; window < 4; window++)
+        {
+            if (Unwrap(windows[window]) is not ShiftRightOperation shift
+                || AsConstantInt(shift.Amount) != window * 8
+                || !NodeGrouper.AreNodesEquivalent(Unwrap(shift.Value), low))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static HlslTreeNode Unwrap(HlslTreeNode node)
     {
         while (node is MoveOperation move)

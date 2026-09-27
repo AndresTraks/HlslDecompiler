@@ -1074,7 +1074,17 @@ public class HlslAstWriter : HlslWriter
     // range a float holds exactly.
     private string CompileOutput(RegisterKey outputKey, IEnumerable<HlslTreeNode> nodes)
     {
-        return _registers.RegisterDeclarations[outputKey].TypeName.Contains("int")
+        RegisterDeclaration declaration = _registers.RegisterDeclarations[outputKey];
+        // An output the signature declares at partial precision is a half already, so a
+        // half cast on the way into it says the same thing twice - and fxc reads the
+        // declaration rather than the cast, which is what makes the cast alone worth
+        // nothing.
+        if (declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision))
+        {
+            nodes = nodes.Select(node =>
+                node is ConvertOperation { TargetType: "half" } cast ? cast.Value : node);
+        }
+        return declaration.TypeName.Contains("int")
             ? _compiler.CompileAsInteger(nodes)
             : _compiler.CompileAsFloat(nodes);
     }

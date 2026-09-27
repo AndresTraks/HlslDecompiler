@@ -539,6 +539,26 @@ public class D3D10Instruction : Instruction
         return ordinal;
     }
 
+    /// <summary>
+    /// Which run of an instanced hull phase this instruction belongs to, or null
+    /// where the phase runs once. fxc collapses tessellation factors that are all
+    /// computed the same way into one phase run once per factor, telling the runs
+    /// apart by vForkInstanceID; the phase is unrolled into a copy per run, and this
+    /// is what each copy reads that register as.
+    /// </summary>
+    public int? ForkInstance { get; private set; }
+
+    // The same tokens, only knowing which run of the phase they are. A memberwise
+    // copy because an instruction carries more than its operands - a resource
+    // dimension, an interpolation mode, the stream it writes - and a copy that lost
+    // any of them would decompile as a different instruction.
+    public D3D10Instruction ForInstance(int instance)
+    {
+        var copy = (D3D10Instruction)MemberwiseClone();
+        copy.ForkInstance = instance;
+        return copy;
+    }
+
     public int GetWriteMask(int operandIndex)
     {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);

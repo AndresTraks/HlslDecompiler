@@ -171,6 +171,8 @@ public class DecompileDxbcTests
     [TestCase("hs_5_0", "quad_factors")]
     [TestCase("hs_5_0", "passed_through")]
     [TestCase("hs_5_0", "isoline_detail")]
+    [TestCase("hs_5_0", "isoline_instanced")]
+    [TestCase("hs_5_0", "instanced_factors")]
     [TestCase("hs_5_0", "culled_patch")]
     [TestCase("hs_5_0", "split_control_points")]
     [TestCase("hs_5_0", "carried_constants")]

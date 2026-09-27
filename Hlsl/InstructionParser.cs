@@ -154,6 +154,15 @@ public class InstructionParser
 
     private void ParseInstruction(D3D10Instruction instruction)
     {
+        // Which run of an instanced phase this is comes out as the number it is,
+        // because the phase was unrolled into a copy per run. The register it is read
+        // through wants no declaration of its own: it stands for nothing HLSL can
+        // name, and every read of it is already a constant.
+        if (instruction.Opcode == D3D10Opcode.DclInput
+            && instruction.GetOperandType(0) == OperandType.InputForkInstanceID)
+        {
+            return;
+        }
         // StoreStructured names a destination operand but writes through a statement,
         // and SinCos, Udiv and IMul each write two destinations, so none of them fits
         // the single-destination assignment path.
@@ -667,6 +676,12 @@ public class InstructionParser
                     break;
                 case D3D10Opcode.DclIndexRange:
                     _registerState.DeclareIndexRange(instruction);
+                    break;
+                // How many times the phase runs, each run knowing which it is. The
+                // phase is parsed once per instance, so by the time the body is
+                // reached this has already been acted on.
+                case D3D10Opcode.DclHSForkPhaseInstanceCount:
+                case D3D10Opcode.DclHSJoinPhaseInstanceCount:
                     break;
                 default:
                     throw new NotImplementedException(instruction.Opcode.ToString());
@@ -1637,8 +1652,73 @@ public class InstructionParser
             mask = d3d10.WritesDoubles
                 ? mask & 0b0101
                 : GetMovedDoubleMask(d3d10, GetStructuredValueMask(d3d10, mask));
+            // An output written through an index - `mov o[r0.x + 0].x` - where the
+            // index is a value already known. fxc writes the tessellation factors of
+            // a patch this way when they are all computed the same, one phase run per
+            // factor, and the run's own number is what the index holds; the phase is
+            // unrolled into a copy per run, so by here the number is a constant and
+            // the register is the one that run writes. Left to the operand, the
+            // register number decoded from a relative index is meaningless - it named
+            // an output the signature has never heard of.
+            if (ResolveRelativeOutputKey(d3d10, index) is RegisterKey resolved)
+            {
+                return MaskedComponentKeys(resolved, mask);
+            }
         }
         return GetParameterRegisterKeys(instruction, index, mask);
+    }
+
+    private static IEnumerable<RegisterComponentKey> MaskedComponentKeys(RegisterKey key, int mask)
+    {
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) != 0)
+            {
+                yield return new RegisterComponentKey(key, component);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The output register a relative-addressed write reaches, or null where the
+    /// operand is not one or the index is not a value this parser already holds.
+    /// </summary>
+    private RegisterKey ResolveRelativeOutputKey(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.Output)
+        {
+            return null;
+        }
+        D3D10OperandTokenCollection.OperandIndex[] indices =
+            instruction.OperandTokens.GetOperandIndices(operandIndex);
+        if (indices.Length == 0 || !indices[0].IsRelative)
+        {
+            return null;
+        }
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+        var indexKey = new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent);
+        if (ActiveOutputs == null
+            || !ActiveOutputs.TryGetValue(indexKey, out HlslTreeNode value)
+            || IndexConstant(value) is not ConstantNode constant)
+        {
+            return null;
+        }
+        int offset = constant.IntegerValue ?? (int)constant.Value;
+        return new D3D10RegisterKey(OperandType.Output, (int)indices[0].Immediate + offset);
+    }
+
+    // The number an index holds, through the moves fxc puts in the way: it reads
+    // vForkInstanceID into a register of its own and indexes by that, so the number
+    // is a move or two away from the index.
+    private static ConstantNode IndexConstant(HlslTreeNode value)
+    {
+        while (value is MoveOperation move)
+        {
+            value = move.Inputs[0];
+        }
+        return value as ConstantNode;
     }
 
     /// <summary>
@@ -3191,6 +3271,13 @@ public class InstructionParser
                 // -v[r0.x + 0][1].xyzx` came out without the negation.
                 inputs[i] = ApplyModifier(
                     inputs[i], instruction.GetOperandModifier(inputParameterIndex));
+                continue;
+            }
+            // Which run of an instanced phase this is, which the unrolling settled:
+            // every copy of the body reads it as the number of its own run.
+            if (operandType == OperandType.InputForkInstanceID)
+            {
+                inputs[i] = new ConstantNode(instruction.ForkInstance ?? 0);
                 continue;
             }
             if (operandType == OperandType.Immediate32)

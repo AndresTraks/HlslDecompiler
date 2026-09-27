@@ -38,6 +38,7 @@ public static class HullShaderPhases
         List<Instruction> controlPoint = null;
         List<Instruction> patchConstant = null;
         List<Instruction> current = null;
+        List<Instruction> phase = [];
         foreach (Instruction instruction in shader.Instructions.Skip(phaseStart))
         {
             if (instruction is D3D10Instruction { Opcode: D3D10Opcode.HsControlPointPhase })
@@ -50,6 +51,8 @@ public static class HullShaderPhases
                 { Opcode: D3D10Opcode.HsForkPhase or D3D10Opcode.HsJoinPhase })
             {
                 patchConstant ??= [];
+                UnrollInstances(phase, patchConstant);
+                phase = [];
                 // Each phase ends with a ret of its own, and run together only the
                 // last of them ends the function. Left in, the instruction writer
                 // returned after the first factor and the rest of the function was
@@ -62,7 +65,19 @@ public static class HullShaderPhases
                 current = patchConstant;
                 continue;
             }
+            // A patch constant phase is gathered on its own first, so that one
+            // declaring an instance count can be unrolled before the phases are run
+            // together.
+            if (ReferenceEquals(current, patchConstant))
+            {
+                phase.Add(instruction);
+                continue;
+            }
             current?.Add(instruction);
+        }
+        if (patchConstant != null)
+        {
+            UnrollInstances(phase, patchConstant);
         }
 
         CoalesceTempDeclarations(patchConstant);
@@ -83,6 +98,61 @@ public static class HullShaderPhases
     /// its own, so two of them declaring r0 was the same register declared twice, and
     /// the register state would not have it.
     /// </summary>
+    /// <summary>
+    /// A phase that declares an instance count, written out as a copy of its body per
+    /// run. fxc writes the factors of a patch that are all computed the same way as
+    /// one phase run once for each of them, which is not something HLSL can say: what
+    /// it said was an assignment per factor, or a loop over them, and a copy per run
+    /// is that back again. Each copy knows which run it is, so the vForkInstanceID it
+    /// reads is a different number in each and the factor it writes is a different
+    /// register.
+    /// </summary>
+    private static void UnrollInstances(List<Instruction> phase, List<Instruction> into)
+    {
+        int instances = 1;
+        foreach (Instruction instruction in phase)
+        {
+            if (instruction is D3D10Instruction
+                { Opcode: D3D10Opcode.DclHSForkPhaseInstanceCount
+                    or D3D10Opcode.DclHSJoinPhaseInstanceCount } count)
+            {
+                instances = count.GetParamInt(0);
+            }
+        }
+        // The declarations belong to the phase and are made once; the body is what
+        // runs per instance.
+        List<Instruction> declarations = [.. phase
+            .TakeWhile(i => i is D3D10Instruction d && d.Opcode.IsDeclaration())];
+        into.AddRange(declarations);
+        List<Instruction> body = [.. phase.Skip(declarations.Count)];
+        if (instances <= 1)
+        {
+            into.AddRange(body);
+            return;
+        }
+        // The ret ends the phase, not each run of it. Copied along with the rest, the
+        // first run returned and every factor after the first was unreachable.
+        Instruction end = null;
+        if (body.Count != 0 && body[^1] is D3D10Instruction { Opcode: D3D10Opcode.Ret })
+        {
+            end = body[^1];
+            body.RemoveAt(body.Count - 1);
+        }
+        for (int instance = 0; instance < instances; instance++)
+        {
+            foreach (Instruction instruction in body)
+            {
+                into.Add(instruction is D3D10Instruction d3d10
+                    ? d3d10.ForInstance(instance)
+                    : instruction);
+            }
+        }
+        if (end != null)
+        {
+            into.Add(end);
+        }
+    }
+
     private static void CoalesceTempDeclarations(List<Instruction> body)
     {
         if (body == null)

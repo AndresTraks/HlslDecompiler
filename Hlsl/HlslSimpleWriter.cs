@@ -2435,6 +2435,11 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclGlobalFlags:
             // The run it names is written as one array parameter, above.
             case D3D10Opcode.DclIndexRange:
+            // How many times the phase runs. The phase is unrolled into a copy of
+            // its body per run before it reaches here, so the count is already
+            // spent and each copy writes the factor its own run wrote.
+            case D3D10Opcode.DclHSForkPhaseInstanceCount:
+            case D3D10Opcode.DclHSJoinPhaseInstanceCount:
             case D3D10Opcode.DclGSInputPrimitive:
             case D3D10Opcode.DclGSMaxOutputVertexCount:
             // The [instance] attribute, written with the signature.
@@ -2769,6 +2774,20 @@ public class HlslSimpleWriter : HlslWriter
             return $"{_registers.ImmediateConstantBufferName((int)operandIndices[0].Immediate)}"
                 + $"[{index}]";
         }
+        // A run of output registers declared as one array by dcl_indexrange, written
+        // through the index. The only thing that indexes one is an instanced hull
+        // phase, writing the factor of the run it is - so the register is the run's
+        // number past the first of the range, and the phase was unrolled into a copy
+        // per run, which is what that number is. Named the ordinary way from there,
+        // so the factor reads as the field it is rather than as a subscripted one.
+        if (operandType == OperandType.Output && instruction.ForkInstance is int instance)
+        {
+            var writtenKey = new D3D10RegisterKey(
+                OperandType.Output, (int)operandIndices[0].Immediate + instance);
+            int outputMask = instruction.GetWriteMask(operandIndex);
+            return _registers.GetRegisterName(
+                new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
+        }
         if (operandType == OperandType.Input)
         {
             // A run of input registers declared as one array by dcl_indexrange has
@@ -3027,6 +3046,14 @@ public class HlslSimpleWriter : HlslWriter
     private string GetOperandName(D3D10Instruction instruction, int operandIndex)
     {
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+
+        // Which run of an instanced phase this is, which the unrolling settled: each
+        // copy of the body reads it as the number of its own run, and there is
+        // nothing in HLSL to name it by.
+        if (registerKey.OperandType == OperandType.InputForkInstanceID)
+        {
+            return (instruction.ForkInstance ?? 0).ToString(_culture);
+        }
 
         if (registerKey.OperandType == OperandType.Immediate32)
         {

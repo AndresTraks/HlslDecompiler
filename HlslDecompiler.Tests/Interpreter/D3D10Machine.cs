@@ -1709,6 +1709,15 @@ public class D3D10Machine
                 // same one for a given trial, which is what lets the original and its
                 // recompilation agree on it. A sample mask reaches a few bits at most.
                 return [.. Named("COVERAGEINPUT").Select(v => (uint)Math.Abs(v * 4) % 16)];
+            // Which run of an instanced hull phase this is. The phase was unrolled
+            // into a copy of its body per run before it reached here, so each copy
+            // reads its own run's number - the same number the decompilation wrote
+            // into the factor it assigns, which is what lets the two agree.
+            case OperandType.InputForkInstanceID:
+                {
+                    uint instance = (uint)(instruction.ForkInstance ?? 0);
+                    return [instance, instance, instance, instance];
+                }
             case OperandType.Sampler:
             case OperandType.Resource:
             case OperandType.UnorderedAccessView:
@@ -1767,6 +1776,17 @@ public class D3D10Machine
 
         OperandType type = instruction.GetOperandType(destinationIndex);
         int number = instruction.GetParamRegisterNumber(destinationIndex);
+        // An output written through an index range - `mov o[vForkInstanceID.x + 0].x`,
+        // which is how fxc writes the factors of a patch that are all computed the
+        // same way. The register number decoded from a relative index is meaningless,
+        // and the run's own number past the first of the range is the register: the
+        // phase was unrolled into a copy per run, and this is the copy's.
+        if (type == OperandType.Output && instruction.ForkInstance is int instance
+            && instruction.OperandTokens.GetOperandIndices(destinationIndex)
+                is [{ IsRelative: true } first, ..])
+        {
+            number = (int)first.Immediate + instance;
+        }
         uint[] destination;
         switch (type)
         {

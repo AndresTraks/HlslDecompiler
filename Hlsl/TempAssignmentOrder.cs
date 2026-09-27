@@ -29,11 +29,21 @@ public class TempAssignmentOrder
         System.Func<T, IEnumerable<TempAssignmentNode>> wantsNewValueOf = null)
     {
         var remaining = items
-            .Select(item => new Entry<T>(
+            .Select((item, index) => new Entry<T>(
                 item,
                 nodes(item),
-                wantsNewValueOf == null ? [] : [.. wantsNewValueOf(item)]))
+                wantsNewValueOf == null ? [] : [.. wantsNewValueOf(item)],
+                index))
             .ToList();
+        // Both of the costs below are asked the same questions over and over: the
+        // selection is quadratic in how many assignments there are and runs once per
+        // placement, so a pair is compared up to as many times as there are items,
+        // and every comparison walks expressions to ask what reads what. Neither
+        // answer can change while this sorts - it reorders a list and leaves the
+        // graph alone - so both are remembered for the call. A forty instruction
+        // chain of samples reaches two hundred and twenty-eight assignments and a
+        // million comparisons, which was ten of the eleven seconds it took to write.
+        var ordering = new Ordering<T>(remaining);
         var sorted = new List<T>(remaining.Count);
         while (remaining.Count != 0)
         {
@@ -49,7 +59,7 @@ public class TempAssignmentOrder
                 bool blocked = false;
                 for (int j = 0; j < remaining.Count; j++)
                 {
-                    if (j != i && ComesBefore(remaining[j], remaining[i]))
+                    if (j != i && ordering.ComesBefore(remaining[j], remaining[i]))
                     {
                         blocked = true;
                         break;
@@ -73,7 +83,120 @@ public class TempAssignmentOrder
         return sorted;
     }
 
-    private sealed record Entry<T>(T Item, HlslTreeNode[] Nodes, TempAssignmentNode[] Wants);
+    private sealed record Entry<T>(
+        T Item, HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, int Index);
+
+    /// <summary>
+    /// The pairwise order, computed once per pair, over reachability computed once
+    /// per node the entries are rooted at. What a walk is asked is only ever whether
+    /// one particular assignment or one particular variable is read, and there are
+    /// two of those per entry, so each walk records the ones it passes rather than
+    /// everything it visits - the same answers out of a set that stays small.
+    /// </summary>
+    private sealed class Ordering<T>
+    {
+        // By pair asked rather than by every pair there could be: the answers are
+        // sparse - five thousand of them over the whole fixture corpus - and a table
+        // would be the square of how many assignments a statement names, which is a
+        // way to run out of memory where the code it replaces only ran slowly.
+        private readonly Dictionary<(int, int), bool> _pairs = [];
+        private readonly HashSet<HlslTreeNode> _sought = HlslTreeNode.NewNodeSet();
+        private readonly Dictionary<HlslTreeNode, HashSet<HlslTreeNode>> _reached =
+            new(ReferenceEqualityComparer.Instance);
+
+        public Ordering(List<Entry<T>> entries)
+        {
+            foreach (Entry<T> entry in entries)
+            {
+                foreach (TempAssignmentNode assignment in entry.Nodes.OfType<TempAssignmentNode>())
+                {
+                    _sought.Add(assignment);
+                    _sought.Add(assignment.TempVariable);
+                }
+            }
+        }
+
+        public bool ComesBefore(Entry<T> x, Entry<T> y)
+        {
+            if (_pairs.TryGetValue((x.Index, y.Index), out bool remembered))
+            {
+                return remembered;
+            }
+            bool answer = Compare(x, y);
+            _pairs[(x.Index, y.Index)] = answer;
+            return answer;
+        }
+
+        private bool Compare(Entry<T> x, Entry<T> y)
+        {
+            // What one write wants of another is recorded at lowering, which is the
+            // only point at which wanting the value this statement computes and wanting
+            // the one the register held before are different things.
+            if (NeedsNewValue(y, x))
+            {
+                return true;
+            }
+            if (NeedsNewValue(x, y))
+            {
+                return false;
+            }
+            // Neither wants the other new, so a read of a variable the other overwrites
+            // is a read of the value from before, and has to come first. This is what
+            // keeps `t1 = t1 + 1` at the end of a loop body.
+            if (ReadsOverwritten(x.Nodes, y.Nodes))
+            {
+                return true;
+            }
+            if (ReadsOverwritten(y.Nodes, x.Nodes))
+            {
+                return false;
+            }
+            return x.Nodes.Any(i => y.Nodes.Any(i2 => IsInputOf(i, i2)));
+        }
+
+        private bool ReadsOverwritten(HlslTreeNode[] readers, HlslTreeNode[] written)
+        {
+            return written.OfType<TempAssignmentNode>().Any(assignment =>
+                assignment.IsReassignment
+                && readers.Any(reader => !ReferenceEquals(reader, assignment)
+                    && Reads(reader, assignment.TempVariable)));
+        }
+
+        private bool IsInputOf(HlslTreeNode input, HlslTreeNode node)
+        {
+            return input is TempAssignmentNode tempAssignment
+                && (Reads(node, tempAssignment) || Reads(node, tempAssignment.TempVariable));
+        }
+
+        // Whether sought is the node itself or anything the node is built from, which
+        // is what HlslTreeNode.IsInputOf answers one question at a time.
+        private bool Reads(HlslTreeNode node, HlslTreeNode sought)
+        {
+            if (!_reached.TryGetValue(node, out HashSet<HlslTreeNode> reached))
+            {
+                _reached[node] = reached = HlslTreeNode.NewNodeSet();
+                Walk(node, reached, HlslTreeNode.NewNodeSet());
+            }
+            return reached.Contains(sought);
+        }
+
+        private void Walk(HlslTreeNode node, HashSet<HlslTreeNode> reached,
+            HashSet<HlslTreeNode> visited)
+        {
+            if (!visited.Add(node))
+            {
+                return;
+            }
+            if (_sought.Contains(node))
+            {
+                reached.Add(node);
+            }
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                Walk(input, reached, visited);
+            }
+        }
+    }
 
     public static List<HlslTreeNode[]> Sort(IEnumerable<HlslTreeNode[]> groups)
     {
@@ -83,33 +206,6 @@ public class TempAssignmentOrder
     public static List<T> SortNodes<T>(IEnumerable<T> items) where T : HlslTreeNode
     {
         return Sort(items, n => new HlslTreeNode[] { n });
-    }
-
-    private static bool ComesBefore<T>(Entry<T> x, Entry<T> y)
-    {
-        // What one write wants of another is recorded at lowering, which is the
-        // only point at which wanting the value this statement computes and wanting
-        // the one the register held before are different things.
-        if (NeedsNewValue(y, x))
-        {
-            return true;
-        }
-        if (NeedsNewValue(x, y))
-        {
-            return false;
-        }
-        // Neither wants the other new, so a read of a variable the other overwrites
-        // is a read of the value from before, and has to come first. This is what
-        // keeps `t1 = t1 + 1` at the end of a loop body.
-        if (ReadsOverwritten(x.Nodes, y.Nodes))
-        {
-            return true;
-        }
-        if (ReadsOverwritten(y.Nodes, x.Nodes))
-        {
-            return false;
-        }
-        return x.Nodes.Any(i => y.Nodes.Any(i2 => IsInputOf(i, i2)));
     }
 
     /// <summary>Whether <paramref name="reader"/> wants a value that any of

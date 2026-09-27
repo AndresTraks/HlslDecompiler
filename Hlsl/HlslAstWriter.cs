@@ -616,8 +616,13 @@ public class HlslAstWriter : HlslWriter
         if (loop.IsCountedLoop)
         {
             // The initializer and increment compile as statements; the for header
-            // wants them as clauses.
-            string initializer = _compiler.Compile(Reduce(loop.Initializer)).TrimEnd(';');
+            // wants them as clauses. Through CompileAssignment, so that the header
+            // declares the variable only where nothing above the loop does: a switch
+            // carries a counter register out of a case, the block declared it there,
+            // and `for (uint t3 = 0; ...)` under that declaration is a second
+            // variable of the same name - fxc warns X3078 and reads the outer one
+            // afterwards, which the loop never assigned.
+            string initializer = CompileAssignment([Reduce(loop.Initializer)]).TrimEnd(';');
             string condition = _compiler.Compile(Reduce(loop.ContinueCondition));
             string increment = _compiler.Compile(Reduce(loop.Increment)).TrimEnd(';');
             WriteLine($"for ({initializer}; {condition}; {increment}) {{");

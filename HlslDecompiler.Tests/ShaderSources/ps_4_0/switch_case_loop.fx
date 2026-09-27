@@ -12,7 +12,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 				break;
 			default:
 				t2 = t0;
-				for (uint t3 = 0; t3 < k.y; t3 = t3 + 1) {
+				for (t3 = 0; t3 < k.y; t3 = t3 + 1) {
 					t2 = texcoord * (float4)t3 + t2;
 				}
 				break;

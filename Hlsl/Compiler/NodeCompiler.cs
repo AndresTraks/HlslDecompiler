@@ -697,7 +697,7 @@ public sealed class NodeCompiler
         string type = components.All(IsDoubleValued)
             ? "double"
             : _assigningToInteger && !components.Any(IsFloatValued)
-                ? "int"
+                ? (_assigningToUnsigned ? "uint" : "int")
                 : "float";
         IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
         return $"{type}{components.Count}({string.Join(", ", compiledConstructorParts)})";
@@ -728,7 +728,7 @@ public sealed class NodeCompiler
     private string CompileConstant(List<HlslTreeNode> components, int promoteToVectorSize)
     {
         var constantComponents = components.Cast<ConstantNode>().ToArray();
-        return _constantCompiler.Compile(constantComponents);
+        return _constantCompiler.Compile(constantComponents, _assigningToUnsigned);
     }
 
     /// <summary>
@@ -775,6 +775,11 @@ public sealed class NodeCompiler
     /// there is left as the integer it is - `asfloat(mask.Load(p)) & 4` is X3082.
     /// </summary>
     private bool _readingAsBits;
+
+    // Set beside _assigningToInteger while the value of an assignment to an unsigned
+    // variable is compiled, so that a constant vector in it says uint rather than
+    // converting from int silently.
+    private bool _assigningToUnsigned;
 
     private string CompileOperationOperands(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
     {
@@ -1890,7 +1895,9 @@ public sealed class NodeCompiler
                 variableCompiled = $"{_registers.TemporaryPrefix}{tempAssignment.TempVariable.DeclarationIndex}";
             }
             bool wasAssigningToInteger = _assigningToInteger;
+            bool wasAssigningToUnsigned = _assigningToUnsigned;
             _assigningToInteger = tempAssignment.TempVariable.IsInteger;
+            _assigningToUnsigned = tempAssignment.TempVariable.IsUnsigned;
             string compiled;
             try
             {
@@ -1899,6 +1906,7 @@ public sealed class NodeCompiler
             finally
             {
                 _assigningToInteger = wasAssigningToInteger;
+                _assigningToUnsigned = wasAssigningToUnsigned;
             }
             // A variable its readers type as an integer, holding a value that is a
             // float: the integer they read is its bits, so the assignment
@@ -2216,8 +2224,24 @@ public sealed class NodeCompiler
         // operators and the conditional: `(x & 0x7f800000) == 0x7f800000` is a bit
         // test, and written without the brackets it is `x & (a == b)`, which is a
         // different expression and not one HLSL will even accept on a float.
-        string left = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Left));
-        string right = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Right));
+        // A constant vector in an unsigned comparison is an unsigned one. Left as
+        // int, `i >= int3(2, 4, 8)` against a uint is the signed/unsigned mismatch
+        // fxc resolves by assuming unsigned and warns about; the cast below does not
+        // help, because the other side already being unsigned is what makes it think
+        // nothing needs saying.
+        bool wasAssigningToUnsigned = _assigningToUnsigned;
+        _assigningToUnsigned = first.IsUnsigned;
+        string left;
+        string right;
+        try
+        {
+            left = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Left));
+            right = CompileOperand(components.Cast<ComparisonNode>().Select(c => c.Right));
+        }
+        finally
+        {
+            _assigningToUnsigned = wasAssigningToUnsigned;
+        }
         // ult and ilt both read as `a < b`, and HLSL takes the signedness from the
         // operands, so the unsigned form has to say so at one of them - the usual
         // promotion then carries it to the other, which is why one side already

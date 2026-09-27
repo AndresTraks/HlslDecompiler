@@ -12,7 +12,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	float4 x0[8];
 
 	x0[0].x = input[sv_dispatchthreadid.x];
-	uint3 t0 = sv_dispatchthreadid.x + int3(2, 3, 4);
+	uint3 t0 = sv_dispatchthreadid.x + uint3(2, 3, 4);
 	x0[1].x = input[sv_dispatchthreadid.x + 1];
 	x0[2].x = input[t0.x];
 	float t1 = input[t0.z];

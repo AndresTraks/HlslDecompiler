@@ -25,8 +25,8 @@ void main(CS_IN i)
 	int t3 = t1 & 1 ? 1 : 0;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	int4 t4 = int4(i.sv_groupindex >= 1 ? g0[i.sv_groupindex - 1] : 0, i.sv_groupindex >= int3(2, 4, 8));
-	uint3 t5 = i.sv_groupindex - int3(2, 4, 8);
+	int4 t4 = int4(i.sv_groupindex >= 1 ? g0[i.sv_groupindex - 1] : 0, i.sv_groupindex >= uint3(2, 4, 8));
+	uint3 t5 = i.sv_groupindex - uint3(2, 4, 8);
 	GroupMemoryBarrierWithGroupSync();
 	t3 = t3 + t4.x;
 	g0[i.sv_groupindex] = t3;

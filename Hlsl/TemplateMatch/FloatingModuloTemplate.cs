@@ -93,6 +93,17 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             return new NegateOperation(new FloatingModuloOperation(dividend, negatedScale.Value));
         }
 
+        // The same opposition with the negation on the other side of it: the rcp
+        // carries it and the scale does not, which is what fxc makes of dividing
+        // by something already negative - `-fmod(x, -y)`. The fmod keeps the
+        // divisor its quotient was made with, so the sign is written where the
+        // shader read it.
+        if (divisor is NegateOperation negatedDivisor
+            && NodeGrouper.AreNodesEquivalent(negatedDivisor.Value, scale))
+        {
+            return new NegateOperation(new FloatingModuloOperation(dividend, divisor));
+        }
+
         return null;
     }
 

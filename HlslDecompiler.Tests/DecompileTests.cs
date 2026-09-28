@@ -139,6 +139,7 @@ public class DecompileTests
     [TestCase("vs_3_0", "vector3_matrix33_multiply")]
     [TestCase("vs_3_0", "vector4_matrix44_multiply")]
     [TestCase("ps_3_0", "float_modulo")]
+    [TestCase("ps_3_0", "float_modulo_negate")]
     public void DecompileShaderTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

@@ -1052,9 +1052,6 @@ public class InstructionParser
     /// The condition operand of a DXBC branch. Comparison instructions already
     /// produce a condition; anything else is a register tested against zero.
     /// </summary>
-    /// <remarks>
-    /// TODO: the _z form tests for zero instead; the test-boolean bit is not decoded yet.
-    /// </remarks>
     private HlslTreeNode GetConditionNode(D3D10Instruction instruction)
     {
         byte component = instruction.GetSourceSwizzleComponents(0)[0];

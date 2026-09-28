@@ -316,6 +316,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "double_nested_array")]
     [TestCase("cs_5_0", "double_mixed_struct")]
     [TestCase("ps_5_0", "double_immediate")]
+    [TestCase("ps_5_0", "double_compare")]
     [TestCase("cs_4_0", "raw_buffer")]
     [TestCase("cs_4_0", "bitpack")]
     [TestCase("cs_4_0", "particle_update")]

@@ -9,6 +9,12 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// quotient with the sign of the quotient put back, scaled by the divisor:
 /// `(q >= -q ? frac(abs(q)) : -frac(abs(q))) * y`, where q is x / y. That is what
 /// the shader does and not remotely what it says.
+///
+/// Shader model 3 has neither a divide nor a comparison that reaches a register:
+/// cmp puts the sign selection in one instruction and tests the quotient against
+/// zero, and the quotient itself is what rcp and mul make of a divide. The test
+/// is the same one - q >= -q holds just where q >= 0 - so both spellings of the
+/// selection and of the quotient fold to the same remainder.
 /// </summary>
 public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
 {
@@ -28,54 +34,118 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             ?? TryReduce(multiply.Factor2, multiply.Factor1);
     }
 
-    private static HlslTreeNode TryReduce(HlslTreeNode signedFraction, HlslTreeNode divisor)
+    private static HlslTreeNode TryReduce(HlslTreeNode signedFraction, HlslTreeNode scale)
     {
-        if (signedFraction is not MoveConditionalOperation select)
+        // A movc picks the sign from a comparison of the quotient against its own
+        // negation, which the branch condition can still be seen to say.
+        if (signedFraction is MoveConditionalOperation select
+            && select.Source2 is NegateOperation negated
+            && ReferenceEquals(negated.Value, select.Source1))
         {
-            return null;
+            if (select.Source1 is not FractionalOperation fraction
+                || fraction.Value is not AbsoluteOperation absolute
+                || !TrySplitQuotient(absolute.Value, out HlslTreeNode dividend, out HlslTreeNode divisor)
+                || !IsNotNegative(select.Condition, absolute.Value))
+            {
+                return null;
+            }
+            return Remainder(dividend, divisor, scale);
         }
 
-        // The positive branch is taken when the quotient is not negative.
-        if (select.Source2 is not NegateOperation negated
-            || !ReferenceEquals(negated.Value, select.Source1))
+        // A cmp tests its first operand against zero and takes the second or third
+        // with it - the same sign selection, its test folded into the instruction.
+        // What it tests is what the fraction took the absolute value of: the
+        // quotient is read twice, not computed twice.
+        if (signedFraction is CompareOperation cmp
+            && IsNegationOf(cmp.LessValue, cmp.GreaterEqualValue)
+            && cmp.GreaterEqualValue is FractionalOperation cmpFraction
+            && cmpFraction.Value is AbsoluteOperation cmpAbsolute
+            && ReferenceEquals(cmpAbsolute.Value, cmp.Value)
+            && TrySplitQuotient(cmp.Value, out HlslTreeNode cmpDividend, out HlslTreeNode cmpDivisor))
         {
-            return null;
+            return Remainder(cmpDividend, cmpDivisor, scale);
         }
 
-        if (select.Source1 is not FractionalOperation fraction
-            || fraction.Value is not AbsoluteOperation absolute
-            || absolute.Value is not DivisionOperation quotient)
-        {
-            return null;
-        }
+        return null;
+    }
 
-        // The divisor is read twice, once as the quotient's and once as the scale,
+    /// <summary>
+    /// The remainder the signed fraction and the scale put together: the fraction's
+    /// quotient divided by the scale's divisor, once they are seen to be the same.
+    /// </summary>
+    private static HlslTreeNode Remainder(
+        HlslTreeNode dividend, HlslTreeNode divisor, HlslTreeNode scale)
+    {
+        // The divisor is read twice, once in the quotient and once as the scale,
         // and a modifier on it - `-k.x` - is a node of its own at each.
-        if (!NodeGrouper.AreNodesEquivalent(quotient.Divisor, divisor)
-            || !IsNotNegative(select.Condition, quotient))
+        if (NodeGrouper.AreNodesEquivalent(divisor, scale))
         {
-            return null;
+            return new FloatingModuloOperation(dividend, scale);
         }
 
-        return new FloatingModuloOperation(quotient.Dividend, divisor);
+        // A remainder takes its sign from the dividend, not the divisor, so scaling
+        // by the opposite of what was divided by is a negated fmod rather than one -
+        // which is how fxc writes `-fmod(x, y)`: the negation joins the scale, and
+        // the rcp keeps its sign.
+        if (scale is NegateOperation negatedScale
+            && NodeGrouper.AreNodesEquivalent(negatedScale.Value, divisor))
+        {
+            return new NegateOperation(new FloatingModuloOperation(dividend, negatedScale.Value));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The quotient as a dividend and a divisor. With a div instruction it is the
+    /// instruction itself; without one it is x multiplied by the reciprocal of y,
+    /// whichever side the reciprocal is on.
+    /// </summary>
+    private static bool TrySplitQuotient(
+        HlslTreeNode quotient, out HlslTreeNode dividend, out HlslTreeNode divisor)
+    {
+        switch (quotient)
+        {
+            case DivisionOperation division:
+                dividend = division.Dividend;
+                divisor = division.Divisor;
+                return true;
+            case MultiplyOperation multiply
+                when multiply.Factor1 is ReciprocalOperation reciprocal1:
+                dividend = multiply.Factor2;
+                divisor = reciprocal1.Value;
+                return true;
+            case MultiplyOperation multiply
+                when multiply.Factor2 is ReciprocalOperation reciprocal2:
+                dividend = multiply.Factor1;
+                divisor = reciprocal2.Value;
+                return true;
+        }
+        dividend = null;
+        divisor = null;
+        return false;
     }
 
     /// <summary>
     /// `q >= -q` is how the sign of q is tested without naming a constant, which
-    /// is what fxc writes here. A branch condition parses as a ComparisonNode and
-    /// a value as a GreaterEqualOperation; this is the second.
+    /// is what fxc writes when the comparison is an instruction of its own; `q >= 0`
+    /// says the same and holds just as well, and is what a cmp leaves no room for
+    /// spelling otherwise. A branch condition parses as a ComparisonNode and a
+    /// value as a GreaterEqualOperation; this is the second.
     /// </summary>
     private static bool IsNotNegative(HlslTreeNode condition, HlslTreeNode value)
     {
         if (condition is GreaterEqualOperation greaterEqual)
         {
             return ReferenceEquals(greaterEqual.Source0, value)
-                && IsNegationOf(greaterEqual.Source1, value);
+                && (IsNegationOf(greaterEqual.Source1, value)
+                    || ConstantMatcher.IsZero(greaterEqual.Source1));
         }
         return condition is ComparisonNode compare
             && compare.Comparison == IfComparison.GE
             && ReferenceEquals(compare.Left, value)
-            && IsNegationOf(compare.Right, value);
+            && (IsNegationOf(compare.Right, value)
+                || ConstantMatcher.IsZero(compare.Right));
     }
 
     private static bool IsNegationOf(HlslTreeNode node, HlslTreeNode value)

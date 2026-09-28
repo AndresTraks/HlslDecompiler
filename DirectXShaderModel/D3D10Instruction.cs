@@ -522,6 +522,34 @@ public class D3D10Instruction : Instruction
         }
     }
 
+    /// <summary>
+    /// Which operand pair the instruction's nth value reads: where it writes
+    /// doubles, the pair of the register it is written at - the double at .zw
+    /// is the operand's second double, first value or no - and otherwise its
+    /// position among the values, a comparison answering one for each.
+    /// </summary>
+    public int GetValuePair(int valueOrdinal)
+    {
+        if (!WritesDoubles)
+        {
+            return valueOrdinal;
+        }
+        int mask = GetDestinationWriteMask() & 0b0101;
+        int seen = 0;
+        for (int component = 0; component < 4; component += 2)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            if (seen++ == valueOrdinal)
+            {
+                return component / 2;
+            }
+        }
+        return valueOrdinal;
+    }
+
     public int GetValueOrdinal(int destinationComponent)
     {
         int mask = GetDestinationWriteMask();
@@ -784,7 +812,16 @@ public class D3D10Instruction : Instruction
                 // over one double came out r0.xx, which is the same bool twice.
                 else if (HasDoubleOperands)
                 {
-                    destinationLength = IsDoubleOperand(srcIndex) ? ValueCount * 2 : ValueCount;
+                    // A value of a double-writing instruction reads the operand
+                    // pair its destination pair is at, so the swizzle has to be
+                    // shown up to the highest pair written: the double at .zw is
+                    // the operand's second pair, and one pair of swizzle printed
+                    // r0.zw where the operand read was r0.zwzw.
+                    destinationLength = IsDoubleOperand(srcIndex)
+                        ? WritesDoubles
+                            ? (GetValuePair(ValueCount - 1) + 1) * 2
+                            : ValueCount * 2
+                        : ValueCount;
                     destinationMask = (1 << destinationLength.Value) - 1;
                 }
                 // The address of an interlocked operation is a whole operand too.
@@ -962,6 +999,18 @@ public class D3D10Instruction : Instruction
         return BitConverter.ToInt32(GetOperandValueBytes(index, componentIndex), 0);
     }
 
+    // The nth double of a d() operand: its two dwords, low half first. The operand
+    // carries two doubles, and a double instruction reads the pair its swizzle
+    // names rather than the single component a register read would take.
+    public double GetParamDouble(int index, int doubleIndex)
+    {
+        Span<uint> span = OperandTokens.GetSpan(index);
+        // The operand token, then the halves of each double beside it.
+        uint low = span[1 + doubleIndex * 2];
+        uint high = span[2 + doubleIndex * 2];
+        return BitConverter.Int64BitsToDouble((long)high << 32 | low);
+    }
+
     public D3D10OperandModifier GetOperandModifier(int index)
     {
         Span<uint> span = OperandTokens.GetSpan(index);
@@ -989,16 +1038,28 @@ public class D3D10Instruction : Instruction
             {
                 // As wide as the operand, the same as the float case below: taking
                 // only the first component read l(1, 2, 0, 0) - a texel address - as 1.
+                // Written as arrays rather than collections: the constructor's
+                // element type is now one of two, and an integer reads as either.
                 return GetOperandComponentSelection(index) == D3D10OperandNumComponents.Operand1Component
-                    ? new D3D10RegisterKey([ GetParamInt(index) ])
-                    : new D3D10RegisterKey([
-                        GetParamInt(index, 0),
-                        GetParamInt(index, 1),
-                        GetParamInt(index, 2),
-                        GetParamInt(index, 3)
-                        ]);
+                    ? new D3D10RegisterKey(new float[] { GetParamInt(index) })
+                    : new D3D10RegisterKey(new float[]
+                        {
+                            GetParamInt(index, 0),
+                            GetParamInt(index, 1),
+                            GetParamInt(index, 2),
+                            GetParamInt(index, 3)
+                        });
             }
             return new D3D10RegisterKey(GetParamSingle(index));
+        }
+        else if (operandType == OperandType.Immediate64)
+        {
+            // The whole operand is the value: two doubles, whatever the
+            // instruction reads from them.
+            return new D3D10RegisterKey([
+                GetParamDouble(index, 0),
+                GetParamDouble(index, 1)
+                ]);
         }
         else if (IsThreadRegister(operandType))
         {

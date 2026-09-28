@@ -36,6 +36,12 @@ public class D3D10RegisterKey : RegisterKey
         ImmediateSingle = immediateSingle;
     }
 
+    public D3D10RegisterKey(double[] immediateDouble)
+    {
+        OperandType = OperandType.Immediate64;
+        ImmediateDouble = immediateDouble;
+    }
+
     private D3D10RegisterKey(int gsAttribute, int gsVertex)
         : this(OperandType.Input, gsAttribute)
     {
@@ -51,6 +57,7 @@ public class D3D10RegisterKey : RegisterKey
     public int Number { get; }
     public int? ConstantBufferOffset { get; }
     public float[] ImmediateSingle { get; }
+    public double[] ImmediateDouble { get; }
     public int? ImmediateInt { get; }
     public int? GSVertex { get; }
 
@@ -114,6 +121,34 @@ public class D3D10RegisterKey : RegisterKey
                 }
             }
         }
+        // Two d() immediates are one value when both doubles are. Reading only
+        // the operand type, every pair of them compared equal - and a dictionary
+        // keyed by registers merged two literals into one entry.
+        if (other.ImmediateDouble == null)
+        {
+            if (ImmediateDouble != null)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (ImmediateDouble == null)
+            {
+                return false;
+            }
+            if (other.ImmediateDouble.Length != ImmediateDouble.Length)
+            {
+                return false;
+            }
+            for (int i = 0; i < ImmediateDouble.Length; i++)
+            {
+                if (other.ImmediateDouble[i] != ImmediateDouble[i])
+                {
+                    return false;
+                }
+            }
+        }
         return
             other.Number == Number &&
             other.OperandType == OperandType &&
@@ -137,6 +172,13 @@ public class D3D10RegisterKey : RegisterKey
             for (int i = 0; i < ImmediateSingle.Length; i++)
             {
                 hashCode ^= ImmediateSingle[i].GetHashCode();
+            }
+        }
+        if (ImmediateDouble != null)
+        {
+            for (int i = 0; i < ImmediateDouble.Length; i++)
+            {
+                hashCode ^= ImmediateDouble[i].GetHashCode();
             }
         }
         if (ImmediateInt != null)
@@ -163,6 +205,10 @@ public class D3D10RegisterKey : RegisterKey
                 return ImmediateSingle[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
             return $"[{string.Join(", ", ImmediateSingle.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture)))}]";
+        }
+        if (ImmediateDouble != null)
+        {
+            return $"d({string.Join(", ", ImmediateDouble.Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture)))})";
         }
         if (ImmediateInt.HasValue)
         {

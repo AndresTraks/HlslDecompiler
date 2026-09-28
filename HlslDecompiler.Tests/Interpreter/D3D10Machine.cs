@@ -799,20 +799,24 @@ public class D3D10Machine
             case D3D10Opcode.DRCP:
                 {
                     double[] value = Doubles(instruction, 1);
-                    return PackValues(instruction, n => DoubleWords(1 / value[n]));
+                    return PackValues(instruction,
+                        n => DoubleWords(1 / value[instruction.GetValuePair(n)]));
                 }
             case D3D10Opcode.DMov:
                 {
                     double[] moved = Doubles(instruction, 1);
-                    return PackValues(instruction, n => DoubleWords(moved[n]));
+                    return PackValues(instruction,
+                        n => DoubleWords(moved[instruction.GetValuePair(n)]));
                 }
             case D3D10Opcode.DFMA:
                 {
                     double[] factor1 = Doubles(instruction, 1);
                     double[] factor2 = Doubles(instruction, 2);
                     double[] addend = Doubles(instruction, 3);
-                    return PackValues(instruction,
-                        n => DoubleWords(Math.FusedMultiplyAdd(factor1[n], factor2[n], addend[n])));
+                    return PackValues(instruction, n => DoubleWords(Math.FusedMultiplyAdd(
+                        factor1[instruction.GetValuePair(n)],
+                        factor2[instruction.GetValuePair(n)],
+                        addend[instruction.GetValuePair(n)])));
                 }
             case D3D10Opcode.DMovC:
                 {
@@ -821,8 +825,10 @@ public class D3D10Machine
                     uint[] condition = Source(instruction, 1);
                     double[] whenSet = Doubles(instruction, 2);
                     double[] whenClear = Doubles(instruction, 3);
-                    return PackValues(instruction,
-                        n => DoubleWords(condition[n] != 0 ? whenSet[n] : whenClear[n]));
+                    return PackValues(instruction, n => DoubleWords(
+                        condition[n] != 0
+                            ? whenSet[instruction.GetValuePair(n)]
+                            : whenClear[instruction.GetValuePair(n)]));
                 }
             case D3D10Opcode.DEq:
                 return DoubleComparison(instruction, (a, b) => a == b);
@@ -1534,12 +1540,16 @@ public class D3D10Machine
         return words;
     }
 
-    // A double precision operation over the pairs its operands hold.
+    // A double precision operation over the pairs its operands hold. A value
+    // reads the pair it is written at, not its own position: the double at .zw
+    // is the operand's second double even when it is the instruction's first
+    // value, and a d() immediate carries its numbers by pair for this.
     private uint[] Double(D3D10Instruction instruction, Func<double, double, double> combine)
     {
         double[] a = Doubles(instruction, 1);
         double[] b = Doubles(instruction, 2);
-        return PackValues(instruction, n => DoubleWords(combine(a[n], b[n])));
+        return PackValues(instruction, n => DoubleWords(
+            combine(a[instruction.GetValuePair(n)], b[instruction.GetValuePair(n)])));
     }
 
     // A double comparison, which answers one word of all ones or all zeroes for
@@ -1628,6 +1638,10 @@ public class D3D10Machine
         switch (type)
         {
             case OperandType.Immediate32:
+            case OperandType.Immediate64:
+                // A double immediate is read by the pairs its doubles fill, and
+                // Doubles() puts the halves back together - the four words are
+                // already what a register of two would hold.
                 return
                 [
                     unchecked((uint)instruction.GetParamInt(index, 0)),

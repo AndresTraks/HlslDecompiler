@@ -464,7 +464,7 @@ public class HlslSimpleWriter : HlslWriter
         }
         int componentBase = _registers.GetConstantComponentBase(componentKey);
         string elements = string.Concat(Enumerable.Range(0, instruction.ValueCount)
-            .Select(value => "xyzw"[(swizzle[value * 2] - componentBase) / 2]));
+            .Select(value => "xyzw"[(swizzle[instruction.GetValuePair(value) * 2] - componentBase) / 2]));
         return elements == "xyzw"[..width] ? name : $"{name}.{elements}";
     }
 
@@ -544,7 +544,7 @@ public class HlslSimpleWriter : HlslWriter
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             for (int value = 0; value < instruction.ValueCount; value++)
             {
-                pairs.Add(swizzle[value * 2] / 2);
+                pairs.Add(swizzle[instruction.GetValuePair(value) * 2] / 2);
             }
         }
         if (pairs.Count == 0)
@@ -3215,6 +3215,23 @@ public class HlslSimpleWriter : HlslWriter
         if (registerKey.OperandType == OperandType.InputForkInstanceID)
         {
             return (instruction.ForkInstance ?? 0).ToString(_culture);
+        }
+
+        if (registerKey.OperandType == OperandType.Immediate64)
+        {
+            // The operand carries two doubles, and the instruction reads one per
+            // value it computes: the pair of slots its swizzle names for each of
+            // them. One value reading one double is a scalar; two reading different
+            // ones are a vector, the same as the register beside it they multiply.
+            byte[] doubleSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            string[] doubles = [.. Enumerable.Range(0, instruction.ValueCount)
+                .Select(value => ConstantFormatter.Format(instruction.GetParamDouble(
+                    operandIndex, doubleSwizzle[instruction.GetValuePair(value) * 2] / 2)))];
+            if (doubles.All(d => d == doubles[0]))
+            {
+                return doubles[0];
+            }
+            return $"double{doubles.Length}({string.Join(", ", doubles)})";
         }
 
         if (registerKey.OperandType == OperandType.Immediate32)

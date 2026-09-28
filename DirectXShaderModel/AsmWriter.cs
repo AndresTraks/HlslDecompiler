@@ -1393,6 +1393,17 @@ public class AsmWriter
             : $"{register} + {operand.Immediate}";
     }
 
+    // fxc's spelling of a double immediate: six decimals, and the suffix a
+    // literal carries on each. A number no decimal holds is spelled the way the
+    // float formatter spells its like.
+    private static string FormatDoubleOperand(D3D10Instruction instruction, int index, int number)
+    {
+        double value = instruction.GetParamDouble(index, number);
+        return double.IsNaN(value) || double.IsInfinity(value)
+            ? ConstantFormatter.Format(value) + "l"
+            : value.ToString("F6", CultureInfo.InvariantCulture) + "l";
+    }
+
     private string FormatOperand(D3D10Instruction instruction, int index)
     {
         var operandType = instruction.GetOperandType(index);
@@ -1473,6 +1484,12 @@ public class AsmWriter
                     return $"l({immediate0}, {immediate1}, {immediate2}, {immediate3})";
                 }
             }
+        }
+        else if (operandType == OperandType.Immediate64)
+        {
+            // Two doubles, printed the way fxc prints them: six decimals apiece,
+            // and the suffix a literal carries on each.
+            return $"d({FormatDoubleOperand(instruction, index, 0)}, {FormatDoubleOperand(instruction, index, 1)})";
         }
         else if (operandType == OperandType.IndexableTemp)
         {

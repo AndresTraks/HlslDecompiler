@@ -1,6 +1,7 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
 using HlslDecompiler.Hlsl.TemplateMatch;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -335,6 +336,11 @@ public sealed class NodeCompiler
         if (first is ConstantNode)
         {
             return CompileConstant(components, promoteToVectorSize);
+        }
+
+        if (first is DoubleConstantNode)
+        {
+            return CompileDoubleConstant(components);
         }
 
         // A counter call is a value of its own rather than a component of anything:
@@ -741,6 +747,21 @@ public sealed class NodeCompiler
                 i++;
             }
         }
+    }
+
+    // Double literals, as a vector where the values of one instruction read
+    // different doubles out of the one immediate. The components are the whole
+    // of it: one number where they all agree, and a constructor wide enough for
+    // the rest.
+    private string CompileDoubleConstant(List<HlslTreeNode> components)
+    {
+        string[] values = [.. components.Select(c =>
+            ConstantFormatter.Format(((DoubleConstantNode)c).Value))];
+        if (values.All(v => v == values[0]))
+        {
+            return values[0];
+        }
+        return $"double{values.Length}({string.Join(", ", values)})";
     }
 
     private string CompileConstant(List<HlslTreeNode> components, int promoteToVectorSize)

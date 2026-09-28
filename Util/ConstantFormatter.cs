@@ -7,6 +7,29 @@ public class ConstantFormatter
 {
     private static readonly CultureInfo _culture = CultureInfo.InvariantCulture;
 
+    public static string Format(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return "NaN";
+        }
+        if (double.IsInfinity(value))
+        {
+            return double.IsPositive(value) ? "INF" : "-INF";
+        }
+        // fxc parses a source literal as a float and widens it afterwards, so the
+        // doubles it puts in a d() immediate are float values kept in a double, and
+        // read best as one: 0.1 printed as the 0.10000000000000001 a float cannot
+        // hold recompiles to a different number than the bytecode held.
+        float asFloat = (float)value;
+        if (BitConverter.DoubleToInt64Bits(asFloat) == BitConverter.DoubleToInt64Bits(value))
+        {
+            return Format(asFloat);
+        }
+        // Not a float's: say everything, as little as round-trips it.
+        return value.ToString("R", _culture);
+    }
+
     public static string Format(float value)
     {
         // A decimal holds no NaN and no infinity, and parsing their names threw.

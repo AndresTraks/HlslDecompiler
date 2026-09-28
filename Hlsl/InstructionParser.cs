@@ -1591,17 +1591,27 @@ public class InstructionParser
 
     private HlslTreeNode GetActiveOutput(RegisterComponentKey registerComponent)
     {
-        if (registerComponent.RegisterKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32)
+        if (registerComponent.RegisterKey is D3D10RegisterKey d3D10RegisterKey)
         {
-            if (d3D10RegisterKey.ImmediateSingle != null)
+            if (d3D10RegisterKey.ImmediateDouble != null)
             {
-                if (d3D10RegisterKey.ImmediateSingle.Length == 1)
-                {
-                    return new ConstantNode(d3D10RegisterKey.ImmediateSingle[0]);
-                }
-                return new ConstantNode(d3D10RegisterKey.ImmediateSingle[registerComponent.ComponentIndex]);
+                // The double the read component's pair names, the same as the read
+                // of any other operand.
+                return new DoubleConstantNode(
+                    d3D10RegisterKey.ImmediateDouble[registerComponent.ComponentIndex / 2]);
             }
-            return new ConstantNode(d3D10RegisterKey.ImmediateInt.Value);
+            if (d3D10RegisterKey.OperandType == OperandType.Immediate32)
+            {
+                if (d3D10RegisterKey.ImmediateSingle != null)
+                {
+                    if (d3D10RegisterKey.ImmediateSingle.Length == 1)
+                    {
+                        return new ConstantNode(d3D10RegisterKey.ImmediateSingle[0]);
+                    }
+                    return new ConstantNode(d3D10RegisterKey.ImmediateSingle[registerComponent.ComponentIndex]);
+                }
+                return new ConstantNode(d3D10RegisterKey.ImmediateInt.Value);
+            }
         }
         return ActiveOutputs[registerComponent];
     }
@@ -3535,6 +3545,7 @@ public class InstructionParser
         // Which value of the instruction is being built, where that is not the
         // component it is written at: a double takes two components, so dtof's
         // second result is written at .y and reads the double at .zw.
+        int destinationComponent = componentIndex;
         int valueOrdinal = instruction.HasDoubleOperands
             ? instruction.GetValueOrdinal(componentIndex)
             : componentIndex;
@@ -3544,8 +3555,15 @@ public class InstructionParser
             var operandType = instruction.GetOperandType(inputParameterIndex);
             if (instruction.HasDoubleOperands)
             {
+                // Where the instruction writes doubles, the operand pair read is
+                // the destination's own: the double written at .zw is read from
+                // the second pair of every double operand, whether or not it is
+                // the instruction's first value. A comparison answers a value per
+                // pair and reads its operands one pair per value.
                 componentIndex = instruction.IsDoubleOperand(inputParameterIndex)
-                    ? valueOrdinal * 2
+                    ? instruction.WritesDoubles
+                        ? destinationComponent
+                        : valueOrdinal * 2
                     : valueOrdinal;
             }
             D3D10OperandTokenCollection.OperandIndex[] operandIndices =
@@ -3587,6 +3605,19 @@ public class InstructionParser
             if (operandType == OperandType.InputForkInstanceID)
             {
                 inputs[i] = new ConstantNode(instruction.ForkInstance ?? 0);
+                continue;
+            }
+            if (operandType == OperandType.Immediate64)
+            {
+                // The operand holds two doubles and the component being read names
+                // a pair of its slots, which is one of them. A double instruction
+                // has already said which of its values this is by here.
+                byte[] doubleSwizzle = instruction.GetSourceSwizzleComponents(inputParameterIndex);
+                var doubleConstant = new DoubleConstantNode(instruction.GetParamDouble(
+                    inputParameterIndex, doubleSwizzle[componentIndex] / 2));
+                _doubleValues.Add(doubleConstant);
+                inputs[i] = ApplyModifier(
+                    doubleConstant, instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
             if (operandType == OperandType.Immediate32)

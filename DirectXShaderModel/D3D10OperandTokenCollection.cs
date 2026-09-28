@@ -176,6 +176,19 @@ public class D3D10OperandTokenCollection
                 i += 4;
             }
         }
+        else if (operandType == OperandType.Immediate64
+            && (D3D10OperandNumComponents)(token & 3) == D3D10OperandNumComponents.Operand4Component)
+        {
+            // Two doubles, not one: four dwords, the halves of each number in
+            // order. Left at the two the name suggests, every operand after the
+            // immediate was read from the middle of it. The component selection
+            // says so because a real one always carries the four: the dword a
+            // typed UAV declares its return type with decodes as this operand
+            // type too - (float, float, float, float) is 0x5555, whose type
+            // field is 5 - and skipping its imaginary dwords overran the
+            // instruction.
+            i += 4;
+        }
 
         int indexDimension = (int)((token >> 20) & 3);
         for (int r = 0; r < indexDimension; r++)

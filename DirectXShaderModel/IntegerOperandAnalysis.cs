@@ -213,6 +213,15 @@ public sealed class IntegerOperandAnalysis
                     {
                         if (instruction.GetOperandType(operand) == OperandType.Immediate32)
                         {
+                            // An immediate carries no type of its own, but the
+                            // readers it reaches give it one: where they want
+                            // floats, the float's bits are what landed in the
+                            // register - `movc r0.y, c, l(0), l(1)` feeding a float
+                            // output holds the bits of 1.0f, not the number 1.
+                            if (GetImmediateKindByReaders(instruction) == ValueKind.Float)
+                            {
+                                changed |= moved.Add(destination);
+                            }
                             continue;
                         }
                         var source = new RegisterComponentKey(
@@ -495,6 +504,38 @@ public sealed class IntegerOperandAnalysis
                     if (reader.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC
                         && !(reader.Opcode == D3D10Opcode.MovC && operand == 1))
                     {
+                        int? readerDestination = reader.GetDestinationParamIndex();
+                        if (readerDestination != null
+                            && reader.GetOperandType(readerDestination.Value) != OperandType.Temp)
+                        {
+                            // A move into an output carries the value no further: the
+                            // output signature says what it is, and a move converts
+                            // nothing - what reaches a float output through int
+                            // registers is the float's bits, and what reaches an
+                            // integer output the number.
+                            RegisterKey outputRegister =
+                                reader.GetParamRegisterKey(readerDestination.Value);
+                            foreach (byte component in reader.GetSourceSwizzleComponents(operand).Distinct())
+                            {
+                                if ((live & (1 << component)) == 0 || disagree[component])
+                                {
+                                    continue;
+                                }
+                                ValueKind outputKind = IsIntegerOutputSignature(
+                                    new RegisterComponentKey(outputRegister, component))
+                                    ? ValueKind.Integer
+                                    : ValueKind.Float;
+                                if (kinds[component] != ValueKind.Unknown
+                                    && kinds[component] != outputKind)
+                                {
+                                    kinds[component] = ValueKind.Unknown;
+                                    disagree[component] = true;
+                                    continue;
+                                }
+                                kinds[component] = outputKind;
+                            }
+                            continue;
+                        }
                         CarryKindsOnward(reader, operand, live, kinds, disagree, visited);
                     }
                     continue;

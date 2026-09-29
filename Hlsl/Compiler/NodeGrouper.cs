@@ -553,6 +553,21 @@ public class NodeGrouper
                     && variable1.DeclarationIndex == variable2.DeclarationIndex);
         }
 
+        // A comparison names no register, no component and no operation, so
+        // nothing above reads it and two of them were never the same value: the
+        // test of a conditional move made every component group holding one a
+        // group of unlike values. It is the outcome asked for, the types read
+        // with, and both sides.
+        if (node1 is ComparisonNode comparison1 && node2 is ComparisonNode comparison2)
+        {
+            return comparison1.Comparison == comparison2.Comparison
+                && comparison1.IsInteger == comparison2.IsInteger
+                && comparison1.IsUnsigned == comparison2.IsUnsigned
+                && comparison1.IsBitsTest == comparison2.IsBitsTest
+                && AreNodesEquivalent(comparison1.Left, comparison2.Left)
+                && AreNodesEquivalent(comparison1.Right, comparison2.Right);
+        }
+
         if ((node1 is IHasComponentIndex) ||
             (node1 is GroupNode) ||
             (node1 is Operation))

@@ -786,6 +786,10 @@ public sealed class NodeCompiler
                     : vector.Inputs.Count;
             case MultiplyOperation:
                 return MaxBroadcastWidth(node.Inputs, requested);
+            // A cast spells itself `(float2)` over a group of two: it names a
+            // vector type, and HLSL broadcasts its scalar operand into one.
+            case ConvertOperation:
+                return requested;
             case MoveConditionalOperation or CompareOperation:
                 // The first input is the condition and the tested value, read as
                 // one by the case that prints it; the branches after it are what
@@ -1266,7 +1270,17 @@ public sealed class NodeCompiler
                     // in a float context the address would be reinterpreted, and
                     // `buffer[asfloat(element)]` is an index made from the bits of a
                     // float rather than the element asked for.
-                    var address = CompileAsInteger(components.Select(g => g.Inputs[0]));
+                    // One load reads one element, and every component of a broadcast
+                    // of it reads that element through the one index: widening the
+                    // address asked for the group spelled `buffer[(int2)element]`, an
+                    // index of two elements where the components asked for one read
+                    // twice. Only loads of different elements fill the subscript into
+                    // a vector index.
+                    var addressInputs = components.Select(g => g.Inputs[0]).ToList();
+                    var address = CompileAsInteger(
+                        addressInputs.Skip(1).All(a => SameValue(a, addressInputs[0]))
+                            ? [addressInputs[0]]
+                            : addressInputs);
                     var resource = (RegisterInputNode)components[0].Inputs[2];
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
                     if (load.IsRaw)

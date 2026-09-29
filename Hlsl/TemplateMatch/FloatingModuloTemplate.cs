@@ -15,9 +15,22 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// zero, and the quotient itself is what rcp and mul make of a divide. The test
 /// is the same one - q >= -q holds just where q >= 0 - so both spellings of the
 /// selection and of the quotient fold to the same remainder.
+///
+/// The rcp that makes a quotient is often not in the expression at all: fxc hoists
+/// the loop-invariant half of a divide into a temp and reads that at every use, and
+/// a variable is as much a wall to this template as a register is. It asks the
+/// matcher's resolver what such a variable holds, and reads the quotient through
+/// it.
 /// </summary>
 public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
 {
+    private readonly TemplateMatcher _templateMatcher;
+
+    public FloatingModuloTemplate(TemplateMatcher templateMatcher)
+    {
+        _templateMatcher = templateMatcher;
+    }
+
     public override bool Match(HlslTreeNode node)
     {
         return node is MultiplyOperation multiply && TryReduce(multiply) != null;
@@ -28,13 +41,13 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
         return TryReduce(node);
     }
 
-    private static HlslTreeNode TryReduce(MultiplyOperation multiply)
+    private HlslTreeNode TryReduce(MultiplyOperation multiply)
     {
         return TryReduce(multiply.Factor1, multiply.Factor2)
             ?? TryReduce(multiply.Factor2, multiply.Factor1);
     }
 
-    private static HlslTreeNode TryReduce(HlslTreeNode signedFraction, HlslTreeNode scale)
+    private HlslTreeNode TryReduce(HlslTreeNode signedFraction, HlslTreeNode scale)
     {
         // A movc picks the sign from a comparison of the quotient against its own
         // negation, which the branch condition can still be seen to say.
@@ -110,24 +123,26 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
     /// <summary>
     /// The quotient as a dividend and a divisor. With a div instruction it is the
     /// instruction itself; without one it is x multiplied by the reciprocal of y,
-    /// whichever side the reciprocal is on.
+    /// whichever side the reciprocal is on. Either the quotient or the reciprocal
+    /// may be the value a variable holds rather than a node of the expression, and
+    /// both are looked through where the resolver can see what the variable holds.
     /// </summary>
-    private static bool TrySplitQuotient(
+    private bool TrySplitQuotient(
         HlslTreeNode quotient, out HlslTreeNode dividend, out HlslTreeNode divisor)
     {
-        switch (quotient)
+        switch (Resolve(quotient))
         {
             case DivisionOperation division:
                 dividend = division.Dividend;
                 divisor = division.Divisor;
                 return true;
             case MultiplyOperation multiply
-                when multiply.Factor1 is ReciprocalOperation reciprocal1:
+                when Resolve(multiply.Factor1) is ReciprocalOperation reciprocal1:
                 dividend = multiply.Factor2;
                 divisor = reciprocal1.Value;
                 return true;
             case MultiplyOperation multiply
-                when multiply.Factor2 is ReciprocalOperation reciprocal2:
+                when Resolve(multiply.Factor2) is ReciprocalOperation reciprocal2:
                 dividend = multiply.Factor1;
                 divisor = reciprocal2.Value;
                 return true;
@@ -136,6 +151,9 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
         divisor = null;
         return false;
     }
+
+    private HlslTreeNode Resolve(HlslTreeNode node) =>
+        _templateMatcher.TempResolver is { } resolver ? resolver.Resolve(node) : node;
 
     /// <summary>
     /// `q >= -q` is how the sign of q is tested without naming a constant, which

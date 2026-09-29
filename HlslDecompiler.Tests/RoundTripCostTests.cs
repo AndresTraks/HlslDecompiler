@@ -46,18 +46,6 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["ps_3_0/loop_counter_reuse"] = (53,
-            "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
-            + "times over: the decompiled source marks a loop [loop] only where fxc "
-            + "would otherwise refuse it, and this one it can count. Marked, it "
-            + "recompiles to the original's 26. The fmod is written out longhand and "
-            + "fxc expands it again inside each unrolled copy, because the "
-            + "reciprocal its quotient was made with sits in a loop-invariant "
-            + "temp - the rcp is one instruction and its product another, and a "
-            + "template sees no further into a variable than into a register. Its "
-            + "cmp comparing against zero rather than its own negation stopped "
-            + "being part of it once the template learned that test. It computes "
-            + "the right answer now, which it did not when this entry was written."),
         ["cs_4_0/particle_update"] = (12,
             "One instruction, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "
@@ -103,6 +91,18 @@ public class RoundTripCostTests
             + "`!= 0`."),
 
         // fxc's doing: the output is right and it compiles it differently.
+        ["ps_3_0/loop_counter_reuse"] = (53,
+            "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
+            + "times over: the decompiled source marks a loop [loop] only where fxc "
+            + "would otherwise refuse it, and this one it can count. Marked, it "
+            + "recompiles to the original's 26. What the source says is `fmod` - the "
+            + "fold reads its quotient through the loop-invariant temp the "
+            + "reciprocal was hoisted into - and ps_3_0 has no instruction for that, "
+            + "so fxc writes the reciprocal, the fraction and the sign selection out "
+            + "again inside each unrolled copy, sharing only the reciprocal across "
+            + "the three. The original spelled it the same way once, in a loop body "
+            + "fxc left alone. It computes the right answer now, which it did not "
+            + "when this entry was written."),
         ["vs_3_0/loop_repeat_count"] = (8,
             "fxc unrolls the eight iteration loop the decompiled source spells out, "
             + "which is unmarked because fxc can count it; marked [loop] it "

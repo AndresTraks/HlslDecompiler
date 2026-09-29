@@ -10,6 +10,14 @@ public class TemplateMatcher
     private List<IGroupTemplate> _groupTemplates;
     private NodeGrouper _nodeGrouper;
 
+    /// <summary>
+    /// What a template may look through a variable to. A variable is a leaf to a
+    /// template as a register is, and a fold that wants the loop-invariant expression
+    /// behind one asks this for it. Null until the writer has looked at the function
+    /// and built it.
+    /// </summary>
+    public TempResolver TempResolver { get; set; }
+
     public TemplateMatcher(NodeGrouper nodeGrouper)
     {
         _templates = new List<INodeTemplate>
@@ -48,7 +56,7 @@ public class TemplateMatcher
             new NaturalExponentialTemplate(),
             new NaturalLogarithmTemplate(),
             new LinearInterpolateTemplate(),
-            new FloatingModuloTemplate(),
+            new FloatingModuloTemplate(this),
             new SmoothStepTemplate(),
             new StepTemplate(),
             new FirstBitHighTemplate(),

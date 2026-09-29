@@ -82,7 +82,180 @@ public class HlslAstWriter : HlslWriter
         StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
             HasOutputStruct, CreateIntegerOperandAnalysis(), _doubleValues);
         FindDeclaredVariables(ast.Statements);
+
+        // A fold that sees through a variable can empty a statement above the one it
+        // fires in, and what that statement named has to be gone from the output
+        // before its line is written - so every fold runs, and the names no fold
+        // leaves a reader for go, before any of the function is written.
+        TempResolver resolver = TempResolver.Build(ast.Statements);
+        _templateMatcher.TempResolver = resolver;
+        ReduceAll(ast.Statements);
+        resolver.RemoveUnreadAssignments(ast.Statements);
+
         WriteStatements(ast.Statements);
+    }
+
+    /// <summary>
+    /// Reduce every value the way writing it will, without writing it. The rewrite
+    /// is in place and global, so the same pass at write time still finds what it
+    /// finds today in the values no fold reaches until its own line is written,
+    /// and nothing else to do. Only what writing reduces before it writes it: a
+    /// value it groups first and reduces after has to reach that grouping as the
+    /// instructions still are, or the statement is written under names no fold
+    /// asked for.
+    /// </summary>
+    private void ReduceAll(IList<IStatement> statements)
+    {
+        foreach (IStatement statement in statements)
+        {
+            switch (statement)
+            {
+                case AssignmentStatement or ReturnStatement:
+                    foreach (HlslTreeNode root in ReducedTemps(statement))
+                    {
+                        Reduce(root);
+                    }
+                    if (statement is ReturnStatement returnValue && returnValue.Comparison != null)
+                    {
+                        Reduce(returnValue.Comparison);
+                    }
+                    break;
+                case IfStatement ifStatement:
+                    foreach (HlslTreeNode comparison in ifStatement.Comparison)
+                    {
+                        Reduce(comparison);
+                    }
+                    ReduceAll(ifStatement.TrueBody);
+                    if (ifStatement.FalseBody != null)
+                    {
+                        ReduceAll(ifStatement.FalseBody);
+                    }
+                    break;
+                case LoopStatement loop:
+                    // The for clauses of a counted loop; of a counted-by-register
+                    // loop only its trip count, and only when that is a value
+                    // rather than the constant the bytecode already named.
+                    if (loop.IsCountedLoop)
+                    {
+                        if (loop.Initializer != null)
+                        {
+                            Reduce(loop.Initializer);
+                        }
+                        if (loop.ContinueCondition != null)
+                        {
+                            Reduce(loop.ContinueCondition);
+                        }
+                        if (loop.Increment != null)
+                        {
+                            Reduce(loop.Increment);
+                        }
+                    }
+                    else if (loop.RepeatCount == null && loop.RepeatCountNode != null)
+                    {
+                        Reduce(loop.RepeatCountNode);
+                    }
+                    ReduceAll(loop.Body);
+                    break;
+                case SwitchStatement switchStatement:
+                    Reduce(switchStatement.Selector);
+                    foreach (SwitchCase switchCase in switchStatement.Cases)
+                    {
+                        if (switchCase.Label != null)
+                        {
+                            Reduce(switchCase.Label);
+                        }
+                        ReduceAll(switchCase.Body);
+                    }
+                    break;
+                case BreakStatement or ContinueStatement or DiscardStatement:
+                    HlslTreeNode jumpComparison = statement switch
+                    {
+                        BreakStatement brk => brk.Comparison,
+                        ContinueStatement cont => cont.Comparison,
+                        _ => ((DiscardStatement)statement).Comparison,
+                    };
+                    if (jumpComparison != null)
+                    {
+                        Reduce(jumpComparison);
+                    }
+                    break;
+                case ClipStatement clip:
+                    foreach (HlslTreeNode value in clip.Values)
+                    {
+                        Reduce(value);
+                    }
+                    break;
+                case StoreStructuredStatement store:
+                    Reduce(store.Address);
+                    foreach (HlslTreeNode value in store.Values)
+                    {
+                        Reduce(value);
+                    }
+                    break;
+                case StoreTypedStatement typedStore:
+                    foreach (HlslTreeNode value in typedStore.Coordinates.Concat(typedStore.Values))
+                    {
+                        Reduce(value);
+                    }
+                    break;
+                case BufferAppendStatement append:
+                    foreach (HlslTreeNode value in append.Values)
+                    {
+                        Reduce(value);
+                    }
+                    break;
+                case IndexableTempStoreStatement indexableStore:
+                    Reduce(indexableStore.Index);
+                    foreach (HlslTreeNode value in indexableStore.Values)
+                    {
+                        Reduce(value);
+                    }
+                    break;
+                case AtomicStatement atomic:
+                    if (atomic.Address != null)
+                    {
+                        Reduce(atomic.Address);
+                    }
+                    if (atomic.Coordinates != null)
+                    {
+                        foreach (HlslTreeNode coordinate in atomic.Coordinates)
+                        {
+                            Reduce(coordinate);
+                        }
+                    }
+                    if (atomic.Value != null)
+                    {
+                        Reduce(atomic.Value);
+                    }
+                    if (atomic.Compare != null)
+                    {
+                        Reduce(atomic.Compare);
+                    }
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The values writing an assignment or a return reduces before it has decided
+    /// anything else about them: the temp variables it assigns, and not the ones it
+    /// merely carries forward. The output registers it names are the writer's own
+    /// work - it groups the components while they are still instructions and
+    /// reduces them only after - and folding one before that grouping would have
+    /// it group the folded value instead of the instruction, and write the
+    /// statement under names the fold never asked for.
+    /// </summary>
+    private IEnumerable<HlslTreeNode> ReducedTemps(IStatement statement)
+    {
+        foreach ((RegisterComponentKey key, HlslTreeNode value) in statement.Outputs)
+        {
+            if (key.RegisterKey.IsTempRegister
+                && !(statement.Inputs.TryGetValue(key, out HlslTreeNode carried)
+                    && ReferenceEquals(carried, value)))
+            {
+                yield return value;
+            }
+        }
     }
 
     /// <summary>

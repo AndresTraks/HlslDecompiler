@@ -723,8 +723,107 @@ public sealed class NodeCompiler
             : _assigningToInteger && !components.Any(IsFloatValued)
                 ? (_assigningToUnsigned ? "uint" : "int")
                 : "float";
-        IEnumerable<string> compiledConstructorParts = componentGroups.Select(g => Compile(g, g.Count));
-        return $"{type}{components.Count}({string.Join(", ", compiledConstructorParts)})";
+        var parts = new List<string>();
+        foreach (IList<HlslTreeNode> group in componentGroups)
+        {
+            string compiled = Compile(group, group.Count);
+            // A broadcast of a register fills its group with a swizzle, so its
+            // text is already as wide as the components it covers. A broadcast
+            // whose text stays a scalar - an expression with nothing in it that
+            // took the group's width - covers one. A constructor pads only when
+            // a vector is among its arguments, so a scalar is written once per
+            // component, which is how a run of constants is written one per
+            // argument.
+            int copies = group.Count > 1 && BroadcastsScalar(group) ? group.Count : 1;
+            parts.AddRange(Enumerable.Repeat(compiled, copies));
+        }
+        return $"{type}{components.Count}({string.Join(", ", parts)})";
+    }
+
+    /// <summary>
+    /// Whether the group is one value read by every component of it, and its text
+    /// is a scalar rather than the width of the group.
+    /// </summary>
+    private bool BroadcastsScalar(IList<HlslTreeNode> group)
+    {
+        HlslTreeNode head = group[0];
+        return group.Skip(1).All(c => SameValue(c, head))
+            && BroadcastWidth(head, group.Count) == 1;
+    }
+
+    private static bool SameValue(HlslTreeNode a, HlslTreeNode b)
+    {
+        return ReferenceEquals(a, b)
+            || (a is DoubleConstantNode doubleA && b is DoubleConstantNode doubleB
+                && doubleA.Value == doubleB.Value)
+            || NodeGrouper.AreNodesEquivalent(a, b);
+    }
+
+    /// <summary>
+    /// How wide the text of a broadcast comes out when the compiler is asked for
+    /// `requested` components of it - which is what the constructor above hands
+    /// each group. The answer is what the case for each operation does with the
+    /// width it is given: a read asked for its width spreads into a swizzle of
+    /// it, an operation is as wide as the operands it passes the request on to,
+    /// and a value with no components to spread - a constant, the one number a
+    /// dot or a load reads - is one however it is asked. An operation that
+    /// drops the request is only as wide as its operands make it on their own,
+    /// and every operand of a broadcast is the one node read twice.
+    /// </summary>
+    private int BroadcastWidth(HlslTreeNode node, int requested)
+    {
+        switch (node)
+        {
+            case ConstantNode or DoubleConstantNode
+                or DotProductOperation or LengthOperation or LoadStructuredNode:
+                return 1;
+            case GroupNode vector:
+                // A vector operand is its swizzle: distinct components say their
+                // own width whatever was asked, and the same component read
+                // twice is as wide as it is asked for.
+                return vector.Inputs.Skip(1).All(c => SameValue(c, vector.Inputs[0]))
+                    ? requested
+                    : vector.Inputs.Count;
+            case MultiplyOperation:
+                return MaxBroadcastWidth(node.Inputs, requested);
+            case MoveConditionalOperation or CompareOperation:
+                // The first input is the condition and the tested value, read as
+                // one by the case that prints it; the branches after it are what
+                // carries the width.
+                return MaxBroadcastWidth(node.Inputs.Skip(1), requested);
+            case ComparisonNode comparison
+                when comparison.IsUnsigned && !IsUnsignedAlready(comparison.Left)
+                    && !IsUnsignedAlready(comparison.Right):
+                // The cast saying so is as wide as the comparison.
+                return requested;
+            // A sample's level answers with one float, and the render target's
+            // sample count is one uint: neither has components to spread.
+            case TextureLoadOutputNode lod
+                when lod.Controls.HasFlag(TextureLoadControls.CalculateLod):
+                return 1;
+            case RenderTargetSampleCountNode:
+                return 1;
+            // A variable stays the name of its value; what it multiplies,
+            // compares or fills decides how wide it is read.
+            case TempVariableNode:
+                return 1;
+            // Everything else that names a component names a value that has them,
+            // and spreads into a swizzle when asked for its width.
+            case IHasComponentIndex:
+                return requested;
+            default:
+                return MaxBroadcastWidth(node.Inputs, 1);
+        }
+    }
+
+    private int MaxBroadcastWidth(IEnumerable<HlslTreeNode> nodes, int requested)
+    {
+        int width = 1;
+        foreach (HlslTreeNode node in nodes)
+        {
+            width = Math.Max(width, BroadcastWidth(node, requested));
+        }
+        return width;
     }
 
     private static void UngroupConstantGroups(IList<IList<HlslTreeNode>> componentGroups)
@@ -1725,7 +1824,8 @@ public sealed class NodeCompiler
 
         if (first is ResourceLoadNode resourceLoad)
         {
-            string loadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            string loadSwizzle = GetAstSourceSwizzleName(
+                componentsWithIndices, 4, promoteToVectorSize);
             if (TryCompileTextureBufferLoad(resourceLoad, loadSwizzle, out string textureBufferRead))
             {
                 return textureBufferRead;
@@ -1788,7 +1888,8 @@ public sealed class NodeCompiler
             // From the resource operand, the way a sampled texel's channel is: the
             // destination is .xy and the resource swizzle says which of the two.
             string positionSwizzle = GetAstSourceSwizzleName(
-                components.Select(c => (IHasComponentIndex)((SamplePositionNode)c).Resource), 2);
+                components.Select(c => (IHasComponentIndex)((SamplePositionNode)c).Resource),
+                2, promoteToVectorSize);
             string index = CompileAsInteger([samplePosition.SampleIndex]);
             // The render target is asked about by a function of its own rather than
             // by a method on the resource, there being no resource to name.
@@ -1815,8 +1916,9 @@ public sealed class NodeCompiler
                 ? ""
                 : textureLoad.Texture != null
                     ? GetAstSourceSwizzleName(
-                        components.Select(c => (IHasComponentIndex)((TextureLoadOutputNode)c).Texture), 4)
-                    : GetAstSourceSwizzleName(componentsWithIndices, 4);
+                        components.Select(c => (IHasComponentIndex)((TextureLoadOutputNode)c).Texture),
+                        4, promoteToVectorSize)
+                    : GetAstSourceSwizzleName(componentsWithIndices, 4, promoteToVectorSize);
 
             var textureDefinition = _registers.ResourceDefinitions
                 .Where(d => d.ShaderInputType == D3DShaderInputType.Texture)
@@ -1934,7 +2036,8 @@ public sealed class NodeCompiler
             {
                 _assigningToUnsigned = wasAssigningToUnsigned;
             }
-            string msadSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            string msadSwizzle = GetAstSourceSwizzleName(
+                componentsWithIndices, 4, promoteToVectorSize);
             return $"msad4({reference}, uint2({sourceLow}, {sourceHigh}), {accumulator})"
                 + msadSwizzle;
         }
@@ -1946,7 +2049,8 @@ public sealed class NodeCompiler
             string nDotL = Compile(new[] { lit.NDotL });
             string nDotH = Compile(new[] { lit.NDotH });
             string specularPower = Compile(new[] { lit.SpecularPower });
-            string litSwizzle = GetAstSourceSwizzleName(componentsWithIndices, 4);
+            string litSwizzle = GetAstSourceSwizzleName(
+                componentsWithIndices, 4, promoteToVectorSize);
             return $"lit({nDotL}, {nDotH}, {specularPower}){litSwizzle}";
         }
 
@@ -1957,7 +2061,8 @@ public sealed class NodeCompiler
             // `normalize(n).xyz` of a float3 - which fxc then spelled out as a
             // dp3, an rsq and a mul instead of the one nrm.
             string input = Compile(first.Inputs);
-            string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count);
+            string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count,
+                promoteToVectorSize);
             return $"normalize({input}){swizzle}";
         }
 
@@ -2044,6 +2149,10 @@ public sealed class NodeCompiler
                 }
             }
 
+            // No promoteToVectorSize: a variable names its value, and HLSL
+            // broadcasts a scalar the width of whatever reads it. Writing
+            // `t1.xxx * color.xyz` where `t1 * color.xyz` said the same thing
+            // asks the reader to count swizzle letters.
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, (int)tempVariable.VariableSize);
             return $"{_registers.TemporaryPrefix}{tempVariable.DeclarationIndex}{swizzle}";
         }

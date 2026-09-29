@@ -9,6 +9,7 @@ namespace HlslDecompiler.Tests;
 public class DecompileDxbcTests
 {
     [TestCase("ps_4_0", "conditional")]
+    [TestCase("ps_4_0", "duplicated_component")]
     [TestCase("ps_4_0", "constant")]
     [TestCase("ps_4_0", "constant_struct")]
     [TestCase("ps_4_0", "dot_product2_add")]

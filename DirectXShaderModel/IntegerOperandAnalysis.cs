@@ -491,6 +491,16 @@ public sealed class IntegerOperandAnalysis
                 {
                     consumed = ValueKind.Integer;
                 }
+                // What a bitwise operator reads it reads as bits, which is what an
+                // int variable holds - the reading StoredValueType already takes
+                // of what one writes. A half float's bits moved toward an `and`
+                // typed nothing before, and l(31743) printed as the denormal those
+                // bits are: l(0.000000).
+                if (reader.Opcode is D3D10Opcode.And or D3D10Opcode.Or
+                    or D3D10Opcode.Xor or D3D10Opcode.Not)
+                {
+                    consumed = ValueKind.Integer;
+                }
                 if (consumed != ValueKind.Integer && consumed != ValueKind.Float)
                 {
                     // A mov or a movc reads nothing of its own; it carries the

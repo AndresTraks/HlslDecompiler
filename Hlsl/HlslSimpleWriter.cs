@@ -1078,6 +1078,17 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                 break;
+            case Opcode.Dst:
+                {
+                    // The fixed-function distance step: x is 1, y is the product of
+                    // the two y's, z and w come one from each source. Both sources
+                    // are read at fixed components, so both are named at full width.
+                    string first = GetSourceName(instruction, 1, 4);
+                    string second = GetSourceName(instruction, 2, 4);
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"float4(1, {first}.y * {second}.y, {first}.z, {second}.w)");
+                    break;
+                }
             case Opcode.DSX:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"ddx({GetSourceName(instruction, 1)})");

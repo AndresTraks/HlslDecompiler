@@ -1359,6 +1359,15 @@ public class StatementFinalizer
             FloatToHalfOperation => true,
             HalfToFloatOperation => false,
             ConstantNode constant => constant.IntegerValue != null,
+            // A select of two constants makes what its arms are, and constants
+            // have their kind already settled: a movc between two floats makes a
+            // float, and an `and` folded over a condition between two integers -
+            // the 1.0f's bits of an isinf test, say - makes an integer whatever
+            // the bits are. Mixed arms say nothing.
+            MoveConditionalOperation { Source1: ConstantNode first, Source2: ConstantNode second }
+                => first.IntegerValue != null && second.IntegerValue != null ? true
+                    : first.IntegerValue == null && second.IntegerValue == null ? false
+                    : (bool?)null,
             // A comparison makes a mask, all ones or all zeroes, which is an
             // integer: a variable holding one beside the -1 the other branch moved
             // in was declared float, and the -1 printed as the NaN its bits are.
@@ -1410,7 +1419,17 @@ public class StatementFinalizer
     /// </summary>
     internal static bool IsReinterpretedAsFloat(HlslTreeNode value)
     {
-        return value is LoadStructuredNode { IsRaw: true } || IsBitsValue(value);
+        // Read as a float and made as an integer without a conversion between:
+        // those bits are a float's, and converting them hands out the number they
+        // happen to make. A variable so read is declared for it already - see
+        // IsBitsVariable; this is the same answer for a value inlined into the
+        // float's expression, where an `and`-folded select reached a float output
+        // through a move and its integer bits converted instead of selecting 1.0.
+        // A constant is never the source of bits: its own typing is settled when
+        // it is made, and the fold that wrote `x + x` as `2 * x` must not see its
+        // 2 read as the denormal its bits are.
+        return value is LoadStructuredNode { IsRaw: true } || IsBitsValue(value)
+            || (value is not ConstantNode && IsIntegerMadeReadAsFloat(value));
     }
 
     private static bool IsBitsValue(HlslTreeNode value, HashSet<HlslTreeNode> visited)

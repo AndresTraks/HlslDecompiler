@@ -2364,6 +2364,25 @@ public class InstructionParser
                 return CreateDotProductNode(instruction);
             case Opcode.Nrm:
                 return CreateNormalizeOutputNode(instruction, componentIndex);
+            case Opcode.Dst:
+                // The fixed-function distance step: [1, a.y * b.y, a.z, b.w]. The
+                // component being written decides which parts of the sources to
+                // read, so the reads are per component here, and two of the four
+                // results are the sources themselves.
+                switch (componentIndex)
+                {
+                    case 0:
+                        return new ConstantNode(1.0f);
+                    case 1:
+                        {
+                            HlslTreeNode[] yInputs = GetInputs(instruction, 1);
+                            return new MultiplyOperation(yInputs[0], yInputs[1]);
+                        }
+                    case 2:
+                        return GetInputs(instruction, 2)[0];
+                    default:
+                        return GetInputs(instruction, 3)[1];
+                }
             case Opcode.Lit:
                 return CreateLitOutputNode(instruction, componentIndex);
             default:

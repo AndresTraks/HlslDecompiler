@@ -192,6 +192,10 @@ public class AsmWriter
             case Opcode.DSY:
                 WriteLine("dsy {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
                 break;
+            case Opcode.Dst:
+                WriteLine("dst {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
             case Opcode.Else:
                 WriteLine("else");
                 break;

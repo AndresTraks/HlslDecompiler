@@ -22,14 +22,14 @@ ushr r1.x, r1.x, l(13)
 ult r1.z, r2.y, l(947912704)
 movc r0.x, r1.z, r0.x, r1.x
 ult r1.x, l(1207951360), r2.y
-movc r0.x, r1.x, l(0.000000), r0.x
+movc r0.x, r1.x, l(31743), r0.x
 ushr r1.x, r0.z, l(13)
 ushr r1.z, r0.z, l(3)
 or r1.x, r1.x, r1.z
 or r0.z, r0.z, r1.x
 and r0.z, r0.z, l(1023)
 iadd r0.z, r0.z, l(31744)
-movc r0.z, r2.x, r0.z, l(0.000000)
+movc r0.z, r2.x, r0.z, l(31744)
 ieq r1.x, r2.z, l(2139095040)
 movc r0.x, r1.x, r0.z, r0.x
 and r0.x, r0.x, l(32767)
@@ -40,7 +40,7 @@ or r0.z, r0.z, r1.x
 or r0.z, r0.w, r0.z
 and r0.z, r0.z, l(1023)
 iadd r0.z, r0.z, l(31744)
-movc r0.z, r2.w, r0.z, l(0.000000)
+movc r0.z, r2.w, r0.z, l(31744)
 ushr r1.x, r0.w, l(23)
 ushr r1.y, r0.w, l(16)
 and r1.zw, r0.ww, l(0, 0, 2147483647, 2139095040)
@@ -56,7 +56,7 @@ ult r1.x, r1.z, l(947912704)
 movc r0.y, r1.x, r0.y, r0.w
 ult r0.w, l(1207951360), r1.z
 ieq r1.x, r1.w, l(2139095040)
-movc r0.y, r0.w, l(0.000000), r0.y
+movc r0.y, r0.w, l(31743), r0.y
 movc r0.y, r1.x, r0.z, r0.y
 and r0.y, r0.y, l(32767)
 iadd r0.y, r1.y, r0.y

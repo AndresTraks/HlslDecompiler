@@ -1284,17 +1284,27 @@ public class InstructionParser
     /// </summary>
     // What a condition selects. A constant is the bit pattern of the value wanted
     // and is read back as that; anything else is already the value.
-    private static HlslTreeNode MaskedValue(HlslTreeNode condition, HlslTreeNode value)
+    private HlslTreeNode MaskedValue(HlslTreeNode condition, HlslTreeNode value, D3D10Instruction instruction)
     {
-        return value is ConstantNode mask ? AsMaskedValue(condition, mask) : value;
+        return value is ConstantNode mask ? AsMaskedValue(condition, mask, instruction) : value;
     }
 
-    private static ConstantNode AsMaskedValue(HlslTreeNode condition, ConstantNode mask)
+    private ConstantNode AsMaskedValue(
+        HlslTreeNode condition, ConstantNode mask, D3D10Instruction instruction)
     {
         bool isInteger = condition is ComparisonNode comparison && comparison.IsInteger;
-        if (isInteger || mask.IntegerValue == null)
+        if (mask.IntegerValue == null)
         {
             return mask;
+        }
+        if (isInteger)
+        {
+            // Against an integer comparison the number is the number - unless the
+            // and writes a float output. What an output is handed are its own
+            // bytes, and the output signature says what they are: an isinf() test
+            // anded with the bits of 1.0f selects the float 1.0, and printing the
+            // number those bits make - 1065353216 - selects that instead.
+            return WritesFloatOutput(instruction) ? AsFloatBits(mask) : mask;
         }
         // A float comparison anded with an integer immediate: the bits of the float
         // step() selects - 0x3f800000 for 1.0 - or an integer the shader selects
@@ -1308,8 +1318,36 @@ public class InstructionParser
         const int SmallestNormalFloatBits = 0x00800000;
         int bits = mask.IntegerValue.Value;
         return (bits & 0x7FFFFFFF) >= SmallestNormalFloatBits
-            ? new ConstantNode(BitConverter.Int32BitsToSingle(bits))
+            ? AsFloatBits(mask)
             : mask;
+    }
+
+    private static ConstantNode AsFloatBits(ConstantNode mask)
+    {
+        return new ConstantNode(BitConverter.Int32BitsToSingle(mask.IntegerValue.Value));
+    }
+
+    // Whether the instruction writes an output the signature types as a float.
+    private bool WritesFloatOutput(D3D10Instruction instruction)
+    {
+        int? destination = instruction.GetDestinationParamIndex();
+        if (destination == null
+            || instruction.GetOperandType(destination.Value) != OperandType.Output)
+        {
+            return false;
+        }
+        RegisterKey outputRegister = instruction.GetParamRegisterKey(destination.Value);
+        int writeMask = instruction.GetWriteMask(destination.Value);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((writeMask & (1 << component)) != 0
+                && !_integerOperandAnalysis.IsIntegerOutputSignature(
+                    new RegisterComponentKey(outputRegister, component)))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // A comparison result. GE is still modelled as an operation rather than a
@@ -1332,7 +1370,8 @@ public class InstructionParser
     /// what was wanted and is read back as that; where it is computed it stands as
     /// it is, and has to, since HLSL will not and a float (X3082).
     /// </summary>
-    private static HlslTreeNode CreateLogicalOperation(D3D10Opcode opcode, HlslTreeNode[] inputs)
+    private HlslTreeNode CreateLogicalOperation(
+        D3D10Opcode opcode, HlslTreeNode[] inputs, D3D10Instruction instruction)
     {
         if (IsCondition(inputs[0]) && IsCondition(inputs[1]))
         {
@@ -1346,12 +1385,12 @@ public class InstructionParser
             if (IsCondition(inputs[0]))
             {
                 return new MoveConditionalOperation(
-                    inputs[0], MaskedValue(inputs[0], inputs[1]), new ConstantNode(0));
+                    inputs[0], MaskedValue(inputs[0], inputs[1], instruction), new ConstantNode(0));
             }
             if (IsCondition(inputs[1]))
             {
                 return new MoveConditionalOperation(
-                    inputs[1], MaskedValue(inputs[1], inputs[0]), new ConstantNode(0));
+                    inputs[1], MaskedValue(inputs[1], inputs[0], instruction), new ConstantNode(0));
             }
         }
 
@@ -2675,10 +2714,10 @@ public class InstructionParser
                         case D3D10Opcode.Div:
                             return new DivisionOperation(inputs[0], inputs[1]);
                         case D3D10Opcode.And:
-                            return CreateLogicalOperation(instruction.Opcode, inputs);
+                            return CreateLogicalOperation(instruction.Opcode, inputs, instruction);
                         case D3D10Opcode.Or:
                         case D3D10Opcode.Xor:
-                            return CreateLogicalOperation(instruction.Opcode, inputs);
+                            return CreateLogicalOperation(instruction.Opcode, inputs, instruction);
                         case D3D10Opcode.Not:
                             // A not of a comparison mask is the comparison the other way;
                             // of anything else, the bits flipped.

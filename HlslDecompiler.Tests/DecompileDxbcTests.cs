@@ -324,6 +324,13 @@ public class DecompileDxbcTests
     [TestCase("cs_4_0", "particle_update")]
     [TestCase("cs_4_0", "tile_blur")]
     [TestCase("ps_5_0", "duplicated_component")]
+    [TestCase("ps_5_0", "inverse_trig")]
+    [TestCase("ps_5_0", "modf_split")]
+    [TestCase("ps_4_0", "modf_split")]
+    [TestCase("ps_5_0", "frexp_ldexp")]
+    [TestCase("ps_5_0", "special_values")]
+    [TestCase("ps_5_0", "face_forward")]
+    [TestCase("ps_5_0", "refraction")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

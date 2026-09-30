@@ -44,7 +44,27 @@ public class ConstantFormatter
         {
             return float.IsPositive(value) ? "INF" : "-INF";
         }
-        decimal exactValue = decimal.Parse(SingleConverter.ToExactString(value), _culture);
+        // A decimal holds about 29 digits, and a float reaches past the top of
+        // one: parsing l(1e30) threw. Past the end the exact digits are printed
+        // whole, and that asks for no rounding of its own - a float above 2^23
+        // has no fractional part to round, and every float a decimal cannot hold
+        // is far above it. A whole number prints the same as the whole numbers a
+        // decimal can hold, which are already printed exact below.
+        string exact = SingleConverter.ToExactString(value);
+        int dot = exact.IndexOf('.');
+        if (dot < 0)
+        {
+            // fxc reads a bare decimal literal as an integer, and its integer is
+            // 64 bits wide - a float's whole part outgrows that well before the
+            // float does. With a dot the same digits are read as the float they
+            // are, the way fxc itself prints one.
+            if (exact.Length - (exact[0] == '-' ? 1 : 0) >= 20)
+            {
+                return exact + ".0";
+            }
+            return exact;
+        }
+        decimal exactValue = decimal.Parse(exact, _culture);
         return Round(exactValue).ToString(_culture);
     }
 

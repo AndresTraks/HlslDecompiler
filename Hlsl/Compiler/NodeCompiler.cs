@@ -447,7 +447,8 @@ public sealed class NodeCompiler
             or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
             or NaturalExponentialOperation or NaturalLogarithmOperation
             or PowerOperation or SineOperation or CosineOperation or SignOperation
-            or FloatingModuloOperation or EvaluateAttributeOperation;
+            or FloatingModuloOperation or EvaluateAttributeOperation
+            or IsNotANumberOperation or IsInfiniteOperation or IsFiniteOperation;
     }
 
     /// <summary>

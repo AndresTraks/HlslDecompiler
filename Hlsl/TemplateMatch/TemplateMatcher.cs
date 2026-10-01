@@ -57,6 +57,8 @@ public class TemplateMatcher
             new NaturalLogarithmTemplate(),
             new LinearInterpolateTemplate(),
             new FloatingModuloTemplate(this),
+            new IsNotANumberTemplate(),
+            new FloatClassTemplate(),
             new SmoothStepTemplate(),
             new StepTemplate(),
             new FirstBitHighTemplate(),

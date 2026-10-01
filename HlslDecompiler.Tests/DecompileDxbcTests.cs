@@ -332,6 +332,11 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "inf_select_shared")]
     [TestCase("ps_5_0", "face_forward")]
     [TestCase("ps_5_0", "refraction")]
+    [TestCase("cs_5_0", "atomic_old_values")]
+    [TestCase("cs_5_0", "atomic_compare_exchange")]
+    [TestCase("cs_5_0", "typed_buffer_read")]
+    [TestCase("cs_5_0", "append_buffer_size")]
+    [TestCase("ps_5_0", "gather_cmp_variants")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

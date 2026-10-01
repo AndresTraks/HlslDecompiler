@@ -1433,7 +1433,8 @@ public sealed class IntegerOperandAnalysis
     {
         for (int source = 1; source <= sourceCount; source++)
         {
-            if (instruction.GetOperandType(source) == OperandType.Immediate32)
+            if (instruction.GetOperandType(source) is OperandType.Immediate32
+                or OperandType.UnorderedAccessView or OperandType.ThreadGroupSharedMemory)
             {
                 continue;
             }
@@ -1496,7 +1497,19 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.AtomicIMin:
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
+            case D3D10Opcode.ImmAtomicAnd:
+            case D3D10Opcode.ImmAtomicOr:
+            case D3D10Opcode.ImmAtomicXor:
+            case D3D10Opcode.ImmAtomicIMax:
+            case D3D10Opcode.ImmAtomicIMin:
+            case D3D10Opcode.ImmAtomicUMax:
+            case D3D10Opcode.ImmAtomicUMin:
+            case D3D10Opcode.ImmAtomicExch:
                 return 2;
+            case D3D10Opcode.ImmAtomicIAdd:
+                return 3;
+            case D3D10Opcode.ImmAtomicCmpExch:
+                return 4;
             case D3D10Opcode.IMad:
             case D3D10Opcode.AtomicCmpStore:
             // The width, the offset and the value.

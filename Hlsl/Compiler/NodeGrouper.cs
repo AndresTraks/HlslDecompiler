@@ -532,6 +532,18 @@ public class NodeGrouper
             }
         }
 
+        // The render target's sample count is one number written into every
+        // component of the destination, so which component a read names says
+        // nothing about which value it is - `sampleinfo r0.yz, rasterizer.x` puts
+        // the same count in both. It carries a component index all the same, and
+        // the rule below read that as two values: a pair of components holding it
+        // was no broadcast, and the constructor over them came out an argument
+        // short of the float4 it was filling.
+        if (node1 is RenderTargetSampleCountNode && node2 is RenderTargetSampleCountNode)
+        {
+            return true;
+        }
+
         // Two components of one multi output node share every input and are not
         // the same value: normalize(n).x is not normalize(n).z. Comparing inputs
         // alone said they were, and the cross product grouper - which finds the

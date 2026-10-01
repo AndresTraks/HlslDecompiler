@@ -2290,7 +2290,16 @@ public sealed class NodeCompiler
             .First(d => d.BindPoint == consume.Buffer.RegisterComponentKey.RegisterKey.Number
                 && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
         string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
-        return $"float{width} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
+        // What the buffer holds, the way the resinfo call below asks its instruction
+        // rather than assuming. Written float outright, a ConsumeStructuredBuffer of
+        // uints handed its element to a float variable - the uint converted going in
+        // and converted back coming out, which above 2^24 is a different number, and
+        // the shift that doubled it written as an add of floats. An element with
+        // members of its own is a struct this does not name, and stays as it was.
+        string scalar = buffer.ElementType is { MemberInfo: null or { Count: 0 } }
+            ? buffer.ElementType.ParameterType.ToString().ToLowerInvariant()
+            : "float";
+        return $"{scalar}{width} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
     }
 
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)

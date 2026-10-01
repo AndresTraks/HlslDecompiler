@@ -253,8 +253,28 @@ public class EquivalenceTests
             return left == right;
         }
 
+        // A value stored as bits rather than as a number - an index, a counter, a
+        // packed field - reads back as a denormal, and the tolerance has an absolute
+        // floor: every integer below 2^23 is below 2^-126 read as a float, so any
+        // two of them compared equal, and equal to zero. That is what let a texel
+        // stored through asfloat() - which converts the bits into the number they
+        // spell, and so into zero - agree with the integer the original wrote.
+        // Where either side is one, the bits have to match.
+        uint leftBits = BitConverter.SingleToUInt32Bits(left);
+        uint rightBits = BitConverter.SingleToUInt32Bits(right);
+        if (IsDenormal(leftBits) || IsDenormal(rightBits))
+        {
+            return leftBits == rightBits;
+        }
+
         float difference = Math.Abs(left - right);
         float scale = Math.Max(Math.Abs(left), Math.Abs(right));
         return difference <= Tolerance * Math.Max(scale, 1);
+    }
+
+    // Zero is a number; anything else with an empty exponent is bits.
+    private static bool IsDenormal(uint bits)
+    {
+        return (bits & 0x7F800000) == 0 && (bits & 0x007FFFFF) != 0;
     }
 }

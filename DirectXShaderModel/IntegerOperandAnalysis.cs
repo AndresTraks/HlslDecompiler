@@ -388,6 +388,21 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
+    /// What a typed store writes: a texel of the type the view was declared with,
+    /// the same answer the load of one gets. Read as the float a texel usually is,
+    /// the integer an RWTexture2D&lt;uint&gt; takes was wrapped in asfloat() - and
+    /// HLSL converts a float into an integer texel by value, so the store wrote the
+    /// number those bits spell rather than the bits, which for every texel below
+    /// 2^-126 is zero.
+    /// </summary>
+    public ValueKind GetTypedStoreKind(D3D10Instruction store)
+    {
+        return LoadedElementType(store) == StoredType.Integer
+            ? ValueKind.Integer
+            : ValueKind.Float;
+    }
+
+    /// <summary>
     /// What the immediate a mov or movc writes is, by the instructions that go on
     /// to read the register components it writes - the mov itself says nothing.
     /// Unknown where the components' readers disagree, or there are none.
@@ -1497,6 +1512,12 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.AtomicIMin:
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
+                return 2;
+            // The immediate forms keep the old value in a register in front of the
+            // resource, so every operand is one further along: the resource, the
+            // address and the value, where the typed forms have only the last two
+            // inside the source range. Counted as two with them, the value went
+            // untyped - and an atomic takes an integer on either side of it.
             case D3D10Opcode.ImmAtomicAnd:
             case D3D10Opcode.ImmAtomicOr:
             case D3D10Opcode.ImmAtomicXor:
@@ -1505,7 +1526,6 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.ImmAtomicUMax:
             case D3D10Opcode.ImmAtomicUMin:
             case D3D10Opcode.ImmAtomicExch:
-                return 2;
             case D3D10Opcode.ImmAtomicIAdd:
                 return 3;
             case D3D10Opcode.ImmAtomicCmpExch:

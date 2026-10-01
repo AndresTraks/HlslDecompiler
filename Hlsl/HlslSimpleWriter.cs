@@ -735,6 +735,13 @@ public class HlslSimpleWriter : HlslWriter
         {
             return ValueKind.Integer;
         }
+        // And the texel itself is whatever the view holds. Taken for the float a
+        // texel usually is, an integer one was stored through asfloat(), which HLSL
+        // converts back by value: the texel became the number its bits spell.
+        if (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 2)
+        {
+            return _integerOperandAnalysis.GetTypedStoreKind(instruction);
+        }
         if (instruction.Opcode == D3D10Opcode.MovC && operandIndex == 1)
         {
             return ValueKind.Bits;

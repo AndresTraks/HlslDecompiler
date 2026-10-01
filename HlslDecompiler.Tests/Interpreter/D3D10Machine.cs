@@ -624,10 +624,31 @@ public class D3D10Machine
         if (keepsOriginal)
         {
             // A buffer is not modelled - only the effects on it are recorded - so
-            // there is nothing to have held. Zero, the same on both sides of the
-            // comparison, which is what the tier is asking about.
-            Store(instruction, 0, [0, 0, 0, 0]);
+            // there is nothing to have held. A stand-in, fixed by where it is read,
+            // is the same on both sides of the comparison just as zero was, and
+            // unlike zero it is changed by a decompilation that converts the value
+            // it carries instead of keeping its bits: an asfloat() into an integer
+            // texel reads every old value below 2^-126 as the denormal its bits
+            // spell and stores the zero that conversion makes - which is the one
+            // number zero itself came back as, so the tier agreed.
+            uint held = HeldValue(resource, address);
+            Store(instruction, 0, [held, held, held, held]);
         }
+    }
+
+    /// <summary>
+    /// What an unmodelled buffer is taken to hold at one address. Small, so that a
+    /// shader doing float arithmetic on it stays in the range the comparison's
+    /// tolerance was written for, and never zero, so that losing it shows.
+    /// </summary>
+    private static uint HeldValue(int resource, int[] address)
+    {
+        uint hash = 2166136261;
+        foreach (int part in new[] { resource, address[0], address[1] })
+        {
+            hash = (hash ^ (uint)part) * 16777619;
+        }
+        return hash % 1000 + 1;
     }
 
     private static uint ApplyAtomic(D3D10Opcode opcode, uint held, uint value, uint compare)

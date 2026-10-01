@@ -484,6 +484,15 @@ public static class D3D10OpcodeExtensions
             // of anything that could be a float.
             case D3D10Opcode.BufInfo:
                 return ValueKind.Integer;
+            // The slot an append buffer allocated, and the one a consume buffer
+            // gave up: an index into the buffer, and a counter is no more a float
+            // than the count above is. Taken for one, the register it was written
+            // to was declared float, and the element a ConsumeStructuredBuffer
+            // holds was read through a utof going in and an ftou coming out - the
+            // shift that doubled it written as an add of floats.
+            case D3D10Opcode.ImmAtomicAlloc:
+            case D3D10Opcode.ImmAtomicConsume:
+                return ValueKind.Integer;
             // A raw buffer holds dwords, read out as uints.
             case D3D10Opcode.LdRaw:
                 return ValueKind.Integer;

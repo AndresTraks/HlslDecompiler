@@ -333,6 +333,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "frexp_ldexp")]
     [TestCase("ps_5_0", "special_values")]
     [TestCase("ps_5_0", "float_classify")]
+    [TestCase("ps_5_0", "early_depth")]
     [TestCase("ps_5_0", "inf_select_shared")]
     [TestCase("ps_5_0", "face_forward")]
     [TestCase("ps_5_0", "refraction")]

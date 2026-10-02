@@ -146,6 +146,11 @@ public abstract class HlslWriter
             WriteLine($"[numthreads({_registers.NumThreads[0]}, {_registers.NumThreads[1]}, {_registers.NumThreads[2]})]", _registers.MaxOutputVertexCount);
         }
 
+        if (_registers.ForceEarlyDepthStencil)
+        {
+            WriteLine("[earlydepthstencil]");
+        }
+
         string methodReturnType = GetMethodReturnType();
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();

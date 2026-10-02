@@ -647,6 +647,11 @@ public class InstructionParser
                     });
                     break;
                 case D3D10Opcode.DclGlobalFlags:
+                    // Only the one flag the source has to say again. The rest
+                    // are what fxc worked out about the shader and writes back
+                    // for itself.
+                    _registerState.ForceEarlyDepthStencil = instruction.GetGlobalFlags()
+                        .HasFlag(D3D10GlobalFlags.ForceEarlyDepthStencil);
                     break;
                 // What a patch is and how the tessellator divides it, which HLSL
                 // says with the [domain(...)] attribute and the patch's own size.

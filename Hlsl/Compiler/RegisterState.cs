@@ -623,6 +623,15 @@ public sealed class RegisterState
     /// </summary>
     public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
     public D3D10TessellatorOutputPrimitive TessellatorOutputPrimitive { get; set; }
+    /// <summary>
+    /// Whether the shader asked for the depth and stencil test to run before
+    /// it rather than after, which HLSL says with [earlydepthstencil] and the
+    /// bytecode with a global flag. It changes when a discard takes effect and
+    /// nothing else says it, so a decompilation that drops it is a different
+    /// shader that computes the same thing.
+    /// </summary>
+    public bool ForceEarlyDepthStencil { get; set; }
+
     public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }

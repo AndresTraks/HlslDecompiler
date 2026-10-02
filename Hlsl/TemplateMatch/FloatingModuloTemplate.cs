@@ -79,6 +79,20 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             return Remainder(cmpDividend, cmpDivisor, scale);
         }
 
+        // The negation on the fraction instead of on the scale, which is what
+        // reassociation leaves behind rather than anything the source said: fxc
+        // folds `y - fmod(x, y)` into one mad of the negated fraction,
+        // `mad(-s, y, y)`, and the multiply inside it is the remainder with a
+        // negation over it that belongs to the subtraction. Taken off here and put
+        // back around the remainder, the add above it reads as the subtraction it
+        // was; left alone, the whole sign selection was written out beside an fmod
+        // of the very same quotient that had been recognised.
+        if (signedFraction is NegateOperation negatedFraction
+            && TryReduce(negatedFraction.Value, scale) is HlslTreeNode negatedRemainder)
+        {
+            return new NegateOperation(negatedRemainder);
+        }
+
         return null;
     }
 

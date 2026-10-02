@@ -24,7 +24,7 @@ public class ShaderReader : BinaryReader
         while (true)
         {
             D3D9Instruction instruction = (majorVersion == 1)
-                ? ReadFixedSizeInstruction()
+                ? ReadFixedSizeInstruction(minorVersion)
                 : ReadDynamicSizeInstruction();
             instruction.HasImpliedInputSemantics = impliedInputSemantics;
             instruction.HasSeparateRelativeToken = majorVersion > 1;
@@ -60,7 +60,7 @@ public class ShaderReader : BinaryReader
         return instruction;
     }
 
-    private D3D9Instruction ReadFixedSizeInstruction()
+    private D3D9Instruction ReadFixedSizeInstruction(byte minorVersion)
     {
         uint instructionToken = ReadUInt32();
         Opcode opcode = (Opcode)(instructionToken & 0xffff);
@@ -72,7 +72,7 @@ public class ShaderReader : BinaryReader
                 size = (int)((instructionToken >> 16) & 0x7FFF);
                 break;
             default:
-                size = GetOperationFixedSize(opcode);
+                size = GetOperationFixedSize(opcode, minorVersion);
                 break;
         }
 
@@ -86,13 +86,24 @@ public class ShaderReader : BinaryReader
         return instruction;
     }
 
-    private static int GetOperationFixedSize(Opcode opcode)
+    // Shader model 1 has no length field in the instruction token, so the operand
+    // count is the opcode's own. Only the two instructions ps_1_4 renamed take a
+    // different number there: `tex t0` becomes `texld r0, t0` and `texcoord t0`
+    // becomes `texcrd r0, t0`, both reading the coordinate they used to imply.
+    private static int GetOperationFixedSize(Opcode opcode, byte minorVersion)
     {
         switch (opcode)
         {
+            case Opcode.Tex:
+            case Opcode.TexCoord:
+                return minorVersion >= 4 ? 2 : 1;
             case Opcode.End:
             case Opcode.Nop:
+            case Opcode.Phase:
                 return 0;
+            case Opcode.TexDepth:
+            case Opcode.TexKill:
+                return 1;
             case Opcode.Dcl:
             case Opcode.Exp:
             case Opcode.ExpP:
@@ -103,6 +114,23 @@ public class ShaderReader : BinaryReader
             case Opcode.Mov:
             case Opcode.Rcp:
             case Opcode.Rsq:
+            // The ps_1_x texture addressing set, every one of which takes the
+            // register it writes and the one it reads the coordinates from.
+            case Opcode.TexBem:
+            case Opcode.TexBeml:
+            case Opcode.TexDP3:
+            case Opcode.TexDP3Tex:
+            case Opcode.TexM3x2Depth:
+            case Opcode.TeXM3x2Pad:
+            case Opcode.TexM3x2Tex:
+            case Opcode.TexM3x3:
+            case Opcode.TexM3x3Diff:
+            case Opcode.TeXM3x3Pad:
+            case Opcode.TexM3x3Tex:
+            case Opcode.TexM3x3VSpec:
+            case Opcode.TexReg2AR:
+            case Opcode.TexReg2GB:
+            case Opcode.TexReg2RGB:
                 return 2;
             case Opcode.Add:
             case Opcode.Dp3:
@@ -119,7 +147,14 @@ public class ShaderReader : BinaryReader
             case Opcode.Sge:
             case Opcode.Slt:
             case Opcode.Sub:
+            // texm3x3spec reflects an eye ray, which is the second source; bem
+            // takes the two it adds.
+            case Opcode.Bem:
+            case Opcode.TexM3x3Spec:
                 return 3;
+            case Opcode.Cmp:
+            case Opcode.Cnd:
+            case Opcode.Lrp:
             case Opcode.Mad:
                 return 4;
             case Opcode.Def:

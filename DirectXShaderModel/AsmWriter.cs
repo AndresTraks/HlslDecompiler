@@ -398,8 +398,36 @@ public class AsmWriter
                 WriteLine("sub{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
+            case Opcode.Bem:
+                // Not componentwise: both components of the result read both
+                // components of the perturbation, and the write mask has to be
+                // the red and green pair, so the operands are two wide whatever
+                // it says.
+                WriteLine("bem {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 2), GetSourceName(instruction, 2, 2));
+                break;
+            case Opcode.Phase:
+                WriteLine("phase");
+                break;
+            case Opcode.TexCoord:
+                // ps_1_4 renamed it and gave it the coordinate register the older
+                // one took from its own destination number, the way tex became
+                // texld.
+                if (shader.MajorVersion == 1 && shader.MinorVersion >= 4)
+                {
+                    WriteLine("texcrd {0}, {1}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
+                }
+                else
+                {
+                    WriteLine("texcoord {0}", GetDestinationName(instruction));
+                }
+                break;
+            case Opcode.TexDepth:
+                WriteLine("texdepth {0}", GetDestinationName(instruction));
+                break;
             case Opcode.Tex:
-                if ((shader.MajorVersion == 1 && shader.MinorVersion >= 4) || (shader.MajorVersion > 1))
+                if (shader.MajorVersion > 1)
                 {
                     if (instruction.TexldControls.HasFlag(TexldControls.Project))
                     {
@@ -418,6 +446,15 @@ public class AsmWriter
                             GetSourceName(instruction, 1, texldSamplerDimension), GetSourceName(instruction, 2));
                     }
                 }
+                else if (shader.MinorVersion >= 4)
+                {
+                    // ps_1_4 renamed tex to texld and gave it the coordinate
+                    // register the older one took from its own destination
+                    // number - but not a sampler, which ps_2_0 added. Treating
+                    // it as a ps_2_0 texld read an operand that is not there.
+                    WriteLine("texld {0}, {1}", GetDestinationName(instruction),
+                        GetSourceName(instruction, 1));
+                }
                 else
                 {
                     WriteLine("tex {0}", GetDestinationName(instruction));
@@ -435,6 +472,70 @@ public class AsmWriter
                     GetSourceName(instruction, 2),
                     GetSourceName(instruction, 3, samplerDimension),
                     GetSourceName(instruction, 4, samplerDimension));
+                break;
+            case Opcode.TexBem:
+                WriteLine("texbem {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexBeml:
+                WriteLine("texbeml {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexDP3:
+                WriteLine("texdp3 {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexDP3Tex:
+                WriteLine("texdp3tex {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x2Depth:
+                WriteLine("texm3x2depth {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TeXM3x2Pad:
+                WriteLine("texm3x2pad {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x2Tex:
+                WriteLine("texm3x2tex {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x3:
+                WriteLine("texm3x3 {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x3Diff:
+                WriteLine("texm3x3diff {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TeXM3x3Pad:
+                WriteLine("texm3x3pad {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x3Tex:
+                WriteLine("texm3x3tex {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x3VSpec:
+                WriteLine("texm3x3vspec {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexReg2AR:
+                WriteLine("texreg2ar {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexReg2GB:
+                WriteLine("texreg2gb {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexReg2RGB:
+                WriteLine("texreg2rgb {0}, {1}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
+            case Opcode.TexM3x3Spec:
+                WriteLine("texm3x3spec {0}, {1}, {2}", GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
             case Opcode.TexKill:
                 WriteLine("texkill {0}", GetDestinationName(instruction));

@@ -15,10 +15,16 @@ internal static class ShaderAssembler
 {
     public static ShaderModel Assemble(ShaderType type, int majorVersion, IList<uint[]> instructions)
     {
+        return Assemble(type, majorVersion, 0, instructions);
+    }
+
+    public static ShaderModel Assemble(ShaderType type, int majorVersion, int minorVersion,
+        IList<uint[]> instructions)
+    {
         using var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
         {
-            writer.Write((byte)0);                  // minor version
+            writer.Write((byte)minorVersion);
             writer.Write((byte)majorVersion);
             writer.Write((ushort)type);
             foreach (uint[] instruction in instructions)
@@ -54,6 +60,13 @@ internal static class ShaderAssembler
     public static uint[] Instruction(Opcode opcode, params uint[] parameters)
     {
         return [(uint)opcode | (uint)parameters.Length << 24, .. parameters];
+    }
+
+    // Shader model 1 carries no length field: the reader takes the operand count
+    // from the opcode, so the token is the opcode alone.
+    public static uint[] FixedSizeInstruction(Opcode opcode, params uint[] parameters)
+    {
+        return [(uint)opcode, .. parameters];
     }
 
     // setp carries its comparison in the instruction token, where ifc and breakc

@@ -3150,6 +3150,17 @@ public class InstructionParser
         if (instruction is D3D9Instruction d3D9Instruction)
         {
             const int SamplerParamIndex = 2;
+            // A shader model 1 tex names no sampler, and before ps_1_4 no
+            // coordinate either: both are the destination register's own number,
+            // because a texture stage is what it writes to. Nothing here reads a
+            // shader that way yet, and the operand a ps_2_0 texld would have
+            // walks off the end of one that has two parameters or one.
+            if (_shaderModel.MajorVersion == 1)
+            {
+                throw new NotImplementedException(
+                    $"{d3D9Instruction.Opcode} in a shader model 1 pixel shader, "
+                    + "where the sampler is the register written rather than an operand");
+            }
             var sampler = GetInputComponents(instruction, SamplerParamIndex, 1)[0] as RegisterInputNode;
 
             bool isBias = false;

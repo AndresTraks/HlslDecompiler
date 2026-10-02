@@ -72,6 +72,113 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
+    // The ps_1_x texture addressing set, which no profile fxc still knows can
+    // reach: d3dcompiler_47 answers X3539 for a ps_1_x target. Shader model 1 is
+    // also the one that carries no length field in the instruction token, so the
+    // reader takes each operand count from the opcode - and until it knew these,
+    // a ps_1_x pixel shader threw in the READER and no writer saw it at all. The
+    // expected text is fxc's own, from /dumpbin over the same assembled bytes.
+    [Test]
+    public void DisassemblesTheTextureAddressingSetOfShaderModel1()
+    {
+        ShaderModel shader = Assemble(ShaderType.Pixel, 1, 3, [
+            Constant(0, 1, 2, 3, 4),
+            FixedSizeInstruction(Opcode.Tex, Destination(RegisterType.Texture, 0)),
+            FixedSizeInstruction(Opcode.TexCoord, Destination(RegisterType.Texture, 1)),
+            Pair(Opcode.TexBem, 2), Pair(Opcode.TexBeml, 3),
+            Pair(Opcode.TexReg2AR, 2), Pair(Opcode.TexReg2GB, 2), Pair(Opcode.TexReg2RGB, 2),
+            Pair(Opcode.TeXM3x2Pad, 1), Pair(Opcode.TexM3x2Tex, 2), Pair(Opcode.TexM3x2Depth, 2),
+            Pair(Opcode.TeXM3x3Pad, 1), Pair(Opcode.TexM3x3Tex, 3), Pair(Opcode.TexM3x3, 3),
+            FixedSizeInstruction(Opcode.TexM3x3Spec, Destination(RegisterType.Texture, 3),
+                Source(RegisterType.Texture, 0), Source(RegisterType.Const, 0)),
+            Pair(Opcode.TexM3x3VSpec, 3),
+            Pair(Opcode.TexDP3, 2), Pair(Opcode.TexDP3Tex, 2),
+            FixedSizeInstruction(Opcode.TexKill, Destination(RegisterType.Texture, 0)),
+            FixedSizeInstruction(Opcode.Cnd, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Temp, 0), Source(RegisterType.Texture, 0),
+                Source(RegisterType.Texture, 1)),
+            FixedSizeInstruction(Opcode.Lrp, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Temp, 0), Source(RegisterType.Texture, 0),
+                Source(RegisterType.Texture, 1)),
+            FixedSizeInstruction(Opcode.Mov, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Texture, 3)),
+            FixedSizeInstruction(Opcode.End),
+        ]);
+
+        Assert.That(WriteAsm(shader), Is.EqualTo("""
+            ps_1_3
+            def c0, 1, 2, 3, 4
+            tex t0
+            texcoord t1
+            texbem t2, t0
+            texbeml t3, t0
+            texreg2ar t2, t0
+            texreg2gb t2, t0
+            texreg2rgb t2, t0
+            texm3x2pad t1, t0
+            texm3x2tex t2, t0
+            texm3x2depth t2, t0
+            texm3x3pad t1, t0
+            texm3x3tex t3, t0
+            texm3x3 t3, t0
+            texm3x3spec t3, t0, c0
+            texm3x3vspec t3, t0
+            texdp3 t2, t0
+            texdp3tex t2, t0
+            texkill t0
+            cnd r0, r0, t0, t1
+            lrp r0, r0, t0, t1
+            mov r0, t3
+
+            """));
+    }
+
+    // ps_1_4 renamed two instructions and gave each the register the older one
+    // implied, and added a phase to split the shader in two. texld is NOT the
+    // ps_2_0 one: it names no sampler, which is the operand a ps_2_0 texld reads
+    // third and this one does not have.
+    [Test]
+    public void DisassemblesWhatShaderModel1_4Renamed()
+    {
+        ShaderModel shader = Assemble(ShaderType.Pixel, 1, 4, [
+            Constant(0, 1, 2, 3, 4),
+            FixedSizeInstruction(Opcode.TexCoord, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Texture, 0)),
+            FixedSizeInstruction(Opcode.Tex, Destination(RegisterType.Temp, 1),
+                Source(RegisterType.Texture, 1)),
+            FixedSizeInstruction(Opcode.Bem, Destination(RegisterType.Temp, 0, 0x3),
+                Source(RegisterType.Temp, 0), Source(RegisterType.Temp, 1)),
+            FixedSizeInstruction(Opcode.Phase),
+            FixedSizeInstruction(Opcode.Tex, Destination(RegisterType.Temp, 2),
+                Source(RegisterType.Temp, 0)),
+            FixedSizeInstruction(Opcode.TexDepth, Destination(RegisterType.Temp, 5)),
+            FixedSizeInstruction(Opcode.Mov, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Temp, 2)),
+            FixedSizeInstruction(Opcode.End),
+        ]);
+
+        // fxc writes `bem r0.xy, r0, r1`, eliding a full width swizzle where this
+        // writer names the two components the instruction reads.
+        Assert.That(WriteAsm(shader), Is.EqualTo("""
+            ps_1_4
+            def c0, 1, 2, 3, 4
+            texcrd r0, t0
+            texld r1, t1
+            bem r0.xy, r0.xy, r1.xy
+            phase
+            texld r2, r0
+            texdepth r5
+            mov r0, r2
+
+            """));
+    }
+
+    private static uint[] Pair(Opcode opcode, int destination)
+    {
+        return FixedSizeInstruction(opcode, Destination(RegisterType.Texture, destination),
+            Source(RegisterType.Texture, 0));
+    }
+
     // Subroutines and predication. fxc inlines every function call at every D3D9
     // profile and there is no noinline to ask it not to, and it knows neither
     // ps_2_x nor vs_2_x, where predication belonged - so none of these reaches a

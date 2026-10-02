@@ -1300,14 +1300,12 @@ public class AsmWriter
                 registerTypeName = "v";
                 break;
             case RegisterType.Output:
-                if (shader.MajorVersion == 1)
-                {
-                    registerTypeName = "oT";
-                }
-                else
-                {
-                    registerTypeName = "o";
-                }
+                // The texture coordinate output, which has a name of its own
+                // until a vertex shader declares its outputs: vs_1_1 and
+                // vs_2_0 write oT0 upwards, and vs_3_0 numbers the registers
+                // it declared with dcl_ instead. Only the first was spelled
+                // oT here, so a vs_2_0 wrote o1 where fxc writes oT1.
+                registerTypeName = shader.MajorVersion <= 2 ? "oT" : "o";
                 break;
             case RegisterType.RastOut:
                 if (registerNumber == 0)

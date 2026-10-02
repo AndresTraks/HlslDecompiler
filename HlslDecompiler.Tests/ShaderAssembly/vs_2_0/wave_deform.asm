@@ -11,10 +11,10 @@ mad r0.x, r0.x, c7.z, c7.w
 sincos r1.y, r0.x, c5.y, c6.y
 mad r0.y, r1.y, c4.z, v0.y
 mul r1.x, r1.y, c4.z
-mul o1.x, r1.x, c4.w
+mul oT1.x, r1.x, c4.w
 mov r0.xzw, v0.xzw
 dp4 oPos.x, r0, c0
 dp4 oPos.y, r0, c1
 dp4 oPos.z, r0, c2
 dp4 oPos.w, r0, c3
-mov o0.xy, v1.xy
+mov oT0.xy, v1.xy

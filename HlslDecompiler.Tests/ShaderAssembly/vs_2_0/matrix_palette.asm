@@ -29,4 +29,4 @@ dp3 r1.z, v1.xyz, c2[a0.y].xyz
 mad r0.xyz, r1.xyz, v2.xxx, r0.xyz
 dp3 r0.w, r0.xyz, r0.xyz
 rsq r0.w, r0.w
-mul o0.xyz, r0.www, r0.xyz
+mul oT0.xyz, r0.www, r0.xyz

@@ -1,5 +1,12 @@
 # HlslDecompiler
-Decompiles Shader Model 3.0 shaders into HLSL code
+Decompiles Direct3D shader bytecode into HLSL code
+
+## Supported shader models
+Vertex shaders from vs_1_1 to vs_5_0 and pixel shaders from ps_2_0 to ps_5_0,
+along with the later stages: geometry (gs_4_0 to gs_5_0), compute (cs_4_0 to
+cs_5_0), hull (hs_5_0) and domain (ds_5_0) shaders. Each has shaders in the
+test corpus, which recompiles every decompilation and compares what the two
+of them compute.
 
 ## Usage
 `HlslDecompiler [--ast] [--print] shader.fxc`

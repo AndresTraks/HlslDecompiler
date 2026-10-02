@@ -47,7 +47,7 @@ VS_OUT main(VS_IN i)
 	float4 t8 = transpose(bones[t1.x])[0] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[0] + transpose(bones[t1.z])[0] * i.blendweight.z;
 	float3 t9 = transpose(bones[t1.w])[0].xyz * i.blendweight.w + t8.xyz;
 	float t10 = dot(i.normal, t9);
-	float4 t11 = float4(dot(float4(i.position, 1), float4(t9, transpose(bones[t1.w])[0].w * i.blendweight.w + t8.w)), dot(float4(i.position, 1), float4(t6, transpose(bones[t1.w])[1].w * i.blendweight.w + t5.w)), dot(float4(i.position, 1), float4(t3, transpose(bones[t1.w])[2].w * i.blendweight.w + t2.w)), dot(float4(i.position, 1), transpose(bones[t1.x])[3] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[3] + transpose(bones[t1.z])[3] * i.blendweight.z + transpose(bones[t1.w])[3] * i.blendweight.w));
+	float4 t11 = float4(dot(float4(i.position, 1), float4(t9, bones[t1.w][3][0] * i.blendweight.w + t8.w)), dot(float4(i.position, 1), float4(t6, bones[t1.w][3][1] * i.blendweight.w + t5.w)), dot(float4(i.position, 1), float4(t3, bones[t1.w][3][2] * i.blendweight.w + t2.w)), dot(float4(i.position, 1), transpose(bones[t1.x])[3] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[3] + transpose(bones[t1.z])[3] * i.blendweight.z + transpose(bones[t1.w])[3] * i.blendweight.w));
 	float3 t12 = float3(dot(transpose(world)[0], t11), dot(transpose(world)[2], t11), dot(transpose(world)[3], t11));
 	float t13 = 0.100000001 * sin(0.5 * (float)i.sv_instanceid + time) + dot(transpose(world)[1], t11);
 	o.sv_position = mul(float4(t12.x, t13, t12.yz), viewProjection);

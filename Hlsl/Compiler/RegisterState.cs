@@ -1185,6 +1185,104 @@ public sealed class RegisterState
             : $"transpose({name})[{register}]";
     }
 
+    /// <summary>
+    /// A register read with the components taken off it. For a matrix register that
+    /// is not the name and the swizzle side by side - one component of a column is
+    /// an element, which HLSL subscripts twice - and for everything else it is the
+    /// name with the swizzle after it, as it always was.
+    /// </summary>
+    public string GetRegisterComponents(RegisterComponentKey key, string swizzle)
+    {
+        return TryGetMatrixRegister(key.RegisterKey) is (ShaderTypeInfo typeInfo, string name, int register)
+            ? MatrixRegisterComponents(typeInfo, name, register, swizzle)
+            : GetRegisterName(key) + swizzle;
+    }
+
+    /// <summary>
+    /// The matrix a constant register belongs to: its type, the matrix named -
+    /// carrying the element subscript where it is an array of them - and which of
+    /// its registers this is. Null where the register holds no matrix.
+    ///
+    /// RegisterIndex is the cbuffer itself, b0, and is the same for every variable
+    /// in it, so the row is the register's distance from where this variable starts,
+    /// which the reader records in bytes. An array of matrices gives every row a
+    /// register of its own, so the element and the row have to be separated: row 0
+    /// of bones[1] is register 4, not row 4 of something.
+    /// </summary>
+    private (ShaderTypeInfo TypeInfo, string Name, int Register)? TryGetMatrixRegister(
+        RegisterKey registerKey)
+    {
+        int registerOffset;
+        ConstantDeclaration declaration;
+        if (registerKey is D3D9RegisterKey
+            {
+                Type: RegisterType.Const or RegisterType.ConstInt or RegisterType.ConstBool
+            })
+        {
+            declaration = FindConstant(registerKey);
+            if (declaration == null || declaration.TypeInfo.Rows <= 1)
+            {
+                return null;
+            }
+            registerOffset = registerKey.Number - declaration.RegisterIndex;
+        }
+        else if (registerKey is D3D10RegisterKey
+            {
+                OperandType: OperandType.ConstantBuffer
+            } d3d10RegisterKey)
+        {
+            declaration = FindConstant(registerKey);
+            if (declaration == null || declaration.TypeInfo.Rows <= 1
+                || d3d10RegisterKey.ConstantBufferOffset == null)
+            {
+                return null;
+            }
+            int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
+                ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
+                : declaration.RegisterIndex;
+            registerOffset = d3d10RegisterKey.ConstantBufferOffset.Value - variableRegister;
+        }
+        else
+        {
+            return null;
+        }
+
+        string name = declaration.Name;
+        if (declaration.TypeInfo.NumElements > 1)
+        {
+            int registersPerElement = MatrixRegisterCount(declaration.TypeInfo);
+            name += $"[{registerOffset / registersPerElement}]";
+            registerOffset %= registersPerElement;
+        }
+        return (declaration.TypeInfo, name, registerOffset);
+    }
+
+    /// <summary>
+    /// One register of a matrix with the components read off it. A single component
+    /// of a column is an element of the matrix, and HLSL subscripts an element
+    /// twice: `transpose(m)[1].x` and `m[0][1]` are the one register read - fxc
+    /// compiles both to `cb0[1].x` - and the second says it with no transpose to
+    /// read through and no swizzle letter to count. A column-major normal matrix
+    /// built from three cross products reads nine elements this way, and said the
+    /// long way round not one of them fits on a line.
+    ///
+    /// Only where one component is read. A slice of a column -
+    /// `transpose(m)[0].yz` - is two elements from two rows, and HLSL has no
+    /// subscript that takes them together. A matrix packed by row needs none of
+    /// this: its register is a row already, and `m[2].x` reads better than
+    /// `m[2][0]`.
+    /// </summary>
+    public static string MatrixRegisterComponents(
+        ShaderTypeInfo typeInfo, string name, int register, string swizzle)
+    {
+        int component = swizzle.Length == 2 && swizzle[0] == '.'
+            ? "xyzw".IndexOf(swizzle[1])
+            : -1;
+        return typeInfo.ParameterClass != ParameterClass.MatrixRows && component >= 0
+            ? $"{name}[{component}][{register}]"
+            : MatrixRegisterName(typeInfo, name, register) + swizzle;
+    }
+
     // How many registers a member takes. A leaf vector or scalar has one to itself
     // and never shares it; a matrix, a struct or an array takes one per row, column,
     // element or member, and an array multiplies the whole.
@@ -1591,15 +1689,9 @@ public sealed class RegisterState
                     // packed by row, and an array of them that many apiece - so the
                     // element and the register within it have to be separated the
                     // same way the constant buffer side does it.
-                    int matrixOffset = registerKey.Number - constDecl.RegisterIndex;
-                    int registersPerMatrix = MatrixRegisterCount(constDecl.TypeInfo);
-                    string matrix = constDecl.Name;
-                    if (constDecl.TypeInfo.NumElements > 1)
-                    {
-                        matrix += $"[{matrixOffset / registersPerMatrix}]";
-                        matrixOffset %= registersPerMatrix;
-                    }
-                    return MatrixRegisterName(constDecl.TypeInfo, matrix, matrixOffset);
+                    (ShaderTypeInfo d3d9Matrix, string d3d9Name, int d3d9Register) =
+                        TryGetMatrixRegister(registerKey).Value;
+                    return MatrixRegisterName(d3d9Matrix, d3d9Name, d3d9Register);
                 case RegisterType.Temp:
                     return "r" + registerKey.Number;
                 case RegisterType.Sampler:
@@ -1628,25 +1720,9 @@ public sealed class RegisterState
                     {
                         return GetConstantBufferName(declaration, d3d10RegisterKey);
                     }
-                    // RegisterIndex is the cbuffer itself, b0, and is the same for
-                    // every variable in it. The row is the register's distance from
-                    // where this variable starts, which the reader records in bytes.
-                    int variableRegister = declaration is D3D10ConstantDeclaration d3d10Declaration
-                        ? d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes
-                        : declaration.RegisterIndex;
-                    int registerOffset = d3d10RegisterKey.ConstantBufferOffset.Value - variableRegister;
-                    // An array of matrices gives every row a register of its own, so
-                    // the element and the row have to be separated: row 0 of bones[1]
-                    // is register 4, not row 4 of something.
-                    string matrixName = declaration.Name;
-                    int rowIndex = registerOffset;
-                    if (declaration.TypeInfo.NumElements > 1)
-                    {
-                        int rowsPerElement = MatrixRegisterCount(declaration.TypeInfo);
-                        matrixName += $"[{registerOffset / rowsPerElement}]";
-                        rowIndex = registerOffset % rowsPerElement;
-                    }
-                    return MatrixRegisterName(declaration.TypeInfo, matrixName, rowIndex);
+                    (ShaderTypeInfo d3d10Matrix, string d3d10Name, int d3d10Register) =
+                        TryGetMatrixRegister(registerKey).Value;
+                    return MatrixRegisterName(d3d10Matrix, d3d10Name, d3d10Register);
                 case OperandType.Immediate32:
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:

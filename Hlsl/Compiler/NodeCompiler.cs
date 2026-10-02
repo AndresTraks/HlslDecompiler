@@ -1780,9 +1780,9 @@ public sealed class NodeCompiler
                     // gives dot(float4, float4x4).
                     string matrixElement = CompileRegisterIndexAsElement(
                         relativeAddress, constantBufferArray.RegistersPerElement);
-                    string matrixName = RegisterState.MatrixRegisterName(
-                        constantBufferArray.TypeInfo, $"{arrayName}[{matrixElement}]", elementOffset);
-                    return $"{matrixName}{swizzle}";
+                    return RegisterState.MatrixRegisterComponents(
+                        constantBufferArray.TypeInfo, $"{arrayName}[{matrixElement}]",
+                        elementOffset, swizzle);
                 }
                 if (elementOffset != 0)
                 {
@@ -1829,9 +1829,8 @@ public sealed class NodeCompiler
                     // index over the row count and the row is the constant left over.
                     string element = CompileRegisterIndexAsElement(
                         relativeAddress, array.RegistersPerElement);
-                    string matrix = RegisterState.MatrixRegisterName(
-                        array.TypeInfo, $"{arrayName}[{element}]", registerOffset);
-                    return $"{matrix}{swizzle}";
+                    return RegisterState.MatrixRegisterComponents(
+                        array.TypeInfo, $"{arrayName}[{element}]", registerOffset, swizzle);
                 }
                 if (registerOffset != 0)
                 {
@@ -1874,8 +1873,10 @@ public sealed class NodeCompiler
                 return $"{member.Name}{memberSwizzle}";
             }
 
-            string name = _registers.GetRegisterName(shaderInput.RegisterComponentKey);
-            return $"{name}{swizzle}";
+            // Components off the register rather than a swizzle after its name: one
+            // component of a matrix's column is an element, and HLSL subscripts an
+            // element rather than transposing to reach it.
+            return _registers.GetRegisterComponents(shaderInput.RegisterComponentKey, swizzle);
         }
 
         if (first is ResourceLoadNode resourceLoad)

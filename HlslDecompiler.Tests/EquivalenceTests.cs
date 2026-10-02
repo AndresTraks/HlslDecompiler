@@ -37,6 +37,17 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["cs_5_0/consume_bits_scaled"] = [("instruction",
+            "The bits limitation the two entries below describe, reached through a "
+            + "consume. The element is a uint whose bits are a float's, and the "
+            + "register that reads it is declared float because a float mad reads it "
+            + "- so `r0 = consumed0.x` converts the bits into the number they spell. "
+            + "append_consume holds the same kind of element and shifts it instead, "
+            + "which makes its register an int, and there the same assignment keeps "
+            + "the bits. Which of the two a float register is holding is what this "
+            + "writer does not record. The ast writer reads the element back through "
+            + "asfloat and agrees."),
+        ],
         ["cs_5_0/stored_float_bits"] = [("instruction",
             "The same limitation tile_depth_bounds runs into, on the store side "
             + "rather than the interlocked one. A uint texel whose bits are a "

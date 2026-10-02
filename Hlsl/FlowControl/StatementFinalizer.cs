@@ -1398,6 +1398,9 @@ public class StatementFinalizer
             // And a typed load from the view's return type, for the same reason: the
             // instruction reads an address and says nothing about the texel.
             ResourceLoadNode load => load.IsIntegerTexel,
+            // A consume is the same question again: the instruction reads a slot,
+            // and the buffer's element type is what says what comes back.
+            ConsumeNode consume => consume.IsIntegerElement,
             // What resinfo and bufinfo report is whatever the instruction asked for
             // them as: a size in texels or a count of elements is a uint, and the
             // same measurement taken as a float is one.

@@ -34,6 +34,13 @@ public class ConsumeNode : HlslTreeNode, IHasComponentIndex
     /// <summary>The variable the writer named this call into.</summary>
     public TempVariableNode NamedAs { get; set; }
 
+    // Whether the element is an integer, from the buffer's declared element type
+    // the way a structured load beside it answers. The consume says nothing about
+    // it on its own - what the instruction reads is a slot, which is an integer
+    // whatever the elements are - so a uint element whose bits are a float's was
+    // converted into the float variable that read it rather than reinterpreted.
+    public bool? IsIntegerElement { get; init; }
+
     public override string ToString()
     {
         return $"consume({Buffer}).{"xyzw"[ComponentIndex]}";

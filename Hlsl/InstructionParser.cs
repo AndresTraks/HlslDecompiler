@@ -2863,7 +2863,13 @@ public class InstructionParser
                                     && IsConsumeBuffer(instruction.GetParamRegisterKey(3)))
                                 {
                                     return new ConsumeNode(
-                                        (RegisterInputNode)inputs[2], elementByteOffset / 4, slot);
+                                        (RegisterInputNode)inputs[2], elementByteOffset / 4, slot)
+                                    {
+                                        IsIntegerElement = _registerState.IsIntegerStructuredMember(
+                                            instruction.GetParamRegisterKey(3),
+                                            elementByteOffset
+                                                + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
+                                    };
                                 }
                                 return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
                                 {

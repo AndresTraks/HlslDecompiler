@@ -2512,6 +2512,18 @@ public class HlslAstWriter : HlslWriter
     private TempVariableNode[] CreateTempVariables(IList<HlslTreeNode> nodes)
     {
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
+        ApplyValueTypes(variables, nodes);
+        return variables;
+    }
+
+    /// <summary>
+    /// Types variables from the values they will hold. Separate from creating them
+    /// because a call's variables are created by how many components its element
+    /// has rather than by how many nodes read it - see NameConsumes - and those
+    /// need typing just the same.
+    /// </summary>
+    private void ApplyValueTypes(TempVariableNode[] variables, IList<HlslTreeNode> nodes)
+    {
         bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
         bool isBits = nodes.All(node => StatementFinalizer.IsBitsVariable(node, isInteger));
         // A double where every component is one, the way an integer is. The value is
@@ -2529,7 +2541,6 @@ public class HlslAstWriter : HlslWriter
             variable.IsUnsigned = isUnsigned;
             variable.IsDouble = isDouble;
         }
-        return variables;
     }
 
     /// <summary>
@@ -2643,6 +2654,12 @@ public class HlslAstWriter : HlslWriter
                 variables = _compiler.CreateTempVariables(
                     _registers.GetStructuredBufferComponents(
                         consume.Buffer.RegisterComponentKey.RegisterKey));
+                // Typed from the components the call reads. Created by how many the
+                // element has and nothing else, they were typed by nothing at all, so
+                // a uint element whose bits are a float's came out of a variable that
+                // said neither - and every float reader of it converted the bits into
+                // the number they spell instead of reinterpreting them.
+                ApplyValueTypes(variables, [.. call]);
                 _consumeVariables[consume.Slot] = variables;
                 // Only the statement that names it first writes the call.
                 assignments.Add([.. call.Select(component =>

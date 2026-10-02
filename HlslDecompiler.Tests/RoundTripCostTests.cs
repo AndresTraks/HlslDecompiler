@@ -46,6 +46,14 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["vs_4_0/packed_bits_uniform"] = (6,
+            "Two instructions, both of them a conversion that should not be there. "
+            + "A uint attribute and a uint uniform hold a float's bits, and are read "
+            + "as the numbers they spell, so fxc puts a utof in front of each where "
+            + "the original read the register as it stood. The wrong value is the "
+            + "real complaint - see this shader's entry in EquivalenceTests, which "
+            + "says why reinterpreting instead is not something the decompiler can "
+            + "tell it should do."),
         ["cs_4_0/particle_update"] = (12,
             "One instruction, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "

@@ -37,6 +37,27 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["vs_4_0/packed_bits_uniform"] = [("ast",
+            "A weight and a scale handed in as bits: a uint vertex attribute and a "
+            + "uint cbuffer variable, both read straight into float arithmetic with "
+            + "no conversion in the bytecode, so the bits are a float's. Both are "
+            + "read as the numbers they spell instead - `i.position * i.blendweight "
+            + "* packedScale` converts at each - which is a wrong value rather than "
+            + "an ugly one, and the round trip pays two utof for it.\n\n"
+            + "Unfixed because the evidence does not reach. Reinterpreting an "
+            + "integer register that a float operation reads looks like the rule, "
+            + "and tried, it put asfloat around `mip` where a GetDimensions wants "
+            + "the mip level and around `address` where a comparison wants an index "
+            + "- numbers, both of them, in registers a float instruction reads "
+            + "because that is all shader model 3 has. Which of the two a declared "
+            + "integer holds is the same question the instruction writer cannot "
+            + "answer about its float registers; for a load the element type settles "
+            + "it, and for a uniform nothing does."),
+            ("instruction",
+            "The same, from the same cause: `i.position.xyz * i.blendweight` and "
+            + "`r0.xyz * packedScale` read both as numbers. Neither writer has the "
+            + "evidence, so neither is singled out."),
+        ],
         ["cs_5_0/consume_bits_scaled"] = [("instruction",
             "The bits limitation the two entries below describe, reached through a "
             + "consume. The element is a uint whose bits are a float's, and the "

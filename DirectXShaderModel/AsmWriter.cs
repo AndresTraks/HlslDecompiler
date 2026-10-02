@@ -130,6 +130,15 @@ public class AsmWriter
                 WriteLine("break_{0} {1}, {2}", instruction.Comparison.ToString().ToLower(), GetSourceName(instruction, 0),
                     GetSourceName(instruction, 1));
                 break;
+            // Subroutines. The label is an operand of both the call and the label
+            // it calls, and a vertex shader's main body ends at its first ret.
+            case Opcode.Call:
+                WriteLine("call {0}", GetSourceName(instruction, 0));
+                break;
+            case Opcode.CallNZ:
+                WriteLine("callnz {0}, {1}", GetSourceName(instruction, 0),
+                    GetSourceName(instruction, 1));
+                break;
             case Opcode.Cmp:
                 WriteLine("cmp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
@@ -141,6 +150,16 @@ public class AsmWriter
             case Opcode.Crs:
                 WriteLine("crs{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
+                break;
+            case Opcode.Break:
+                WriteLine("break");
+                break;
+            case Opcode.Breakp:
+                // fxc spells this one `break p0` rather than breakp, and reads the
+                // predicate as a destination token - a component mask rather than a
+                // swizzle, which is how it tells `break p0` from `break p0.z`.
+                WriteLine("break {0}{1}", GetParamRegisterName(instruction, 0),
+                    instruction.GetDestinationWriteMaskName(4));
                 break;
             case Opcode.Dcl:
                 string dclInstruction = "dcl";
@@ -182,6 +201,10 @@ public class AsmWriter
                     string constValue3 = ConstantFormatter.Format(instruction.GetParamSingle(4)[0]);
                     WriteLine("def {0}, {1}, {2}, {3}, {4}", constRegisterName, constValue0, constValue1, constValue2, constValue3);
                 }
+                break;
+            case Opcode.DefB:
+                WriteLine("defb {0}, {1}", GetParamRegisterName(instruction, 0),
+                    instruction.Params[1] != 0 ? "true" : "false");
                 break;
             case Opcode.DefI:
                 {
@@ -242,6 +265,9 @@ public class AsmWriter
                 WriteLine("if_{0} {1}, {2}",
                     instruction.Comparison.ToString().ToLower(),
                     GetSourceName(instruction, 0), GetSourceName(instruction, 1));
+                break;
+            case Opcode.Label:
+                WriteLine("label {0}", GetSourceName(instruction, 0));
                 break;
             case Opcode.Log:
                 WriteLine("log{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
@@ -330,6 +356,9 @@ public class AsmWriter
                 WriteLine("rcp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1));
                 break;
+            case Opcode.Ret:
+                WriteLine("ret");
+                break;
             case Opcode.Rsq:
                 WriteLine("rsq{0} {1}, {2}", GetModifier(instruction),GetDestinationName(instruction),
                     GetSourceName(instruction, 1));
@@ -341,6 +370,13 @@ public class AsmWriter
             case Opcode.Sgn:
                 WriteLine("sgn{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
+            case Opcode.SetP:
+                // The comparison rides in the instruction token, the way ifc and
+                // breakc carry theirs.
+                WriteLine("setp_{0} {1}, {2}, {3}", instruction.Comparison.ToString().ToLower(),
+                    GetDestinationName(instruction), GetSourceName(instruction, 1),
+                    GetSourceName(instruction, 2));
                 break;
             case Opcode.Slt:
                 WriteLine("slt{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
@@ -1351,6 +1387,12 @@ public class AsmWriter
                 break;
             case RegisterType.Input:
                 registerTypeName = "v";
+                break;
+            case RegisterType.Label:
+                registerTypeName = "l";
+                break;
+            case RegisterType.Predicate:
+                registerTypeName = "p";
                 break;
             case RegisterType.Output:
                 // The texture coordinate output, which has a name of its own

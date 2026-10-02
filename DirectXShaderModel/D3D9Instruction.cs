@@ -210,8 +210,12 @@ public class D3D9Instruction : Instruction
         }
 
         // A bool register holds a single value, so `if b0` carries no swizzle even
-        // though the token has a swizzle field like any other source.
-        if (GetParamRegisterType(srcIndex) == RegisterType.ConstBool)
+        // though the token has a swizzle field like any other source. A label
+        // register names a position in the shader rather than a value, and a call
+        // and the label it calls have no destination to take a mask from either:
+        // read as one, the swizzle field of `call l1` selects a component and the
+        // call came out `call l1.z`.
+        if (GetParamRegisterType(srcIndex) is RegisterType.ConstBool or RegisterType.Label)
         {
             return "";
         }

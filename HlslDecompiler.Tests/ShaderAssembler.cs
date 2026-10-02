@@ -56,6 +56,13 @@ internal static class ShaderAssembler
         return [(uint)opcode | (uint)parameters.Length << 24, .. parameters];
     }
 
+    // setp carries its comparison in the instruction token, where ifc and breakc
+    // carry theirs.
+    public static uint[] Instruction(Opcode opcode, IfComparison comparison, params uint[] parameters)
+    {
+        return [(uint)opcode | (uint)parameters.Length << 24 | (uint)comparison << 16, .. parameters];
+    }
+
     // A dcl carries two parameters: the usage token - semantic in its low bits,
     // with the sampler texture type and index further up - and the register. The
     // usage token carries the sign bit like any parameter token, which the
@@ -63,6 +70,19 @@ internal static class ShaderAssembler
     public static uint[] Declaration(DeclUsage usage, RegisterType type, int number)
     {
         return [(uint)Opcode.Dcl | 2u << 24, 0x80000000 | (uint)usage, Destination(type, number)];
+    }
+
+    public static uint[] ConstantInt(int number, params int[] values)
+    {
+        return [(uint)Opcode.DefI | 5u << 24,
+            Destination(RegisterType.ConstInt, number),
+            .. values.Select(v => (uint)v)];
+    }
+
+    public static uint[] ConstantBool(int number, bool value)
+    {
+        return [(uint)Opcode.DefB | 2u << 24,
+            Destination(RegisterType.ConstBool, number), value ? 1u : 0u];
     }
 
     public static uint[] Constant(int number, params float[] values)

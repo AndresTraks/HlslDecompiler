@@ -72,6 +72,69 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
+    // Subroutines and predication. fxc inlines every function call at every D3D9
+    // profile and there is no noinline to ask it not to, and it knows neither
+    // ps_2_x nor vs_2_x, where predication belonged - so none of these reaches a
+    // golden either. Two of them are not spelled the way the opcode is named:
+    // D3DSIO_BREAKP disassembles as `break p0`, and its predicate is a destination
+    // token, which is how fxc tells `break p0` from `break p0.z`.
+    [Test]
+    public void DisassemblesSubroutinesAndPredication()
+    {
+        ShaderModel shader = Assemble(ShaderType.Vertex, 3, [
+            Declaration(DeclUsage.Position, RegisterType.Input, 0),
+            Declaration(DeclUsage.Position, RegisterType.Output, 0),
+            Constant(0, 2, 3, 5, 7),
+            ConstantInt(0, 4, 0, 1, 0),
+            ConstantBool(0, true),
+            Instruction(Opcode.Mov, Destination(RegisterType.Temp, 0), Source(RegisterType.Input, 0)),
+            Instruction(Opcode.Call, Source(RegisterType.Label, 1)),
+            Instruction(Opcode.CallNZ, Source(RegisterType.Label, 2), Source(RegisterType.ConstBool, 0)),
+            Instruction(Opcode.Rep, Source(RegisterType.ConstInt, 0)),
+            Instruction(Opcode.SetP, IfComparison.GT, Destination(RegisterType.Predicate, 0),
+                Source(RegisterType.Temp, 0), Source(RegisterType.Const, 0)),
+            Instruction(Opcode.Breakp, Destination(RegisterType.Predicate, 0)),
+            Instruction(Opcode.Break),
+            Instruction(Opcode.EndRep),
+            Instruction(Opcode.Mov, Destination(RegisterType.Output, 0), Source(RegisterType.Temp, 0)),
+            Instruction(Opcode.Ret),
+            Instruction(Opcode.Label, Source(RegisterType.Label, 1)),
+            Instruction(Opcode.Add, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Temp, 0), Source(RegisterType.Const, 0)),
+            Instruction(Opcode.Ret),
+            Instruction(Opcode.Label, Source(RegisterType.Label, 2)),
+            Instruction(Opcode.Mov, Destination(RegisterType.Temp, 0), Source(RegisterType.Const, 0)),
+            Instruction(Opcode.Ret),
+            Instruction(Opcode.End),
+        ]);
+
+        Assert.That(WriteAsm(shader), Is.EqualTo("""
+            vs_3_0
+            dcl_position v0
+            dcl_position o0
+            def c0, 2, 3, 5, 7
+            defi i0, 4, 0, 1, 0
+            defb b0, true
+            mov r0, v0
+            call l1
+            callnz l2, b0
+            rep i0
+            setp_gt p0, r0, c0
+            break p0
+            break
+            endrep
+            mov o0, r0
+            ret
+            label l1
+            add r0, r0, c0
+            ret
+            label l2
+            mov r0, c0
+            ret
+
+            """));
+    }
+
     // m3x2 writes two components and reads three, so the destination mask is no
     // guide to how wide its operands are. Writing `m3x2 r0.xy, v0.xy, c0.xy` would
     // name a vector a third shorter than the one the instruction multiplies.

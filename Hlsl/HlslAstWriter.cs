@@ -761,10 +761,12 @@ public class HlslAstWriter : HlslWriter
         string address = atomic.Coordinates != null
             ? _compiler.CompileAsInteger([.. atomic.Coordinates.Select(Reduce)])
             : _compiler.Compile(Reduce(atomic.Address));
-        string value = _compiler.Compile(Reduce(atomic.Value));
+        // An interlocked operation works on integers, so a float reaching it is the
+        // bits it holds rather than the number they make.
+        string value = _compiler.CompileIntegerArgument(Reduce(atomic.Value));
         string compare = atomic.Compare == null
             ? null
-            : _compiler.Compile(Reduce(atomic.Compare));
+            : _compiler.CompileIntegerArgument(Reduce(atomic.Compare));
 
         // The variable the old value goes into has to exist before the call takes
         // its address, and compiling it is what numbers it. Declared here rather

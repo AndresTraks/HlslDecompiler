@@ -39,6 +39,15 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
     // The texel offsets of ld_aoffimmi, or null when the load has none.
     public int[] SampleOffsets { get; set; }
 
+    // Whether the texel is an integer, from the view's return type the way a
+    // structured load answers from its element type. A load says nothing about what
+    // it makes through the instruction alone - what it reads is an address, which is
+    // an integer whatever the texels are - so a float texel feeding an integer
+    // operation looked like a number rather than the bits it is, and the variable
+    // holding it converted where the shader reinterpreted. Null where the view has
+    // no declaration to ask.
+    public bool? IsIntegerTexel { get; init; }
+
     public override string ToString()
     {
         return $"load({Resource}, {string.Join(", ", Address.Select(a => a.ToString()))})";

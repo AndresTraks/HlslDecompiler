@@ -37,6 +37,18 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["cs_5_0/tile_depth_bounds"] = [("instruction",
+            "A depth written into groupshared memory as asuint and minimised there "
+            + "as the integer its bits make. The instruction writer has to say "
+            + "unsigned at the value for fxc to pick the unsigned interlocked "
+            + "operation, and says it with a cast - which converts the depth to the "
+            + "whole number nearest it, so every tile came out with bounds of zero. "
+            + "Reinterpreting instead needs the one thing that writer's register "
+            + "model cannot tell apart: a float register holding a number that "
+            + "happens to be integral, which a cast is right for, from one holding a "
+            + "float whose bits are wanted. The ast writer names the depth a float "
+            + "and reinterprets at the call, and agrees."),
+        ],
         ["ps_5_0/typed_view_load"] = [("instruction",
             "The texel coordinate, made by an ftoi of sv_position, and the buffer "
             + "indices sit in the float register the shader reuses for a float, so "

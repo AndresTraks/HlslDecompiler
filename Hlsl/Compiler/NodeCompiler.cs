@@ -642,6 +642,20 @@ public sealed class NodeCompiler
             : CompileOperand(list);
     }
 
+    /// <summary>
+    /// A value where an operation that works on integers wants one, and reads it
+    /// through an argument rather than an operator: the value or the comparand of
+    /// an interlocked operation. A float there is its bits and not its number -
+    /// a depth written into groupshared memory as asuint is minimised as the
+    /// integer those bits make, and converting it would compare the depth rounded
+    /// to a whole number instead.
+    /// </summary>
+    public string CompileIntegerArgument(HlslTreeNode node)
+    {
+        string compiled = Compile(node);
+        return IsFloatValued(node) ? $"asint({compiled})" : compiled;
+    }
+
     // Whether a value is a float, from the value itself rather than from what reads
     // it: the readers of one of these are integer instructions by construction.
     private bool IsFloatValued(HlslTreeNode node)

@@ -3122,6 +3122,7 @@ public class InstructionParser
         return new ResourceLoadNode(resource, address, resource.RegisterComponentKey.ComponentIndex, sampleIndex)
         {
             SampleOffsets = instruction.SampleOffsets,
+            IsIntegerTexel = definition?.IsIntegerReturnType,
         };
     }
 

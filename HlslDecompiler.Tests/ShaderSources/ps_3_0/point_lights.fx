@@ -33,8 +33,8 @@ float4 main(PS_IN i) : COLOR
 		float3 t9 = t5.w - float3(1, 2, 3);
 		float3 t10 = (t9.z == 0 ? lightPositions[3] : t9.y == 0 ? lightPositions[2] : t9.x == 0 ? lightPositions[1] : t5.w == 0 ? lightPositions[0] : 0) - i.texcoord;
 		float t11 = pow(saturate(dot(t7, normalize(normalize(t10) + t8))), specularPower) + saturate(dot(t7, normalize(t10)));
-		float t12 = rcp(dot(t10, t10) + 1);
-		t5.xyz = t11 * (t9.z == 0 ? lightColors[3] : t9.y == 0 ? lightColors[2] : t9.x == 0 ? lightColors[1] : t5.w == 0 ? lightColors[0] : 0) * t12 + t5.xyz;
+		float t12 = dot(t10, t10) + 1;
+		t5.xyz = t11 * (t9.z == 0 ? lightColors[3] : t9.y == 0 ? lightColors[2] : t9.x == 0 ? lightColors[1] : t5.w == 0 ? lightColors[0] : 0) / t12 + t5.xyz;
 		t5.w = t5.w + 1;
 	}
 	float t13 = 1 - saturate(dot(t7, t8));

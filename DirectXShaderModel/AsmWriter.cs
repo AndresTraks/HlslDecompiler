@@ -134,6 +134,14 @@ public class AsmWriter
                 WriteLine("cmp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
+            case Opcode.Cnd:
+                WriteLine("cnd{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
+            case Opcode.Crs:
+                WriteLine("crs{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
+                break;
             case Opcode.Dcl:
                 string dclInstruction = "dcl";
                 // ps_2_0 declares its texture coordinates as `dcl t0.xy` and its
@@ -220,6 +228,10 @@ public class AsmWriter
                 WriteLine("exp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1));
                 break;
+            case Opcode.ExpP:
+                WriteLine("expp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
             case Opcode.Frc:
                 WriteLine("frc {0}, {1}", GetDestinationName(instruction), GetSourceName(instruction, 1));
                 break;
@@ -235,6 +247,10 @@ public class AsmWriter
                 WriteLine("log{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1));
                 break;
+            case Opcode.LogP:
+                WriteLine("logp{0} {1}, {2}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1));
+                break;
             case Opcode.Loop:
                 WriteLine("loop {0}, {1}", GetSourceName(instruction, 0),
                     GetSourceName(instruction, 1));
@@ -242,6 +258,31 @@ public class AsmWriter
             case Opcode.Lrp:
                 WriteLine("lrp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
+                break;
+            // A matrix product is not componentwise: every row of the product
+            // reads the whole vector, so both operands are as wide as the first
+            // number in the mnemonic however few rows the destination mask keeps.
+            // crs is the same - a cross product reads three components to write
+            // any one of them.
+            case Opcode.M3x2:
+                WriteLine("m3x2{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
+                break;
+            case Opcode.M3x3:
+                WriteLine("m3x3{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
+                break;
+            case Opcode.M3x4:
+                WriteLine("m3x4{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
+                break;
+            case Opcode.M4x3:
+                WriteLine("m4x3{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2, 4));
+                break;
+            case Opcode.M4x4:
+                WriteLine("m4x4{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2, 4));
                 break;
             case Opcode.Mad:
                 WriteLine("mad{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
@@ -296,6 +337,10 @@ public class AsmWriter
             case Opcode.Sge:
                 WriteLine("sge{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
+                break;
+            case Opcode.Sgn:
+                WriteLine("sgn{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
+                    GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
             case Opcode.Slt:
                 WriteLine("slt{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),

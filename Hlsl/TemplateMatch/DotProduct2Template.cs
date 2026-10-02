@@ -77,6 +77,20 @@ public class DotProduct2Template : IGroupTemplate
         }
         else if (_templateMatcher.CanGroupComponents(x, y, allowMatrixColumn) == false)
         {
+            // Not a mirror of the allowance above, and deliberately not. Letting
+            // this side be arbitrary because the a, b side is components of one
+            // register reads as the obvious symmetry and costs instructions:
+            // measured over the corpus it took gbuffer_write from 55 to 60 and
+            // tangent_lighting from 45 to 51, and what it did to the second says
+            // why. `t4.x * t9 + cross(t6, t9) * t4.y + t4.z * t6` became three dot
+            // products of t4.xy against a constructor holding one component of the
+            // cross each, and the normalize above it came apart into a length and a
+            // divide. The dot had eaten the components the cross product grouper and
+            // the normalize grouper were going to claim, and those run at compile
+            // time, after every template - so a template cannot ask what they would
+            // have taken. A dp3 of an input against a vector built a component at a
+            // time therefore stays three products added up, which is the price of
+            // the richer idioms keeping theirs.
             return null;
         }
 

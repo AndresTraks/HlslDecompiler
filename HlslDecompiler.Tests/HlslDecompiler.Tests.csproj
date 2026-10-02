@@ -31,6 +31,14 @@
     <None Update="ShaderSources\**\*.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Bytecode the disassembler reads and the HLSL writers do not yet, with the
+         listing it is expected to produce. -->
+    <None Update="DisassemblyOnly\**\*.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="DisassemblyOnly\**\*.asm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

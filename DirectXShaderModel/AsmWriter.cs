@@ -750,6 +750,46 @@ public class AsmWriter
                     instruction.HasOrderPreservingCounter ? "_opc" : "",
                     FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
+            // Dynamic linkage. The three declarations carry plain dwords rather
+            // than operands - a body is one number, a table is a count and the
+            // bodies it holds, an interface a pair of lengths and the tables a
+            // class could put in it - so they are read off the tokens directly.
+            case D3D10Opcode.DclFunctionBody:
+                WriteLine("dcl_function_body fb{0}", instruction.OperandTokens.Tokens[0]);
+                break;
+            case D3D10Opcode.DclFunctionTable:
+                {
+                    uint[] tokens = instruction.OperandTokens.Tokens;
+                    WriteLine("dcl_function_table ft{0} = {{{1}}}", tokens[0],
+                        string.Join(", ", tokens.Skip(2).Take((int)tokens[1]).Select(b => $"fb{b}")));
+                    break;
+                }
+            case D3D10Opcode.DclInterface:
+                {
+                    // fp0[3][1] = {ft2, ft3}: how many of the interface the shader
+                    // declared, then how many functions each of its tables holds -
+                    // and the tables themselves are every class that could be bound
+                    // to it, which is why there are more of them than functions.
+                    uint[] tokens = instruction.OperandTokens.Tokens;
+                    uint arrayLength = tokens[2] >> 16;
+                    uint tableCount = tokens[2] & 0xFFFF;
+                    WriteLine("dcl_interface fp{0}[{1}][{2}] = {{{3}}}",
+                        tokens[0], arrayLength, tokens[1],
+                        string.Join(", ", tokens.Skip(3).Take((int)tableCount).Select(t => $"ft{t}")));
+                    break;
+                }
+            case D3D10Opcode.InterfaceCall:
+                {
+                    // The function index comes first, as a dword of its own, and the
+                    // interface operand after it: fcall fp1[2][0] calls function 0
+                    // of whatever is bound to element 2 of interface 1.
+                    uint[] tokens = instruction.OperandTokens.Tokens;
+                    WriteLine("fcall fp{0}[{1}][{2}]", tokens[2], tokens[3], tokens[0]);
+                    break;
+                }
+            case D3D10Opcode.Label:
+                WriteLine("label {0}", FormatOperand(instruction, 0));
+                break;
             case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
                 // Raw shared memory is declared by its size in bytes alone, where
                 // the structured form names a stride and a count: a groupshared
@@ -1753,6 +1793,11 @@ public class AsmWriter
             OperandType.InputForkInstanceID => "vForkInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
+            // Dynamic linkage: a function body, the table of bodies a class
+            // implements an interface with, and the interface a call goes through.
+            OperandType.FunctionBody => "fb",
+            OperandType.FunctionTable => "ft",
+            OperandType.Interface => "fp",
             // The output stream a geometry shader emits to, which shader model 5
             // names and model 4 left implicit.
             OperandType.Stream => "m",

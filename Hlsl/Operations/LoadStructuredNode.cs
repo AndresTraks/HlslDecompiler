@@ -17,6 +17,13 @@ public class LoadStructuredNode : Operation
     // reads out as Load, Load2, Load3 or Load4 rather than a subscript.
     public bool IsRaw { get; init; }
 
+    // And whether that raw memory is groupshared. HLSL can declare a raw buffer and
+    // not raw groupshared, so this one is written as a subscript into the array it
+    // has to be declared as - and its address is the element, not the byte offset
+    // the instruction carried. It stays raw for every other purpose: what it reads
+    // is bits, and a reader wanting a float reinterprets rather than converts.
+    public bool IsGroupShared { get; init; }
+
     // The offset within the element, from the instruction rather than from the node
     // the operand became: what that node is depends on how the graph was reduced,
     // and this is a fact about the load.

@@ -679,6 +679,17 @@ public class HlslAstWriter : HlslWriter
         string compiledValue = storesIntegers
             ? _compiler.CompileAsInteger(storedValues)
             : _compiler.Compile(storedValues);
+        if (storeStructured.IsGroupShared)
+        {
+            // The element of the array raw groupshared memory is declared as. The
+            // value is stored as the bits it is, the way a raw store always does.
+            if (!storesIntegers)
+            {
+                compiledValue = CompileRawStoredValue(storedValues);
+            }
+            WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
+            return;
+        }
         if (storeStructured.IsRaw)
         {
             // Store, Store2, Store3 or Store4 at the byte offset, by how many dwords

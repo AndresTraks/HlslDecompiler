@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 
 namespace HlslDecompiler;
 
@@ -2159,6 +2160,23 @@ public class HlslSimpleWriter : HlslWriter
                     WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), readElement);
                     break;
                 }
+            case D3D10Opcode.LdRaw when IsGroupSharedOperand(instruction, 2):
+                {
+                    // Groupshared memory is declared as an array, so a raw read of it
+                    // is a subscript rather than a Load, and each dword it names is
+                    // an element of its own.
+                    int readMask = instruction.GetWriteMask(0);
+                    if (BitOperations.PopCount((uint)readMask) != 1)
+                    {
+                        throw new NotImplementedException(
+                            "a raw groupshared load of more than one dword");
+                    }
+                    byte[] sharedSwizzle = instruction.GetSourceSwizzleComponents(2);
+                    int dword = sharedSwizzle[BitOperations.TrailingZeroCount((uint)readMask)];
+                    WriteResult(instruction, "{0} = {1}[{2}];", GetOperandName(instruction, 0),
+                        GetOperandName(instruction, 2), GroupSharedElement(instruction, 1, dword));
+                    break;
+                }
             case D3D10Opcode.LdRaw:
                 {
                     // As many dwords as the highest component asked for, at the byte
@@ -2720,6 +2738,21 @@ public class HlslSimpleWriter : HlslWriter
                     WriteLine("{0}({1}, {2});", method, target, arguments);
                     break;
                 }
+            case D3D10Opcode.StoreRaw when IsGroupSharedOperand(instruction, 0):
+                {
+                    // And the same for a store: one element, one assignment.
+                    int storeMask = instruction.GetWriteMask(0);
+                    if (BitOperations.PopCount((uint)storeMask) != 1)
+                    {
+                        throw new NotImplementedException(
+                            "a raw groupshared store of more than one dword");
+                    }
+                    WriteLine("{0}[{1}] = {2};", GetOperandName(instruction, 0),
+                        GroupSharedElement(instruction, 1,
+                            BitOperations.TrailingZeroCount((uint)storeMask)),
+                        GetOperandName(instruction, 2));
+                    break;
+                }
             case D3D10Opcode.StoreRaw:
                 {
                     int width = instruction.GetDestinationMaskLength();
@@ -2786,6 +2819,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclThreadGroup:
             case D3D10Opcode.DclUnorderedAccessViewStructured:
             // Declared at file scope, before main.
+            case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                 break;
             case D3D10Opcode.RetC:
@@ -3349,6 +3383,31 @@ public class HlslSimpleWriter : HlslWriter
             default:
                 throw new NotImplementedException();
         }
+    }
+
+    private static bool IsGroupSharedOperand(D3D10Instruction instruction, int operandIndex)
+    {
+        return instruction.GetOperandType(operandIndex) == OperandType.ThreadGroupSharedMemory;
+    }
+
+    /// <summary>
+    /// The element a raw groupshared access names, from the byte address it carries
+    /// and which dword of that access this is. Folded where the address is the
+    /// literal it almost always is - a component of a groupshared variable sits at a
+    /// constant offset.
+    /// </summary>
+    private string GroupSharedElement(D3D10Instruction instruction, int addressOperand, int dword)
+    {
+        if (instruction.GetOperandType(addressOperand) == OperandType.Immediate32)
+        {
+            int bytes = instruction.GetParamInt(addressOperand, 0);
+            if (bytes % 4 == 0)
+            {
+                return (bytes / 4 + dword).ToString(_culture);
+            }
+        }
+        string element = $"{GetOperandName(instruction, addressOperand)} / 4";
+        return dword == 0 ? element : $"{element} + {dword}";
     }
 
     private string GetOperandName(D3D10Instruction instruction, int operandIndex)

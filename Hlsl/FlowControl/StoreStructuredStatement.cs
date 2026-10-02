@@ -15,6 +15,13 @@ public class StoreStructuredStatement : IStatement
     // store_raw: the address is a byte offset, written with Store, Store2 and so on.
     public bool IsRaw { get; init; }
 
+    // And whether that raw memory is groupshared. HLSL can declare a raw buffer and
+    // not raw groupshared, so this one is written as a subscript into the array it
+    // has to be declared as - and its address is the element, not the byte offset
+    // the instruction carried. It stays raw for every other purpose: what it reads
+    // is bits, and a reader wanting a float reinterprets rather than converts.
+    public bool IsGroupShared { get; init; }
+
     // The offset within the element, and which of its components are written. A
     // struct element is addressed by the offset alone, so these are what say which
     // members the store reaches.

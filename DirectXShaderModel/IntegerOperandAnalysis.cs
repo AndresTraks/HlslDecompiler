@@ -900,6 +900,17 @@ public sealed class IntegerOperandAnalysis
     {
         const int ValueIndex = 3;
         var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        // Raw shared memory holds bits and says nothing about what they mean: a
+        // float stored into it goes in as the integer its bits are, so no store can
+        // be traced back to a type the way a structured one can. Declared as what
+        // it is - a uint - a float read out of it asks for asfloat, where a float
+        // declaration would have converted the value instead of reinterpreting it.
+        if (instructions.Any(instruction =>
+            instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryRaw
+            && instruction.GetParamRegisterNumber(0) == register))
+        {
+            return true;
+        }
         // An interlocked operation over the array settles it on its own: there is no
         // atomic over a float, so an array one reaches holds integers whatever the
         // stores into it look like. A histogram's bins are cleared with a store of

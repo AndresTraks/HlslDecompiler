@@ -33,6 +33,12 @@ public class D3D10Machine
     // what it reads back is what it stored itself, and a sync has nothing to wait
     // for - the same for the original and the decompiled shader.
     private readonly Dictionary<int, (int Stride, uint[] Words)> _threadGroupSharedMemory = [];
+
+    // Raw groupshared memory addresses bytes where the structured form addresses an
+    // element and an offset within it, so an access to one has to be read the other
+    // way round. Declared with a stride of four so that everything below can treat
+    // the word it names as an element.
+    private readonly HashSet<int> _rawThreadGroupSharedMemory = [];
     private readonly uint[][] _input = NewFile(64);
     private readonly uint[][] _output = NewFile(64);
     private readonly Dictionary<int, uint[][]> _constantBuffers = [];
@@ -409,6 +415,13 @@ public class D3D10Machine
                 _indexableTemps[instruction.IndexableTempRegister] =
                     NewFile(instruction.IndexableTempElementCount);
             }
+            if (instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryRaw)
+            {
+                int register = instruction.GetParamRegisterNumber(0);
+                int bytes = (int)instruction.GetParamIndexImmediate32(1, 0);
+                _threadGroupSharedMemory[register] = (4, new uint[bytes / 4]);
+                _rawThreadGroupSharedMemory.Add(register);
+            }
             if (instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryStructured)
             {
                 int stride = (int)instruction.GetThreadGroupSharedMemoryStride();
@@ -613,7 +626,11 @@ public class D3D10Machine
         if (instruction.GetOperandType(resourceIndex) == OperandType.ThreadGroupSharedMemory)
         {
             (int stride, uint[] words) = _threadGroupSharedMemory[resource];
-            int word = SharedMemoryWord(stride, words, address[0], address[1]);
+            // One address and it counts bytes where the memory is raw, against the
+            // element and offset pair a structured declaration is addressed by.
+            int word = _rawThreadGroupSharedMemory.Contains(resource)
+                ? SharedMemoryWord(stride, words, address[0] / 4, 0)
+                : SharedMemoryWord(stride, words, address[0], address[1]);
             uint held = word < words.Length ? words[word] : 0;
             if (word < words.Length)
             {
@@ -694,14 +711,42 @@ public class D3D10Machine
         int offset = Ints(instruction, 1)[0];
         uint[] value = Source(instruction, 2);
         int writeMask = instruction.GetDestinationWriteMask();
+        // Groupshared memory is held rather than recorded, so a raw store into it
+        // writes the words it names - the next read is the shader's own, and
+        // recording it instead compared nothing.
+        bool shared = instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory;
+        uint[] words = shared ? _threadGroupSharedMemory[resource].Words : null;
         for (int component = 0, written = 0; component < 4; component++)
         {
             if ((writeMask & (1 << component)) != 0)
             {
+                int address = offset + 4 * written++;
+                if (shared)
+                {
+                    int word = address / 4;
+                    if (word >= 0 && word < words.Length)
+                    {
+                        words[word] = value[component];
+                    }
+                    continue;
+                }
                 _stored.Add(new KeyValuePair<string, uint[]>(
-                    $"STORERAW{resource}[{offset + 4 * written++}]", [value[component], 0, 0, 0]));
+                    $"STORERAW{resource}[{address}]", [value[component], 0, 0, 0]));
             }
         }
+    }
+
+    // The four dwords a raw groupshared read takes, from the byte address on.
+    private uint[] ReadSharedWords(int resource, int byteOffset)
+    {
+        uint[] words = _threadGroupSharedMemory[resource].Words;
+        var read = new uint[4];
+        for (int word = 0; word < 4; word++)
+        {
+            int index = byteOffset / 4 + word;
+            read[word] = index >= 0 && index < words.Length ? words[index] : 0;
+        }
+        return read;
     }
 
     // The word an element and byte offset address, clamped into the array the way
@@ -1208,8 +1253,10 @@ public class D3D10Machine
                     // swizzle then picks which of the four read go where.
                     int offset = Ints(instruction, 1)[0];
                     int resource = instruction.GetParamRegisterNumber(2);
-                    uint[] read = [.. Enumerable.Range(0, 4)
-                        .Select(word => Pack(Named($"raw{resource}[{offset + 4 * word}]"))[0])];
+                    uint[] read = instruction.GetOperandType(2) == OperandType.ThreadGroupSharedMemory
+                        ? ReadSharedWords(resource, offset)
+                        : [.. Enumerable.Range(0, 4)
+                            .Select(word => Pack(Named($"raw{resource}[{offset + 4 * word}]"))[0])];
                     byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
                     return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
                 }

@@ -1284,6 +1284,13 @@ public sealed class NodeCompiler
                             : addressInputs);
                     var resource = (RegisterInputNode)components[0].Inputs[2];
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
+                    if (load.IsGroupShared)
+                    {
+                        // Raw groupshared memory: the element, not a Load, because
+                        // the declaration is an array. One load reads one element,
+                        // so there is no width or swizzle to take off it.
+                        return $"{_registers.GetRegisterName(resourceKey)}[{address}]";
+                    }
                     if (load.IsRaw)
                     {
                         // A raw buffer reads as many dwords as the highest component

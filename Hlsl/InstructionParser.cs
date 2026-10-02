@@ -427,6 +427,29 @@ public class InstructionParser
                         SeedResourceComponents(registerKey);
                         break;
                     }
+                case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
+                    {
+                        var registerKey = instruction.GetParamRegisterKey(0);
+                        // Raw shared memory declares a size in bytes and nothing
+                        // else - no stride, no count - because fxc gives this shape
+                        // to a groupshared scalar rather than an array. HLSL has no
+                        // way to say that but an array, so it is as many four byte
+                        // elements as the size holds.
+                        uint bytes = instruction.GetParamIndexImmediate32(1, 0);
+                        _registerState.DeclareThreadGroupSharedMemory(registerKey,
+                            sizeof(uint), bytes / sizeof(uint));
+                        // One access can name up to four dwords, and the operand
+                        // carries a component per dword whatever the element is a
+                        // single one. Seeding by the declared stride left anything
+                        // but the first unseeded, and a two component load went
+                        // looking for a component of the register that is not there.
+                        for (uint component = 0; component < Math.Min(bytes / sizeof(uint), 4); component++)
+                        {
+                            var sharedComponent = new RegisterComponentKey(registerKey, (int)component);
+                            SetActiveOutput(sharedComponent, new RegisterInputNode(sharedComponent));
+                        }
+                        break;
+                    }
                 case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
@@ -634,6 +657,24 @@ public class InstructionParser
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
                             .ToArray();
                         RecordStoredType(instruction, values);
+                        if (IsGroupSharedResource(instruction, 0))
+                        {
+                            // Each dword the store covers is an element of the array
+                            // groupshared memory is declared as, so one store of a
+                            // pair is two assignments rather than one of a pair.
+                            for (int value = 0; value < values.Length; value++)
+                            {
+                                InsertStatement(new StoreStructuredStatement(output,
+                                    GroupSharedElementOfByteAddress(
+                                        address, destinationKeys[value].ComponentIndex),
+                                    [values[value]], ActiveOutputs)
+                                {
+                                    IsRaw = true,
+                                    IsGroupShared = true,
+                                });
+                            }
+                            break;
+                        }
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs) { IsRaw = true });
                         break;
                     }
@@ -2844,6 +2885,31 @@ public class InstructionParser
                         case D3D10Opcode.LdRaw:
                             // ld_raw dst, byteOffset, t#: the offset stands where an
                             // element index would, and there is no offset within one.
+                            // Out of groupshared memory it is an array subscript
+                            // instead, because HLSL has no raw groupshared to Load.
+                            // The resource swizzle there says which dword after the
+                            // address this component reads, and each is an element
+                            // of its own - so the resource is read whole, at the one
+                            // component the declaration seeded, and the swizzle goes
+                            // into the subscript.
+                            if (IsGroupSharedResource(instruction, 2))
+                            {
+                                var sharedKey = instruction.GetParamRegisterKey(2);
+                                int dword = instruction.GetSourceSwizzleComponents(2)[componentIndex];
+                                return new LoadStructuredNode(
+                                    GroupSharedElementOfByteAddress(inputs[0], dword),
+                                    new ConstantNode(0),
+                                    GetActiveOutput(new RegisterComponentKey(sharedKey, 0)))
+                                {
+                                    // Raw memory holds bits whichever it is, so a
+                                    // reader wanting a float reinterprets rather
+                                    // than converts: left structured, the
+                                    // 1069547520 a 1.5f was stored as multiplied
+                                    // as itself.
+                                    IsRaw = true,
+                                    IsGroupShared = true,
+                                };
+                            }
                             return new LoadStructuredNode(inputs[0], new ConstantNode(0), inputs[1]) { IsRaw = true };
                         case D3D10Opcode.Log:
                             return new LogOperation(inputs[0]);
@@ -3300,6 +3366,40 @@ public class InstructionParser
     /// by the register those were in, and fxc reuses registers. A texture load into
     /// the r0 that had held a thread id came out as an int2, which truncates it.
     /// </summary>
+    /// <summary>
+    /// Whether a raw load or store reaches groupshared memory rather than a buffer.
+    /// A ByteAddressBuffer is something HLSL can say and a groupshared one is not,
+    /// so only the second has to be turned back into an array subscript.
+    /// </summary>
+    private static bool IsGroupSharedResource(D3D10Instruction instruction, int operandIndex)
+    {
+        return instruction.GetParamRegisterKey(operandIndex)
+            is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory };
+    }
+
+    /// <summary>
+    /// The element a raw groupshared access names, from the byte address it carries.
+    /// fxc gives a groupshared variable that is not an array this shape, and the
+    /// only way to declare one in HLSL is as an array of four byte elements, so the
+    /// element is the address over four - folded where the address is the literal
+    /// it almost always is, since the address of a variable's component is a
+    /// constant offset. One access can reach several dwords, and each of them is an
+    /// element of its own, so which one it is counts on top.
+    /// </summary>
+    private static HlslTreeNode GroupSharedElementOfByteAddress(HlslTreeNode byteAddress, int dword)
+    {
+        if (byteAddress is ConstantNode constant)
+        {
+            int bytes = constant.IntegerValue ?? (int)constant.Value;
+            if (bytes % 4 == 0)
+            {
+                return new ConstantNode(bytes / 4 + dword);
+            }
+        }
+        HlslTreeNode element = new ShiftRightOperation(byteAddress, new ConstantNode(2), isUnsigned: true);
+        return dword == 0 ? element : new AddOperation(element, new ConstantNode(dword));
+    }
+
     private static T ReadingFloats<T>(T node) where T : HlslTreeNode
     {
         node.ConsumesInteger ??= false;

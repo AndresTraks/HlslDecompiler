@@ -750,6 +750,13 @@ public class AsmWriter
                     instruction.HasOrderPreservingCounter ? "_opc" : "",
                     FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
+            case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
+                // Raw shared memory is declared by its size in bytes alone, where
+                // the structured form names a stride and a count: a groupshared
+                // scalar is what fxc gives this shape to.
+                WriteLine("dcl_tgsm_raw {0}, {1}", FormatOperand(instruction, 0),
+                    instruction.GetParamIndexImmediate32(1, 0));
+                break;
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                 WriteLine("dcl_tgsm_structured {0}, {1}, {2}", FormatOperand(instruction, 0),
                     instruction.GetThreadGroupSharedMemoryStride(), instruction.GetThreadGroupSharedMemoryCount());

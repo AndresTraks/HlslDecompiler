@@ -896,6 +896,34 @@ public sealed class IntegerOperandAnalysis
     /// the reflection data types. Integer only when some store says so and none
     /// says float.
     /// </summary>
+    /// <summary>
+    /// Whether the integers a groupshared array holds are unsigned, which only an
+    /// unsigned min or max over it can say. Nothing declares the type of groupshared
+    /// memory the way reflection data declares a buffer's element, so the writer
+    /// picks one - and for a min or a max the pick decides the answer. HLSL chooses
+    /// between the signed and the unsigned interlocked operation from the type it is
+    /// given, so an array fxc minimises with atomic_umin has to be declared uint or
+    /// the signed one is what comes back. Every other atomic is the same operation
+    /// either way: an add, an and, an or, an xor and an exchange do not read the
+    /// sign bit as a sign.
+    /// </summary>
+    public bool IsUnsignedThreadGroupSharedMemory(int register)
+    {
+        return _shader.Instructions.OfType<D3D10Instruction>().Any(instruction =>
+            instruction.Opcode is D3D10Opcode.AtomicUMin or D3D10Opcode.AtomicUMax
+                or D3D10Opcode.ImmAtomicUMin or D3D10Opcode.ImmAtomicUMax
+            && IsThreadGroupSharedAtomicOn(instruction, register));
+    }
+
+    // Which operand an atomic names its destination in: the imm_ forms keep the old
+    // value in a register of their own, in front of everything else.
+    private static bool IsThreadGroupSharedAtomicOn(D3D10Instruction instruction, int register)
+    {
+        int destination = instruction.Opcode.IsAtomic() ? 0 : 1;
+        return instruction.GetOperandType(destination) == OperandType.ThreadGroupSharedMemory
+            && instruction.GetParamRegisterNumber(destination) == register;
+    }
+
     public bool IsIntegerThreadGroupSharedMemory(int register)
     {
         const int ValueIndex = 3;

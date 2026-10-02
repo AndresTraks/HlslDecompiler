@@ -668,7 +668,14 @@ public abstract class HlslWriter
             {
                 throw new NotImplementedException($"groupshared element stride {stride}");
             }
-            string type = integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(register) ? "int" : "float";
+            // uint where an unsigned min or max reaches it: HLSL picks between the
+            // two interlocked forms from the type, so an array fxc minimises
+            // unsigned comes back minimised signed unless the declaration says so.
+            string type = integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(register)
+                ? integerOperandAnalysis.IsUnsignedThreadGroupSharedMemory(register)
+                    ? "uint"
+                    : "int"
+                : "float";
             int components = stride / sizeof(float);
             // Wider than one register, so the element is written as a struct of them:
             // a stride of twenty bytes is a four wide member and a scalar, which is

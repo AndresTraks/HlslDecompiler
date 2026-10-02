@@ -650,10 +650,18 @@ public sealed class NodeCompiler
     /// integer those bits make, and converting it would compare the depth rounded
     /// to a whole number instead.
     /// </summary>
-    public string CompileIntegerArgument(HlslTreeNode node)
+    public string CompileIntegerArgument(HlslTreeNode node, bool unsigned = false)
     {
         string compiled = Compile(node);
-        return IsFloatValued(node) ? $"asint({compiled})" : compiled;
+        if (!IsFloatValued(node))
+        {
+            return compiled;
+        }
+        // asuint where the destination is one, so that the reinterpretation and the
+        // thing it is handed to agree: asint into a uint compiles, with fxc warning
+        // X3203 about the mismatch and assuming unsigned, which is a warning the
+        // shader it came from never had.
+        return unsigned ? $"asuint({compiled})" : $"asint({compiled})";
     }
 
     // Whether a value is a float, from the value itself rather than from what reads

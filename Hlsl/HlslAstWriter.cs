@@ -762,11 +762,19 @@ public class HlslAstWriter : HlslWriter
             ? _compiler.CompileAsInteger([.. atomic.Coordinates.Select(Reduce)])
             : _compiler.Compile(Reduce(atomic.Address));
         // An interlocked operation works on integers, so a float reaching it is the
-        // bits it holds rather than the number they make.
-        string value = _compiler.CompileIntegerArgument(Reduce(atomic.Value));
+        // bits it holds rather than the number they make - as unsigned where the
+        // destination is, which for groupshared memory is what the unsigned minimum
+        // and maximum over it made the declaration say.
+        bool unsigned = resourceKey is D3D10RegisterKey
+            {
+                OperandType: OperandType.ThreadGroupSharedMemory
+            }
+            && CreateIntegerOperandAnalysis()
+                .IsUnsignedThreadGroupSharedMemory(resourceKey.Number);
+        string value = _compiler.CompileIntegerArgument(Reduce(atomic.Value), unsigned);
         string compare = atomic.Compare == null
             ? null
-            : _compiler.CompileIntegerArgument(Reduce(atomic.Compare));
+            : _compiler.CompileIntegerArgument(Reduce(atomic.Compare), unsigned);
 
         // The variable the old value goes into has to exist before the call takes
         // its address, and compiling it is what numbers it. Declared here rather

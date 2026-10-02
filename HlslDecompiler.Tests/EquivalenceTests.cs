@@ -39,15 +39,16 @@ public class EquivalenceTests
             + "buffer is not modelled.")],
         ["cs_5_0/tile_depth_bounds"] = [("instruction",
             "A depth written into groupshared memory as asuint and minimised there "
-            + "as the integer its bits make. The instruction writer has to say "
-            + "unsigned at the value for fxc to pick the unsigned interlocked "
-            + "operation, and says it with a cast - which converts the depth to the "
-            + "whole number nearest it, so every tile came out with bounds of zero. "
-            + "Reinterpreting instead needs the one thing that writer's register "
-            + "model cannot tell apart: a float register holding a number that "
-            + "happens to be integral, which a cast is right for, from one holding a "
-            + "float whose bits are wanted. The ast writer names the depth a float "
-            + "and reinterprets at the call, and agrees."),
+            + "as the integer its bits make. The instruction writer casts the value "
+            + "to unsigned, and a cast converts the depth to the whole number "
+            + "nearest it, so every tile comes out with bounds of zero. The cast is "
+            + "no longer what picks the unsigned interlocked operation - the uint the "
+            + "memory is declared as does that - so what is left is a choice between "
+            + "converting and reinterpreting, and that turns on the one thing this "
+            + "writer's register model does not record: whether a float register "
+            + "holds a number that happens to be integral, which a cast is right "
+            + "for, or a float whose bits are wanted. The ast writer names the depth "
+            + "a float and reinterprets at the call, and agrees."),
         ],
         ["ps_5_0/typed_view_load"] = [("instruction",
             "The texel coordinate, made by an ftoi of sv_position, and the buffer "

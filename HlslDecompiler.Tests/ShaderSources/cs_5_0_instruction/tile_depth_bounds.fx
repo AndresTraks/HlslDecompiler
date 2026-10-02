@@ -1,8 +1,8 @@
 Texture2D depth;
 RWStructuredBuffer<float> bounds : register(u0);
 
-groupshared int g0[1];
-groupshared int g1[1];
+groupshared uint g0[1];
+groupshared uint g1[1];
 
 struct CS_IN
 {

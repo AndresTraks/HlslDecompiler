@@ -211,6 +211,59 @@ public class HlslSimpleWriter : HlslWriter
                 && IsConsumeResource(instruction.GetParamRegisterKey(1)));
     }
 
+    /// <summary>
+    /// The constant a register component holds, where that is knowable: one
+    /// write in the whole program, and that write a mov of an immediate. A
+    /// structured atomic names its member by the byte offset beside the element
+    /// index in its address, and fxc puts that offset in a register as readily
+    /// as in an immediate - `mov r0.y, l(0)` beside `imm_atomic_cmp_exch r1.x,
+    /// u0, r0.xyxx, ..`, where the zero names the first member.
+    /// </summary>
+    private bool TryGetAddressOffsetConstant(
+        D3D10Instruction instruction, int addressIndex, out int byteOffset)
+    {
+        byteOffset = 0;
+        if (instruction.GetOperandType(addressIndex) != OperandType.Temp)
+        {
+            return false;
+        }
+        RegisterKey addressKey = instruction.GetParamRegisterKey(addressIndex);
+        int component = instruction.GetSourceSwizzleComponents(addressIndex)[1];
+        D3D10Instruction write = null;
+        foreach (Instruction candidate in _phaseShader.Instructions)
+        {
+            if (candidate is not D3D10Instruction d3d10)
+            {
+                return false;
+            }
+            foreach (int destination in GetDestinationParamIndices(d3d10))
+            {
+                if (!Equals(d3d10.GetParamRegisterKey(destination), addressKey)
+                    || (d3d10.GetWriteMask(destination) & (1 << component)) == 0)
+                {
+                    continue;
+                }
+                if (write != null)
+                {
+                    // Written twice: which of them this read sees is a
+                    // question a transcription cannot answer.
+                    return false;
+                }
+                write = d3d10;
+            }
+        }
+        if (write == null || write.Opcode != D3D10Opcode.Mov
+            || write.GetOperandType(1) != OperandType.Immediate32)
+        {
+            return false;
+        }
+        byteOffset = write.GetOperandComponentSelection(1)
+                == D3D10OperandNumComponents.Operand1Component
+            ? write.GetParamInt(1)
+            : write.GetParamInt(1, write.GetSourceSwizzleComponents(1)[component]);
+        return true;
+    }
+
     private int FindFloatWrittenComponents(RegisterKey registerKey)
     {
         int mask = 0;
@@ -2605,16 +2658,23 @@ public class HlslSimpleWriter : HlslWriter
                     string target = $"{resource}[{address}]";
                     // An element that is a struct takes the operation on one of its
                     // members, and which one is the byte offset beside the element
-                    // index in the address. Only where that address is an immediate:
-                    // where fxc works it out into a register, one statement per
-                    // instruction has no way to know what the register holds, and
-                    // the member cannot be named at all.
-                    if (instruction.GetOperandType(first + 1) == OperandType.Immediate32)
+                    // index in the address. Read off it where that address is an
+                    // immediate; where fxc works it into a register the register is
+                    // only as knowable as its writes, and one write of an immediate
+                    // is knowable enough. Named by neither, the call goes out with
+                    // no member at all and fxc answers X3013.
+                    int? memberOffset =
+                        instruction.GetOperandType(first + 1) == OperandType.Immediate32
+                            ? instruction.GetParamInt(first + 1, 1)
+                            : TryGetAddressOffsetConstant(instruction, first + 1, out int held)
+                                ? held
+                                : null;
+                    if (memberOffset != null)
                     {
                         IList<(string Name, int[] Values)> memberRuns =
                             _registers.FindStructuredMemberRuns(
                                 instruction.GetParamRegisterKey(first), target,
-                                instruction.GetParamInt(first + 1, 1), [0]);
+                                memberOffset.Value, [0]);
                         if (memberRuns != null && memberRuns.Count == 1)
                         {
                             target = memberRuns[0].Name;

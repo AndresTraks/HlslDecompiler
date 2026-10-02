@@ -338,6 +338,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "face_forward")]
     [TestCase("ps_5_0", "refraction")]
     [TestCase("cs_5_0", "atomic_old_values")]
+    [TestCase("cs_5_0", "atomic_struct_member")]
     [TestCase("cs_5_0", "atomic_compare_exchange")]
     [TestCase("cs_5_0", "typed_buffer_read")]
     [TestCase("cs_5_0", "append_buffer_size")]

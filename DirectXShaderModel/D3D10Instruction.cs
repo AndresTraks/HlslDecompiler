@@ -56,6 +56,12 @@ public class D3D10Instruction : Instruction
     // opcode token rather than in an operand, so the reader sets it.
     public bool TestNonZero { get; set; } = true;
 
+    // Whether a structured UAV keeps a counter whose order is preserved, which
+    // IncrementCounter and DecrementCounter need and an append or a consume
+    // buffer has of its own. In the opcode token of the declaration rather than
+    // in an operand, so the reader sets it; fxc writes the declaration _opc.
+    public bool HasOrderPreservingCounter { get; set; }
+
     // The texel offsets of sample_aoffimmi, or null when the sample has none.
     public int[] SampleOffsets { get; set; }
 

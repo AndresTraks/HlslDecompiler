@@ -314,18 +314,18 @@ public class AsmWriter
                 {
                     if (instruction.TexldControls.HasFlag(TexldControls.Project))
                     {
-                        WriteLine("texldp {0}, {1}, {2}", GetDestinationName(instruction),
+                        WriteLine("texldp{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                             GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                     }
                     else if (instruction.TexldControls.HasFlag(TexldControls.Bias))
                     {
-                        WriteLine("texldb {0}, {1}, {2}", GetDestinationName(instruction),
+                        WriteLine("texldb{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                             GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                     }
                     else
                     {
                         int texldSamplerDimension = _samplerDimensions[instruction.GetParamRegisterKey(2)];
-                        WriteLine("texld {0}, {1}, {2}", GetDestinationName(instruction),
+                        WriteLine("texld{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                             GetSourceName(instruction, 1, texldSamplerDimension), GetSourceName(instruction, 2));
                     }
                 }
@@ -335,7 +335,7 @@ public class AsmWriter
                 }
                 break;
             case Opcode.TexLDL:
-                WriteLine("texldl {0}, {1}, {2}", GetDestinationName(instruction),
+                WriteLine("texldl{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1, 4), GetSourceName(instruction, 2));
                 break;
             case Opcode.TexLDD:
@@ -556,7 +556,9 @@ public class AsmWriter
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
                 break;
             case D3D10Opcode.DclUnorderedAccessViewStructured:
-                WriteLine("dcl_uav_structured {0}, {1}", FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
+                WriteLine("dcl_uav_structured{0} {1}, {2}",
+                    instruction.HasOrderPreservingCounter ? "_opc" : "",
+                    FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
                 WriteLine("dcl_tgsm_structured {0}, {1}, {2}", FormatOperand(instruction, 0),

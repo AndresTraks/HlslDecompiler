@@ -399,6 +399,14 @@ public class DxbcReader : BinaryReader
         instruction.IndexableResourceDimension = indexableDimension;
         instruction.IndexableResourceStride = indexableStride;
         instruction.IndexableResourceReturnTypeToken = indexableReturnTypes;
+        if (opcode == D3D10Opcode.DclUnorderedAccessViewStructured
+            || opcode == D3D10Opcode.DclUnorderedAccessViewRaw)
+        {
+            // Bit 23 of the declaration's opcode token. Read off the bytecode
+            // rather than the documentation: cs_5_0/buffer_counter declares three
+            // structured UAVs, the two it counts carry it and the third does not.
+            instruction.HasOrderPreservingCounter = (opcodeToken & 0x800000) != 0;
+        }
         if (opcode.HasBooleanTest())
         {
             instruction.TestNonZero = (opcodeToken & 0x40000) != 0;

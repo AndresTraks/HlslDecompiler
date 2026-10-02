@@ -1,7 +1,7 @@
 cs_5_0
 dcl_globalFlags refactoringAllowed
-dcl_uav_structured u0, 16
-dcl_uav_structured u1, 16
+dcl_uav_structured_opc u0, 16
+dcl_uav_structured_opc u1, 16
 dcl_uav_structured u2, 16
 dcl_input vThreadID.x
 dcl_temps 2

@@ -11,9 +11,9 @@ mad o0.xyz, c2.xyz, v0.zzz, r1.xyz
 mul r1.xyz, c1.xyz, v0.xxx
 mad r1.xyz, c0.xyz, v0.yyy, r1.xyz
 mad o1.xyz, c2.xyz, v0.zzz, r1.xyz
-mul r1.xyz, c1.xyz, v0.xxx_abs
-mad r1.xyz, c0.xyz, v0.yyy_abs, r1.xyz
-mad o2.xyz, c2.xyz, v0.zzz_abs, r1.xyz
+mul r1.xyz, c1.xyz, v0_abs.xxx
+mad r1.xyz, c0.xyz, v0_abs.yyy, r1.xyz
+mad o2.xyz, c2.xyz, v0_abs.zzz, r1.xyz
 add r0.w, v0.x, v0.x
 mad r0.xyz, c0.xyz, r0.www, r0.xyz
 mul r0.w, c3.x, v0.z

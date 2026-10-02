@@ -19,7 +19,7 @@ cmp r3, r3, -c1.y, -c1.w
 add r3, r3, r4
 mad r2, r2, r3, r1
 mul r0.w, r0.y, r2.x
-frc r3.x, r0.w_abs
+frc r3.x, r0_abs.w
 cmp r0.w, r0.w, r3.x, -r3.x
 mad r0.w, r0.w, -c0.w, c0.z
 max r3, r2, -c0

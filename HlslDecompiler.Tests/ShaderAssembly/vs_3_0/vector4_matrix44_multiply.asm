@@ -15,10 +15,10 @@ dp4 o1.x, v0.yxzw, c0
 dp4 o1.y, v0.yxzw, c1
 dp4 o1.z, v0.yxzw, c2
 dp4 o1.w, v0.yxzw, c3
-dp4 o2.x, v0.yxzw_abs, c0
-dp4 o2.y, v0.yxzw_abs, c1
-dp4 o2.z, v0.yxzw_abs, c2
-dp4 o2.w, v0.yxzw_abs, c3
+dp4 o2.x, v0_abs.yxzw, c0
+dp4 o2.y, v0_abs.yxzw, c1
+dp4 o2.z, v0_abs.yxzw, c2
+dp4 o2.w, v0_abs.yxzw, c3
 mul r0, c4, v0
 dp4 o3.x, r0, c0
 dp4 o3.y, r0, c1

@@ -30,10 +30,10 @@ mov r0, c11.zzzw
 rep i0
 add r4, r0.w, c12
 mov r2.w, c11.w
-cmp r5.xyz, -r4.xxx_abs, c0.xyz, r2.www
-cmp r5.xyz, -r4.yyy_abs, c1.xyz, r5.xyz
-cmp r5.xyz, -r4.zzz_abs, c2.xyz, r5.xyz
-cmp r5.xyz, -r4.www_abs, c3.xyz, r5.xyz
+cmp r5.xyz, -r4_abs.xxx, c0.xyz, r2.www
+cmp r5.xyz, -r4_abs.yyy, c1.xyz, r5.xyz
+cmp r5.xyz, -r4_abs.zzz, c2.xyz, r5.xyz
+cmp r5.xyz, -r4_abs.www, c3.xyz, r5.xyz
 add r5.xyz, r5.xyz, -v0.xyz
 dp3 r3.w, r5.xyz, r5.xyz
 rsq r5.w, r3.w
@@ -43,10 +43,10 @@ mad r5.xyz, r5.xyz, r5.www, r3.xyz
 nrm r7.xyz, r5.xyz
 dp3_sat r5.x, r2.xyz, r7.xyz
 pow r6.y, r5.x, c9.x
-cmp r5.xyz, -r4.xxx_abs, c4.xyz, r2.www
-cmp r5.xyz, -r4.yyy_abs, c5.xyz, r5.xyz
-cmp r4.xyz, -r4.zzz_abs, c6.xyz, r5.xyz
-cmp r4.xyz, -r4.www_abs, c7.xyz, r4.xyz
+cmp r5.xyz, -r4_abs.xxx, c4.xyz, r2.www
+cmp r5.xyz, -r4_abs.yyy, c5.xyz, r5.xyz
+cmp r4.xyz, -r4_abs.zzz, c6.xyz, r5.xyz
+cmp r4.xyz, -r4_abs.www, c7.xyz, r4.xyz
 add r2.w, r6.y, r6.x
 mul r4.xyz, r2.www, r4.xyz
 add r2.w, r3.w, -c11.y

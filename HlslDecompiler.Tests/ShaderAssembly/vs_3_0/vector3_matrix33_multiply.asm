@@ -11,9 +11,9 @@ dp3 o0.z, v0.xyz, c2.xyz
 dp3 o1.x, v0.yxz, c0.xyz
 dp3 o1.y, v0.yxz, c1.xyz
 dp3 o1.z, v0.yxz, c2.xyz
-dp3 o2.x, v0.yxz_abs, c0.xyz
-dp3 o2.y, v0.yxz_abs, c1.xyz
-dp3 o2.z, v0.yxz_abs, c2.xyz
+dp3 o2.x, v0_abs.yxz, c0.xyz
+dp3 o2.y, v0_abs.yxz, c1.xyz
+dp3 o2.z, v0_abs.yxz, c2.xyz
 mul r0.xyz, c3.xyz, v0.yxz
 dp3 o3.x, r0.xyz, c0.xyz
 dp3 o3.y, r0.xyz, c1.xyz

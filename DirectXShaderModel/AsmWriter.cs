@@ -67,9 +67,13 @@ public class AsmWriter
 
     private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
     {
-        string sourceName = GetParamRegisterName(instruction, srcIndex);
+        // The modifier belongs to the register and the swizzle selects out of what
+        // the modifier produced, so fxc writes -v0_abs.z: the sign in front of the
+        // whole operand, _abs against the register, the swizzle last. Applying the
+        // modifier to the swizzled name instead spells it v0.z_abs.
+        string sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex),
+            GetParamRegisterName(instruction, srcIndex));
         sourceName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
-        sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceName);
         return sourceName;
     }
 

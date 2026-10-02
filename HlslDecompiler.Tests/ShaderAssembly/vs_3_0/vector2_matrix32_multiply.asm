@@ -7,9 +7,9 @@ mul r0, c0.xyxy, v0.xyyx
 add o0.xz, r0.yw, r0.xz
 mul r0, c1.xyxy, v0.xyyx
 add o0.yw, r0.yw, r0.xz
-mul r0.xy, c0.xy, v0.yx_abs
+mul r0.xy, c0.xy, v0_abs.yx
 add o1.x, r0.y, r0.x
-mul r0.xy, c1.xy, v0.yx_abs
+mul r0.xy, c1.xy, v0_abs.yx
 add o1.y, r0.y, r0.x
 add r0.xy, v0.xy, v0.xy
 mul r0.zw, r0.xy, c0.xy

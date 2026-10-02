@@ -15,10 +15,10 @@ mul r0, c1, v0.x
 mad r0, c0, v0.y, r0
 mad r0, c2, v0.z, r0
 mad o1, c3, v0.w, r0
-mul r0, c1, v0.x_abs
-mad r0, c0, v0.y_abs, r0
-mad r0, c2, v0.z_abs, r0
-mad o2, c3, v0.w_abs, r0
+mul r0, c1, v0_abs.x
+mad r0, c0, v0_abs.y, r0
+mad r0, c2, v0_abs.z, r0
+mad o2, c3, v0_abs.w, r0
 mul r0, c4, v0
 mul r1, r0.y, c1
 mad r1, c0, r0.x, r1

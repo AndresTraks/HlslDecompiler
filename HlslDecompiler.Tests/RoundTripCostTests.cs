@@ -183,6 +183,23 @@ public class RoundTripCostTests
             + "from source higher level than the bytecode, not the decompilation "
             + "doing work twice - both writers compute the same numbers as the "
             + "original on every trial."),
+        // Instructions fxc has no spelling for, so a round trip cannot keep their
+        // count: the shaders were assembled by hand, and what comes back is what
+        // fxc writes instead of them.
+        ["vs_3_0/matrix_product"] = (8,
+            "Five instructions, and they are the rows of two matrix products. The "
+            + "original computes a four by four and a three by three in one "
+            + "instruction each; fxc compiles a matrix product into a mul and a mad "
+            + "per row and emits neither m4x4 nor m3x3 at any profile, so the four "
+            + "rows of one and the three of the other are seven instructions where "
+            + "the bytecode had two. Both writers compute the same numbers as the "
+            + "original."),
+        ["vs_3_0/cross_product_sign"] = (7,
+            "Four instructions, and they are a cross product and a sign. fxc writes "
+            + "cross() as a mul and a mad over rotated components, which costs one "
+            + "more than crs and a mov to hold the operand it rotates, and sign() "
+            + "as the difference of two slt comparisons against the negated value, "
+            + "which costs two more than sgn. Neither instruction is one fxc emits."),
     };
 
     // Its own names. Taking RecompileTests.Shaders() as it stands reports these as

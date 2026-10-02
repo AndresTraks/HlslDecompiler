@@ -1150,6 +1150,12 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
                 break;
+            case Opcode.Crs:
+                // A cross product reads three components to write any one of them, and
+                // writes the three the destination mask covers, the way nrm does.
+                WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                    $"cross({GetSourceName(instruction, 1, 3)}, {GetSourceName(instruction, 2, 3)})");
+                break;
             case Opcode.DP2Add:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     // The two vectors are two components wide whatever is written; the
@@ -1263,6 +1269,31 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"{GetSourceName(instruction, 1)} * {GetSourceName(instruction, 2)} + {GetSourceName(instruction, 3)}");
                 break;
+            case Opcode.M3x2:
+            case Opcode.M3x3:
+            case Opcode.M3x4:
+            case Opcode.M4x3:
+            case Opcode.M4x4:
+                {
+                    // A dot product per row against consecutive registers, the matrix
+                    // operand naming the first of them. The first number in the
+                    // mnemonic is how wide the vector and each row are, the second how
+                    // many rows there are - and the rows are the components written,
+                    // so neither operand is as wide as the destination mask.
+                    int columns = instruction.Opcode is Opcode.M4x3 or Opcode.M4x4 ? 4 : 3;
+                    int rows = instruction.Opcode switch
+                    {
+                        Opcode.M3x2 => 2,
+                        Opcode.M3x3 or Opcode.M4x3 => 3,
+                        _ => 4,
+                    };
+                    string vector = GetSourceName(instruction, 1, columns);
+                    var products = Enumerable.Range(0, rows).Select(
+                        row => $"dot({vector}, {GetSourceName(instruction, 2, columns, row)})");
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"float{rows}({string.Join(", ", products)})");
+                    break;
+                }
             case Opcode.Max:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"max({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
@@ -1316,6 +1347,12 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.Sge:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"({GetSourceName(instruction, 1)} >= {GetSourceName(instruction, 2)}) ? 1 : 0");
+                break;
+            case Opcode.Sgn:
+                // The two registers after the value are scratch space the hardware
+                // wanted and nothing reads, so they are no part of the result.
+                WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                    $"sign({GetSourceName(instruction, 1)})");
                 break;
             case Opcode.Slt:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -2832,11 +2869,18 @@ public class HlslSimpleWriter : HlslWriter
         return string.Format("{0}{1}", registerName, writeMaskName);
     }
 
-    private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+    // rowOffset reads a register after the one the operand names, which is
+    // how a matrix product names its rows: the operand is the first of them.
+    private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null,
+        int rowOffset = 0)
     {
         string sourceRegisterName;
 
         var registerKey = instruction.GetParamRegisterKey(srcIndex);
+        if (rowOffset != 0)
+        {
+            registerKey = new D3D9RegisterKey(registerKey.Type, registerKey.Number + rowOffset);
+        }
         switch (registerKey.Type)
         {
             case RegisterType.Const:
@@ -2849,7 +2893,7 @@ public class HlslSimpleWriter : HlslWriter
                 // being read - substituting its literal drops the subscript.
                 if (!instruction.Params.HasRelativeAddressing(srcIndex))
                 {
-                    string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength);
+                    string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength, rowOffset);
                     if (constantValue != null)
                     {
                         return constantValue;
@@ -3190,10 +3234,11 @@ public class HlslSimpleWriter : HlslWriter
         return string.Empty;
     }
 
-    private string GetSourceConstantValue(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
+    private string GetSourceConstantValue(D3D9Instruction instruction, int srcIndex, int? destinationLength = null,
+        int rowOffset = 0)
     {
         var registerType = instruction.GetParamRegisterType(srcIndex);
-        int registerNumber = instruction.GetParamRegisterNumber(srcIndex);
+        int registerNumber = instruction.GetParamRegisterNumber(srcIndex) + rowOffset;
         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
 
         // Which entries of the swizzle are read depends on which components are

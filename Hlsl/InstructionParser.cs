@@ -2367,6 +2367,19 @@ public class InstructionParser
             case Opcode.Dp3:
             case Opcode.Dp4:
                 return CreateDotProductNode(instruction);
+            case Opcode.M3x2:
+            case Opcode.M3x3:
+            case Opcode.M3x4:
+            case Opcode.M4x3:
+            case Opcode.M4x4:
+                return CreateMatrixProductNode(instruction, componentIndex);
+            case Opcode.Crs:
+                return CreateCrossProductNode(instruction, componentIndex);
+            case Opcode.Sgn:
+                // The two registers after the value are scratch space the hardware
+                // wanted and nothing reads, so they are not operands of the result.
+                return ReadingFloats(new SignOperation(
+                    GetInputComponents(instruction, 1, componentIndex + 1)[componentIndex]));
             case Opcode.Nrm:
                 return CreateNormalizeOutputNode(instruction, componentIndex);
             case Opcode.Dst:
@@ -3308,6 +3321,51 @@ public class InstructionParser
 
         return addends.Aggregate((addition, addend) =>
             ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    // A matrix product is a dot product per row against consecutive registers:
+    // m4x4 o0, v0, c0 is the dot of v0 with c0 for o0.x, with c1 for o0.y, and so
+    // on, which is the same tree fxc builds out of the dp4s it writes instead. The
+    // first number in the mnemonic is how wide the vector and each row are; the
+    // second is how many rows there are, and the row is the component being
+    // written. The matrix operand names the first register and is read without its
+    // swizzle, the way the interpreter reads it.
+    private HlslTreeNode CreateMatrixProductNode(D3D9Instruction instruction, int row)
+    {
+        int columns = instruction.Opcode is Opcode.M4x3 or Opcode.M4x4 ? 4 : 3;
+        var baseKey = (D3D9RegisterKey)instruction.GetParamRegisterKey(2);
+        var rowKey = new D3D9RegisterKey(baseKey.Type, baseKey.Number + row);
+        SourceModifier matrixModifier = instruction.GetSourceModifier(2);
+
+        HlslTreeNode[] vector = GetInputComponents(instruction, 1, columns);
+        var addends = new List<HlslTreeNode>();
+        for (int component = 0; component < columns; component++)
+        {
+            HlslTreeNode matrix = ApplyModifier(
+                GetActiveOutput(new RegisterComponentKey(rowKey, component)), matrixModifier);
+            addends.Add(ReadingFloats(new MultiplyOperation(vector[component], matrix)));
+        }
+
+        return addends.Aggregate((addition, addend) =>
+            ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    // Each component of a cross product is a difference of two products of the
+    // other two components, and crs writes nothing into the fourth.
+    private HlslTreeNode CreateCrossProductNode(D3D9Instruction instruction, int componentIndex)
+    {
+        if (componentIndex >= 3)
+        {
+            return new ConstantNode(0);
+        }
+
+        int next = (componentIndex + 1) % 3;
+        int after = (componentIndex + 2) % 3;
+        HlslTreeNode[] a = GetInputComponents(instruction, 1, 3);
+        HlslTreeNode[] b = GetInputComponents(instruction, 2, 3);
+        return ReadingFloats(new SubtractOperation(
+            ReadingFloats(new MultiplyOperation(a[next], b[after])),
+            ReadingFloats(new MultiplyOperation(a[after], b[next]))));
     }
 
     private HlslTreeNode CreateDotProductNode(D3D10Instruction instruction)

@@ -24,19 +24,42 @@ public class SignTemplate : NodeTemplate<SubtractOperation>
 
     public override HlslTreeNode Reduce(SubtractOperation node)
     {
-        return new SignOperation(TryGetValue(node));
+        (HlslTreeNode value, bool negated) = TryGetValue(node).Value;
+        var sign = new SignOperation(value);
+        return negated ? new NegateOperation(sign) : (HlslTreeNode)sign;
     }
 
-    private static HlslTreeNode TryGetValue(SubtractOperation subtract)
+    /// <summary>
+    /// What the sign is of, and whether the masks are the other way round. The
+    /// difference the other way is -sign of the same value: a shader that negates
+    /// the sign at the use - `-sign(octa) * abs(octa.yx)`, folding an octahedral
+    /// normal back - leaves fxc nothing to negate but the order of the two
+    /// comparisons, and the subtraction that comes out is the expansion reversed
+    /// rather than any expansion of its own.
+    /// </summary>
+    private static (HlslTreeNode Value, bool Negated)? TryGetValue(SubtractOperation subtract)
     {
         HlslTreeNode negative = TryGetComparisonWithZero(subtract.Minuend, IfComparison.LT);
-        if (negative == null)
+        if (negative != null)
         {
-            return TryGetSignLessValue(subtract);
+            HlslTreeNode positive = TryGetComparisonWithZero(subtract.Subtrahend, IfComparison.GT);
+            return positive != null && ReferenceEquals(negative, positive)
+                ? (negative, false)
+                : null;
         }
 
-        HlslTreeNode positive = TryGetComparisonWithZero(subtract.Subtrahend, IfComparison.GT);
-        return positive != null && ReferenceEquals(negative, positive) ? negative : null;
+        HlslTreeNode reversedPositive = TryGetComparisonWithZero(subtract.Minuend, IfComparison.GT);
+        if (reversedPositive != null)
+        {
+            HlslTreeNode reversedNegative = TryGetComparisonWithZero(
+                subtract.Subtrahend, IfComparison.LT);
+            return reversedNegative != null && ReferenceEquals(reversedPositive, reversedNegative)
+                ? (reversedPositive, true)
+                : null;
+        }
+
+        HlslTreeNode signLess = TryGetSignLessValue(subtract);
+        return signLess == null ? null : (signLess, false);
     }
 
     // slt(-t, t) is t > 0 and slt(t, -t) is t < 0, each as 1 or 0.

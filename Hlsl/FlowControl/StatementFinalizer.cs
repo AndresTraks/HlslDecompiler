@@ -507,7 +507,7 @@ public class StatementFinalizer
     /// brace. The first branch to assign a register owns the variable, the others are
     /// rewired onto it, and every branch assignment is therefore a reassignment.
     /// </summary>
-    private static void UnifyBranchVariables(IfStatement ifStatement)
+    private void UnifyBranchVariables(IfStatement ifStatement)
     {
         var variableByRegister = new Dictionary<RegisterComponentKey, TempVariableNode>();
 
@@ -544,6 +544,13 @@ public class StatementFinalizer
                     if (!ReferenceEquals(branchVariable, variable))
                     {
                         branchVariable.Replace(variable);
+                        // And wherever a statement holds the variable rather than
+                        // reading it through the graph: a branch that stores what it
+                        // just computed holds that value as the store's own, and
+                        // Replace reaches nothing there. Left behind, the store asked
+                        // for the variable this branch has just given up - a name
+                        // nothing declares any more.
+                        ReplaceInStatementNodes(branchVariable, variable);
                         if (assignment != null)
                         {
                             assignment.TempVariable = variable;
@@ -569,7 +576,7 @@ public class StatementFinalizer
     /// two branches of an if/else do. The first case to assign it owns the variable;
     /// the rest reassign it, and the switch carries it out.
     /// </summary>
-    private static void UnifyCaseVariables(SwitchStatement switchStatement)
+    private void UnifyCaseVariables(SwitchStatement switchStatement)
     {
         var variableByRegister = new Dictionary<RegisterComponentKey, TempVariableNode>();
 
@@ -669,7 +676,7 @@ public class StatementFinalizer
     /// at another, for a case that carries its result out of a nested statement while
     /// an earlier case already owns the variable the switch will carry.
     /// </summary>
-    private static void Reassign(
+    private void Reassign(
         IList<IStatement> body, TempVariableNode from, TempVariableNode to)
     {
         if (ReferenceEquals(from, to))
@@ -683,6 +690,11 @@ public class StatementFinalizer
         // the variable this pass has just stopped anything from declaring, and the
         // writer numbered that name for itself on the way past.
         from.Replace(to);
+        // And the reads that are not graph edges at all - the value or the address
+        // of a store the case makes. A store of the variable the case carries went
+        // the same way for the same reason: `output[t1] = t1` of a name nothing
+        // declares, where the case had just been put onto a variable of its own.
+        ReplaceInStatementNodes(from, to);
 
         new StatementVisitor(body).Visit(statement =>
         {
@@ -821,7 +833,12 @@ public class StatementFinalizer
     /// <summary>
     /// Rewrites every reference to one temp variable so it uses another, across the
     /// graph and across every statement. <see cref="TempAssignmentNode.TempVariable"/>
-    /// is a property rather than a graph input, so it needs its own pass.
+    /// is a property rather than a graph input, so it needs its own pass, and so do
+    /// the nodes a statement holds beside its maps - the value and address of a
+    /// store, the values of an append or a clip. Those are not edges in the graph,
+    /// so Replace never reaches them: a store left holding the variable this one
+    /// supersedes asked for a name nothing ever declares, which is what a loop whose
+    /// body stores the counter after a `continue` came out as.
     /// </summary>
     private void ReplaceTempVariable(TempVariableNode from, TempVariableNode to)
     {
@@ -831,6 +848,7 @@ public class StatementFinalizer
         }
 
         from.Replace(to);
+        ReplaceInStatementNodes(from, to);
 
         new StatementVisitor(_statements).Visit(statement =>
         {

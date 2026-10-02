@@ -350,6 +350,9 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "gather_cmp_variants")]
     [TestCase("ps_4_0", "vector_subscript")]
     [TestCase("ps_4_0", "float_modulo_complement")]
+    [TestCase("cs_5_0", "stored_loop_counter")]
+    [TestCase("cs_5_0", "branch_stored_index")]
+    [TestCase("cs_5_0", "switch_stored_index")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

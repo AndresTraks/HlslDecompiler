@@ -54,7 +54,11 @@ public class AsmWriter
         OperandType operandType = instruction.GetOperandType(instruction.GetDestinationParamIndex().Value);
         if (operandType is OperandType.OutputDepth
             or OperandType.OutputCoverageMask
-            or OperandType.InputCoverageMask)
+            or OperandType.InputCoverageMask
+            // One number each, so the one component they carry is the whole
+            // of them and fxc writes the declaration bare.
+            or OperandType.OutputStencilRef
+            or OperandType.InputInnerCoverage)
         {
             return 1;
         }
@@ -1561,6 +1565,9 @@ public class AsmWriter
             // The coverage read back in, which fxc writes vCoverage - bare in its
             // dcl, and .x where it is read.
             OperandType.InputCoverageMask => "vCoverage",
+            // Written bare in their dcl the same way.
+            OperandType.OutputStencilRef => "oStencilRef",
+            OperandType.InputInnerCoverage => "vInnerCoverage",
             OperandType.Null => "null",
             // The render target rather than a resource: what sampleinfo and
             // samplepos read when the shader asked about where it is drawing. It

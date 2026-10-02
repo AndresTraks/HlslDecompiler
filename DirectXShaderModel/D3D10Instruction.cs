@@ -644,6 +644,8 @@ public class D3D10Instruction : Instruction
             return IsThreadRegister(operandType)
                 || operandType == OperandType.OutputCoverageMask
                 || operandType == OperandType.InputCoverageMask
+                || operandType == OperandType.OutputStencilRef
+                || operandType == OperandType.InputInnerCoverage
                 // And so is the control point id a hull shader's control point phase
                 // is given: `dcl_input vOutputControlPointID` declares one number,
                 // and with no component the declaration seeded no value for it, so
@@ -917,6 +919,11 @@ public class D3D10Instruction : Instruction
             // independent pass wants to weight a fragment by it. Same name as the
             // mask written out, and - like it - it names no register to index.
             OperandType.InputCoverageMask => "SV_Coverage",
+            // The stencil reference the pixel writes, and whether the
+            // rasterizer covered the whole pixel rather than part of it.
+            // Both name one number and no register to index.
+            OperandType.OutputStencilRef => "SV_StencilRef",
+            OperandType.InputInnerCoverage => "SV_InnerCoverage",
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
@@ -932,7 +939,9 @@ public class D3D10Instruction : Instruction
             && operandType != OperandType.OutputDepthGreaterEqual
             && operandType != OperandType.OutputDepthLessEqual
             && operandType != OperandType.OutputCoverageMask
-            && operandType != OperandType.InputCoverageMask)
+            && operandType != OperandType.InputCoverageMask
+            && operandType != OperandType.OutputStencilRef
+            && operandType != OperandType.InputInnerCoverage)
         {
             int numberIndex = (_inputsAreVertexArrays && operandType == OperandType.Input)
                 || operandType == OperandType.InputControlPoint ? 2 : 1;

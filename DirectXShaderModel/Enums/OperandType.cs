@@ -42,5 +42,10 @@ public enum OperandType
     InputGSInstanceID,
     OutputDepthGreaterEqual,
     OutputDepthLessEqual,
-    CycleCounter
+    CycleCounter,
+    // The stencil reference a pixel shader writes out, and the rasterizer's
+    // answer to whether it covered the whole pixel. Both name one number and
+    // no register, the way the coverage mask above does.
+    OutputStencilRef,
+    InputInnerCoverage
 }

@@ -69,7 +69,11 @@ public class D3D10RegisterKey : RegisterKey
         OperandType == OperandType.OutputDepth ||
         OperandType == OperandType.OutputDepthGreaterEqual ||
         OperandType == OperandType.OutputDepthLessEqual ||
-        OperandType == OperandType.OutputCoverageMask;
+        OperandType == OperandType.OutputCoverageMask ||
+        // And so is the stencil reference - left out, the ftou that writes
+        // it went missing and fxc answered X4580 for a system value no path
+        // assigned.
+        OperandType == OperandType.OutputStencilRef;
     public bool IsConstant =>
         OperandType == OperandType.ConstantBuffer ||
         OperandType == OperandType.Immediate32 ||

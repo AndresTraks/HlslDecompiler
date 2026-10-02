@@ -49,6 +49,8 @@ public class D3D10Machine
     private readonly List<KeyValuePair<string, uint[]>> _stored = [];
     private bool _wroteDepth;
     private bool _wroteCoverage;
+    private readonly uint[] _stencilRef = new uint[4];
+    private bool _wroteStencilRef;
 
     /// <summary>Set by discard: the pixel is thrown away, whatever was written.</summary>
     public bool Discarded { get; private set; }
@@ -135,6 +137,11 @@ public class D3D10Machine
         if (machine._wroteCoverage)
         {
             results["COVERAGE"] = [.. machine._coverage.Select(bits => (float)bits)];
+        }
+        // And the stencil reference as the number it is, for the same reason.
+        if (machine._wroteStencilRef)
+        {
+            results["STENCILREF"] = [.. machine._stencilRef.Select(bits => (float)bits)];
         }
         foreach (var entry in machine._emitted.Concat(machine._stored))
         {
@@ -1774,6 +1781,11 @@ public class D3D10Machine
                 // same one for a given trial, which is what lets the original and its
                 // recompilation agree on it. A sample mask reaches a few bits at most.
                 return [.. Named("COVERAGEINPUT").Select(v => (uint)Math.Abs(v * 4) % 16)];
+            case OperandType.InputInnerCoverage:
+                // Whether the rasterizer covered the whole pixel rather than
+                // part of it: one bit, and a value of its own for the same
+                // reason the mask above has one.
+                return [.. Named("INNERCOVERAGE").Select(v => (uint)Math.Abs(v * 4) % 2)];
             // Which run of an instanced hull phase this is. The phase was unrolled
             // into a copy of its body per run before it reached here, so each copy
             // reads its own run's number - the same number the decompilation wrote
@@ -1877,6 +1889,10 @@ public class D3D10Machine
             case OperandType.OutputCoverageMask:
                 destination = _coverage;
                 _wroteCoverage = true;
+                break;
+            case OperandType.OutputStencilRef:
+                destination = _stencilRef;
+                _wroteStencilRef = true;
                 break;
             case OperandType.Null:
                 return;

@@ -155,6 +155,8 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "gather_offset")]
     [TestCase("ps_5_0", "derivative_precision")]
     [TestCase("ps_5_0", "coverage_input")]
+    [TestCase("ps_5_0", "inner_coverage")]
+    [TestCase("ps_5_0", "stencil_ref")]
     [TestCase("ps_5_0", "typed_view_load")]
     [TestCase("ps_5_0", "load_two_addresses")]
     [TestCase("ps_5_0", "packed_input_cross")]

@@ -1624,6 +1624,9 @@ public sealed class RegisterState
                 // Read the way the thread ids are: a named register, in the input
                 // struct beside the others once there is more than one.
                 case OperandType.InputCoverageMask:
+                // And the rasterizer's answer to whether it covered the whole
+                // pixel, read the same way.
+                case OperandType.InputInnerCoverage:
                     {
                         // In the input structure with every other input once there
                         // is more than one of them.
@@ -2386,6 +2389,9 @@ public sealed class RegisterState
                         // The coverage the rasterizer handed this pixel: read per
                         // pixel, so a parameter of main like the thread ids.
                         case OperandType.InputCoverageMask:
+                        // Whether the rasterizer covered the whole pixel, read
+                        // per pixel the same way.
+                        case OperandType.InputInnerCoverage:
                         // Which control point this run computes, which is a
                         // parameter of main beside the patch.
                         case OperandType.OutputControlPointID:
@@ -2414,6 +2420,8 @@ public sealed class RegisterState
                         case OperandType.OutputDepthLessEqual:
                         // And a coverage mask names none either.
                         case OperandType.OutputCoverageMask:
+                        // Nor does the stencil reference it writes out.
+                        case OperandType.OutputStencilRef:
                             MethodOutputRegisters.Add(registerDeclaration);
                             break;
                     }
@@ -2645,6 +2653,8 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
             || registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputCoverageMask
+            || registerKey.OperandType == OperandType.OutputStencilRef
+            || registerKey.OperandType == OperandType.InputInnerCoverage
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID
             || registerKey.OperandType == OperandType.InputGSInstanceID
@@ -2663,6 +2673,10 @@ public sealed class RegisterState
         int componentType =
             registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputCoverageMask
+            // A stencil reference and an inner coverage are uints too, and
+            // keyed to no register in the signature for the same reason.
+            || registerKey.OperandType == OperandType.OutputStencilRef
+            || registerKey.OperandType == OperandType.InputInnerCoverage
             || registerKey.OperandType == OperandType.OutputControlPointID
             ? UInt32ComponentType : 0;
         return new RegisterDeclaration(registerKey, instruction.GetDeclSemantic(), writeMask)

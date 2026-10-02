@@ -347,7 +347,12 @@ public sealed class RegisterState
 
     public bool? IsIntegerStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
-        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
+        // An append or a consume buffer binds as a kind of its own, which
+        // FindStructuredBuffer does not look among - it answers the kinds whose
+        // members get named. The element type is the same question for all of them,
+        // so the wider lookup answers it where the narrower one finds nothing.
+        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType
+            ?? GetBufferDefinition(resourceKey)?.ElementType;
         if (elementType == null)
         {
             return null;

@@ -1449,6 +1449,15 @@ public class StatementFinalizer
         // A constant is never the source of bits: its own typing is settled when
         // it is made, and the fold that wrote `x + x` as `2 * x` must not see its
         // 2 read as the denormal its bits are.
+        // Not a typed load of an integer texel. That one is reinterpreted where it
+        // is compiled, off the view's return type, so answering yes here as well
+        // put an asfloat around an asfloat: `asfloat(asfloat(depth.Load(p).x))`.
+        // The load began saying what it makes when the view was asked rather than
+        // the instruction, which is what made this question reach it at all.
+        if (value is ResourceLoadNode { IsIntegerTexel: true })
+        {
+            return false;
+        }
         return value is LoadStructuredNode { IsRaw: true } || IsBitsValue(value)
             || (value is not ConstantNode && IsIntegerMadeReadAsFloat(value));
     }

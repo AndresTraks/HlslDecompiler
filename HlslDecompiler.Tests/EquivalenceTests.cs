@@ -37,6 +37,19 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["cs_5_0/stored_float_bits"] = [("instruction",
+            "The same limitation tile_depth_bounds runs into, on the store side "
+            + "rather than the interlocked one. A uint texel whose bits are a "
+            + "float's is loaded into a float register and scaled, and the product "
+            + "is stored back into a uint buffer as the bits it is. The instruction "
+            + "writer converts at both ends - at the load because an integer value "
+            + "reaching a float register is normally the number it spells, and at "
+            + "the store for the same reason in reverse - and converting bits gives "
+            + "whatever number they happen to make. Telling this apart from an "
+            + "integer genuinely held in a float register is what its register model "
+            + "does not record. The ast writer reinterprets at both ends, and "
+            + "agrees."),
+        ],
         ["cs_5_0/tile_depth_bounds"] = [("instruction",
             "A depth written into groupshared memory as asuint and minimised there "
             + "as the integer its bits make. The instruction writer casts the value "

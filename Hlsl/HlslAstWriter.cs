@@ -614,10 +614,12 @@ public class HlslAstWriter : HlslWriter
             ((RegisterInputNode)append.Destination).RegisterComponentKey.RegisterKey);
         HlslTreeNode[] values = [.. append.Values.Select(Reduce)];
         WriteSharedSubexpressions([values]);
-        bool storesIntegers = values.All(v => StatementFinalizer.IsIntegerValue(v) == true);
-        string value = storesIntegers
-            ? _compiler.CompileAsInteger(values)
-            : _compiler.Compile(values);
+        // An append writes the whole element, so the element itself is what says
+        // whether what goes in is an integer.
+        RegisterKey appendKey = ((RegisterInputNode)append.Destination)
+            .RegisterComponentKey.RegisterKey;
+        string value = CompileStoredValue(
+            values, _registers.IsIntegerStructuredMember(appendKey, 0));
         WriteLine($"{destination}.Append({value});");
     }
 
@@ -638,11 +640,36 @@ public class HlslAstWriter : HlslWriter
         // As above: what a store alone reads is hoisted from here.
         WriteSharedSubexpressions([values, coordinates]);
         string coordinate = _compiler.CompileAsInteger(coordinates);
-        bool storesIntegers = values.All(v => StatementFinalizer.IsIntegerValue(v) == true);
-        string value = storesIntegers
-            ? _compiler.CompileAsInteger(values)
-            : _compiler.Compile(values);
+        RegisterKey typedKey = ((RegisterInputNode)storeTyped.Destination)
+            .RegisterComponentKey.RegisterKey;
+        string value = CompileStoredValue(
+            values, _registers.GetTextureDefinition(typedKey)?.IsIntegerReturnType);
         WriteLine($"{destination}[{coordinate}] = {value};");
+    }
+
+    /// <summary>
+    /// The value a store writes. Integers go in as themselves; a float goes in as
+    /// the bits it is where the destination holds integers, because `buffer[i] = f`
+    /// converts f to the integer nearest it and the shader stored asuint(f). A raw
+    /// buffer's dwords say that outright, and a typed or structured view says it
+    /// through the element type it was declared with - null where there is no
+    /// declaration to ask, which leaves the value alone as before.
+    /// </summary>
+    private string CompileStoredValue(HlslTreeNode[] values, bool? destinationHoldsIntegers)
+    {
+        if (values.All(v => StatementFinalizer.IsIntegerValue(v) == true))
+        {
+            return _compiler.CompileAsInteger(values);
+        }
+        // Only where the graph says a value is a float. One it says nothing about is
+        // left as it was: it is already being written as whatever it is, and asuint
+        // around it would assert something the graph never said - a groupshared load
+        // of an int array came out `asuint(g1[i])` and msad4, which answers uints
+        // already, came out wrapped in it too.
+        return destinationHoldsIntegers == true
+            && values.Any(v => StatementFinalizer.IsIntegerValue(v) == false)
+            ? CompileRawStoredValue(values)
+            : _compiler.Compile(values);
     }
 
     // The dwords a raw store writes: each integer as it is, each float as its bits,
@@ -708,6 +735,10 @@ public class HlslAstWriter : HlslWriter
         // bytes over a struct of a float3 and a float is both of them, and writing
         // it as one assignment kept only the last.
         RegisterKey bufferKey = ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
+        // The element the store reaches says whether a float goes in as its bits,
+        // the same question the raw store above answers from the buffer itself.
+        compiledValue = CompileStoredValue(storedValues,
+            _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset));
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
             bufferKey, $"{compiledDestination}[{compiledAddress}]",
             storeStructured.ElementByteOffset, storeStructured.Components);

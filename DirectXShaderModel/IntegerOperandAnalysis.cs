@@ -34,6 +34,15 @@ public sealed class IntegerOperandAnalysis
             return true;
         }
 
+        // A raw store writes bits. Every dword it is handed is a uint whatever the
+        // value was before it was stored - that is what makes the buffer raw - and
+        // fxc prints them as integers. Left to the float rule, `b.Store(0, 7)`
+        // disassembled as l(0.000000), which is the denormal those bits are.
+        if (instruction.Opcode == D3D10Opcode.StoreRaw)
+        {
+            return true;
+        }
+
         // A coverage mask is a uint whatever writes it. The move rule below cannot
         // say so - a movc carries its sources rather than typing them, and what
         // usually settles one is whatever reads the register afterwards, which for

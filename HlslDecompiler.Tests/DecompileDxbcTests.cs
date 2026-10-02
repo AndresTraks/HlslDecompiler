@@ -344,6 +344,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "atomic_compare_exchange")]
     [TestCase("cs_5_0", "typed_buffer_read")]
     [TestCase("cs_5_0", "append_buffer_size")]
+    [TestCase("cs_5_0", "byte_address_literals")]
     [TestCase("ps_5_0", "gather_cmp_variants")]
     public void DecompileTest(string profile, string baseFilename)
     {

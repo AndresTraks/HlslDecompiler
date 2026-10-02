@@ -168,6 +168,7 @@ public class DecompileDxbcTests
     [TestCase("gs_5_0", "three_streams")]
     [TestCase("gs_5_0", "instanced_expand")]
     [TestCase("gs_5_0", "particle_sprites")]
+    [TestCase("gs_5_0", "primitive_id_output")]
     [TestCase("ds_5_0", "patch_interpolate")]
     [TestCase("ds_5_0", "patch_constants")]
     [TestCase("ds_5_0", "quad_patch")]

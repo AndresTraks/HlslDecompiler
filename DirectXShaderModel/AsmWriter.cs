@@ -618,6 +618,14 @@ public class AsmWriter
                 WriteLine("dcl_output_siv {0}, {1}", FormatOperand(instruction, 0),
                     GetSystemValueName(instruction));
                 break;
+            // Generated rather than interpreted: the rasterizer reads a system
+            // interpreted value and acts on it, and a generated one it only carries.
+            // A geometry shader writing SV_PrimitiveID is the one the corpus can
+            // reach - the parser and the instruction writer have had it all along.
+            case D3D10Opcode.DclOutputSgv:
+                WriteLine("dcl_output_sgv {0}, {1}", FormatOperand(instruction, 0),
+                    GetSystemValueName(instruction));
+                break;
             case D3D10Opcode.DclResource:
                 {
                     ResourceDimension resourceDimension = instruction.GetResourceDimension();

@@ -5,7 +5,6 @@ ConsumeStructuredBuffer<uint> con : register(u1);
 void main()
 {
 	int r0;
-	float r1;
 	uint consumed0 = con.Consume();
 	r0 = consumed0.x;
 	r0 = r0.x << 1;

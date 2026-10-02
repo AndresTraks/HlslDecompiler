@@ -197,6 +197,20 @@ public class HlslSimpleWriter : HlslWriter
     /// components of the register untouched, so a register only doubles are written
     /// to answers zero and needs no float variable at all.
     /// </summary>
+    /// <summary>
+    /// Whether the instruction is the half of a call the writer folds into
+    /// the other half: the slot an append buffer allocates and the one a
+    /// consume buffer takes are written as part of Append and Consume, so
+    /// neither leaves an assignment behind to declare a register for.
+    /// </summary>
+    private bool IsFoldedIntoCall(D3D10Instruction instruction)
+    {
+        return (instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
+                && IsAppendResource(instruction.GetParamRegisterKey(1)))
+            || (instruction.Opcode == D3D10Opcode.ImmAtomicConsume
+                && IsConsumeResource(instruction.GetParamRegisterKey(1)));
+    }
+
     private int FindFloatWrittenComponents(RegisterKey registerKey)
     {
         int mask = 0;
@@ -205,6 +219,15 @@ public class HlslSimpleWriter : HlslWriter
             if (instruction is not D3D10Instruction d3d10)
             {
                 return 0b1111;
+            }
+            // A slot the writer folds into the call it belongs to is written
+            // by no line of the output, so the register holding it needs no
+            // declaration either: an Append carries its own slot and a
+            // Consume carries its own, and `float r1;` stood for a value
+            // nothing else in the function mentions.
+            if (IsFoldedIntoCall(d3d10))
+            {
+                continue;
             }
             foreach (int destination in GetDestinationParamIndices(d3d10))
             {

@@ -5,7 +5,6 @@ RWStructuredBuffer<float4> result : register(u1);
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float4 r0;
-	float r1;
 	float4 consumed0 = queue.Consume();
 	float4 consumed1 = queue.Consume();
 	r0.x = consumed0.x;

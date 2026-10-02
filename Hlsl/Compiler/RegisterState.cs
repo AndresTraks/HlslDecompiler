@@ -16,14 +16,60 @@ public sealed class RegisterState
     /// </summary>
     public IList<ConstantRegister> ImmediateConstantBuffer { get; } = [];
 
-    // Which rows a read of it starts at. fxc lays several literal arrays end to end
-    // in the one buffer, so `icb[r0.x + 3]` reads the one beginning at row three: the
-    // bases are where one array ends and the next begins.
-    private readonly SortedSet<int> _immediateConstantBufferBases = [];
+    // Which rows a read of it starts at, and how many reads start there. fxc lays
+    // several literal arrays end to end in the one buffer, so `icb[r0.x + 3]` reads
+    // the one beginning at row three: the bases are where one array ends and the next
+    // begins. Counted rather than collected because a read can be taken back: an
+    // identity dotted with a vector is a subscript of the vector and names no array.
+    private readonly SortedDictionary<int, int> _immediateConstantBufferBases = [];
 
     public void DeclareImmediateConstantBufferRead(int baseRow)
     {
-        _immediateConstantBufferBases.Add(baseRow);
+        _immediateConstantBufferBases.TryGetValue(baseRow, out int reads);
+        _immediateConstantBufferBases[baseRow] = reads + 1;
+    }
+
+    /// <summary>
+    /// Takes back a read the parser declared and then rewrote into something that
+    /// does not name the buffer. The rows are still there to be declared while
+    /// anything else reads them; an array nothing reads any more is not written out.
+    /// </summary>
+    public void UndeclareImmediateConstantBufferRead(int baseRow)
+    {
+        if (_immediateConstantBufferBases.TryGetValue(baseRow, out int reads) && reads > 1)
+        {
+            _immediateConstantBufferBases[baseRow] = reads - 1;
+        }
+        else
+        {
+            _immediateConstantBufferBases.Remove(baseRow);
+        }
+    }
+
+    /// <summary>Whether anything still reads the immediate constant buffer.</summary>
+    public bool IsImmediateConstantBufferRead => _immediateConstantBufferBases.Count != 0;
+
+    /// <summary>
+    /// Whether the rows from here on are the identity matrix of this width, which is
+    /// what makes a dot product with one of them the component the index picks.
+    /// </summary>
+    public bool IsImmediateConstantBufferIdentity(int baseRow, int width)
+    {
+        if (baseRow < 0 || baseRow + width > ImmediateConstantBuffer.Count)
+        {
+            return false;
+        }
+        for (int row = 0; row < width; row++)
+        {
+            for (int component = 0; component < width; component++)
+            {
+                if (ImmediateConstantBuffer[baseRow + row][component] != (row == component ? 1 : 0))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -50,7 +96,7 @@ public sealed class RegisterState
 
     private List<int> ImmediateConstantBufferStarts()
     {
-        List<int> bases = [.. _immediateConstantBufferBases.Where(
+        List<int> bases = [.. _immediateConstantBufferBases.Keys.Where(
             b => b >= 0 && b < ImmediateConstantBuffer.Count)];
         // Whatever is in front of the first row anything reads is still part of the
         // buffer, and declaring it keeps every later array at the row it belongs to.

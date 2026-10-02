@@ -776,7 +776,8 @@ public sealed class NodeCompiler
         switch (node)
         {
             case ConstantNode or DoubleConstantNode
-                or DotProductOperation or LengthOperation or LoadStructuredNode:
+                or DotProductOperation or LengthOperation or LoadStructuredNode
+                or VectorComponentNode:
                 return 1;
             case GroupNode vector:
                 // A vector operand is its swizzle: distinct components say their
@@ -1209,7 +1210,9 @@ public sealed class NodeCompiler
                             or PowerOperation or ClampOperation or SmoothStepOperation
                             or LinearInterpolateOperation or FusedMultiplyAddOperation
                             or DotProductOperation or LengthOperation
-                            or FirstBitHighOperation;
+                            or FirstBitHighOperation
+                        // A subscript carries its own brackets at the end.
+                        || value[0] is VectorComponentNode;
                     // As wide as what is being converted: `(float)` on a two
                     // component value asks for a constructor with one argument.
                     string castType = components.Count > 1
@@ -1246,6 +1249,15 @@ public sealed class NodeCompiler
                     var value2 = Compile(components.Select(g => g.Inputs[1]));
 
                     return $"{value1} >= {value2}";
+                }
+            case VectorComponentNode select:
+                {
+                    // The vector as wide as it is, not as wide as the one component
+                    // asked for: the subscript picks out of the whole of it, and a
+                    // swizzle narrowing it first would move the component the index
+                    // names.
+                    string vector = Compile([select.Vector], select.Vector.Length);
+                    return $"{vector}[{CompileAsInteger([select.Index])}]";
                 }
             case DotProductOperation _:
                 {

@@ -47,6 +47,13 @@ public abstract class HlslWriter
 
     protected abstract void WriteMethodBody();
 
+    /// <summary>
+    /// Whether this writer mirrors the instructions one by one rather than writing
+    /// the value graph. It names whatever an instruction named, so a declaration the
+    /// graph no longer needs is still one of its own.
+    /// </summary>
+    protected virtual bool WritesInstructions => false;
+
     protected void WriteLine()
     {
         internalWriter.WriteLine();
@@ -479,7 +486,12 @@ public abstract class HlslWriter
 
         // Emitted after the uniforms so that a subscript reading one is already in
         // scope, though nothing in a literal array can reference anything anyway.
-        if (_registers.ImmediateConstantBuffer.Count != 0)
+        // Only while something still reads it. A buffer whose every read was a row of
+        // an identity dotted with a vector is a subscript of that vector now, and the
+        // identity it was spelled with names nothing - though the listing that writes
+        // the dot product out as the instruction it was still reads the rows.
+        if (_registers.ImmediateConstantBuffer.Count != 0
+            && (WritesInstructions || _registers.IsImmediateConstantBufferRead))
         {
             // One declaration per array in it. Written as one array of every row,
             // the second array's reads carried the offset of its first row -

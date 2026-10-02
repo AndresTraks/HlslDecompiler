@@ -23,6 +23,8 @@ public class HlslSimpleWriter : HlslWriter
     {
     }
 
+    protected override bool WritesInstructions => true;
+
     protected override void WriteMethodBody()
     {
         _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);

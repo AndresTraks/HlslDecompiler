@@ -3481,7 +3481,6 @@ public class InstructionParser
 
     private HlslTreeNode CreateDotProductNode(D3D10Instruction instruction)
     {
-        var addends = new List<HlslTreeNode>();
         var numComponents = instruction.Opcode switch
         {
             D3D10Opcode.Dp2 => 2,
@@ -3489,15 +3488,89 @@ public class InstructionParser
             D3D10Opcode.Dp4 => 4,
             _ => throw new InvalidOperationException(),
         };
+        var operands = new HlslTreeNode[numComponents][];
         for (int component = 0; component < numComponents; component++)
         {
-            IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
-            var multiply = ReadingFloats(new MultiplyOperation(componentInput[0], componentInput[1]));
-            addends.Add(multiply);
+            operands[component] = GetInputs(instruction, component);
         }
 
-        return addends.Aggregate((addition, addend) =>
-            ReadingFloats(new AddOperation(addition, addend)));
+        if (TryTakeVectorComponent(operands) is HlslTreeNode vectorComponent)
+        {
+            return vectorComponent;
+        }
+
+        return operands
+            .Select(componentInput => (HlslTreeNode)ReadingFloats(
+                new MultiplyOperation(componentInput[0], componentInput[1])))
+            .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    /// <summary>
+    /// The subscript a dot product stands for where one of its operands is a row of
+    /// an identity matrix in the immediate constant buffer, which is how fxc reads a
+    /// vector at a component it has to work out - `v[i]` is `dp4 dst, v, icb[i]`.
+    /// Null for an ordinary dot product. The operands have been built by here, so the
+    /// reads of the identity are taken back out of the graph and off the buffer's
+    /// tally: an array nothing reads any more is not declared at all.
+    /// </summary>
+    private HlslTreeNode TryTakeVectorComponent(HlslTreeNode[][] operands)
+    {
+        int width = operands.Length;
+        for (int selector = 0; selector < 2; selector++)
+        {
+            RelativeAddressNode[] rows = [.. operands.Select(
+                componentInput => componentInput[selector] as RelativeAddressNode)];
+            if (rows[0]?.RegisterComponentKey.RegisterKey
+                is not D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer } icb
+                // Row c of the identity holds the one in component c, so the operand's
+                // swizzle has to be in order for the dot to pick the index's component:
+                // `icb[i].yxzw` would answer v[i] for two of the four indices only.
+                || rows.Where((row, component) => row == null
+                    || !icb.Equals(row.RegisterComponentKey.RegisterKey)
+                    || row.ComponentIndex != component
+                    || !ReferenceEquals(row.Index, rows[0].Index)).Any()
+                || !_registerState.IsImmediateConstantBufferIdentity(icb.Number, width))
+            {
+                continue;
+            }
+            // A subscript has to be written on something that can carry one, and the
+            // operand is only ever a register read here - a swizzle of one takes a
+            // subscript, `float4(a, b, c, d)[i]` is not something fxc will compile,
+            // and a temp the writer inlines an expression into could be either.
+            HlslTreeNode[] vector = [.. operands.Select(
+                componentInput => componentInput[1 - selector])];
+            if (!vector.All(IsNamedVectorRead))
+            {
+                continue;
+            }
+            HlslTreeNode index = rows[0].Index;
+            foreach (RelativeAddressNode row in rows)
+            {
+                row.Remove();
+                _registerState.UndeclareImmediateConstantBufferRead(icb.Number);
+            }
+            return ReadingFloats(new VectorComponentNode(new GroupNode(vector), index));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Whether the value is read straight out of a constant buffer or an input
+    /// register, which is what comes out of the writer as a name with a swizzle on
+    /// it rather than as an expression.
+    /// </summary>
+    private static bool IsNamedVectorRead(HlslTreeNode node)
+    {
+        RegisterKey registerKey = node switch
+        {
+            RegisterInputNode read => read.RegisterComponentKey.RegisterKey,
+            RelativeAddressNode read => read.RegisterComponentKey.RegisterKey,
+            _ => null,
+        };
+        return registerKey is D3D10RegisterKey
+        {
+            OperandType: OperandType.ConstantBuffer or OperandType.Input
+        };
     }
 
     // `lit src` reads n.l from x, n.h from y and the specular power from w, whatever

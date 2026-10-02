@@ -258,6 +258,17 @@ public class NodeGrouper
             return false;
         }
 
+        // Two subscripts of one vector are components of one value only where they
+        // read it at the same index - the same node, and not merely one that groups
+        // alongside it. Two constants group as components whatever numbers they hold,
+        // so `v[1]` beside `v[2]` would come out as one read at the first of the two
+        // answering both components.
+        if (node1 is VectorComponentNode select1 && node2 is VectorComponentNode select2
+            && !ReferenceEquals(select1.Index, select2.Index))
+        {
+            return false;
+        }
+
         // Where in the element a structured load starts is not a component of what
         // comes back: `l(32)` and `l(36)` are two reads, of two different members.
         // Two constants group as components whatever numbers they hold, so the pair

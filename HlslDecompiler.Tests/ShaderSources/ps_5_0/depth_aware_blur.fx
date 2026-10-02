@@ -6,14 +6,6 @@ cbuffer Blur : register(b0)
 	float4 weights[4];
 };
 
-static const float4 icb[4] =
-{
-	float4(1, 0, 0, 0),
-	float4(0, 1, 0, 0),
-	float4(0, 0, 1, 0),
-	float4(0, 0, 0, 1),
-};
-
 SamplerState linearSampler;
 Texture2D source;
 Texture2D depth;
@@ -35,7 +27,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 			t3 = t3 + 1;
 			continue;
 		}
-		float t6 = dot(weights[(uint)abs(t3) >> 2], icb[abs(t3) & 3]);
+		float t6 = weights[(uint)abs(t3) >> 2][abs(t3) & 3];
 		float t7 = exp((float)(t3 * -t3) / t2);
 		float t8 = t7 * t6;
 		t1 = source.Sample(linearSampler, t5) * t8 + t1;

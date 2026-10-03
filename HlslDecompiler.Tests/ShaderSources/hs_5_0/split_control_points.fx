@@ -34,10 +34,11 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch, uint sv_primitiveid : SV_Primitiv
 	float t1 = max(length(0.333333343 * t0 - eye), 1);
 	float t2 = heightMap.SampleLevel(heightSampler, 0.00333333341 * t0.xz, 0).x;
 	float t3 = lerp(heightRange.x, heightRange.y, t2) * detail;
-	o.edges[0] = t3 / t1;
-	o.edges[1] = t3 / t1;
-	o.edges[2] = t3 / t1;
-	o.inside = (float)(sv_primitiveid & 1) + t3 / t1;
+	float t4 = t3 / t1;
+	o.edges[0] = t4;
+	o.edges[1] = t4;
+	o.edges[2] = t4;
+	o.inside = (float)(sv_primitiveid & 1) + t4;
 
 	return o;
 }

@@ -1800,6 +1800,7 @@ public class HlslAstWriter : HlslWriter
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
+                    ?? RootOfSeveralRegisters(registerGroups, recording)
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots);
@@ -2016,6 +2017,65 @@ public class HlslAstWriter : HlslWriter
     /// an instruction - fxc recognises the common subexpression either way, so this
     /// is the text pass's question and takes the text pass's budget.
     /// </summary>
+    /// <summary>
+    /// What a register written a second time from one value has to cost before the
+    /// value is named: about what the declaration line costs, the way
+    /// RepeatedTextBudget is, and smaller than it because what a name saves here is
+    /// a whole write rather than a repeat inside one expression. Twelve catches the
+    /// four hull shaders in the corpus that write a tessellation factor to every
+    /// edge, where twenty-four caught two of them, and neither costs an instruction
+    /// anywhere.
+    /// </summary>
+    private const int SharedRootBudget = 12;
+
+    /// <summary>
+    /// One value that several registers are written from, named once so that each of
+    /// them is an assignment of the name.
+    ///
+    /// Nothing else names this. SharedRoots below wants a group of more than one
+    /// component, because that is the case where the components have to move
+    /// together and a grouper match is what says they may; SplitRead drops a root
+    /// outright, on the reading that a root is being written where it stands and
+    /// needs no name. Which is true of a root written once. A hull shader's patch
+    /// constant function clamps its tessellation factor and writes it to four edges
+    /// and two insides, and those are six roots that are three values: the clamp
+    /// came out four times and the half of it twice, three instructions more than
+    /// the shader it was read from.
+    /// </summary>
+    private List<HlslTreeNode[]> RootOfSeveralRegisters(
+        IList<HlslTreeNode[]> registerGroups,
+        List<(HlslTreeNode[] Nodes, string Text)> recording)
+    {
+        // By the nodes they are written from, so that two registers written from one
+        // value are one candidate however many components they have.
+        foreach (IGrouping<NodeList, HlslTreeNode[]> written in registerGroups
+            .GroupBy(group => new NodeList(group))
+            .Where(g => g.Count() > 1)
+            .OrderByDescending(g => g.Count()))
+        {
+            HlslTreeNode[] group = written.Key.Nodes;
+            if (!group.All(IsNameable)
+                || group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode)))
+            {
+                continue;
+            }
+            // What writing it again costs, measured the way every other name here is:
+            // the text the compiler wrote for it, once for each register past the
+            // first.
+            int text = recording
+                .Where(r => r.Nodes.Length == group.Length
+                    && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second)))
+                .Select(r => r.Text.Length)
+                .DefaultIfEmpty(0)
+                .Max();
+            if ((written.Count() - 1) * text >= SharedRootBudget)
+            {
+                return [group];
+            }
+        }
+        return null;
+    }
+
     private List<HlslTreeNode[]> SharedRoots(
         IList<HlslTreeNode[]> registerGroups,
         HashSet<HlslTreeNode> readers,

@@ -45,6 +45,28 @@ public class RoundTripCostTests
     /// </summary>
     internal static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
+        ["hs_5_0/quad_tess_factors"] = (34,
+            "Three instructions, and all of them one value written twice: "
+            + "`0.25 * (p0 + p1 + p2 + p3)`, the centre of the patch, which the "
+            + "shader writes to an output of its own and also measures the distance "
+            + "from the eye with.\n\n"
+            + "Nothing names it. RootOfSeveralRegisters names a value several "
+            + "registers are written from, which is what took the two clamps in this "
+            + "same function out of four writes and two; the centre is written to one "
+            + "register and read once inside another expression, which is not that "
+            + "shape. SplitRead is the pass for a value several expressions read and "
+            + "drops a root outright, on the reading that a root is written where it "
+            + "stands - true of a root written once and not of this one.\n\n"
+            + "What makes it awkward rather than a missing case is the gate. Every "
+            + "name here is decided on how much text writing it again costs, and "
+            + "`0.25 * t0` is nine characters: no budget that catches it leaves the "
+            + "short values alone. The three instructions are not in the text at all "
+            + "- one is the second multiply and the other two are what writing it "
+            + "twice costs the scheduling around the length - so the question is what "
+            + "a root written more than once is worth, and the corpus says nothing "
+            + "either way: it has no other shader of this shape. Measured by hand: "
+            + "naming the centre and nothing else brings this back to the 31 it was "
+            + "read from."),
         // The decompiler's doing.
         ["ps_5_0/split_transform"] = (23,
             "Two instructions, and a matrix multiply the naming took apart. A decal "

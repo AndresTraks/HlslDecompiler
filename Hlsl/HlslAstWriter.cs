@@ -1535,7 +1535,15 @@ public class HlslAstWriter : HlslWriter
         for (int i = order.Count - 1; i >= 0; i--)
         {
             HlslTreeNode node = order[i];
-            if (roots.Contains(node) || node is not Operation)
+            // An operation, or a normalize, which is not one and is written as a
+            // call all the same - IsNameable says so, and this is the same question.
+            // The two used to disagree, and it showed as soon as a normalize became a
+            // node: recovered into the graph it is nameable to NameRepeatedText and
+            // invisible here, so tangent_lighting stopped naming one that two
+            // expressions read and wrote it out twice. The rest of what IsNameable
+            // allows - a texture load, a lit, a constant - this path has never
+            // considered, and whether it should is a question of its own.
+            if (roots.Contains(node) || node is not (Operation or NormalizeOutputNode))
             {
                 continue;
             }

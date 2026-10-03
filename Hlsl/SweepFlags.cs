@@ -28,7 +28,8 @@ namespace HlslDecompiler.Hlsl;
 ///
 /// The first rule measured this way was a naming rule reported under the
 /// ps_5_0/split_transform entry in RoundTripCostTests; it did not ship, and its flag
-/// went with it. "normalize-node" is the one open today - see IdiomRecovery.
+/// went with it. The second was IdiomRecovery, measured under "normalize-node";
+/// that one shipped, and its flag went too.
 /// </summary>
 public static class SweepFlags
 {

@@ -20,24 +20,24 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	float3 t0 = normalize(eye - i.texcoord) - lightDirection;
-	float3 t1 = normalize(t0);
-	float3 t2 = normalize(eye - i.texcoord);
-	float t3 = 1 - saturate(dot(t2, t1));
+	float3 t0 = normalize(eye - i.texcoord);
+	float3 t1 = t0 - lightDirection;
+	float3 t2 = normalize(t1);
+	float t3 = 1 - saturate(dot(t0, t2));
 	float t4 = t3 * t3;
 	float t5 = t4 * t4 * t3;
 	float t6 = roughnessMap.Sample(linearSampler, i.texcoord1).x;
 	float t7 = max(t6 * t6, 0.00200000009);
 	float t8 = 0.5 * -t7 + 1;
 	float t9 = 0.5 * t7;
-	float3 t10 = albedoMap.Sample(linearSampler, i.texcoord1).xyz;
-	float3 t11 = metallic * (t10 - 0.0399999991) + 0.0399999991;
-	float3 t12 = lerp(t11, 1, t5);
-	float3 t13 = normalize(i.normal);
-	float t14 = saturate(dot(t13, t1));
-	float t15 = t14 * t14 * (t7 * t7 - 1) + 1;
-	float t16 = saturate(dot(t13, -lightDirection));
-	float t17 = t7 * t7 / (3.14159274 * t15 * t15) / ((saturate(dot(t13, t2)) * t8 + t9) * (t16 * t8 + t9));
-	float3 t18 = environment.SampleLevel(linearSampler, reflect(-t2, t13), 8 * t6).xyz;
-	return float4(t16 * ((1 - metallic) * t10 * (1 - t12) + 0.25 * t17 * t12) * lightIntensity + t11 * t18, 1);
+	float3 t10 = normalize(i.normal);
+	float t11 = saturate(dot(t10, t2));
+	float t12 = t11 * t11 * (t7 * t7 - 1) + 1;
+	float t13 = saturate(dot(t10, -lightDirection));
+	float t14 = t7 * t7 / (3.14159274 * t12 * t12) / ((saturate(dot(t10, t0)) * t8 + t9) * (t13 * t8 + t9));
+	float3 t15 = albedoMap.Sample(linearSampler, i.texcoord1).xyz;
+	float3 t16 = metallic * (t15 - 0.0399999991) + 0.0399999991;
+	float3 t17 = lerp(t16, 1, t5);
+	float3 t18 = environment.SampleLevel(linearSampler, reflect(-t0, t10), 8 * t6).xyz;
+	return float4(t13 * ((1 - metallic) * t15 * (1 - t17) + 0.25 * t14 * t17) * lightIntensity + t16 * t18, 1);
 }

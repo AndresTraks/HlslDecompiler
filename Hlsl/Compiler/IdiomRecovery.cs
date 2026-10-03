@@ -27,30 +27,29 @@ namespace HlslDecompiler.Hlsl;
 /// node the way a dot product is: nameable as one thing, visible to every pass
 /// after, and impossible to take half of.
 ///
-/// What it is worth, measured over the corpus (HLSL_SWEEP=normalize-node): nine
-/// shaders change, every one of them recompiles, stays equivalent on the
-/// interpreter and costs not one instruction more.
+/// What it is worth, measured over the corpus with the sweep: eight shaders change,
+/// every one recompiles, stays equivalent on the interpreter, and costs not one
+/// instruction more.
 ///
-/// ps_4_0/packed_cbuffer is what the change is for. It normalized a vector and read
-/// its .xz and its .y apart, so the grouper saw two components of three and matched
-/// nothing, and the output divided each component by the length and put them back
-/// together by hand: `float3(t6.x, t4.y / t5, t6.y)`. With the normalize in the
-/// graph it is `float3 t5 = normalize(t4)` and `t5.xz` where the xz is wanted. A
-/// naming rule reached for the same shape from the other end - see the
-/// ps_5_0/split_transform entry in RoundTripCostTests - and it cost three
-/// instructions; this way it is free.
+/// Five of them stop writing a normalize twice. ps_4_1/cube_array_probe wrote
+/// `normalize(i.normal)` and `normalize(i.texcoord1)` once in a dot and again in a
+/// reflect; each is named once now. That is the thing CostsAnInstruction is written
+/// about - a normalize written twice is computed twice - and it could not be acted
+/// on while the idiom existed only inside a compile.
 ///
-/// Two read worse, and they say what is left to do. ps_4_0/reflect_cube names two
-/// normalizes that one expression each reads, turning one line into three;
-/// ps_5_0/tangent_lighting stops naming one that two expressions read, and writes it
-/// twice. Both are the hoist's reader count in SplitRead meeting a node where it
-/// used to meet a run of divisions, and going opposite ways about it: the count is
-/// loose on purpose, keyed on a node's first input so that an expensive read gets a
-/// name even where one expression reads it, and what counts as the same read changes
-/// when three divisions become three components of one normalize. CostsAnInstruction
-/// also says a normalize is worth naming when written twice, which is now a thing
-/// the writer can see and does not act on. Until those two agree about a recovered
-/// idiom the flag stays off, and the decompiler's output is what it was.
+/// ps_4_0/packed_cbuffer is the other half of it. That shader normalizes a vector
+/// and reads its .xz and its .y apart, so the grouper only ever saw two components
+/// of three and matched nothing, and the output divided each component by the
+/// length and put them back together by hand: `float3(t6.x, t4.y / t5, t6.y)`. Asked
+/// of the graph, where all three divisions are, it is `float3 t5 = normalize(t4)`
+/// and `t5.xz` where the xz is wanted. A naming rule reached for the same shape from
+/// the other end - see the ps_5_0/split_transform entry in RoundTripCostTests - and
+/// it cost three instructions; this way it is free.
+///
+/// ps_4_0/reflect_cube is the one that reads longer: two normalizes that one
+/// expression each reads get names, and a line of a hundred characters becomes
+/// three short ones. That is the hoist naming an expensive read with a single
+/// reader, which is what it is documented to do and what keeps the fixtures short.
 ///
 /// Where this runs matters and is narrow. The templates fold a register group in
 /// GroupAssignments, immediately before the hoist names anything in it, and that is
@@ -68,11 +67,6 @@ public static class IdiomRecovery
     /// </summary>
     public static void Recover(IList<HlslTreeNode[]> groups)
     {
-        // Off until the two fixtures below are settled; see the note above.
-        if (!SweepFlags.Enabled("normalize-node"))
-        {
-            return;
-        }
         var replaced = new Dictionary<HlslTreeNode, HlslTreeNode>(
             ReferenceEqualityComparer.Instance);
         // Which component of its register each root is, so that a normalize keeps

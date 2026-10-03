@@ -32,13 +32,14 @@ float4 main(PS_IN i) : COLOR
 	for (int i_ = 0; i_ < lightCount; i_++) {
 		float3 t9 = t5.w - float3(1, 2, 3);
 		float3 t10 = (t9.z == 0 ? lightPositions[3] : t9.y == 0 ? lightPositions[2] : t9.x == 0 ? lightPositions[1] : t5.w == 0 ? lightPositions[0] : 0) - i.texcoord;
-		float t11 = pow(saturate(dot(t7, normalize(normalize(t10) + t8))), specularPower) + saturate(dot(t7, normalize(t10)));
-		float t12 = dot(t10, t10) + 1;
-		t5.xyz = t11 * (t9.z == 0 ? lightColors[3] : t9.y == 0 ? lightColors[2] : t9.x == 0 ? lightColors[1] : t5.w == 0 ? lightColors[0] : 0) / t12 + t5.xyz;
+		float3 t11 = normalize(t10);
+		float t12 = pow(saturate(dot(t7, normalize(t11 + t8))), specularPower) + saturate(dot(t7, t11));
+		float t13 = dot(t10, t10) + 1;
+		t5.xyz = t12 * (t9.z == 0 ? lightColors[3] : t9.y == 0 ? lightColors[2] : t9.x == 0 ? lightColors[1] : t5.w == 0 ? lightColors[0] : 0) / t13 + t5.xyz;
 		t5.w = t5.w + 1;
 	}
-	float t13 = 1 - saturate(dot(t7, t8));
-	float t14 = t13 * t13;
+	float t14 = 1 - saturate(dot(t7, t8));
 	float t15 = t14 * t14;
-	return float4(t6.xyz * t5.xyz + t15 * texCUBE(envMap, reflect(-t8, t7)).xyz, t6.w);
+	float t16 = t15 * t15;
+	return float4(t6.xyz * t5.xyz + t16 * texCUBE(envMap, reflect(-t8, t7)).xyz, t6.w);
 }

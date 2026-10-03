@@ -46,6 +46,33 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_5_0/split_transform"] = (23,
+            "Two instructions, and a matrix multiply the naming took apart. A decal "
+            + "reads the local position twice - once as the coordinate it samples "
+            + "with, once by the box test - so the writer names the pair of "
+            + "components both uses share, and the multiplication grouper then finds "
+            + "two rows of the transform where there were three. What comes out is "
+            + "`mul(world, (float4x2)decalMatrix)` beside a dot for the row left "
+            + "over, and the three steps over the result cannot vectorise either: "
+            + "the original compares and masks three components at once, the round "
+            + "trip does one and then two.\n\n"
+            + "The hoist already knows not to name inside a grouper's match - it "
+            + "measures a statement by compiling it and keeps what the groupers "
+            + "claimed - and this gets past that because the two reads are in "
+            + "different statements, so the name is decided before the statement "
+            + "holding the multiply is measured. A volumetric fog raymarch loses two "
+            + "instructions the same way, which is what says this is the class and "
+            + "not the shader.\n\n"
+            + "Where to look: the two naming passes are not told the same things. "
+            + "NameRepeatedText sets Recording, Grouped and GroupMatches on the "
+            + "compiler before it measures, and drops any candidate the groupers "
+            + "claimed - `!grouped.Contains(n)`. WrittenCounts, which is what "
+            + "HoistSharedSubexpressions measures with before NameCandidates picks, "
+            + "sets Recording alone, so that path has no grouped set to consult and "
+            + "nothing stops it naming components a grouper took whole. Not tried "
+            + "here: the one previous attempt at perturbing this pass moved nine "
+            + "fixtures and took three normalizes apart, so it wants its own run at "
+            + "it rather than the tail of someone else's."),
         ["ps_5_0/transposed_basis"] = (46,
             "Eight instructions, and the same transpose splat_layers was cured of, "
             + "reached over values the shader computed instead of values it read. "

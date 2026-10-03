@@ -85,7 +85,8 @@ public static class IdiomRecovery
     /// the node that was replaced: Replace relinks the readers of a node, and a root
     /// has none.
     /// </summary>
-    public static void Recover(IList<HlslTreeNode[]> groups)
+    public static void Recover(
+        IList<HlslTreeNode[]> groups, MatrixMultiplicationGrouper matrices)
     {
         var replaced = new Dictionary<HlslTreeNode, HlslTreeNode>(
             ReferenceEqualityComparer.Instance);
@@ -113,6 +114,7 @@ public static class IdiomRecovery
         {
             RecoverReflect(dot, replaced);
         }
+        RecoverMatrixMultiplications(all, groups, matrices, replaced);
         foreach (LengthOperation length in all.OfType<LengthOperation>().ToList())
         {
             RecoverNormalize(length, componentOf, replaced);
@@ -134,6 +136,162 @@ public static class IdiomRecovery
     }
 
     /// <summary>
+    /// The dot products that are the rows of one matrix multiply, recovered into as
+    /// many components of one.
+    ///
+    /// The matching is not rewritten here. MatrixMultiplicationGrouper already
+    /// answers it, and already answers the two questions a graph walk needs to ask
+    /// before it can: AreRowsOfOneMatrix, whether two dots are rows of one matrix
+    /// over one vector, and MatrixRowRegister, which row each of them reads. So the
+    /// recovery collects the dots that belong together, puts them in row order and
+    /// hands them to the grouper exactly as a write would - which is the one thing
+    /// the grouper insists on, since it checks the dot at position i against row i.
+    /// A multiply whose components the writer would have written out of order, or
+    /// split between statements, is one it never saw.
+    /// </summary>
+    private static void RecoverMatrixMultiplications(
+        List<HlslTreeNode> all,
+        IList<HlslTreeNode[]> groups,
+        MatrixMultiplicationGrouper matrices,
+        Dictionary<HlslTreeNode, HlslTreeNode> replaced)
+    {
+        List<DotProductOperation> dots = [.. all.OfType<DotProductOperation>()];
+        var taken = HlslTreeNode.NewNodeSet();
+        foreach (DotProductOperation dot in dots)
+        {
+            if (taken.Contains(dot))
+            {
+                continue;
+            }
+            List<DotProductOperation> ordered = [.. dots
+                .Where(other => !taken.Contains(other)
+                    && (ReferenceEquals(other, dot) || matrices.AreRowsOfOneMatrix(dot, other)))
+                .Select(other => (Dot: other, Row: matrices.MatrixRowRegister(other)))
+                .Where(other => other.Row != null)
+                .OrderBy(other => other.Row)
+                .Select(other => other.Dot)];
+            if (ordered.Count < 2)
+            {
+                continue;
+            }
+
+            // The w column form first, where it is there. A point transformed by a
+            // matrix is `mul(float4(p, 1), M)`, and the folded one leaves the dots
+            // three wide with the matrix's last column added on - so the components
+            // of the multiply are the adds, not the dots under them, and recovering
+            // the dots alone would take the shape the adds are recognised from
+            // apart.
+            if (TryRecover(WColumnAdds(ordered), groups, matrices, taken, replaced))
+            {
+                // The dots under the adds go with them: nothing reads them once the
+                // adds are replaced, and leaving them loose would have the walk pick
+                // one up and recover a second multiplication that nothing reads.
+                foreach (DotProductOperation taken_ in ordered)
+                {
+                    taken.Add(taken_);
+                }
+                continue;
+            }
+            TryRecover([.. ordered], groups, matrices, taken, replaced);
+        }
+    }
+
+    /// <summary>
+    /// The one add above each dot, where every dot has exactly one and it is an add:
+    /// the shape a matrix multiply with a w column reaches the writer as. Null where
+    /// the dots are the components themselves.
+    /// </summary>
+    private static HlslTreeNode[] WColumnAdds(List<DotProductOperation> ordered)
+    {
+        var adds = new HlslTreeNode[ordered.Count];
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            List<AddOperation> readers = [.. ordered[i].Outputs
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .OfType<AddOperation>()];
+            if (readers.Count != 1)
+            {
+                return null;
+            }
+            adds[i] = readers[0];
+        }
+        return adds;
+    }
+
+    /// <summary>
+    /// Whether these components are a run of one register's, in this order - the
+    /// multiplication being the whole of a write or a piece of one, but never
+    /// gathered from several.
+    ///
+    /// The grouper has this condition without having to ask for it: it is handed the
+    /// components of a write and answers about those, so it only ever matches where
+    /// the write is the multiply. Taking that away is ruinous, and vs_3_0/skinned_terrain
+    /// says why. Four bone transforms are interleaved there, so the register a
+    /// component lands in holds components of several multiplications - and once
+    /// every dot is a component of its own multiply, every register has to be put
+    /// back together from them: thirteen lines of `float4(mul(...).x, t.yzw)`, and
+    /// fifty-four instructions became sixty-nine.
+    ///
+    /// So the condition stays and only the timing moves. Recovered here the idiom is
+    /// a node before anything is named, which is what ps_5_0/split_transform needs -
+    /// there the naming takes a pair of components the statement shares, and the
+    /// grouper afterwards finds two rows of a transform where there were three.
+    ///
+    /// A run rather than the whole, since a multiply that is a piece of one write is
+    /// still one multiply. What skinned_terrain shows is not partial writes but
+    /// gathered ones: components of several multiplications in one register, which
+    /// no run can be.
+    ///
+    /// It does not reach split_transform even so, and the reason is worth having.
+    /// That shader divides each component of the multiply by the w dot, so the
+    /// register's components are divisions and the dots are a level down inside
+    /// them - a run of no register. Reaching it means looking through the components
+    /// of a write to the operands under them, and that is the direction skinned_terrain
+    /// blew up in, so the pin stands.
+    /// </summary>
+    private static bool IsRunOfOneRegister(HlslTreeNode[] components, IList<HlslTreeNode[]> groups)
+    {
+        return groups
+            .Where(group => group.Length >= components.Length)
+            .Any(group => Enumerable
+                .Range(0, group.Length - components.Length + 1)
+                .Any(at => components
+                    .Select((component, i) => ReferenceEquals(group[at + i], component))
+                    .All(same => same)));
+    }
+
+    private static bool TryRecover(
+        HlslTreeNode[] components,
+        IList<HlslTreeNode[]> groups,
+        MatrixMultiplicationGrouper matrices,
+        HashSet<HlslTreeNode> taken,
+        Dictionary<HlslTreeNode, HlslTreeNode> replaced)
+    {
+        if (components == null
+            || components.Distinct(ReferenceEqualityComparer.Instance).Count() != components.Length
+            || !IsRunOfOneRegister(components, groups))
+        {
+            return false;
+        }
+        MatrixMultiplicationContext matrix = matrices.TryGetMultiplicationGroup(components);
+        // The whole of it and not part: the grouper stops at the first component
+        // that is not the next row, and a multiply recovered over three of four rows
+        // is a different multiplication.
+        if (matrix == null || matrix.MatrixRowCount != components.Length)
+        {
+            return false;
+        }
+        for (int i = 0; i < components.Length; i++)
+        {
+            var multiplied = new MatrixMultiplyOutputNode(matrix, i);
+            components[i].Replace(multiplied);
+            replaced[components[i]] = multiplied;
+            taken.Add(components[i]);
+        }
+        return true;
+    }
+
+    /// <summary>
     /// `i - 2 * dot(i, n) * n`, which is what fxc writes for reflect(i, n): the dot,
     /// an add of it to itself or a multiply by two, and a mad per component with the
     /// scale negated.

@@ -1470,7 +1470,7 @@ public class HlslAstWriter : HlslWriter
         // Here because every caller arrives with its roots reduced and nothing named
         // yet, which is the one point an idiom can be put into the graph rather than
         // recognised out of it later. See IdiomRecovery.
-        IdiomRecovery.Recover(registerGroups);
+        IdiomRecovery.Recover(registerGroups, _grouper.MatrixMultiplicationGrouper);
 
         var roots = HlslTreeNode.NewNodeSet();
         foreach (HlslTreeNode[] group in registerGroups)
@@ -1544,7 +1544,8 @@ public class HlslAstWriter : HlslWriter
             // allows - a texture load, a lit, a constant - this path has never
             // considered, and whether it should is a question of its own.
             if (roots.Contains(node)
-                || node is not (Operation or NormalizeOutputNode or ReflectOutputNode))
+                || node is not (Operation or NormalizeOutputNode or ReflectOutputNode
+                    or MatrixMultiplyOutputNode))
             {
                 continue;
             }
@@ -2206,6 +2207,7 @@ public class HlslAstWriter : HlslWriter
             or SamplePositionNode
             or NormalizeOutputNode
             or ReflectOutputNode
+            or MatrixMultiplyOutputNode
             or PartialDerivativeXOperation
             or PartialDerivativeYOperation;
     }
@@ -2222,6 +2224,7 @@ public class HlslAstWriter : HlslWriter
             or TextureLoadOutputNode
             or NormalizeOutputNode
             or ReflectOutputNode
+            or MatrixMultiplyOutputNode
             or LitOutputNode
             or ConstantNode;
     }

@@ -16,7 +16,7 @@ VS_OUT main(float4 position : POSITION)
 
 	o.position = mul(position, wvp);
 	o.psize = pointSize;
-	o.fog = dot(transpose(wvp)[2], position);
+	o.fog = mul(position, wvp).z;
 	o.color = fogColour;
 
 	return o;

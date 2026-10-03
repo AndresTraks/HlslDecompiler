@@ -141,6 +141,28 @@ public sealed class NodeCompiler
     /// Records everything under the matched components except what is under the
     /// operands the match handed back.
     /// </summary>
+    /// <summary>
+    /// A set of components that is one expression, where the expression is a node
+    /// rather than a shape the compiler recognised: an idiom IdiomRecovery put into
+    /// the graph. The match is recorded and nothing is marked grouped, because there
+    /// is nothing inside the match to keep a name out of - the component is the
+    /// match.
+    ///
+    /// It has to be recorded all the same. The passes that name a value a root
+    /// shares with another reader ask GroupMatches whether the components are one
+    /// expression, and a recovered idiom that does not answer stops being named:
+    /// vs_2_0/fog_lighting wrote `mul(i.position, worldViewProjection)` three times
+    /// where it had named it once.
+    /// </summary>
+    private void MarkMatched(IEnumerable<HlslTreeNode> matched)
+    {
+        if (Grouped == null)
+        {
+            return;
+        }
+        GroupMatches?.Add([.. matched]);
+    }
+
     private void MarkGrouped(IEnumerable<HlslTreeNode> matched, params IEnumerable<HlslTreeNode>[] operands)
     {
         if (Grouped == null)
@@ -2214,11 +2236,25 @@ public sealed class NodeCompiler
             return $"lit({nDotL}, {nDotH}, {specularPower}){litSwizzle}";
         }
 
+        if (first is MatrixMultiplyOutputNode matrixComponent)
+        {
+            // As wide as the multiplication, not the register: a float4x3 read by
+            // three wide dots writes three components of whatever register it lands
+            // in, and swizzling against four asks for a component the mul has not
+            // got.
+            MarkMatched(components);
+            string multiplied = _matrixMultiplicationCompiler.Compile(matrixComponent.Matrix);
+            string matrixSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                matrixComponent.RowCount, promoteToVectorSize);
+            return $"{multiplied}{matrixSwizzle}";
+        }
+
         if (first is ReflectOutputNode reflectComponent)
         {
             // As wide as the vectors reflected, the same as a normalize and for the
             // same reason: the components of the reflect are what the swizzle picks
             // from, not the register they happen to sit in.
+            MarkMatched(components);
             string incident = Compile(reflectComponent.Incident.Inputs);
             string normal = Compile(reflectComponent.Normal.Inputs);
             string reflectSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
@@ -2232,6 +2268,7 @@ public sealed class NodeCompiler
             // of a four wide register, and swizzling against four wrote
             // `normalize(n).xyz` of a float3 - which fxc then spelled out as a
             // dp3, an rsq and a mul instead of the one nrm.
+            MarkMatched(components);
             string input = Compile(first.Inputs);
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count,
                 promoteToVectorSize);

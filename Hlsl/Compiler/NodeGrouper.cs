@@ -293,6 +293,25 @@ public class NodeGrouper
             }
         }
 
+        // An idiom that is a node - a normalize, a reflect, a matrix multiply - is
+        // one call written once and swizzled, so two of its components are the same
+        // value only where they are components of the same call. The generic check
+        // below compares operands with CanGroupComponents, which answers whether two
+        // nodes could be components of one register - and `position.x` and
+        // `position.y` can, so it judged `mul(position.xy, M)` and
+        // `mul(position.yx, M)` one multiplication.
+        // vs_4_0/vector2_matrix22_multiply came out as
+        // `mul(position.xy, matrix_2x2).xyxy`, a different vector in its second half
+        // and an instruction cheaper for being wrong. Operands by reference here,
+        // which is what the components of one call share.
+        if (node1 is NormalizeOutputNode or ReflectOutputNode or MatrixMultiplyOutputNode)
+        {
+            return node1.Inputs.Count == node2.Inputs.Count
+                && node1.Inputs
+                    .Zip(node2.Inputs)
+                    .All(operands => ReferenceEquals(operands.First, operands.Second));
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)

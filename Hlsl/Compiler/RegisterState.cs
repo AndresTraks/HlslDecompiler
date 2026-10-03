@@ -1887,6 +1887,16 @@ public sealed class RegisterState
                 int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * RegisterSize;
                 ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d =>
                 {
+                    // Never a texture buffer's variable. It binds to a t register and
+                    // is read with ld, so it shares no register space with a cb
+                    // operand - but it keeps a register index all the same, and a
+                    // tbuffer at t0 beside an unnumbered cbuffer at b0 answered for
+                    // cb0's variables: `idx` and `dir` came out as `entries[0].x` and
+                    // `entries[0].yzw`, off the tbuffer's array.
+                    if (d is D3D10ConstantDeclaration { IsTextureBuffer: true })
+                    {
+                        return false;
+                    }
                     if (d.RegisterIndex != d3D10RegisterKey.Number)
                     {
                         return false;
@@ -1928,6 +1938,7 @@ public sealed class RegisterState
         return ConstantDeclarations.FirstOrDefault(d =>
             d.RegisterIndex == registerKey.Number
             && d is D3D10ConstantDeclaration constant
+            && !constant.IsTextureBuffer
             && constant.VariableOffset <= expectedOffset
             && expectedOffset < constant.VariableOffset + constant.VariableSize);
     }

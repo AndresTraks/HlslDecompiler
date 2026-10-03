@@ -474,7 +474,12 @@ public abstract class HlslWriter
                 WriteLine($"tbuffer {textureBuffer.Key}");
                 WriteLine("{");
                 indent = "\t";
-                foreach (D3D10ConstantDeclaration member in textureBuffer)
+                // Once per variable, the way the globals above are: the constant
+                // table lists one variable once per register it occupies, and
+                // written straight out an array came out declared twice.
+                var declaredMembers = new HashSet<string>();
+                foreach (D3D10ConstantDeclaration member in textureBuffer
+                    .Where(m => declaredMembers.Add(m.Name)))
                 {
                     WriteLine(compiler.Compile(member));
                 }

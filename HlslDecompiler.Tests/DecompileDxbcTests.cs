@@ -363,6 +363,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "transposed_basis")]
     [TestCase("gs_5_0", "looped_vertices")]
     [TestCase("hs_5_0", "looped_control_points")]
+    [TestCase("ps_5_0", "texture_buffer_globals")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

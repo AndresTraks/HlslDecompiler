@@ -1,4 +1,4 @@
-using HlslDecompiler.DirectXShaderModel;
+﻿using HlslDecompiler.DirectXShaderModel;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -22,6 +22,19 @@ public class SwitchStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    /// <summary>The selector and the case labels, which are the constants the
+    /// bytecode compared it against.</summary>
+    /// <summary>
+    /// The selector and the case labels. Neither is named: the selector is written
+    /// where the switch opens, above every assignment in the body a name for it
+    /// could come from, and a label is the constant the bytecode compared against.
+    /// </summary>
+    public IEnumerable<HeldSlot> HeldSlots =>
+    [
+        HeldSlot.WrittenAgain(() => Selector),
+        HeldSlot.WrittenAgain(() => Cases.Select(switchCase => switchCase.Label)),
+    ];
 
     public override string ToString()
     {

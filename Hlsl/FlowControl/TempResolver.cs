@@ -332,18 +332,7 @@ public class TempResolver
         bool shared = false;
         new StatementVisitor(statements).Visit(statement =>
         {
-            IEnumerable<HlslTreeNode> carried = statement switch
-            {
-                StoreStructuredStatement store => [store.Address, .. store.Values],
-                StoreTypedStatement typedStore => [.. typedStore.Coordinates, .. typedStore.Values],
-                BufferAppendStatement append => append.Values,
-                AtomicStatement atomic =>
-                    [.. new HlslTreeNode[] { atomic.Address, atomic.Value, atomic.Compare }
-                        .Where(node => node != null),
-                    .. atomic.Coordinates ?? []],
-                _ => [],
-            };
-            shared |= carried.Any(node => components.Any(component =>
+            shared |= statement.NamedHeldNodes.Any(node => components.Any(component =>
                 ReferenceEquals(node, component.Value)
                 || ReferenceEquals(node, component.TempVariable)));
         });
@@ -359,7 +348,10 @@ public class TempResolver
             && ReferenceEquals(carried, value);
     }
 
-    // The values a statement renders.
+    /// <summary>
+    /// The values a statement renders: the entries of its output map that it
+    /// writes here, and everything it holds outside the maps.
+    /// </summary>
     private static IEnumerable<HlslTreeNode> Roots(IStatement statement)
     {
         switch (statement)
@@ -387,118 +379,11 @@ public class TempResolver
                 {
                     yield return value;
                 }
-                if (returnValue.Comparison != null)
-                {
-                    yield return returnValue.Comparison;
-                }
                 break;
-            case IfStatement ifStatement:
-                foreach (HlslTreeNode comparison in ifStatement.Comparison)
-                {
-                    yield return comparison;
-                }
-                break;
-            case LoopStatement loop:
-                // The clauses of a counted loop, and the count of the loop that
-                // counts a register.
-                if (loop.Initializer != null)
-                {
-                    yield return loop.Initializer;
-                }
-                if (loop.ContinueCondition != null)
-                {
-                    yield return loop.ContinueCondition;
-                }
-                if (loop.Increment != null)
-                {
-                    yield return loop.Increment;
-                }
-                if (loop.RepeatCountNode != null)
-                {
-                    yield return loop.RepeatCountNode;
-                }
-                break;
-            case SwitchStatement switchStatement:
-                yield return switchStatement.Selector;
-                foreach (SwitchCase switchCase in switchStatement.Cases)
-                {
-                    if (switchCase.Label != null)
-                    {
-                        yield return switchCase.Label;
-                    }
-                }
-                break;
-            case BreakStatement brk:
-                if (brk.Comparison != null)
-                {
-                    yield return brk.Comparison;
-                }
-                break;
-            case ContinueStatement cont:
-                if (cont.Comparison != null)
-                {
-                    yield return cont.Comparison;
-                }
-                break;
-            case DiscardStatement discard:
-                if (discard.Comparison != null)
-                {
-                    yield return discard.Comparison;
-                }
-                break;
-            case ClipStatement clip:
-                foreach (HlslTreeNode value in clip.Values)
-                {
-                    yield return value;
-                }
-                break;
-            case StoreStructuredStatement store:
-                yield return store.Address;
-                foreach (HlslTreeNode value in store.Values)
-                {
-                    yield return value;
-                }
-                break;
-            case StoreTypedStatement typedStore:
-                foreach (HlslTreeNode value in typedStore.Coordinates.Concat(typedStore.Values))
-                {
-                    yield return value;
-                }
-                break;
-            case BufferAppendStatement append:
-                foreach (HlslTreeNode value in append.Values)
-                {
-                    yield return value;
-                }
-                break;
-            case IndexableTempStoreStatement indexableStore:
-                yield return indexableStore.Index;
-                foreach (HlslTreeNode value in indexableStore.Values)
-                {
-                    yield return value;
-                }
-                break;
-            case AtomicStatement atomic:
-                if (atomic.Address != null)
-                {
-                    yield return atomic.Address;
-                }
-                if (atomic.Coordinates != null)
-                {
-                    foreach (HlslTreeNode coordinate in atomic.Coordinates)
-                    {
-                        yield return coordinate;
-                    }
-                }
-                if (atomic.Value != null)
-                {
-                    yield return atomic.Value;
-                }
-                if (atomic.Compare != null)
-                {
-                    yield return atomic.Compare;
-                }
-                break;
+        }
+        foreach (HlslTreeNode held in statement.HeldNodes)
+        {
+            yield return held;
         }
     }
 }

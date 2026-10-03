@@ -32,4 +32,9 @@ public class BufferAppendStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    // The destination is the resource appended to and not a value: the writer names
+    // it from its register, and no pass rewrites or reduces it. The same goes for
+    // the destination of a typed or structured store and of an atomic.
+    public IEnumerable<HeldSlot> HeldSlots => [HeldSlot.Named(() => Values)];
 }

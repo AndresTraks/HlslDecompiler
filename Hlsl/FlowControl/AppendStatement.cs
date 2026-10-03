@@ -17,4 +17,7 @@ public class AppendStatement : IStatement
 
     /// <summary>Which stream the vertex goes to, where the shader writes several.</summary>
     public int? Stream { get; init; }
+
+    /// <summary>Nothing: this statement holds no value of its own.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [];
 }

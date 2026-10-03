@@ -26,4 +26,8 @@ public class IfStatement : IStatement
     {
         return "if (" + string.Join(", ", Comparison.Select(c => c.ToString())) + ")";
     }
+
+    /// <summary>A predicate is written out again rather than named: see <see
+    /// cref="IStatement.NamedHeldNodes"/>.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [HeldSlot.WrittenAgain(() => Comparison)];
 }

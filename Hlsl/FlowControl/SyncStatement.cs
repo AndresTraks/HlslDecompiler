@@ -41,4 +41,7 @@ public class SyncStatement : IStatement
         };
         return threads ? barrier + "WithGroupSync" : barrier;
     }
+
+    /// <summary>Nothing: this statement holds no value of its own.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [];
 }

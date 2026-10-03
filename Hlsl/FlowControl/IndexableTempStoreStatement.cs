@@ -30,4 +30,10 @@ public class IndexableTempStoreStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    public IEnumerable<HeldSlot> HeldSlots =>
+    [
+        HeldSlot.Named(() => Index, value => Index = value),
+        HeldSlot.Named(() => Values),
+    ];
 }

@@ -34,4 +34,21 @@ public class LoopStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    /// <summary>
+    /// The clauses of a counted loop and the trip count of one counted by a
+    /// register - every one of them, whether or not the loop is counted and whether
+    /// or not a writer will print it. None are named: the initializer and the
+    /// increment are assignments already, so they are where a name comes from
+    /// rather than somewhere one is read; the condition is a predicate, which pays
+    /// an `and` for being named (see <see cref="IStatement.NamedHeldNodes"/>); and
+    /// the trip count is read before the loop by the loop itself.
+    /// </summary>
+    public IEnumerable<HeldSlot> HeldSlots =>
+    [
+        HeldSlot.WrittenAgain(() => Initializer),
+        HeldSlot.WrittenAgain(() => ContinueCondition),
+        HeldSlot.WrittenAgain(() => Increment),
+        HeldSlot.WrittenAgain(() => RepeatCountNode),
+    ];
 }

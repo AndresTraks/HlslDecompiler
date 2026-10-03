@@ -56,4 +56,19 @@ public class AtomicStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    /// <summary>
+    /// The address, the coordinate it may also be spelled as, and the operands.
+    /// Not the element byte offset: a structured resource carries it in the address
+    /// operand and the writer reads it as the number it is, to name the member the
+    /// atomic is on, rather than compiling it as a value. Not the variable the old
+    /// value goes into either - that one is an output and is in the map.
+    /// </summary>
+    public IEnumerable<HeldSlot> HeldSlots =>
+    [
+        HeldSlot.Named(() => Address, value => Address = value),
+        HeldSlot.Named(() => Coordinates),
+        HeldSlot.Named(() => Value, value => Value = value),
+        HeldSlot.Named(() => Compare, value => Compare = value),
+    ];
 }

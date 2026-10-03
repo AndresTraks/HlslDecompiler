@@ -28,4 +28,8 @@ public class ReturnStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = outputs.ToDictionary();
     }
+
+    /// <summary>A predicate is written out again rather than named: see <see
+    /// cref="IStatement.NamedHeldNodes"/>.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [HeldSlot.WrittenAgain(() => Comparison)];
 }

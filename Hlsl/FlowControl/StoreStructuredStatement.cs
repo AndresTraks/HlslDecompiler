@@ -38,4 +38,10 @@ public class StoreStructuredStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    public IEnumerable<HeldSlot> HeldSlots =>
+    [
+        HeldSlot.Named(() => Address, value => Address = value),
+        HeldSlot.Named(() => Values),
+    ];
 }

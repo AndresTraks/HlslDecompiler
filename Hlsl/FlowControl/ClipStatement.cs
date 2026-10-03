@@ -16,4 +16,6 @@ public class ClipStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    public IEnumerable<HeldSlot> HeldSlots => [HeldSlot.Named(() => Values)];
 }

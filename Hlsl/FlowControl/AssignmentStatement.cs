@@ -37,4 +37,7 @@ public class AssignmentStatement : IStatement
         }
         return keys + " = " + values;
     }
+
+    /// <summary>Nothing: an assignment's values are the entries of its maps.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [];
 }

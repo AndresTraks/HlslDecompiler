@@ -108,23 +108,20 @@ public class HlslAstWriter : HlslWriter
     {
         foreach (IStatement statement in statements)
         {
+            if (statement is AssignmentStatement or ReturnStatement)
+            {
+                foreach (HlslTreeNode root in ReducedTemps(statement))
+                {
+                    Reduce(root);
+                }
+            }
+            foreach (HlslTreeNode held in HeldNodesToReduce(statement))
+            {
+                Reduce(held);
+            }
             switch (statement)
             {
-                case AssignmentStatement or ReturnStatement:
-                    foreach (HlslTreeNode root in ReducedTemps(statement))
-                    {
-                        Reduce(root);
-                    }
-                    if (statement is ReturnStatement returnValue && returnValue.Comparison != null)
-                    {
-                        Reduce(returnValue.Comparison);
-                    }
-                    break;
                 case IfStatement ifStatement:
-                    foreach (HlslTreeNode comparison in ifStatement.Comparison)
-                    {
-                        Reduce(comparison);
-                    }
                     ReduceAll(ifStatement.TrueBody);
                     if (ifStatement.FalseBody != null)
                     {
@@ -132,108 +129,41 @@ public class HlslAstWriter : HlslWriter
                     }
                     break;
                 case LoopStatement loop:
-                    // The for clauses of a counted loop; of a counted-by-register
-                    // loop only its trip count, and only when that is a value
-                    // rather than the constant the bytecode already named.
-                    if (loop.IsCountedLoop)
-                    {
-                        if (loop.Initializer != null)
-                        {
-                            Reduce(loop.Initializer);
-                        }
-                        if (loop.ContinueCondition != null)
-                        {
-                            Reduce(loop.ContinueCondition);
-                        }
-                        if (loop.Increment != null)
-                        {
-                            Reduce(loop.Increment);
-                        }
-                    }
-                    else if (loop.RepeatCount == null && loop.RepeatCountNode != null)
-                    {
-                        Reduce(loop.RepeatCountNode);
-                    }
                     ReduceAll(loop.Body);
                     break;
                 case SwitchStatement switchStatement:
-                    Reduce(switchStatement.Selector);
                     foreach (SwitchCase switchCase in switchStatement.Cases)
                     {
-                        if (switchCase.Label != null)
-                        {
-                            Reduce(switchCase.Label);
-                        }
                         ReduceAll(switchCase.Body);
-                    }
-                    break;
-                case BreakStatement or ContinueStatement or DiscardStatement:
-                    HlslTreeNode jumpComparison = statement switch
-                    {
-                        BreakStatement brk => brk.Comparison,
-                        ContinueStatement cont => cont.Comparison,
-                        _ => ((DiscardStatement)statement).Comparison,
-                    };
-                    if (jumpComparison != null)
-                    {
-                        Reduce(jumpComparison);
-                    }
-                    break;
-                case ClipStatement clip:
-                    foreach (HlslTreeNode value in clip.Values)
-                    {
-                        Reduce(value);
-                    }
-                    break;
-                case StoreStructuredStatement store:
-                    Reduce(store.Address);
-                    foreach (HlslTreeNode value in store.Values)
-                    {
-                        Reduce(value);
-                    }
-                    break;
-                case StoreTypedStatement typedStore:
-                    foreach (HlslTreeNode value in typedStore.Coordinates.Concat(typedStore.Values))
-                    {
-                        Reduce(value);
-                    }
-                    break;
-                case BufferAppendStatement append:
-                    foreach (HlslTreeNode value in append.Values)
-                    {
-                        Reduce(value);
-                    }
-                    break;
-                case IndexableTempStoreStatement indexableStore:
-                    Reduce(indexableStore.Index);
-                    foreach (HlslTreeNode value in indexableStore.Values)
-                    {
-                        Reduce(value);
-                    }
-                    break;
-                case AtomicStatement atomic:
-                    if (atomic.Address != null)
-                    {
-                        Reduce(atomic.Address);
-                    }
-                    if (atomic.Coordinates != null)
-                    {
-                        foreach (HlslTreeNode coordinate in atomic.Coordinates)
-                        {
-                            Reduce(coordinate);
-                        }
-                    }
-                    if (atomic.Value != null)
-                    {
-                        Reduce(atomic.Value);
-                    }
-                    if (atomic.Compare != null)
-                    {
-                        Reduce(atomic.Compare);
                     }
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// The values a statement holds that writing it reduces before it writes them,
+    /// which is everything it holds but for a loop's clauses. A loop prints those
+    /// only where it prints as a `for`: an uncounted one prints its condition from
+    /// the break still in its body, and a counted-by-register one its trip count
+    /// from the constant the bytecode named, so reducing them here would fold
+    /// values this writer never writes.
+    /// </summary>
+    private static IEnumerable<HlslTreeNode> HeldNodesToReduce(IStatement statement)
+    {
+        if (statement is not LoopStatement loop)
+        {
+            return statement.HeldNodes;
+        }
+        if (loop.IsCountedLoop)
+        {
+            return new HlslTreeNode[]
+                { loop.Initializer, loop.ContinueCondition, loop.Increment }
+                .Where(clause => clause != null);
+        }
+        return loop.RepeatCount == null && loop.RepeatCountNode != null
+            ? [loop.RepeatCountNode]
+            : [];
     }
 
     /// <summary>
@@ -1011,17 +941,7 @@ public class HlslAstWriter : HlslWriter
         new StatementVisitor(loop.Body).Visit(statement =>
         {
             roots.AddRange(statement.Outputs.Values);
-            roots.AddRange(statement switch
-            {
-                IfStatement @if => @if.Comparison,
-                ClipStatement clip => clip.Values,
-                StoreStructuredStatement store => [store.Address, .. store.Values],
-                IndexableTempStoreStatement store => [store.Index, .. store.Values],
-                BreakStatement @break when @break.Comparison != null => [@break.Comparison],
-                ContinueStatement @continue when @continue.Comparison != null => [@continue.Comparison],
-                ReturnStatement @return when @return.Comparison != null => [@return.Comparison],
-                _ => [],
-            });
+            roots.AddRange(statement.HeldNodes);
         });
         return Reachable(roots.Where(r => r != null)).Any(IsGradientOperation);
     }

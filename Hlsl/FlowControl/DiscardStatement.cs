@@ -18,4 +18,8 @@ public class DiscardStatement : IStatement
         Inputs = inputs.ToDictionary();
         Outputs = inputs.ToDictionary();
     }
+
+    /// <summary>A predicate is written out again rather than named: see <see
+    /// cref="IStatement.NamedHeldNodes"/>.</summary>
+    public IEnumerable<HeldSlot> HeldSlots => [HeldSlot.WrittenAgain(() => Comparison)];
 }

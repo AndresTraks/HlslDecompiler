@@ -951,14 +951,7 @@ public class StatementFinalizer
         int holders = 0;
         new StatementVisitor(_statements).Visit(statement =>
         {
-            if ((statement is StoreStructuredStatement store
-                    && (store.Address == node || store.Values.Contains(node)))
-                || (statement is StoreTypedStatement typedStore
-                    && (typedStore.Coordinates.Contains(node) || typedStore.Values.Contains(node)))
-                || (statement is BufferAppendStatement append && append.Values.Contains(node))
-                || (statement is AtomicStatement atomic
-                    && (atomic.Address == node || atomic.Value == node || atomic.Compare == node
-                        || (atomic.Coordinates?.Contains(node) ?? false))))
+            if (statement.NamedHeldNodes.Contains(node))
             {
                 holders++;
             }
@@ -1027,132 +1020,29 @@ public class StatementFinalizer
     /// little the node graph says about it, and a register slot on an if is bookkeeping
     /// that the writer never renders. Listing only indexable temp stores here, while
     /// rewiring six kinds of statement there, is what let a value a structured store
-    /// carried be judged dead.
+    /// carried be judged dead. Both now ask the statement - this one through
+    /// NamedHeldNodes and that one through ReplaceHeldNode - so the two sets are the
+    /// same set by construction and cannot drift apart again.
     /// </summary>
     private bool IsRenderedByAnyStatement(HlslTreeNode node)
     {
         bool rendered = false;
         new StatementVisitor(_statements).Visit(statement =>
         {
-            rendered |= RendersValue(statement, node);
+            rendered |= statement.NamedHeldNodes.Contains(node);
         });
         return rendered;
     }
 
-    private static bool RendersValue(IStatement statement, HlslTreeNode node)
-    {
-        return statement switch
-        {
-            StoreStructuredStatement store =>
-                store.Address == node || store.Values.Contains(node),
-            StoreTypedStatement typed =>
-                typed.Values.Contains(node) || typed.Coordinates.Contains(node),
-            BufferAppendStatement append => append.Values.Contains(node),
-            AtomicStatement atomic =>
-                atomic.Address == node || atomic.Value == node || atomic.Compare == node
-                || (atomic.Coordinates != null && atomic.Coordinates.Contains(node)),
-            ClipStatement clip => clip.Values.Contains(node),
-            IndexableTempStoreStatement indexableTemp =>
-                indexableTemp.Index == node || indexableTemp.Values.Contains(node),
-            _ => false,
-        };
-    }
-
+    /// <summary>
+    /// Rewrites the values the statements hold outside their maps, which the
+    /// graph's own Replace does not reach: a held reference is not an input edge,
+    /// so nothing in the node points back at the statement holding it.
+    /// </summary>
     private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)
     {
-        new StatementVisitor(_statements).Visit(statement =>
-        {
-            if (statement is StoreStructuredStatement store)
-            {
-                for (int i = 0; i < store.Values.Length; i++)
-                {
-                    if (store.Values[i] == node)
-                    {
-                        store.Values[i] = replacement;
-                    }
-                }
-                if (store.Address == node)
-                {
-                    store.Address = replacement;
-                }
-            }
-            else if (statement is StoreTypedStatement typedStore)
-            {
-                for (int i = 0; i < typedStore.Values.Length; i++)
-                {
-                    if (typedStore.Values[i] == node)
-                    {
-                        typedStore.Values[i] = replacement;
-                    }
-                }
-                for (int i = 0; i < typedStore.Coordinates.Length; i++)
-                {
-                    if (typedStore.Coordinates[i] == node)
-                    {
-                        typedStore.Coordinates[i] = replacement;
-                    }
-                }
-            }
-            else if (statement is BufferAppendStatement append)
-            {
-                for (int i = 0; i < append.Values.Length; i++)
-                {
-                    if (append.Values[i] == node)
-                    {
-                        append.Values[i] = replacement;
-                    }
-                }
-            }
-            else if (statement is AtomicStatement atomic)
-            {
-                if (atomic.Address == node)
-                {
-                    atomic.Address = replacement;
-                }
-                if (atomic.Coordinates != null)
-                {
-                    for (int i = 0; i < atomic.Coordinates.Length; i++)
-                    {
-                        if (atomic.Coordinates[i] == node)
-                        {
-                            atomic.Coordinates[i] = replacement;
-                        }
-                    }
-                }
-                if (atomic.Value == node)
-                {
-                    atomic.Value = replacement;
-                }
-                if (atomic.Compare == node)
-                {
-                    atomic.Compare = replacement;
-                }
-            }
-            else if (statement is ClipStatement clip)
-            {
-                for (int i = 0; i < clip.Values.Length; i++)
-                {
-                    if (clip.Values[i] == node)
-                    {
-                        clip.Values[i] = replacement;
-                    }
-                }
-            }
-            else if (statement is IndexableTempStoreStatement indexableTempStore)
-            {
-                for (int i = 0; i < indexableTempStore.Values.Length; i++)
-                {
-                    if (indexableTempStore.Values[i] == node)
-                    {
-                        indexableTempStore.Values[i] = replacement;
-                    }
-                }
-                if (indexableTempStore.Index == node)
-                {
-                    indexableTempStore.Index = replacement;
-                }
-            }
-        });
+        new StatementVisitor(_statements).Visit(
+            statement => statement.ReplaceHeldNode(node, replacement));
     }
 
     /// <summary>

@@ -1012,6 +1012,17 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
+            // A typed load reads an integer address and says nothing about the
+            // texel, so the view's return type is what answers. Before the
+            // IsInteger test, which counts ld and ldms among the instructions whose
+            // operands are integers - taken for what they produce, a float4 texel
+            // cached in groupshared memory declared the array int4, and the store
+            // into it converted while the load back out converted again.
+            if (writer.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS
+                or D3D10Opcode.LdUAVTyped)
+            {
+                return LoadedElementType(writer);
+            }
             if (writer.Opcode.IsInteger() || writer.Opcode == D3D10Opcode.Ftoi || writer.Opcode == D3D10Opcode.Ftou)
             {
                 return StoredType.Integer;
@@ -1048,11 +1059,17 @@ public sealed class IntegerOperandAnalysis
         // A typed view stores what its element type is, which the reflection data
         // gives as a return type; there is no struct to ask. Its resource is the
         // first operand, and asking for a fourth read off the end.
-        if (load.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped)
+        if (load.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped
+            or D3D10Opcode.LD or D3D10Opcode.LDMS)
         {
+            // A typed load off a texture names its resource where a writable view's
+            // load does, and binds as a texture rather than as a view.
+            bool isTexture = load.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS;
             int typedIndex = load.Opcode == D3D10Opcode.StoreUAVTyped ? 0 : 2;
             ResourceDefinition view = _shader.ResourceDefinitions?
-                .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.UavRWTyped
+                .FirstOrDefault(d => d.ShaderInputType == (isTexture
+                        ? D3DShaderInputType.Texture
+                        : D3DShaderInputType.UavRWTyped)
                     && d.BindPoint == load.GetParamRegisterNumber(typedIndex));
             return view?.ResourceReturnType switch
             {

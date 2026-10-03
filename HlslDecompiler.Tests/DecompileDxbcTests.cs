@@ -359,6 +359,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "stored_float_bits")]
     [TestCase("cs_5_0", "consume_bits_scaled")]
     [TestCase("vs_4_0", "packed_bits_uniform")]
+    [TestCase("cs_4_0", "cached_texel_blur")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

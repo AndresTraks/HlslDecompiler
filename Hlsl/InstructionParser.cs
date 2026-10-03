@@ -3897,8 +3897,14 @@ public class InstructionParser
                         instruction, inputParameterIndex, componentIndex, operandIndices),
                     OperandType.ImmediateConstantBuffer => GetImmediateConstantBufferInput(
                         instruction, inputParameterIndex, componentIndex, operandIndices),
-                    OperandType.Input => GetDynamicVertexInput(
-                        instruction, inputParameterIndex, componentIndex, operandIndices),
+                    // A control point of a patch is read the way a vertex of a
+                    // primitive is - `vicp[2][0]` is which control point then which
+                    // register of it - so a hull shader that loops over its control
+                    // points rather than being unrolled reaches here, and used to
+                    // stop the parse outright.
+                    OperandType.Input or OperandType.InputControlPoint
+                        => GetDynamicVertexInput(
+                            instruction, inputParameterIndex, componentIndex, operandIndices),
                     _ => throw new NotImplementedException(
                         $"Dynamically indexed {operandType} in {instruction.Opcode}"),
                 };

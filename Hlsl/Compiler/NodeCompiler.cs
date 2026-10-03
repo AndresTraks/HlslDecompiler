@@ -433,8 +433,21 @@ public sealed class NodeCompiler
             && components.All(c => c is not MultiplyOperation multiply
                 || multiply.Factor1 is ConstantNode || multiply.Factor2 is ConstantNode))
         {
+            // The one takes the type of the constants beside it, the same as the
+            // zero below and for the same reason. `uint4(id, id * 7 + 3, id & 255, 1)`
+            // is a mov and an imad, and the mov groups with the imad as the `id * 1`
+            // it is - but written `id.xx * float2(1, 7)` the mad is a float one, so
+            // the round trip converts the id in and the answer back out and pays a
+            // utof and an ftoi for it. Written `int2(1, 7)` it is the imad it was,
+            // and one instruction shorter than the original besides: fxc folds the
+            // mov into the mad's other component.
+            bool integerFactors = components
+                .OfType<MultiplyOperation>()
+                .Select(multiply => FactorOfFoldedMultiply(multiply))
+                .All(factor => factor is ConstantNode constant && constant.IntegerValue != null);
             List<HlslTreeNode> multiplied = [.. components.Select(FactoredOfFoldedMultiply)];
-            List<HlslTreeNode> factors = [.. components.Select(FactorOfFoldedMultiply)];
+            List<HlslTreeNode> factors = [..
+                components.Select(c => FactorOfFoldedMultiply(c, integerFactors))];
             return $"{Compile(multiplied, promoteToVectorSize)} * {Compile(factors, factors.Count)}";
         }
 
@@ -826,10 +839,13 @@ public sealed class NodeCompiler
     }
 
     // What it was multiplied by, or the one that was folded out.
-    private static HlslTreeNode FactorOfFoldedMultiply(HlslTreeNode node)
+    // What it was multiplied by, or the one that was folded out. A fresh node
+    // rather than one of the graph's: nothing reads it, and the compiler runs over
+    // and over.
+    private static HlslTreeNode FactorOfFoldedMultiply(HlslTreeNode node, bool integer = false)
     {
         return node is not MultiplyOperation multiply
-            ? new ConstantNode(1f)
+            ? (integer ? new ConstantNode(1) : new ConstantNode(1f))
             : multiply.Factor1 is ConstantNode ? multiply.Factor1 : multiply.Factor2;
     }
 

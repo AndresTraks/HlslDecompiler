@@ -43,7 +43,7 @@ public class RoundTripCostTests
     /// used. Each entry below says which of the two it is, because a reason inferred
     /// from the number alone is worse than no reason.
     /// </summary>
-    private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
+    internal static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
         ["ps_5_0/split_transform"] = (23,
@@ -331,7 +331,7 @@ public class RoundTripCostTests
             + "something more expensive than it was given, or it is doing work twice.");
     }
 
-    private static int CountInstructions(string binaryFilename)
+    internal static int CountInstructions(string binaryFilename)
     {
         var startInfo = RecompileTests.CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");

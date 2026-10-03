@@ -3518,10 +3518,21 @@ public class HlslSimpleWriter : HlslWriter
             // A vertex of a patch or a primitive, read at an index: the member it
             // names is as wide as its own declaration, and a member one component
             // wide has no swizzle to pick from.
-            if (registerKey.OperandType == OperandType.Input && operandIndices.Length > 1)
+            if (registerKey.OperandType == OperandType.Input && operandIndices.Length > 1
+                && !operandIndices[1].IsRelative)
             {
+                // Keyed by the register within the vertex, which is the immediate
+                // beside the index. The number decoded from a relatively addressed
+                // operand is meaningless - the parser says so where it models the
+                // element rather than reading it - so a vertex read at a computed
+                // index, `v[r1.z][0]`, found no declaration for the key as it stood
+                // and the width fell through to a throw. A geometry shader that
+                // loops over its vertices rather than being unrolled is that shape,
+                // and it stopped the instruction writer outright.
+                var vertexRegister = new D3D10RegisterKey(
+                    OperandType.Input, (int)operandIndices[1].Immediate);
                 isPackedScalar = _registers.GetRegisterMaskedLength(new RegisterComponentKey(
-                    registerKey, instruction.GetSourceSwizzleComponents(operandIndex)[0])) == 1;
+                    vertexRegister, instruction.GetSourceSwizzleComponents(operandIndex)[0])) == 1;
             }
         }
         else if (registerKey.OperandType == OperandType.ConstantBuffer)

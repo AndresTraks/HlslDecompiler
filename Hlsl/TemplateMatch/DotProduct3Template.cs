@@ -1,4 +1,7 @@
-﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
+﻿using System.Collections.Generic;
+using System.Linq;
+
+namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 // 3 by 3 dot product has a pattern of:
 // #1  dot(ab, xy) + c*z
@@ -87,7 +90,8 @@ public class DotProduct3Template : IGroupTemplate
             || (_templateMatcher.CanGroupComponents(dot.Y.Inputs[1], cz.Factor2, allowMatrixColumn)
                 && dot.X.Inputs[0] is not DotProductOperation
                 && b is not DotProductOperation
-                && c is not DotProductOperation))
+                && c is not DotProductOperation
+                && !IsTransposedGather(dot.X.Inputs[0], b, c)))
         {
             // The other side is a matrix, or components of one register: either way
             // this side may be arbitrary - one component built by an expression is
@@ -112,6 +116,35 @@ public class DotProduct3Template : IGroupTemplate
         return null;
     }
 
+
+    /// <summary>
+    /// Whether these are one component taken from each of several values, which is a
+    /// transpose and not a vector. fxc has to move each into place before it can dot
+    /// them, an instruction apiece, so a dot over one never costs less than writing
+    /// the products out - and taking it can cost a great deal more, because the dots
+    /// it leaves behind do not group with one another. A terrain splat weighting
+    /// three layers by one splat sample came back as a dot per output component, the
+    /// lerp above them could not group over three unrelated dots, and the whole
+    /// colour was written a component at a time: eighteen instructions out, thirty
+    /// back.
+    ///
+    /// A matrix is read the other way round and is not caught by this: a row has one
+    /// byte offset and a component apiece, so its components differ in index where
+    /// these agree.
+    /// </summary>
+    private static bool IsTransposedGather(params HlslTreeNode[] nodes)
+    {
+        return nodes.All(node => node is IHasComponentIndex)
+            && nodes.Select(node => ((IHasComponentIndex)node).ComponentIndex)
+                .Distinct().Count() == 1
+            && nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length
+            // Reads of the same kind, which is what makes them parallel rather than
+            // one value the writer happened to split. A luminance dot over a texel
+            // reaches here as the load's .x beside a float2 variable holding its
+            // .yz, and those share a component index without being a transpose at
+            // all - the components of one read, named halfway through.
+            && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
+    }
     public HlslTreeNode Reduce(HlslTreeNode node, IGroupContext groupContext)
     {
         var dotProductContext = groupContext as DotProductContext;

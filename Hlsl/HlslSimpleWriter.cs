@@ -3131,7 +3131,13 @@ public class HlslSimpleWriter : HlslWriter
             return _registers.GetRegisterName(
                 new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
         }
-        if (operandType == OperandType.Input)
+        // A control point of a patch is read the way a vertex of a primitive is -
+        // which control point, then which register of it - so it is named the same
+        // way. Left out, it fell through to the constant buffer case at the end and
+        // was named off whatever declaration sat at that register: a hull shader
+        // looping over its control points asked for `dot(f[r0.y].xyz, f[r0.y].xyz)`,
+        // where f is the cbuffer float beside it, which does not compile.
+        if (operandType is OperandType.Input or OperandType.InputControlPoint)
         {
             // A run of input registers declared as one array by dcl_indexrange has
             // one index, and the immediate beside it is the first register of the
@@ -3518,7 +3524,8 @@ public class HlslSimpleWriter : HlslWriter
             // A vertex of a patch or a primitive, read at an index: the member it
             // names is as wide as its own declaration, and a member one component
             // wide has no swizzle to pick from.
-            if (registerKey.OperandType == OperandType.Input && operandIndices.Length > 1
+            if (registerKey.OperandType is OperandType.Input or OperandType.InputControlPoint
+                && operandIndices.Length > 1
                 && !operandIndices[1].IsRelative)
             {
                 // Keyed by the register within the vertex, which is the immediate

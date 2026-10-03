@@ -37,19 +37,47 @@ namespace HlslDecompiler.Hlsl;
 /// about - a normalize written twice is computed twice - and it could not be acted
 /// on while the idiom existed only inside a compile.
 ///
-/// ps_4_0/packed_cbuffer is the other half of it. That shader normalizes a vector
-/// and reads its .xz and its .y apart, so the grouper only ever saw two components
-/// of three and matched nothing, and the output divided each component by the
-/// length and put them back together by hand: `float3(t6.x, t4.y / t5, t6.y)`. Asked
-/// of the graph, where all three divisions are, it is `float3 t5 = normalize(t4)`
-/// and `t5.xz` where the xz is wanted. A naming rule reached for the same shape from
-/// the other end - see the ps_5_0/split_transform entry in RoundTripCostTests - and
-/// it cost three instructions; this way it is free.
+/// ps_4_0/packed_cbuffer is the other half of it, and shows how far this gets and
+/// no further. That shader normalizes a vector and reads its .xz and its .y apart,
+/// so the grouper only ever saw two components of three and matched nothing: the
+/// output took a length, divided .xz by it and divided .y by it again, and read the
+/// result as `float3(t6.x, t4.y / t5, t6.y)`. Asked of the graph, where all three
+/// divisions are, the normalize comes back whole - `float3 t5 = normalize(t4)` with
+/// `float2 t6 = t5.xz` for the two components two samples want. The constructor
+/// repacking them is still there, reading `float3(t6.x, t5.y, t6.y)`, and three
+/// lines are still three lines. What changed is that the idiom is named rather than
+/// spelled out; putting the swizzles back together is a separate question and not
+/// one this answers.
 ///
 /// ps_4_0/reflect_cube is the one that reads longer: two normalizes that one
 /// expression each reads get names, and a line of a hundred characters becomes
 /// three short ones. That is the hoist naming an expensive read with a single
 /// reader, which is what it is documented to do and what keeps the fixtures short.
+///
+/// The next grouper along does not follow, and what stops it is worth writing down.
+/// reflect is the obvious one to take next - it is the idiom ps_4_0/reflect_cube's
+/// long line is made of, and a normalize handed to a reflect is read, until the
+/// reflect is recognised, by the several unrelated instructions the reflect is made
+/// of, so the naming counts it as a value three expressions read and gives it a name
+/// it does not need. Recovering reflect the same way as this does fix that: built as
+/// a ReflectOutputNode off the dot under it, reflect_cube's three lines go back to
+/// the one they were, and nothing costs an instruction.
+///
+/// It also loses ps_4_1/cube_array_probe its name. That shader reads
+/// `normalize(i.normal)` in a fresnel dot and again in the reflect, which is two
+/// expressions and a name worth having - and with the reflect a node, the two
+/// readers are both GroupNodes holding the same components, and CountExpressions
+/// collapses them to one. Measured: the count comes back 1 for that normalize and 2
+/// for the one beside it that is read by a dot and a negate. The collapsing is
+/// CanGroupComponents answering whether two readers could be components of one
+/// value, which is the looseness InstructionComponents is documented to keep on
+/// purpose - narrowing it to the instruction that made each reader was tried on
+/// 2026-09-27 and cost twenty fixtures the names of samples read once.
+///
+/// So the groupers cannot be moved one at a time and have the naming stay right.
+/// What has to come first is the reader count becoming a count of expressions rather
+/// than of things that could group, and that is a change to what the writer names
+/// rather than to where the idioms are recovered.
 ///
 /// Where this runs matters and is narrow. The templates fold a register group in
 /// GroupAssignments, immediately before the hoist names anything in it, and that is

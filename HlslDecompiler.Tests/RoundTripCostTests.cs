@@ -46,6 +46,22 @@ public class RoundTripCostTests
     private static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_5_0/transposed_basis"] = (46,
+            "Eight instructions, and the same transpose splat_layers was cured of, "
+            + "reached over values the shader computed instead of values it read. "
+            + "Three basis vectors weighted by one kernel entry's components - three "
+            + "vector mads in the original - come back as a dot per component, so "
+            + "fxc transposes tangent, bitangent and normal once outside the loop and "
+            + "does three dp3 inside it where three mads would have done.\n\n"
+            + "The guard in DotProduct2Template and DotProduct3Template cannot see "
+            + "this one. It recognises a transpose as one component index taken from "
+            + "each of several values, and a component index is something a read "
+            + "carries: here the three values are a normalize, a cross product and a "
+            + "mad, which carry none. What makes them a transpose is that the three "
+            + "sibling dots take the first component of each, then the second, then "
+            + "the third - an observation across the output's components, where a "
+            + "template only ever sees one of them. It belongs wherever the "
+            + "components are grouped, not in the templates."),
         ["vs_4_0/packed_bits_uniform"] = (6,
             "Two instructions, both of them a conversion that should not be there. "
             + "A uint attribute and a uint uniform hold a float's bits, and are read "

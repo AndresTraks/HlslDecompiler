@@ -1,6 +1,6 @@
 float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
-	int t0 = texcoord.x > 1;
+	bool t0 = texcoord.x > 1;
 	float t1 = 0;
 	int t2 = 0;
 	while (t2 < 8) {

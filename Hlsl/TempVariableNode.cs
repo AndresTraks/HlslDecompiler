@@ -33,7 +33,20 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // asking for, and the cast each of them carried comes off.
     public bool IsHalf { get; set; }
 
-    public string TypeName => IsInteger
+    // Declared bool where it only ever holds a comparison and only conditions read
+    // it. A comparison is a mask - all ones or all zeroes - and an int variable
+    // given one is normalised to 0 or 1 on the way in, which is an `and` the
+    // bytecode did not have: a double compare feeding a select costs that
+    // instruction and nothing else. A bool keeps the mask, because HLSL never asks
+    // what a bool's bits are.
+    //
+    // Not the same question as IsInteger, which stays as it was: what the value is
+    // made of decides the casts around it, and only the declaration changes here.
+    public bool IsBool { get; set; }
+
+    public string TypeName => IsBool
+        ? "bool"
+        : IsInteger
         ? IntegerTypeName
         : IsDouble ? "double" : IsHalf ? "half" : "float";
 

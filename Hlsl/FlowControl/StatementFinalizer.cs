@@ -363,6 +363,7 @@ public class StatementFinalizer
                             // the register cannot either - fxc reuses one for a
                             // double here and a float there.
                             IsDouble = !isInteger && _doubleValues.Contains(tempValue),
+                            IsBool = HoldsOnlyACondition(tempValue, tempUsages),
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
                     // The value entering a loop header declares the variable; everything
@@ -1043,6 +1044,42 @@ public class StatementFinalizer
     {
         new StatementVisitor(_statements).Visit(
             statement => statement.ReplaceHeldNode(node, replacement));
+    }
+
+    /// <summary>
+    /// Whether this value is a comparison that nothing does arithmetic with - a mask
+    /// read only as a condition, which is what a bool variable is for.
+    ///
+    /// Every reader has to be a condition. A mask is all ones where a bool promoted
+    /// to a number is one, so anything that adds it, masks with it or stores it
+    /// reads a different value if the declaration changes; a select, an if and a
+    /// break only ask whether it is zero.
+    ///
+    /// A predicate a statement holds counts as a condition and is not in the
+    /// readers: the branch tests it without reading it through the graph. That is
+    /// what NamedHeldNodes tells apart - held and written out again, as against held
+    /// and read by name - so a value held only that way is a condition and a value
+    /// some statement names is not.
+    /// </summary>
+    private bool HoldsOnlyACondition(HlslTreeNode value, IEnumerable<HlslTreeNode> readers)
+    {
+        if (value is not ComparisonNode)
+        {
+            return false;
+        }
+        if (!readers.All(reader => reader is MoveConditionalOperation select
+            && ReferenceEquals(select.Condition, value)))
+        {
+            return false;
+        }
+        bool named = false;
+        bool tested = false;
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            named |= statement.NamedHeldNodes.Contains(value);
+            tested |= statement.HeldNodes.Contains(value);
+        });
+        return !named && (tested || readers.Any());
     }
 
     /// <summary>

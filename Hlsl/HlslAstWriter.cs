@@ -1543,7 +1543,8 @@ public class HlslAstWriter : HlslWriter
             // expressions read and wrote it out twice. The rest of what IsNameable
             // allows - a texture load, a lit, a constant - this path has never
             // considered, and whether it should is a question of its own.
-            if (roots.Contains(node) || node is not (Operation or NormalizeOutputNode))
+            if (roots.Contains(node)
+                || node is not (Operation or NormalizeOutputNode or ReflectOutputNode))
             {
                 continue;
             }
@@ -2204,6 +2205,7 @@ public class HlslAstWriter : HlslWriter
             or TextureLoadOutputNode
             or SamplePositionNode
             or NormalizeOutputNode
+            or ReflectOutputNode
             or PartialDerivativeXOperation
             or PartialDerivativeYOperation;
     }
@@ -2219,6 +2221,7 @@ public class HlslAstWriter : HlslWriter
         return node is Operation
             or TextureLoadOutputNode
             or NormalizeOutputNode
+            or ReflectOutputNode
             or LitOutputNode
             or ConstantNode;
     }

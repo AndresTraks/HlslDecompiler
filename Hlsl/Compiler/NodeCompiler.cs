@@ -379,6 +379,12 @@ public sealed class NodeCompiler
                 return $"normalize({vector})";
             }
 
+            // Still here, and no longer the way a reflect is usually recognised:
+            // IdiomRecovery puts one into the graph before anything is named, and it
+            // reaches every reflect in the corpus - all six of them - so this does
+            // not fire for any of those any more. It stays for a shape or a path the
+            // recovery does not reach, where a reflect recognised late still reads
+            // better than the arithmetic it is made of.
             var reflect = _nodeGrouper.ReflectGrouper.TryGetContext(components);
             if (reflect != null)
             {
@@ -2206,6 +2212,18 @@ public sealed class NodeCompiler
             string litSwizzle = GetAstSourceSwizzleName(
                 componentsWithIndices, 4, promoteToVectorSize);
             return $"lit({nDotL}, {nDotH}, {specularPower}){litSwizzle}";
+        }
+
+        if (first is ReflectOutputNode reflectComponent)
+        {
+            // As wide as the vectors reflected, the same as a normalize and for the
+            // same reason: the components of the reflect are what the swizzle picks
+            // from, not the register they happen to sit in.
+            string incident = Compile(reflectComponent.Incident.Inputs);
+            string normal = Compile(reflectComponent.Normal.Inputs);
+            string reflectSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                reflectComponent.Incident.Inputs.Count, promoteToVectorSize);
+            return $"reflect({incident}, {normal}){reflectSwizzle}";
         }
 
         if (first is NormalizeOutputNode)

@@ -54,30 +54,22 @@ namespace HlslDecompiler.Hlsl;
 /// three short ones. That is the hoist naming an expensive read with a single
 /// reader, which is what it is documented to do and what keeps the fixtures short.
 ///
-/// The next grouper along does not follow, and what stops it is worth writing down.
-/// reflect is the obvious one to take next - it is the idiom ps_4_0/reflect_cube's
-/// long line is made of, and a normalize handed to a reflect is read, until the
-/// reflect is recognised, by the several unrelated instructions the reflect is made
-/// of, so the naming counts it as a value three expressions read and gives it a name
-/// it does not need. Recovering reflect the same way as this does fix that: built as
-/// a ReflectOutputNode off the dot under it, reflect_cube's three lines go back to
-/// the one they were, and nothing costs an instruction.
+/// reflect followed, and the first attempt at it says something about the order
+/// these have to go in. Tried while the naming still counted the expressions that
+/// read a value - by walking every reader and dropping the ones CanGroupComponents
+/// said could be components of one value - it fixed reflect_cube and lost
+/// ps_4_1/cube_array_probe a name it wanted: that shader reads
+/// `normalize(i.normal)` in a fresnel dot and again in the reflect, and once the
+/// reflect was a node the two readers were both GroupNodes holding the same
+/// components, which that count collapsed into one. Measured then: the count came
+/// back 1 for that normalize and 2 for the one beside it that a dot and a negate
+/// read.
 ///
-/// It also loses ps_4_1/cube_array_probe its name. That shader reads
-/// `normalize(i.normal)` in a fresnel dot and again in the reflect, which is two
-/// expressions and a name worth having - and with the reflect a node, the two
-/// readers are both GroupNodes holding the same components, and CountExpressions
-/// collapses them to one. Measured: the count comes back 1 for that normalize and 2
-/// for the one beside it that is read by a dot and a negate. The collapsing is
-/// CanGroupComponents answering whether two readers could be components of one
-/// value, which is the looseness InstructionComponents is documented to keep on
-/// purpose - narrowing it to the instruction that made each reader was tried on
-/// 2026-09-27 and cost twenty fixtures the names of samples read once.
-///
-/// So the groupers cannot be moved one at a time and have the naming stay right.
-/// What has to come first is the reader count becoming a count of expressions rather
-/// than of things that could group, and that is a change to what the writer names
-/// rather than to where the idioms are recovered.
+/// So it waited for the count to become what it is now - how many times the
+/// compiler wrote the value, which the measurement has always had - and with that
+/// in place the same recovery moves three shaders, costs no instruction, and makes
+/// two of their longest lines shorter and none longer. An idiom cannot be moved
+/// into the graph ahead of the naming being able to count what the move changes.
 ///
 /// Where this runs matters and is narrow. The templates fold a register group in
 /// GroupAssignments, immediately before the hoist names anything in it, and that is
@@ -113,9 +105,15 @@ public static class IdiomRecovery
         // Collected before any rewriting: a rewrite relinks the readers of what it
         // replaces, and walking the graph while that happens reads a node's inputs
         // as they are being moved.
-        foreach (LengthOperation length in Reachable(groups.SelectMany(group => group))
-            .OfType<LengthOperation>()
-            .ToList())
+        List<HlslTreeNode> all = [.. Reachable(groups.SelectMany(group => group))];
+        // Reflects before normalizes, since a reflect's operands are often
+        // normalizes and the decomposition reads them either way, while the dot it
+        // is anchored on is easier to find before anything under it has moved.
+        foreach (DotProductOperation dot in all.OfType<DotProductOperation>().ToList())
+        {
+            RecoverReflect(dot, replaced);
+        }
+        foreach (LengthOperation length in all.OfType<LengthOperation>().ToList())
         {
             RecoverNormalize(length, componentOf, replaced);
         }
@@ -136,6 +134,161 @@ public static class IdiomRecovery
     }
 
     /// <summary>
+    /// `i - 2 * dot(i, n) * n`, which is what fxc writes for reflect(i, n): the dot,
+    /// an add of it to itself or a multiply by two, and a mad per component with the
+    /// scale negated.
+    ///
+    /// Driven from the dot outwards, where ReflectGrouper is driven from the
+    /// components inwards. The dot is the one part of the shape that is a single
+    /// node, so it is the only part a walk of the graph can find without being told
+    /// which components to look at.
+    /// </summary>
+    private static void RecoverReflect(
+        DotProductOperation dot, Dictionary<HlslTreeNode, HlslTreeNode> replaced)
+    {
+        foreach (HlslTreeNode scale in Scales(dot))
+        {
+            // Every multiply that scales something by the negated scale, from all of
+            // the negations of it rather than from one. The graph holds a value a
+            // component at a time, so `-2 * dot(i, n)` broadcast over three
+            // components is three NegateOperation nodes with a multiply each, and
+            // looking for all three components among the readers of one of them
+            // finds exactly one.
+            List<MultiplyOperation> scaled = [.. scale.Outputs
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .OfType<NegateOperation>()
+                .SelectMany(negated => negated.Outputs
+                    .Distinct(ReferenceEqualityComparer.Instance)
+                    .OfType<MultiplyOperation>()
+                    .Where(multiply => ReferenceEquals(multiply.Factor1, negated)
+                        || ReferenceEquals(multiply.Factor2, negated)))
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .Cast<MultiplyOperation>()];
+            if (scaled.Count == 0)
+            {
+                continue;
+            }
+            // Either side may be the normal: a dot does not say which of its
+            // operands the reflect scaled.
+            if (TryRecoverReflect(dot.X, dot.Y, scaled, replaced)
+                || TryRecoverReflect(dot.Y, dot.X, scaled, replaced))
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// How the scale reaches the components: twice the dot, as the multiply the
+    /// source said or as the add of it to itself that fxc emits before
+    /// AddSelfTemplate has been at it.
+    /// </summary>
+    private static IEnumerable<HlslTreeNode> Scales(DotProductOperation dot)
+    {
+        foreach (HlslTreeNode reader in dot.Outputs.Distinct(ReferenceEqualityComparer.Instance))
+        {
+            if (reader is AddOperation add && ReferenceEquals(add.Addend1, add.Addend2))
+            {
+                yield return add;
+            }
+            else if (reader is MultiplyOperation multiply
+                && (IsTwo(multiply.Factor1) || IsTwo(multiply.Factor2)))
+            {
+                yield return multiply;
+            }
+        }
+    }
+
+    private static bool IsTwo(HlslTreeNode node)
+    {
+        return node is ConstantNode constant && constant.Value == 2f;
+    }
+
+    private static bool TryRecoverReflect(
+        GroupNode incident,
+        GroupNode normal,
+        List<MultiplyOperation> scaled,
+        Dictionary<HlslTreeNode, HlslTreeNode> replaced)
+    {
+        if (incident.Inputs.Count != normal.Inputs.Count || incident.Inputs.Count < 2)
+        {
+            return false;
+        }
+        // One component at a time, each from the mad that scaled this component of
+        // the normal and added this component of the incident. Positionally, the way
+        // ReflectGrouper matches them: it compares the components it was handed with
+        // the dot's own inputs in order, so a reflect whose sides are in a different
+        // order from the write is not one it recognises either.
+        var components = new HlslTreeNode[incident.Inputs.Count];
+        for (int i = 0; i < components.Length; i++)
+        {
+            components[i] = FindReflectComponent(
+                incident.Inputs[i], normal.Inputs[i], scaled);
+            if (components[i] == null)
+            {
+                return false;
+            }
+        }
+        if (components.Distinct(ReferenceEqualityComparer.Instance).Count() != components.Length)
+        {
+            return false;
+        }
+        for (int i = 0; i < components.Length; i++)
+        {
+            var reflected = new ReflectOutputNode(incident, normal, i);
+            components[i].Replace(reflected);
+            replaced[components[i]] = reflected;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// The add or subtract that is one component of the reflection: this component
+    /// of the normal times the negated scale, plus this component of the incident.
+    /// </summary>
+    private static HlslTreeNode FindReflectComponent(
+        HlslTreeNode incident, HlslTreeNode normal, List<MultiplyOperation> scaled)
+    {
+        foreach (MultiplyOperation multiply in scaled)
+        {
+            HlslTreeNode other = multiply.Factor1 is NegateOperation
+                ? multiply.Factor2
+                : multiply.Factor1;
+            if (!NodeGrouper.AreNodesEquivalent(other, normal))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode reader in multiply.Outputs
+                .Distinct(ReferenceEqualityComparer.Instance))
+            {
+                if (reader is AddOperation add
+                    && NodeGrouper.AreNodesEquivalent(Other(add, multiply), incident))
+                {
+                    return add;
+                }
+                // `reflect(-x, n)` is `-x - 2*dot(-x,n)*n`, which fxc writes as
+                // `n * -scale - x`: the scaled multiply is the minuend, what is
+                // taken off it is x, and the incident the dot holds is -x. So the
+                // subtraction is how a component says its incident is a negation,
+                // and the negation is on the dot's side rather than in the line.
+                if (reader is SubtractOperation subtract
+                    && ReferenceEquals(subtract.Minuend, multiply)
+                    && incident is NegateOperation negatedIncident
+                    && NodeGrouper.AreNodesEquivalent(subtract.Subtrahend, negatedIncident.Value))
+                {
+                    return subtract;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static HlslTreeNode Other(AddOperation add, HlslTreeNode addend)
+    {
+        return ReferenceEquals(add.Addend1, addend) ? add.Addend2 : add.Addend1;
+    }
+
+    /// <summary>
     /// The divisions by one length, where they divide the whole of what the length
     /// was taken over: that is a normalize, one component at a time.
     ///

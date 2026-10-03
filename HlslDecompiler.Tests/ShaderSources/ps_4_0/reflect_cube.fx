@@ -15,6 +15,7 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	float4 t0 = env.Sample(samp, reflect(normalize(i.texcoord - eye), normalize(i.normal)));
-	return t0 * reflectivity;
+	float3 t0 = reflect(normalize(i.texcoord - eye), normalize(i.normal));
+	float4 t1 = env.Sample(samp, t0);
+	return t1 * reflectivity;
 }

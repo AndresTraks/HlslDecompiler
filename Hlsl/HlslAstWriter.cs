@@ -1467,6 +1467,11 @@ public class HlslAstWriter : HlslWriter
     private List<HlslTreeNode[]> HoistSharedSubexpressions(
         IList<HlslTreeNode[]> registerGroups)
     {
+        // Here because every caller arrives with its roots reduced and nothing named
+        // yet, which is the one point an idiom can be put into the graph rather than
+        // recognised out of it later. See IdiomRecovery.
+        IdiomRecovery.Recover(registerGroups);
+
         var roots = HlslTreeNode.NewNodeSet();
         foreach (HlslTreeNode[] group in registerGroups)
         {

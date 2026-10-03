@@ -24,9 +24,11 @@ namespace HlslDecompiler.Hlsl;
 /// A flag is temporary by intention. It goes in while a rule is being measured and
 /// comes out with the decision - either the rule ships and the flag is deleted, or
 /// the rule does not and both go. So having no callers at all is the normal state,
-/// and means only that nothing is being measured today. The first rule measured this
-/// way was a naming rule reported under the ps_5_0/split_transform entry in
-/// RoundTripCostTests; it did not ship, and its flag went with it.
+/// and means only that nothing is being measured today.
+///
+/// The first rule measured this way was a naming rule reported under the
+/// ps_5_0/split_transform entry in RoundTripCostTests; it did not ship, and its flag
+/// went with it. "normalize-node" is the one open today - see IdiomRecovery.
 /// </summary>
 public static class SweepFlags
 {

@@ -61,7 +61,22 @@ public class RoundTripCostTests
             + "sibling dots take the first component of each, then the second, then "
             + "the third - an observation across the output's components, where a "
             + "template only ever sees one of them. It belongs wherever the "
-            + "components are grouped, not in the templates."),
+            + "components are grouped, not in the templates.\n\n"
+            + "Tried as a rewrite where the components are compiled, which is the "
+            + "one place that does see them together, and the arithmetic works: this "
+            + "shader came back to thirty-eight and a PBR normal map went from "
+            + "sixty-four out and seventy-two back to sixty-three. What sank it was "
+            + "that deciding by compiling has side effects - compiling numbers "
+            + "variables and records what it wrote - so asking the question of "
+            + "shaders it then declined moved nine fixtures and took three "
+            + "normalizes apart into a length and a divide, for nothing. Recording "
+            + "the match with MarkGrouped did not prevent it. Doing every check on "
+            + "the nodes first and compiling only once certain cut it to three "
+            + "fixtures, and point_lights still lost a normalize - and the narrowing "
+            + "needed to get there, that the basis already be in variables, gives up "
+            + "the normal map, which is the common case. So the rewrite has to come "
+            + "with the grouping rather than with the writing, and a candidate that "
+            + "has to compile to decide is the wrong shape for this writer."),
         ["vs_4_0/packed_bits_uniform"] = (6,
             "Two instructions, both of them a conversion that should not be there. "
             + "A uint attribute and a uint uniform hold a float's bits, and are read "

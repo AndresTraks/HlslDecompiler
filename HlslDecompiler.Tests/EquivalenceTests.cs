@@ -238,20 +238,38 @@ public class EquivalenceTests
 
     private static IEnumerable<string> Compare(string writer, ShaderModel original, ShaderModel recompiled)
     {
+        return CompareRuns(original, recompiled, "the original", "its decompilation")
+            .Select(difference => $"The {writer} writer's output {difference}");
+    }
+
+    /// <summary>
+    /// What two shaders compute differently over the trials, a sentence each, or
+    /// nothing where they agree.
+    ///
+    /// The two sides are named rather than assumed, because this answers two
+    /// questions. The test asks whether a decompilation computes what the shader it
+    /// came from computes. The cost sweep asks whether a rule changed what a shader
+    /// computes, which is the baseline against the variant - and that question needs
+    /// no view on whether either agrees with the original, so a shader already known
+    /// to differ is not noise to it.
+    /// </summary>
+    internal static IEnumerable<string> CompareRuns(
+        ShaderModel left, ShaderModel right, string leftName, string rightName)
+    {
         for (int trial = 0; trial < Trials; trial++)
         {
-            Dictionary<string, float[]> expected = Run(original, trial);
-            Dictionary<string, float[]> actual = Run(recompiled, trial);
+            Dictionary<string, float[]> expected = Run(left, trial);
+            Dictionary<string, float[]> actual = Run(right, trial);
 
             // A discarded pixel has no outputs to compare, so a decompilation that
             // fails to discard where the original does - or discards where it does
             // not - agreed with it on every output it had. Discarding is an outcome.
             if ((expected.Count == 0) != (actual.Count == 0))
             {
-                yield return $"The {writer} writer's output differs on trial {trial}: "
+                yield return $"differs on trial {trial}: "
                     + (expected.Count == 0
-                        ? "the original discards the pixel, its decompilation does not."
-                        : "its decompilation discards the pixel, the original does not.");
+                        ? $"{leftName} discards the pixel, {rightName} does not."
+                        : $"{rightName} discards the pixel, {leftName} does not.");
                 continue;
             }
 
@@ -267,24 +285,24 @@ public class EquivalenceTests
                 .Where(n => !expected.ContainsKey(n) || !actual.ContainsKey(n))
                 .OrderBy(n => n))
             {
-                yield return $"The {writer} writer's output differs on trial {trial}: "
+                yield return $"differs on trial {trial}: "
                     + (expected.ContainsKey(name)
-                        ? $"the original writes {name}, its decompilation does not."
-                        : $"its decompilation writes {name}, the original does not.");
+                        ? $"{leftName} writes {name}, {rightName} does not."
+                        : $"{rightName} writes {name}, {leftName} does not.");
             }
 
             foreach (string name in expected.Keys.Intersect(actual.Keys).OrderBy(n => n))
             {
-                float[] left = expected[name];
-                float[] right = actual[name];
+                float[] expectedComponents = expected[name];
+                float[] actualComponents = actual[name];
                 for (int component = 0; component < 4; component++)
                 {
-                    if (!Same(left[component], right[component]))
+                    if (!Same(expectedComponents[component], actualComponents[component]))
                     {
-                        yield return $"The {writer} writer's output differs on trial {trial}, "
+                        yield return $"differs on trial {trial}, "
                             + $"{name}.{"xyzw"[component]}: "
-                            + $"the original computes {left[component]}, its decompilation "
-                            + $"computes {right[component]}.";
+                            + $"{leftName} computes {expectedComponents[component]}, "
+                            + $"{rightName} computes {actualComponents[component]}.";
                     }
                 }
             }

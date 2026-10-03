@@ -52,6 +52,7 @@ public class CostSweepTests
         string name = string.Join("+", flags);
         string folder = Path.Combine("CostSweep", string.Join("+", flags));
         var changed = new List<Change>();
+        var wrong = new List<string>();
         int shaders = 0;
 
         // Both ways, in one process. The flags come from the environment, so the
@@ -107,6 +108,13 @@ public class CostSweepTests
             int? after = Recompile(change.Profile, change.Variant);
             string note = RoundTripCostTests.KnownRegressions.ContainsKey(change.Key)
                 ? "pinned" : string.Empty;
+            string computes = Differs(change);
+            if (computes != null)
+            {
+                note = (note.Length == 0 ? string.Empty : note + ", ") + "COMPUTES DIFFERENTLY";
+                wrong.Add($"{change.Key}: {computes}");
+                regressions++;
+            }
             if (before == null || after == null)
             {
                 // A fixture that did not compile before is the recompile tier's
@@ -137,6 +145,15 @@ public class CostSweepTests
         report.AppendLine($"{"",-42}{"",8}{"total",9}{Signed(total),8}"
             + $"  {regressions} regression(s)");
         report.AppendLine();
+        if (wrong.Count != 0)
+        {
+            report.AppendLine("What the rule changed about the answers:");
+            foreach (string difference in wrong)
+            {
+                report.AppendLine("  " + difference);
+            }
+            report.AppendLine();
+        }
         foreach (Change change in changed.Where(c => !c.Threw))
         {
             report.AppendLine($"--- {change.Key}");
@@ -234,6 +251,44 @@ public class CostSweepTests
         return RecompileTests.RunFxc(profile, hlsl, binary) == null
             ? RoundTripCostTests.CountInstructions(binary)
             : null;
+    }
+
+    /// <summary>
+    /// What the rule changed about what the shader computes, or null where it
+    /// changed nothing. The variant against the baseline, not against the original:
+    /// the question is what the rule did, and a shader whose decompilation already
+    /// differs from the shader it came from is not this rule's doing.
+    ///
+    /// Asked because the rest of this report cannot answer it. Text and instruction
+    /// counts both pass a wrong answer that computes less - and one did:
+    /// `float4(mul(position.xy, M), mul(position.yx, M))` came out as
+    /// `mul(position.xy, M).xyxy`, a different vector in half of it, one instruction
+    /// cheaper and read as an improvement until the interpreter was asked. Suspicious
+    /// good news is what this is here to catch.
+    /// </summary>
+    private static string Differs(Change change)
+    {
+        string baseBinary = Path.ChangeExtension(change.Base, ".fxo");
+        string variantBinary = Path.ChangeExtension(change.Variant, ".fxo");
+        if (!File.Exists(baseBinary) || !File.Exists(variantBinary))
+        {
+            return null;
+        }
+        try
+        {
+            string[] differences = [.. EquivalenceTests.CompareRuns(
+                RecompileTests.ReadShaderModel(baseBinary),
+                RecompileTests.ReadShaderModel(variantBinary),
+                "the baseline",
+                "the variant")];
+            return differences.Length == 0 ? null : differences[0];
+        }
+        catch (Exception e)
+        {
+            // A machine that cannot run the shader has checked nothing, and saying
+            // so is the point: a silent pass here would read as coverage.
+            return $"not run - {e.GetType().Name}: {e.Message}";
+        }
     }
 
     private static void Report(string folder, StringBuilder report)

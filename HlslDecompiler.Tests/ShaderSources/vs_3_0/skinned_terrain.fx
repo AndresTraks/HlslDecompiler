@@ -26,14 +26,15 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	float4 t0 = mul(i.position, bones[i.blendindices.x]) * i.blendweight.x + mul(i.position, bones[i.blendindices.y]) * i.blendweight.y + mul(i.position, bones[i.blendindices.z]) * i.blendweight.z;
-	float3 t1 = float3(dot(i.position, transpose(bones[i.blendindices.w])[0]), dot(i.position, transpose(bones[i.blendindices.w])[2]), dot(i.position, transpose(bones[i.blendindices.w])[3])) * i.blendweight.w + t0.xzw;
-	float t2 = dot(i.position, transpose(bones[i.blendindices.w])[1]) * i.blendweight.w + t0.y + tex2Dlod(heightMap, float4(i.texcoord.xy * heightUv + time, 0, 0)).x * heightScale;
-	float4 t3 = mul(float4(t1.x, t2, t1.yz), worldViewProjection);
-	o.position = t3;
+	float t0 = tex2Dlod(heightMap, float4(i.texcoord.xy * heightUv + time, 0, 0)).x;
+	float4 t1 = mul(i.position, bones[i.blendindices.x]) * i.blendweight.x + mul(i.position, bones[i.blendindices.y]) * i.blendweight.y + mul(i.position, bones[i.blendindices.z]) * i.blendweight.z;
+	float3 t2 = float3(dot(i.position, transpose(bones[i.blendindices.w])[0]), dot(i.position, transpose(bones[i.blendindices.w])[2]), dot(i.position, transpose(bones[i.blendindices.w])[3])) * i.blendweight.w + t1.xzw;
+	float t3 = dot(i.position, transpose(bones[i.blendindices.w])[1]) * i.blendweight.w + t1.y + t0 * heightScale;
+	float4 t4 = mul(float4(t2.x, t3, t2.yz), worldViewProjection);
+	o.position = t4;
 	o.texcoord = i.texcoord.xy;
 	o.texcoord1 = normalize(mul(i.normal.xyz, (float3x3)bones[i.blendindices.x]) * i.blendweight.x + mul(i.normal.xyz, (float3x3)bones[i.blendindices.y]) * i.blendweight.y + mul(i.normal.xyz, (float3x3)bones[i.blendindices.z]) * i.blendweight.z + mul(i.normal.xyz, (float3x3)bones[i.blendindices.w]) * i.blendweight.w);
-	o.fog = saturate(0.00999999978 * t3.w);
+	o.fog = saturate(0.00999999978 * t4.w);
 
 	return o;
 }

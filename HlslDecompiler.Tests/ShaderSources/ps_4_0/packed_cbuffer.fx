@@ -22,15 +22,16 @@ float4 main(PS_IN i) : SV_Target
 {
 	float2 t0 = 0.5 * (i.texcoord1.xy / i.texcoord1.w) + 0.5;
 	float3 t1 = normal0.Sample(samp, float2(0.0199999996 * time + i.texcoord2.x, i.texcoord2.y)).xyz;
-	float2 t2 = float2(1.70000005 * i.texcoord2.x, 1.70000005 * i.texcoord2.y - 0.0130000003 * time);
-	float3 t3 = normal1.Sample(samp, t2).xyz;
-	float3 t4 = 2 * t1 - 1 + 2 * t3 - 1;
-	float3 t5 = normalize(t4);
-	float2 t6 = t5.xz;
-	float t7 = 1 - saturate(dot(normalize(eyePos - i.texcoord), float3(t6.x, t5.y, t6.y)));
-	float t8 = t7 * t7;
-	float t9 = 0.899999976 * t8 * t8 * t7 + 0.100000001;
-	float3 t10 = refraction.Sample(samp, 0.0199999996 * -t6 + t0).xyz;
-	float3 t11 = reflection.Sample(samp, 0.0299999993 * t6 + t0).xyz;
-	return float4(lerp(t10, t11, t9) * tint.xyz, 1);
+	float3 t2 = normalize(eyePos - i.texcoord);
+	float2 t3 = float2(1.70000005 * i.texcoord2.x, 1.70000005 * i.texcoord2.y - 0.0130000003 * time);
+	float3 t4 = normal1.Sample(samp, t3).xyz;
+	float3 t5 = 2 * t1 - 1 + 2 * t4 - 1;
+	float3 t6 = normalize(t5);
+	float2 t7 = t6.xz;
+	float t8 = 1 - saturate(dot(t2, float3(t7.x, t6.y, t7.y)));
+	float t9 = t8 * t8;
+	float t10 = 0.899999976 * t9 * t9 * t8 + 0.100000001;
+	float3 t11 = refraction.Sample(samp, 0.0199999996 * -t7 + t0).xyz;
+	float3 t12 = reflection.Sample(samp, 0.0299999993 * t7 + t0).xyz;
+	return float4(lerp(t11, t12, t10) * tint.xyz, 1);
 }

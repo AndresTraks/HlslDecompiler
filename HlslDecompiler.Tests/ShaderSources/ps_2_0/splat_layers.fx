@@ -17,9 +17,10 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	float t0 = saturate(dot(normalize(i.texcoord1), -lightDirection));
-	float t1 = pow(1 - saturate(dot(normalize(i.texcoord1), normalize(i.texcoord2))), rimPower);
-	float2 t2 = i.texcoord * layerScale;
-	float3 t3 = tex2D(splatMap, i.texcoord).xyz;
-	return float4(lerp(fogColour.xyz, (tex2D(layer0, t2).xyz * t3.x + tex2D(layer1, t2).xyz * t3.y + tex2D(layer2, t2).xyz * t3.z) * t0 + t1, i.texcoord3), 1);
+	float2 t0 = i.texcoord * layerScale;
+	float3 t1 = tex2D(splatMap, i.texcoord).xyz;
+	float3 t2 = normalize(i.texcoord1);
+	float t3 = saturate(dot(t2, -lightDirection));
+	float t4 = pow(1 - saturate(dot(t2, normalize(i.texcoord2))), rimPower);
+	return float4(lerp(fogColour.xyz, (tex2D(layer0, t0).xyz * t1.x + tex2D(layer1, t0).xyz * t1.y + tex2D(layer2, t0).xyz * t1.z) * t3 + t4, i.texcoord3), 1);
 }

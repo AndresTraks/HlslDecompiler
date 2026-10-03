@@ -23,16 +23,20 @@ float4 main(PS_IN i) : SV_Target
 	float t3 = 0;
 	for (int t4 = -1; t4 <= 1; t4 = t4 + 1) {
 		float2 t5 = float2((float)t4 * bias.z + t2.x, t2.y - bias.w);
-		t3 = t3 + shadowMap.SampleCmpLevelZero(shadowSamp, t5, t2.z).x;
+		float t6 = shadowMap.SampleCmpLevelZero(shadowSamp, t5, t2.z).x;
+		t3 = t3 + t6;
 	}
-	float t6 = t3;
-	for (int t7 = -1; t7 <= 1; t7 = t7 + 1) {
-		t6 = shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t7 * bias.z + t2.x, t2.y), t2.z).x + t6;
+	float t7 = t3;
+	for (int t8 = -1; t8 <= 1; t8 = t8 + 1) {
+		float t9 = shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t8 * bias.z + t2.x, t2.y), t2.z).x;
+		t7 = t9 + t7;
 	}
-	float t8 = t6;
-	for (int t9 = -1; t9 <= 1; t9 = t9 + 1) {
-		float2 t10 = float2((float)t9 * bias.z + t2.x, t2.y + bias.w);
-		t8 = t8 + shadowMap.SampleCmpLevelZero(shadowSamp, t10, t2.z).x;
+	float t10 = t7;
+	for (int t11 = -1; t11 <= 1; t11 = t11 + 1) {
+		float2 t12 = float2((float)t11 * bias.z + t2.x, t2.y + bias.w);
+		float t13 = shadowMap.SampleCmpLevelZero(shadowSamp, t12, t2.z).x;
+		t10 = t10 + t13;
 	}
-	return 0.111111112 * t8 * albedo.Sample(samp, i.texcoord1);
+	float4 t14 = albedo.Sample(samp, i.texcoord1);
+	return 0.111111112 * t10 * t14;
 }

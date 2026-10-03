@@ -25,6 +25,7 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	float t0 = channelScale[channel % 3] * bandWeights[i.band & 3];
-	float t1 = dot(gbuffer.Sample(pointSampler, i.texcoord).xyz, icb[channel % 3].xyz);
-	return float4(t0 * t1, t0 * t1, t0 * t1, gbuffer.Sample(pointSampler, i.texcoord).w);
+	float3 t1 = gbuffer.Sample(pointSampler, i.texcoord).xyz;
+	float t2 = dot(t1, icb[channel % 3].xyz);
+	return float4(t0 * t2, t0 * t2, t0 * t2, gbuffer.Sample(pointSampler, i.texcoord).w);
 }

@@ -14,5 +14,6 @@ TextureCubeArray probes : register(t1);
 
 float4 main() : SV_Target
 {
-	return probes.Sample(linearSampler, float4(direction, 2)) + entries[entry];
+	float4 t0 = probes.Sample(linearSampler, float4(direction, 2));
+	return t0 + entries[entry];
 }

@@ -7,7 +7,8 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float3 t0 = float3(texcoord, 0);
 	for (int t1 = 0; t1 < 16; t1 = t1 + 1) {
-		t0.z = heights.SampleLevel(samp, t0.xy, 0).x * limits.x + t0.z;
+		float t2 = heights.SampleLevel(samp, t0.xy, 0).x;
+		t0.z = t2 * limits.x + t0.z;
 		if (limits.y < t0.z) {
 			return float4(t0.z, (float)t1, 1, 1);
 		}

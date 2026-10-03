@@ -13,7 +13,8 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 		t2 = t0 - t1.xy;
 	}
 	if (texcoord.y >= 0) {
-		t2 = t2 + tex2Dlod(sampler0, 1 + texcoord).xy;
+		float2 t3 = tex2Dlod(sampler0, 1 + texcoord).xy;
+		t2 = t2 + t3;
 	} else {
 		t1 = float4(1, 0, 3, 4);
 	}

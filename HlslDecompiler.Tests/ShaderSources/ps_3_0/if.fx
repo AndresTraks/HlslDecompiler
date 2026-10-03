@@ -9,7 +9,8 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 		t0 = float4(1, 0, 3, 4);
 	}
 	if (texcoord.x <= 0) {
-		return t0 + tex2D(sampler0, texcoord.xy);
+		float4 t1 = tex2D(sampler0, texcoord.xy);
+		return t0 + t1;
 	} else {
 		return t0 + float4(1, 0, 3, 4);
 	}

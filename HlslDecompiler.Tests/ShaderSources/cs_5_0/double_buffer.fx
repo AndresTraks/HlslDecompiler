@@ -10,5 +10,6 @@ RWStructuredBuffer<double> output : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	output[sv_dispatchthreadid.x] = input[sv_dispatchthreadid.x] * scale + bias;
+	double t0 = input[sv_dispatchthreadid.x];
+	output[sv_dispatchthreadid.x] = t0 * scale + bias;
 }

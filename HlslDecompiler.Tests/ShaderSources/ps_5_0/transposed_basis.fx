@@ -27,7 +27,8 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 		float3 t10 = float3(dot(float3(t1.x, t6.x, t0.x), kernel[t9].xyz), dot(float3(t1.y, t6.y, t0.y), kernel[t9].xyz), dot(float3(t1.z, t6.z, t0.z), kernel[t9].xyz));
 		float3 t11 = t10 * radius + t7;
 		float t12 = dot(transpose(projection)[3], float4(t11, 1));
-		t8 = t8 + step(t11.z + bias, depthMap.Sample(pointSampler, 0.5 * (mul(float4(t11, 1), (float4x2)projection) / t12) + 0.5).x);
+		float t13 = depthMap.Sample(pointSampler, 0.5 * (mul(float4(t11, 1), (float4x2)projection) / t12) + 0.5).x;
+		t8 = t8 + step(t11.z + bias, t13);
 	}
 	return 0.125 * -t8 + 1;
 }

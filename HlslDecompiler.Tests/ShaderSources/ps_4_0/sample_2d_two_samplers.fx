@@ -4,5 +4,6 @@ Texture2D texture0;
 
 float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
-	return texture0.Sample(samplerState0, 2 * texture0.Sample(samplerState1, texcoord.yx).xy + texcoord.yx).wzyx;
+	float2 t0 = texture0.Sample(samplerState1, texcoord.yx).xy;
+	return texture0.Sample(samplerState0, 2 * t0 + texcoord.yx).wzyx;
 }

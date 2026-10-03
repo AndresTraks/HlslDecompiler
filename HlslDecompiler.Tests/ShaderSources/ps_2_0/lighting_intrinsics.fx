@@ -16,8 +16,9 @@ float4 main(PS_IN i) : COLOR
 	float t3 = (t2 >= 0 ? 0 : -1) + (-t2 >= 0 ? 0 : 1);
 	float t4 = dot(lightDir, t0);
 	float t5 = -t4 >= 0 ? 0 : 1;
-	float t6 = dot(t0, normalize(lightDir + eyeDir));
-	float t7 = (-t6 >= 0 ? 0 : t5) * pow(t6, shininess);
-	float t8 = t7 * t7;
-	return t8 * t3 + float4(1, dot(t1, t1) / length(t1) * t4 * t5, t7, 1);
+	float3 t6 = normalize(lightDir + eyeDir);
+	float t7 = dot(t0, t6);
+	float t8 = (-t7 >= 0 ? 0 : t5) * pow(t7, shininess);
+	float t9 = t8 * t8;
+	return t9 * t3 + float4(1, dot(t1, t1) / length(t1) * t4 * t5, t8, 1);
 }

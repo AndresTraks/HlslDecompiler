@@ -6,7 +6,9 @@ float4 spec;
 
 float4 main(float3 normal : NORMAL) : SV_Target
 {
-	float t0 = saturate(dot(normalize(normal), -lightDir));
-	float t1 = pow(saturate(dot(normalize(normal), normalize(viewDir - lightDir))), power);
-	return diffuse * t0 + t1 * spec;
+	float3 t0 = normalize(viewDir - lightDir);
+	float3 t1 = normalize(normal);
+	float t2 = saturate(dot(t1, -lightDir));
+	float t3 = pow(saturate(dot(t1, t0)), power);
+	return diffuse * t2 + t3 * spec;
 }

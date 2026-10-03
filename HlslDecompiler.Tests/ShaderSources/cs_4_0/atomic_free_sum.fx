@@ -14,15 +14,17 @@ struct CS_IN
 [numthreads(64, 1, 1)]
 void main(CS_IN i)
 {
-	uint t0 = (uint)input[i.sv_dispatchthreadid.x] >> 16;
-	g0[i.sv_groupindex] = t0 ^ input[i.sv_dispatchthreadid.x];
+	uint t0 = input[i.sv_dispatchthreadid.x];
+	uint t1 = t0 >> 16;
+	g0[i.sv_groupindex] = t1 ^ input[i.sv_dispatchthreadid.x];
 	GroupMemoryBarrierWithGroupSync();
-	uint t1 = 0;
-	t0 = 0;
-	while (t0 < 8) {
-		t1 = (g0[t0 + i.sv_groupindex & 63] & 255) + t1;
-		t0 = t0 + 1;
+	uint t2 = 0;
+	t1 = 0;
+	while (t1 < 8) {
+		int t3 = g0[t1 + i.sv_groupindex & 63];
+		t2 = (t3 & 255) + t2;
+		t1 = t1 + 1;
 	}
-	float t2 = (float)count;
-	output[i.sv_dispatchthreadid.x] = (float)t1 / t2;
+	float t4 = (float)count;
+	output[i.sv_dispatchthreadid.x] = (float)t2 / t4;
 }

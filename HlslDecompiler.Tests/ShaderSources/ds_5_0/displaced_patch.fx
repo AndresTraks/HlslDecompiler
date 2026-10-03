@@ -37,9 +37,10 @@ DS_OUT main(DS_CONST constants, float3 sv_domainlocation : SV_DomainLocation, co
 	float3 t0 = patch[0].normal * sv_domainlocation.x + sv_domainlocation.y * patch[1].normal + patch[2].normal * sv_domainlocation.z;
 	float2 t1 = patch[0].texcoord * sv_domainlocation.x + sv_domainlocation.y * patch[1].texcoord;
 	float2 t2 = patch[2].texcoord * sv_domainlocation.z;
-	float t3 = heightMap.SampleLevel(heightSampler, t2 + t1, 0).x * displacement * constants.scale;
-	float3 t4 = lerp(patch[0].position * sv_domainlocation.x + sv_domainlocation.y * patch[1].position + patch[2].position * sv_domainlocation.z + normalize(t0) * t3, constants.centre, 0.00999999978);
-	o.sv_position = mul(float4(t4, 1), viewProjection);
+	float t3 = heightMap.SampleLevel(heightSampler, t2 + t1, 0).x;
+	float t4 = t3 * displacement * constants.scale;
+	float3 t5 = lerp(patch[0].position * sv_domainlocation.x + sv_domainlocation.y * patch[1].position + patch[2].position * sv_domainlocation.z + normalize(t0) * t4, constants.centre, 0.00999999978);
+	o.sv_position = mul(float4(t5, 1), viewProjection);
 	o.normal = normalize(t0);
 	o.texcoord = t2 + t1;
 

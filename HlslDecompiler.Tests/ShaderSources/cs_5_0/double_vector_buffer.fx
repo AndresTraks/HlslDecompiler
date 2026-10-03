@@ -6,5 +6,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	double t0 = input[sv_dispatchthreadid.x].y;
 	double t1 = t0 * t0;
-	output[sv_dispatchthreadid.x] = double2(t1, input[sv_dispatchthreadid.x].y + input[sv_dispatchthreadid.x].x);
+	double t2 = input[sv_dispatchthreadid.x].x;
+	double t3 = input[sv_dispatchthreadid.x].y;
+	output[sv_dispatchthreadid.x] = double2(t1, t3 + t2);
 }

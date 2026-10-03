@@ -11,7 +11,8 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 			if (k.y > 1) {
 				t0 = tex.Sample(samp, texcoord.xy);
 			} else {
-				t0 = 3 * tex.Sample(samp, texcoord.yx);
+				float4 t1 = tex.Sample(samp, texcoord.yx);
+				t0 = 3 * t1;
 			}
 			break;
 		case 2:

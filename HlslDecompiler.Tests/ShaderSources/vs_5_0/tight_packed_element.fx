@@ -28,7 +28,10 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.sv_position = mul(float4(nodes[i.sv_instanceid].offset + i.position, 1), viewProjection);
+	float t0 = nodes[i.sv_instanceid].offset.z;
+	float t1 = nodes[i.sv_instanceid].offset.y;
+	float t2 = nodes[i.sv_instanceid].offset.x;
+	o.sv_position = mul(float4(t2 + i.position.x, t1 + i.position.y, t0 + i.position.z, 1), viewProjection);
 	o.color = nodes[i.sv_instanceid].tint;
 
 	return o;

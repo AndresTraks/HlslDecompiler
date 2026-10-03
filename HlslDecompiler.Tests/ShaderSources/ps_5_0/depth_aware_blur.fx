@@ -30,9 +30,11 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 		float t6 = weights[(uint)abs(t3) >> 2][abs(t3) & 3];
 		float t7 = exp((float)(t3 * -t3) / t2);
 		float t8 = t7 * t6;
-		t1 = source.Sample(linearSampler, t5) * t8 + t1;
+		float4 t9 = source.Sample(linearSampler, t5);
+		t1 = t9 * t8 + t1;
 		t4 = t6 * t7 + t4;
 		t3 = t3 + 1;
 	}
-	return t4 > 0 ? t1 / t4 : source.Sample(linearSampler, texcoord);
+	float4 t10 = source.Sample(linearSampler, texcoord);
+	return t4 > 0 ? t1 / t4 : t10;
 }

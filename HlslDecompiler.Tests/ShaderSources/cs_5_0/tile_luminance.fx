@@ -42,7 +42,8 @@ void main(CS_IN i)
 		GroupMemoryBarrierWithGroupSync();
 	}
 	if (i.sv_groupindex == 0) {
-		luminance[i.sv_groupid.xy] = 0.015625 * g1[0];
+		float t6 = g1[0];
+		luminance[i.sv_groupid.xy] = 0.015625 * t6;
 		InterlockedAdd(histogram[min((uint)g0[0], 63)], 1);
 	}
 	if (all(t2 < size) && step == 0) {

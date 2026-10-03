@@ -1798,7 +1798,7 @@ public class HlslAstWriter : HlslWriter
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
-                    ?? SplitRead(readers, grouped, roots)
+                    ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots);
             if (occurrences == null)
@@ -2110,39 +2110,69 @@ public class HlslAstWriter : HlslWriter
         return null;
     }
 
-    private List<HlslTreeNode[]> SplitRead(
-        HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> grouped, HashSet<HlslTreeNode> roots)
-    {
-        // Every component of an instruction answers for all of them, which is what
-        // the comment below means by counting over the instruction - so the count is
-        // the same number for each of them, and computing it once for the instruction
-        // is the same answer for a fraction of the work. A sample's components share
-        // their first input, and that is what the component walk asks about, so the
-        // input and the kind of node are what an instruction is here. It matters
-        // because the walk is quadratic in how many components answer together: forty
-        // samples of one texture are a hundred and sixty of them, each walking all the
-        // others, and this pass ran once for every name the statement goes on to make.
-        // By reference, the way every node set here is keyed: an equal constant is
-        // not the same operand, and ConstantNode compares by value.
-        var countByInstruction =
-            new Dictionary<HlslTreeNode, Dictionary<Type, int>>(ReferenceEqualityComparer.Instance);
-        int CountForInstruction(HlslTreeNode node)
-        {
-            if (node.Inputs.Count == 0 || node is not IHasComponentIndex)
-            {
-                return CountExpressions(node, readers);
-            }
-            if (!countByInstruction.TryGetValue(node.Inputs[0], out Dictionary<Type, int> byKind))
-            {
-                countByInstruction[node.Inputs[0]] = byKind = [];
-            }
-            if (!byKind.TryGetValue(node.GetType(), out int count))
-            {
-                byKind[node.GetType()] = count = CountExpressions(node, readers);
-            }
-            return count;
-        }
+    /// <summary>
+    /// About what a declaration line costs, the way RepeatedTextBudget is - but for
+    /// one write rather than a repeat, so it is the length at which a read is better
+    /// read off a name than in the line it would sit in.
+    /// </summary>
+    private const int SingleWriteBudget = 28;
 
+    /// <summary>
+    /// How many writes this node is worth naming for: what the compiler wrote it,
+    /// and one more where it wrote it only once but wrote a great deal of text.
+    /// </summary>
+    private static int WorthNaming(
+        HlslTreeNode node,
+        Dictionary<HlslTreeNode, int> writes,
+        Dictionary<HlslTreeNode, int> text)
+    {
+        int written = writes.GetValueOrDefault(node);
+        return written == 1 && text.GetValueOrDefault(node) >= SingleWriteBudget
+            ? 2
+            : written;
+    }
+
+    private List<HlslTreeNode[]> SplitRead(
+        HashSet<HlslTreeNode> readers,
+        HashSet<HlslTreeNode> grouped,
+        HashSet<HlslTreeNode> roots,
+        CompileMeasurement measurement)
+    {
+        // How many times the compiler wrote the node. This used to be a count of the
+        // expressions that read it, worked out by walking every reader of every
+        // component and dropping the ones CanGroupComponents said could be
+        // components of one value - which is not the same question. What decides a
+        // name is how many times the text will be written, and `sample.y + sample.x`
+        // is one expression reading two components and writes the sample twice.
+        //
+        // The old count was loose in the other direction as well. It answered per
+        // instruction, keyed on a node's first input, so every sample through one
+        // sampler answered with the same inflated number and got named even where
+        // one expression read it; narrowing it to the instruction that made each node
+        // was tried on 2026-09-27 and cost twenty fixtures those names. The walk was
+        // also quadratic in how many components answered together - forty samples of
+        // one texture are a hundred and sixty of them, each walking all the others -
+        // and needed a cache per instruction to be affordable.
+        //
+        // The measurement has had the true count all along: one entry per Compile
+        // call, so a value two expressions write appears twice. Measured over the
+        // corpus, swapping the one for the other costs no instruction anywhere.
+        Dictionary<HlslTreeNode, int> writes = measurement.WrittenCounts();
+
+        // And the third thing: something to go on naming an
+        // expensive read that one expression reads. The text the compiler wrote for
+        // it, which the measurement also has. A sample written once is still worth a
+        // line when the line it would otherwise sit in is long - that is what keeps
+        // the fixtures a handful of short statements - and a normalize written once
+        // is not, because it is short enough to read where it stands.
+        var text = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
+        foreach ((HlslTreeNode[] nodes, string written) in measurement.Recording)
+        {
+            foreach (HlslTreeNode node in nodes)
+            {
+                text[node] = Math.Max(text.GetValueOrDefault(node), written.Length);
+            }
+        }
         HlslTreeNode chosen = readers
             .Where(node => CostsAnInstruction(node)
                 && !roots.Contains(node)
@@ -2152,80 +2182,12 @@ public class HlslAstWriter : HlslWriter
             // count down - every component still answers for all of them - so
             // without this the pass names the same sample round after round.
             .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode))
-            .Select(node => (Node: node, Read: CountForInstruction(node)))
+            .Select(node => (Node: node, Read: WorthNaming(node, writes, text)))
             .Where(node => node.Read > 1)
             .OrderByDescending(node => node.Read)
             .Select(node => node.Node)
             .FirstOrDefault();
         return chosen == null ? null : [[chosen]];
-    }
-
-    /// <summary>
-    /// How many expressions read a node, counting the components of one instruction
-    /// as the one reader they are written as. A sample's four output nodes all read
-    /// its coordinate and the coordinate is written once; without this every input
-    /// of a multi output instruction looks read four times over.
-    /// </summary>
-    private int CountExpressions(HlslTreeNode node, HashSet<HlslTreeNode> readers)
-    {
-        var expressions = new List<HlslTreeNode>();
-        foreach (HlslTreeNode component in InstructionComponents(node, readers))
-        foreach (HlslTreeNode reader in component.Outputs)
-        {
-            if (!readers.Contains(reader)
-                || expressions.Any(e => _templateMatcher.CanGroupComponents(e, reader, false)))
-            {
-                continue;
-            }
-            expressions.Add(reader);
-        }
-        return expressions.Count;
-    }
-
-    /// <summary>
-    /// The components the count above answers for together: this node, and the nodes
-    /// of its kind reading the same first input.
-    ///
-    /// Which is looser than the components of one instruction, and stays that way on
-    /// purpose. A sample's first input is the sampler, so every sample through that
-    /// sampler answers with it, and the count comes out the same inflated number for
-    /// each of them - which is what gets a sample named even where one expression
-    /// reads it, and is why the fixtures read as a handful of short lines rather than
-    /// one very long one. Narrowing it to the instruction that made the node, which
-    /// SourceInstruction identifies correctly, makes the counts true and costs that:
-    /// tried 2026-09-27, twenty fixtures lost the names of samples read once and grew
-    /// return statements a couple of hundred characters long.
-    ///
-    /// Narrowing also shows what the count would then have to be asked instead. It
-    /// counts the expressions that read an instruction, where what decides whether to
-    /// name it is how many times its text will be written: `sample.y + sample.x` is
-    /// one expression reading two components, and writes the sample twice. With true
-    /// components and that count unchanged, environment_lighting grew a second
-    /// brdfLut.Sample of the same coordinate. Both together - the instruction's own
-    /// components, a count of writes rather than readers, and something to go on
-    /// naming an expensive read that one expression reads - is a change to what the
-    /// writer names, not to how it counts, and none of it is needed to make this fast:
-    /// the count is per instruction and computed once, which is what the quadratic
-    /// walk cost before.
-    /// </summary>
-    private static IEnumerable<HlslTreeNode> InstructionComponents(
-        HlslTreeNode node, HashSet<HlslTreeNode> readers)
-    {
-        yield return node;
-        if (node is not IHasComponentIndex || node.Inputs.Count == 0)
-        {
-            yield break;
-        }
-        foreach (HlslTreeNode sibling in node.Inputs[0].Outputs)
-        {
-            if (!ReferenceEquals(sibling, node)
-                && sibling.GetType() == node.GetType()
-                && sibling is IHasComponentIndex
-                && readers.Contains(sibling))
-            {
-                yield return sibling;
-            }
-        }
     }
 
     /// <summary>

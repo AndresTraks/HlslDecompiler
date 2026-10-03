@@ -23,8 +23,9 @@ float4 main(PS_IN i) : SV_Target
 		float t6 = (float)sign(dot(kernel[t5].xyz, t3));
 		float3 t7 = t6 * kernel[t5].xyz * occlusion.x + t2;
 		float t8 = dot(transpose(projection)[3], float4(t7, 1));
-		float t9 = depthMap.Sample(samp, float2(0.5, -0.5) * (mul(float4(t7, 1), (float4x2)projection) / t8) + 0.5).x * occlusion.y;
-		t4 = t4 + (t9 >= t7.z + occlusion.z ? saturate(occlusion.x / abs(i.texcoord1.z * t0 - t9)) : 0);
+		float t9 = depthMap.Sample(samp, float2(0.5, -0.5) * (mul(float4(t7, 1), (float4x2)projection) / t8) + 0.5).x;
+		float t10 = t9 * occlusion.y;
+		t4 = t4 + (t10 >= t7.z + occlusion.z ? saturate(occlusion.x / abs(i.texcoord1.z * t0 - t10)) : 0);
 	}
 	return 0.0833333358 * -t4 + 1;
 }

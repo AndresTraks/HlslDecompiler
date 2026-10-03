@@ -13,10 +13,15 @@ RWStructuredBuffer<ParticlesElement> particles : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float3 t0 = float3(particles[sv_dispatchthreadid.x].velocity.x, particles[sv_dispatchthreadid.x].velocity.y + simulation.x * -simulation.y, particles[sv_dispatchthreadid.x].velocity.z);
-	float4 t1 = float4(particles[sv_dispatchthreadid.x].position, particles[sv_dispatchthreadid.x].life);
-	particles[sv_dispatchthreadid.x].position = t0 * simulation.x + t1.xyz;
-	particles[sv_dispatchthreadid.x].life = t1.w - simulation.x;
-	particles[sv_dispatchthreadid.x].velocity = t0;
-	particles[sv_dispatchthreadid.x].size = particles[sv_dispatchthreadid.x].size * simulation.z;
+	float t0 = particles[sv_dispatchthreadid.x].velocity.y;
+	float3 t1 = float3(particles[sv_dispatchthreadid.x].velocity.x, t0 + simulation.x * -simulation.y, particles[sv_dispatchthreadid.x].velocity.z);
+	float t2 = particles[sv_dispatchthreadid.x].life;
+	float t3 = particles[sv_dispatchthreadid.x].position.z;
+	float t4 = particles[sv_dispatchthreadid.x].position.y;
+	float t5 = particles[sv_dispatchthreadid.x].position.x;
+	particles[sv_dispatchthreadid.x].position = t1 * simulation.x + float3(t5, t4, t3);
+	particles[sv_dispatchthreadid.x].life = t2 - simulation.x;
+	float t6 = particles[sv_dispatchthreadid.x].size;
+	particles[sv_dispatchthreadid.x].velocity = t1;
+	particles[sv_dispatchthreadid.x].size = t6 * simulation.z;
 }

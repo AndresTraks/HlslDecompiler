@@ -22,5 +22,6 @@ void main(CS_IN i)
 	g0[i.sv_groupindex].m4 = (float)(i.sv_dispatchthreadid.x + 7);
 	AllMemoryBarrierWithGroupSync();
 	float4 t0 = g0[i.sv_groupindex + 1 & 31].m0;
-	output[i.sv_dispatchthreadid.x] = t0 / g0[i.sv_groupindex + 1 & 31].m4;
+	float t1 = g0[i.sv_groupindex + 1 & 31].m4;
+	output[i.sv_dispatchthreadid.x] = t0 / t1;
 }

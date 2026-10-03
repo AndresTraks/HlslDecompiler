@@ -16,6 +16,12 @@ public sealed class NodeCompiler
     private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
     private int _tempAssignmentindexCounter = 0;
 
+    // While a measuring compile is running, the variables it had to number and what
+    // they looked like before, so that the numbers go back with the text. See
+    // Measure.
+    private List<(TempVariableNode Variable, int ComponentIndex, int? VariableSize)>
+        _measuredNumbering;
+
     /// <summary>The number the next variable is given. Set back where variables
     /// were merged and their numbers closed up.</summary>
     public int NextTempVariableIndex
@@ -200,6 +206,97 @@ public sealed class NodeCompiler
         {
             _readingAsFloat = wasReadingAsFloat;
         }
+    }
+
+    /// <summary>
+    /// Compiles these groups, keeps what the compile revealed, and leaves nothing
+    /// behind: the text is thrown away and the names it had to invent on the way are
+    /// taken back.
+    ///
+    /// Emission numbers a variable the first time it writes one, and it has to -
+    /// what number a variable gets depends on how the writer groups the components
+    /// it writes, which is an emission-time decision and cannot be settled before.
+    /// So a measuring compile cannot help numbering, and if it keeps its numbers the
+    /// corpus comes out named in the order it was measured rather than the order it
+    /// is written. Rolling them back is what makes a measurement free, and free is
+    /// what lets a decision be taken by measuring both ways.
+    ///
+    /// Nests: the state is saved and restored, so a measurement inside a measurement
+    /// is the inner one's answer and the outer one's rollback.
+    /// </summary>
+    public CompileMeasurement Measure(IEnumerable<IEnumerable<HlslTreeNode>> groups)
+    {
+        return Measure(groups, keepNumbering: false);
+    }
+
+    /// <summary>
+    /// The same compile, keeping the numbers it invents. This is how the writer
+    /// numbers its variables, and it is not an accident of where the counter lives:
+    /// what number a variable gets depends on how the writer groups the components
+    /// it writes, which is settled while writing and not before, so the only thing
+    /// that can number the variables in writing order is a write.
+    ///
+    /// Which makes the writer's first measurement two jobs at once, and the second
+    /// one unnamed until now. Rolling its numbers back moves ten fixtures: eight
+    /// renumber harmlessly, and cs_4_0/bitpack emits `source.Load(t1.x)` a line
+    /// above the declaration of t1, because the order the assignments are sorted
+    /// into is read off numbers that no longer exist by then.
+    ///
+    /// So the measurements that are also the numbering say so, and the ones that
+    /// only want to know something use <see cref="Measure(IEnumerable{IEnumerable{HlslTreeNode}})"/>
+    /// and leave nothing behind.
+    /// </summary>
+    public CompileMeasurement MeasureAndNumber(IEnumerable<IEnumerable<HlslTreeNode>> groups)
+    {
+        return Measure(groups, keepNumbering: true);
+    }
+
+    private CompileMeasurement Measure(
+        IEnumerable<IEnumerable<HlslTreeNode>> groups, bool keepNumbering)
+    {
+        var measurement = new CompileMeasurement();
+        var outerRecording = Recording;
+        var outerGrouped = Grouped;
+        var outerGroupMatches = GroupMatches;
+        var outerNumbering = _measuredNumbering;
+        int outerCounter = _tempAssignmentindexCounter;
+        var numbering = new List<(TempVariableNode, int, int?)>();
+        Recording = measurement.Recording;
+        // Null while the numbering is being kept, so the lazy path records nothing
+        // and an enclosing measurement does not roll these back either: a number the
+        // writer is keeping is the writer's now.
+        Grouped = measurement.Grouped;
+        GroupMatches = measurement.GroupMatches;
+        _measuredNumbering = keepNumbering ? null : numbering;
+        try
+        {
+            foreach (IEnumerable<HlslTreeNode> group in groups)
+            {
+                Compile(group);
+            }
+        }
+        finally
+        {
+            Recording = outerRecording;
+            Grouped = outerGrouped;
+            GroupMatches = outerGroupMatches;
+            _measuredNumbering = outerNumbering;
+            // Backwards: one variable can be numbered, rolled back and numbered
+            // again within a measurement, and the first entry is the one that says
+            // what it looked like to begin with.
+            for (int i = numbering.Count - 1; i >= 0; i--)
+            {
+                (TempVariableNode variable, int component, int? size) = numbering[i];
+                variable.DeclarationIndex = null;
+                variable.ComponentIndex = component;
+                variable.VariableSize = size;
+            }
+            if (!keepNumbering)
+            {
+                _tempAssignmentindexCounter = outerCounter;
+            }
+        }
+        return measurement;
     }
 
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
@@ -2200,6 +2297,8 @@ public sealed class NodeCompiler
                 for (int i = 0; i < variables.Count; i++)
                 {
                     var component = variables[i] as TempVariableNode;
+                    _measuredNumbering?.Add(
+                        (component, component.ComponentIndex, component.VariableSize));
                     component.DeclarationIndex = index;
                     component.ComponentIndex = i;
                     component.VariableSize = variables.Count;

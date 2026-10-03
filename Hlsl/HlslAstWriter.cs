@@ -1522,7 +1522,7 @@ public class HlslAstWriter : HlslWriter
         // looks for a LengthOperation, and cost the normalize. The same reading the
         // text pass below is built on: what a node costs in a statement cannot be
         // had off the graph, only by compiling it and looking.
-        Dictionary<HlslTreeNode, int> written = WrittenCounts(registerGroups);
+        Dictionary<HlslTreeNode, int> written = MeasureAndNumber(registerGroups).WrittenCounts();
 
         // Deepest first, so that a shared node inside another one is named before
         // the node containing it stops being reachable from here.
@@ -1695,38 +1695,29 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// How many times each node is written, from compiling the statement once and
-    /// throwing it away. A node appears here when it is a component of a group the
-    /// compiler wrote; one the grouper absorbed - a normalize's length, a matrix
-    /// multiply's dot products - appears not at all, however many readers it has.
+    /// What compiling these groups and throwing the text away reveals about them.
+    ///
+    /// The values, not the assignments: compiling an assignment writes a whole
+    /// statement - the declaration, the name and the semicolon - and what is being
+    /// counted here is the text of expressions. (It used to say numbering as the
+    /// reason, and that reason is gone: a measurement takes its numbers back now.
+    /// This one stands on its own.)
     /// </summary>
-    private Dictionary<HlslTreeNode, int> WrittenCounts(IEnumerable<HlslTreeNode[]> groups)
+    /// <summary>
+    /// And this one numbers as it measures, because these two measurements are where
+    /// the writer's variables get their numbers - see
+    /// <see cref="NodeCompiler.MeasureAndNumber"/>.
+    /// </summary>
+    private CompileMeasurement MeasureAndNumber(IEnumerable<HlslTreeNode[]> groups)
     {
-        var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
-        _compiler.Recording = recording;
-        try
-        {
-            foreach (HlslTreeNode[] group in groups)
-            {
-                // The values, not the assignments, for the reason NameRepeatedText
-                // gives: compiling an assignment numbers its variable.
-                _compiler.Compile(group.Select(root =>
-                    root is TempAssignmentNode assignment ? assignment.Value : root));
-            }
-        }
-        finally
-        {
-            _compiler.Recording = null;
-        }
-        var counts = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
-        foreach ((HlslTreeNode[] nodes, _) in recording)
-        {
-            foreach (HlslTreeNode node in nodes)
-            {
-                counts[node] = counts.TryGetValue(node, out int count) ? count + 1 : 1;
-            }
-        }
-        return counts;
+        return _compiler.MeasureAndNumber(Values(groups));
+    }
+
+    private static IEnumerable<IEnumerable<HlslTreeNode>> Values(
+        IEnumerable<HlslTreeNode[]> groups)
+    {
+        return groups.Select(group => group.Select(root =>
+            root is TempAssignmentNode assignment ? assignment.Value : root));
     }
 
     /// <summary>
@@ -1755,29 +1746,10 @@ public class HlslAstWriter : HlslWriter
         while (true)
         {
             IEnumerable<HlslTreeNode[]> groups = registerGroups.Concat(named).Concat(assignments);
-            var recording = new List<(HlslTreeNode[] Nodes, string Text)>();
-            HashSet<HlslTreeNode> grouped = HlslTreeNode.NewNodeSet();
-            var groupMatches = new List<HlslTreeNode[]>();
-            _compiler.Recording = recording;
-            _compiler.Grouped = grouped;
-            _compiler.GroupMatches = groupMatches;
-            try
-            {
-                foreach (HlslTreeNode[] group in groups)
-                {
-                    // The values, not the assignments: compiling an assignment numbers
-                    // its variable, and the names would come out in the order of the
-                    // measuring rather than of the writing.
-                    _compiler.Compile(group.Select(root =>
-                        root is TempAssignmentNode assignment ? assignment.Value : root));
-                }
-            }
-            finally
-            {
-                _compiler.Recording = null;
-                _compiler.Grouped = null;
-                _compiler.GroupMatches = null;
-            }
+            CompileMeasurement measurement = MeasureAndNumber(groups);
+            List<(HlslTreeNode[] Nodes, string Text)> recording = measurement.Recording;
+            HashSet<HlslTreeNode> grouped = measurement.Grouped;
+            List<HlslTreeNode[]> groupMatches = measurement.GroupMatches;
 
             // A repeat is the same nodes compiled again - or the same but for a
             // constant, which may be a node of its own at each: a template that

@@ -19,11 +19,22 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// arrive here as arithmetic over a firstbithigh, and matching one is matching
 /// `31 - (31 - firstbithigh(x))` with the guard around it.
 ///
-/// Only the signed form is matched. The unsigned one asks its question of the
-/// value rather than of the answer, which leaves the subtraction with a reader
-/// of its own and lands it in a temp variable before this runs - and a temp
-/// variable is a name, with no way back to the value it was given. Written out
-/// as the arithmetic it is, which is correct and says less.
+/// Only the signed form is matched, and what stops the unsigned one is narrower
+/// than "a temp variable". fxc computes the subtraction into a register of its
+/// own and selects over that register, so the select's arm is a variable - which
+/// TempResolver exists to see through, and FloatingModuloTemplate does see
+/// through. It will not see through this one: the value is
+/// `31 - (31 - firstbithigh(load))`, TempResolver.IsReadable refuses anything
+/// holding a LoadStructuredNode, and so the resolver has no value recorded for
+/// the variable at all.
+///
+/// That guard is there to stop a fold duplicating a buffer load, and it does not
+/// quite fit here - this fold would leave the load read once where the output now
+/// reads it twice - but bypassing it is a change to what every template may
+/// duplicate, for the sake of one shader's second component. Tried 2026-10-03:
+/// resolving in this template alone changes nothing, because the resolver has
+/// nothing to give it. Written out as the arithmetic it is, which is correct and
+/// says less: cs_5_0/high_bit's `31 - (31 - firstbithigh((uint)(t0 + k.x)))`.
 /// </summary>
 public class FirstBitHighTemplate : NodeTemplate<MoveConditionalOperation>
 {

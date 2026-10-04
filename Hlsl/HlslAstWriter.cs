@@ -499,7 +499,7 @@ public class HlslAstWriter : HlslWriter
         // at each.
         List<RegisterComponentKey> outputKeys = [.. outputs.Keys];
         List<HlslTreeNode[]> hoistRoots = [.. tempGroups, .. outputKeys.Select(key => outputs[key])];
-        WriteSharedSubexpressions(hoistRoots);
+        List<(HlslTreeNode[] Nodes, string Text)> hoisted = CompileSharedSubexpressions(hoistRoots);
         for (int i = 0; i < tempGroups.Count; i++)
         {
             tempGroups[i] = hoistRoots[i];
@@ -515,7 +515,15 @@ public class HlslAstWriter : HlslWriter
         // output is was recorded at lowering, since afterwards both are the same
         // variable name. Ordering temps and outputs together, rather than as two
         // hardcoded passes, is what lets TempAssignmentOrder see either dependency.
+        // The named shared subexpressions join that sort too: one is often built
+        // from a temp this very statement declares beside it - the trig pair and
+        // the dot read out of it - and writing the shared one first would name a
+        // variable the later line has not declared yet.
         var writes = new List<(HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, Action Write)>();
+        foreach (var (nodes, text) in hoisted)
+        {
+            writes.Add((nodes, [], () => WriteLine(text)));
+        }
         foreach (var group in tempGroups)
         {
             writes.Add((group, [], () => WriteLine(CompileAssignment(group))));
@@ -1264,13 +1272,32 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)
     {
+        foreach ((_, string text) in CompileSharedSubexpressions(roots))
+        {
+            WriteLine(text);
+        }
+    }
+
+    /// <summary>
+    /// Names the subexpressions the roots share and compiles each named one into
+    /// its own line of HLSL. The caller that goes on to order more lines - an
+    /// assignment statement writes its temps and outputs through one sort - keeps
+    /// the nodes so that sort can see a line that reads a variable one of the
+    /// other lines declares; a caller that writes everything it has straight away
+    /// just wants the text.
+    /// </summary>
+    private List<(HlslTreeNode[] Nodes, string Text)> CompileSharedSubexpressions(
+        IList<HlslTreeNode[]> roots)
+    {
+        var compiled = new List<(HlslTreeNode[] Nodes, string Text)>();
         List<HlslTreeNode[]> assignments = TempAssignmentOrder.Sort(
             HoistSharedSubexpressions(roots));
         foreach (HlslTreeNode[] assignment in assignments)
         {
             MarkPartialPrecision(assignment);
-            WriteLine(_compiler.Compile(assignment));
+            compiled.Add((assignment, _compiler.Compile(assignment)));
         }
+        return compiled;
     }
 
     /// <summary>

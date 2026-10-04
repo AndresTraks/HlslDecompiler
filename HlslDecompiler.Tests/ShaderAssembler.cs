@@ -57,6 +57,37 @@ internal static class ShaderAssembler
         return 0x80000000 | RegisterBits(type) | (uint)modifier << 24 | swizzle << 16 | (uint)number;
     }
 
+    // The registers a hand-assembled body is mostly made of, named the way the
+    // assembly names them: R, V and C read the temp, input and constant float
+    // registers, and Rd and Od write the temp and output ones. The swizzle and
+    // the write mask come before the modifier, since an instruction names those
+    // - and only carries a modifier once in a while. The Source and Destination
+    // above spell the registers these do not: samplers, integers, the loop's own.
+    public static uint R(int number, uint swizzle = 0xE4, SourceModifier modifier = SourceModifier.None)
+    {
+        return Source(RegisterType.Temp, number, modifier, swizzle);
+    }
+
+    public static uint V(int number, uint swizzle = 0xE4, SourceModifier modifier = SourceModifier.None)
+    {
+        return Source(RegisterType.Input, number, modifier, swizzle);
+    }
+
+    public static uint C(int number, uint swizzle = 0xE4, SourceModifier modifier = SourceModifier.None)
+    {
+        return Source(RegisterType.Const, number, modifier, swizzle);
+    }
+
+    public static uint Rd(int number, uint mask = 0xF, ResultModifier modifier = ResultModifier.None)
+    {
+        return Destination(RegisterType.Temp, number, mask, modifier);
+    }
+
+    public static uint Od(int number, uint mask = 0xF)
+    {
+        return Destination(RegisterType.Output, number, mask);
+    }
+
     public static uint[] Instruction(Opcode opcode, params uint[] parameters)
     {
         return [(uint)opcode | (uint)parameters.Length << 24, .. parameters];
@@ -82,7 +113,14 @@ internal static class ShaderAssembler
     // InstructionVerifier insists on.
     public static uint[] Declaration(DeclUsage usage, RegisterType type, int number)
     {
-        return [(uint)Opcode.Dcl | 2u << 24, 0x80000000 | (uint)usage, Destination(type, number)];
+        return Declaration(usage, type, number, 0);
+    }
+
+    // The semantic index - TEXCOORD1's 1 - is bits 16 to 19 of the usage token.
+    public static uint[] Declaration(DeclUsage usage, RegisterType type, int number, int semanticIndex)
+    {
+        return [(uint)Opcode.Dcl | 2u << 24,
+            0x80000000 | (uint)usage | (uint)semanticIndex << 16, Destination(type, number)];
     }
 
     public static uint[] ConstantInt(int number, params int[] values)

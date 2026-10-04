@@ -105,6 +105,23 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownInstructionFailures = new()
     {
+        ["cs_5_0/asdouble_bits_uniform"] =
+            "The join asdouble_bits needs, reached through a mov rather than a "
+            + "structured load, and the instruction writer has it in only the one "
+            + "place. A uint2 constant buffer member read as a double is `mov "
+            + "r0.xy, cb0[0].xy` and then the dmul: fxc moves the pair into a "
+            + "register first, where it reads a double member straight off its own "
+            + "pair, so the two words enter through the mov and the asdouble that "
+            + "joins them has nowhere to go. The shadow the dmul reads is assigned "
+            + "nothing, and fxc says so - X4000, used without having been "
+            + "initialized - where asdouble_bits only got a wrong number out of the "
+            + "same mistake.\n\n"
+            + "What the mov needs and the load did not is a way to tell carrying a "
+            + "double from making one out of bits. Its record of which halves carry "
+            + "one is read for both of its operands, so a mov that makes a double "
+            + "would name a shadow on the source side too, for a pair that is not "
+            + "one. The ast writer joins at the operand rather than at the "
+            + "instruction that filled the register, and has no such trouble.",
     };
 
     /// <summary>

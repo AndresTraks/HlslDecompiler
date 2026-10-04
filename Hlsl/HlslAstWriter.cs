@@ -481,12 +481,16 @@ public class HlslAstWriter : HlslWriter
         // Skip output registers the statement merely carries forward unchanged, the
         // same way temps are filtered above. Without this every statement re-emits
         // every output, which shows up as duplicated writes after a stream append.
+        var writtenOutputs = assignmentStatement.Outputs
+            .Where(o => o.Key.RegisterKey.IsOutput)
+            .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
+                && o.Value == inputNode))
+            .ToList();
         Dictionary<RegisterComponentKey, HlslTreeNode[]> outputs =
-            GroupComponents(assignmentStatement.Outputs
-                    .Where(o => o.Key.RegisterKey.IsOutput)
-                    .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
-                        && o.Value == inputNode)))
+            GroupComponents(writtenOutputs)
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
+        Dictionary<RegisterComponentKey, int[]> outputComponents =
+            GroupComponentMasks(writtenOutputs);
 
         // What the outputs share among themselves and with the temps is named
         // here, the way a return names it: a geometry shader writes its vertex
@@ -526,7 +530,12 @@ public class HlslAstWriter : HlslWriter
                 .Distinct()];
             string outputVariable = _registers.StreamVariableName(
                 (rootGroup.Key.RegisterKey as D3D10RegisterKey)?.Stream);
-            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
+            // A statement that writes part of an output says so: assigning a scalar
+            // or a short vector to the whole member broadcasts over the components
+            // this statement does not write, and the order it writes them in is not
+            // the order of the register's components.
+            string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
+            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name}{componentMask} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {
@@ -1145,13 +1154,17 @@ public class HlslAstWriter : HlslWriter
         // the position computed above it in each of them. A single output has no
         // struct and is returned as the expression, wherever it was computed.
         bool hasOutputStruct = HasOutputStruct;
+        var returnedOutputs = returnStatement.Outputs
+            .Where(o => o.Key.RegisterKey.IsOutput)
+            .Where(o => !(hasOutputStruct
+                && returnStatement.Inputs.TryGetValue(o.Key, out var inputNode)
+                && o.Value == inputNode))
+            .ToList();
         Dictionary<RegisterComponentKey, HlslTreeNode[]> outputs =
-            GroupComponents(returnStatement.Outputs
-                    .Where(o => o.Key.RegisterKey.IsOutput)
-                    .Where(o => !(hasOutputStruct
-                        && returnStatement.Inputs.TryGetValue(o.Key, out var inputNode)
-                        && o.Value == inputNode)))
+            GroupComponents(returnedOutputs)
                 .ToDictionary(r => r.Key, r => r.Value.Select(n => Reduce(n)).ToArray());
+        Dictionary<RegisterComponentKey, int[]> outputComponents =
+            GroupComponentMasks(returnedOutputs);
 
         // The returned expression is compiled straight from here rather than through
         // GroupAssignments, so the hoist has to happen here too - and what it names
@@ -1199,8 +1212,9 @@ public class HlslAstWriter : HlslWriter
                 o => o.Value))
             {
                 RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
+                string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
                 string compiled = CompileOutput(rootGroup.Key.RegisterKey, rootGroup.Value);
-                WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name} = {compiled};");
+                WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name}{componentMask} = {compiled};");
             }
             // A blank line whether or not anything was written just above: the return
             // reads as the end of the method either way, and after the closing brace
@@ -1243,6 +1257,23 @@ public class HlslAstWriter : HlslWriter
             MarkPartialPrecision(assignment);
             WriteLine(_compiler.Compile(assignment));
         }
+    }
+
+    /// <summary>
+    /// The swizzle naming the components an output write touches, when it does not
+    /// touch all of them. The member is as wide as the register is written across
+    /// the whole shader - the write masks have all been seen by the time this
+    /// writes - and an unmasked assignment to it takes the value's width as the
+    /// write's, broadcasting it over the components this statement leaves alone and
+    /// packing the ones it wrote into the register's first slots.
+    /// </summary>
+    private static string ComponentMask(int[] components, RegisterDeclaration declaration)
+    {
+        if (components.Length >= declaration.MaskedLength)
+        {
+            return "";
+        }
+        return "." + string.Concat(components.Select(c => "xyzw"[c]));
     }
 
     private HlslTreeNode Reduce(HlslTreeNode node)
@@ -2745,13 +2776,27 @@ public class HlslAstWriter : HlslWriter
     private Dictionary<RegisterComponentKey, HlslTreeNode[]> GroupComponents(
         IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
     {
+        return GroupComponentsWithComponents(outputsByComponent)
+            .ToDictionary(o => o.Key, o => o.Value.Nodes);
+    }
+
+    private Dictionary<RegisterComponentKey, int[]> GroupComponentMasks(
+        IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
+    {
+        return GroupComponentsWithComponents(outputsByComponent)
+            .ToDictionary(o => o.Key, o => o.Value.Components);
+    }
+
+    private Dictionary<RegisterComponentKey, (int[] Components, HlslTreeNode[] Nodes)>
+        GroupComponentsWithComponents(
+            IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)
+    {
         return outputsByComponent
             .GroupBy(o => (o.Key.RegisterKey, _registers.GetOutputDeclaration(o.Key).Semantic))
             .ToDictionary(
                 o => o.OrderBy(c => c.Key.ComponentIndex).First().Key,
-                o => o
-                    .OrderBy(o => o.Key.ComponentIndex)
-                    .Select(o => o.Value)
-                    .ToArray());
+                o => (
+                    o.OrderBy(c => c.Key.ComponentIndex).Select(c => c.Key.ComponentIndex).ToArray(),
+                    o.OrderBy(c => c.Key.ComponentIndex).Select(c => c.Value).ToArray()));
     }
 }

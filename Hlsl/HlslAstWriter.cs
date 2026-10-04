@@ -1055,7 +1055,21 @@ public class HlslAstWriter : HlslWriter
             falseBody = null;
         }
 
-        WriteLine($"if ({_compiler.Compile(comparison.Select(Reduce))}) {{");
+        // A D3D9 `if_<rel>` hands one comparison per component, but its operand is
+        // often a single component read through a swizzle - `if_ne r0.z, -r0.z`
+        // tests only .z, and all four components carry the one test. HLSL wants a
+        // scalar condition, and four copies compiled side by side is a vector; one
+        // of them says the same thing. A partial-precision operand makes this worse
+        // than an ugly condition: the cast the half-ness puts on each component is
+        // sized to the group, so four components come out `(half4)`, and comparing
+        // those is X3019 rather than merely wide.
+        var tested = comparison.Select(Reduce).ToList();
+        if (tested.Count > 1
+            && tested.All(c => NodeGrouper.AreNodesEquivalent(c, tested[0])))
+        {
+            tested = [tested[0]];
+        }
+        WriteLine($"if ({_compiler.Compile(tested)}) {{");
         indent += "\t";
         WriteStatements(trueBody);
         indent = indent.Substring(0, indent.Length - 1);

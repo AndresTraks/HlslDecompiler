@@ -30,26 +30,6 @@ public class EquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-        ["cs_5_0/asdouble_bits"] = [("instruction",
-            "A double whose bits come from a uint2 and go back to one, which the "
-            + "instruction writer loses: it keeps a double register namespace of "
-            + "its own - d0 beside r0 - so the dmul writes d0 while the pair it was "
-            + "given is r0, and the two never meet. What comes out is `double d0; "
-            + "d0 = d0 * 2;` over a variable nothing assigned, and then a store of "
-            + "the register the load wrote rather than of the multiply. fxc "
-            + "compiles it without complaint, which is how it passes Recompile - "
-            + "see stored_double_bits in RecompileTests.KnownInstructionFailures "
-            + "for the shape of it that does not.\n\n"
-            + "The ast writer computed the same wrong number until the pair was "
-            + "modelled: `asdouble` and `asuint` have no instructions, so nothing "
-            + "in the bytecode says the pair is a double except the dmul over it, "
-            + "and the pair is loaded from and stored to a member declared uint2. "
-            + "What fixed it was moving where the type lives rather than adding a "
-            + "rule - a pair of components a double instruction reads is a double "
-            + "built from their bits whatever register they are in, and a double "
-            + "stored to a member that is not one is its bits taken apart. This "
-            + "writer has no graph to carry either answer."),
-        ],
         ["cs_4_0/particle_update"] = [("ast",
             "Two dwords the original stores and the recompilation does not. The "
             + "particle's velocity is written back a member at a time, and its x and "

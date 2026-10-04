@@ -411,6 +411,26 @@ public class HlslSimpleWriter : HlslWriter
     private HashSet<(RegisterKey Register, int Pair)> _doubleRegisterPairs = [];
 
     /// <summary>
+    /// What the register pairs held when each instruction was reached, for the
+    /// instructions reached with any of them holding a double. A source operand
+    /// reads what was there before the instruction, and whether that was a double
+    /// is a question about the moment and not about the register: fxc uses a pair
+    /// for a double here and for two numbers there. Empty for every shader without
+    /// a double in it, which is all but a handful.
+    /// </summary>
+    private Dictionary<D3D10Instruction, HashSet<(RegisterKey Register, int Pair)>> _liveDoublePairs =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Which pairs of its destination each instruction leaves holding a double,
+    /// whatever the instruction was. The mov record above is this one narrowed to
+    /// the opcode that needs it for its operands; a load needs it to know that the
+    /// pair it filled is about to be read as a double.
+    /// </summary>
+    private Dictionary<D3D10Instruction, int> _madeDoublePairs =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
     /// Walks the instructions in order keeping track of which register pairs hold a
     /// double, so that a mov between two of them can be told from a mov of two
     /// floats. A pair holds one from where a double instruction or a load of a double
@@ -420,10 +440,21 @@ public class HlslSimpleWriter : HlslWriter
     private void FindMovedDoubles()
     {
         _movedDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
+        _madeDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
+        _liveDoublePairs = new Dictionary<D3D10Instruction, HashSet<(RegisterKey, int)>>(
+            ReferenceEqualityComparer.Instance);
         _doubleRegisterPairs = [];
         var live = new HashSet<(RegisterKey Register, int Pair)>();
-        foreach (Instruction instruction in _phaseShader.Instructions)
+        for (int index = 0; index < _phaseShader.Instructions.Count; index++)
         {
+            Instruction instruction = _phaseShader.Instructions[index];
+            // Before the destination is looked at, and before the write below
+            // changes what is live: a store has no temp destination and is exactly
+            // the instruction that has to know what the pair it reads was holding.
+            if (instruction is D3D10Instruction withSources && live.Count != 0)
+            {
+                _liveDoublePairs[withSources] = [.. live];
+            }
             if (instruction is not D3D10Instruction d3d10
                 || d3d10.GetDestinationParamIndex() is not int destinationIndex
                 || d3d10.GetParamRegisterKey(destinationIndex)
@@ -432,10 +463,14 @@ public class HlslSimpleWriter : HlslWriter
                 continue;
             }
             int writeMask = d3d10.GetWriteMask(destinationIndex);
-            int madeDouble = FindDoublesMade(d3d10, destination, writeMask, live);
-            if (d3d10.Opcode == D3D10Opcode.Mov && madeDouble != 0)
+            int madeDouble = FindDoublesMade(d3d10, destination, writeMask, live, index);
+            if (madeDouble != 0)
             {
-                _movedDoublePairs[d3d10] = madeDouble;
+                _madeDoublePairs[d3d10] = madeDouble;
+                if (d3d10.Opcode == D3D10Opcode.Mov)
+                {
+                    _movedDoublePairs[d3d10] = madeDouble;
+                }
             }
             // Every pair the instruction touches stops holding what it held, and the
             // ones it just made doubles start. A write to one component of a pair is
@@ -459,9 +494,62 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
+    /// <summary>
+    /// Whether the value a structured store writes was a double when the store was
+    /// reached. The opcode cannot say and neither can the element: a store of a
+    /// double into a member that is not one is how a shader writes the number's two
+    /// words out, and there is no instruction for the split. What says is where the
+    /// walk above had got to.
+    /// </summary>
+    private bool StoresLiveDouble(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode != D3D10Opcode.StoreStructured
+            || instruction.GetParamRegisterKey(3) is not D3D10RegisterKey { IsTempRegister: true } value
+            || !_liveDoublePairs.TryGetValue(instruction, out HashSet<(RegisterKey, int)> live))
+        {
+            return false;
+        }
+        // Both halves of an aligned pair, or there is no double being stored.
+        int mask = DestinationMask(instruction);
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
+        for (int component = 0; component < 4; component += 2)
+        {
+            if ((mask & (0b11 << component)) == (0b11 << component)
+                && swizzle[component] % 2 == 0
+                && swizzle[component + 1] == swizzle[component] + 1
+                && live.Contains((value, swizzle[component] / 2)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// A store of a double into something that is not one, written as the asuint
+    /// that takes it apart. The two words come back through out parameters - there
+    /// is no expression for one of them - and fxc takes a buffer element's
+    /// components as those parameters directly, so no name has to be invented for
+    /// the pair on the way.
+    ///
+    /// False where the store is of something else, which leaves the assignment the
+    /// caller was about to write. A store into a member that *is* a double is one
+    /// of those: the element holds the number, and assigning the shadow to it is
+    /// the whole of what the instruction did.
+    /// </summary>
+    private bool WriteDoubleBitsStore(D3D10Instruction instruction, string target)
+    {
+        if (IsDoubleStructuredComponent(instruction, 0) || !StoresLiveDouble(instruction))
+        {
+            return false;
+        }
+        WriteLine("asuint({0}, {1}.x, {1}.y);", GetOperandName(instruction, 3), target);
+        return true;
+    }
+
     // The pairs of the destination this instruction leaves holding a double.
     private int FindDoublesMade(D3D10Instruction instruction, RegisterKey destination,
-        int writeMask, HashSet<(RegisterKey Register, int Pair)> live)
+        int writeMask, HashSet<(RegisterKey Register, int Pair)> live, int index)
     {
         int made = 0;
         for (int pair = 0; pair < 2; pair++)
@@ -485,7 +573,13 @@ public class HlslSimpleWriter : HlslWriter
                     : 0;
                 isDouble = _registers.IsDoubleStructuredMember(
                     instruction.GetParamRegisterKey(3),
-                    elementByteOffset + resourceSwizzle[low] * 4);
+                    elementByteOffset + resourceSwizzle[low] * 4)
+                    // Or the member is not a double and a double instruction reads
+                    // the pair all the same, which makes the two components the
+                    // number's bits: the load is where they enter, so it is where
+                    // the asdouble that joins them goes. Left as a load of two
+                    // floats, the arithmetic read a shadow nothing had assigned to.
+                    || IsReadAsDouble(index + 1, destination, pair);
             }
             else if (instruction.Opcode == D3D10Opcode.Mov
                 && instruction.GetParamRegisterKey(1)
@@ -508,6 +602,77 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         return made;
+    }
+
+    /// <summary>
+    /// Whether a double instruction reads the register pair as a double before
+    /// anything writes over it. Read in program order from the instruction after the
+    /// one that filled it, the way the walk this belongs to counts: a pair holds what
+    /// it holds until something else writes a component of it.
+    /// </summary>
+    private bool IsReadAsDouble(int fromIndex, RegisterKey register, int pair)
+    {
+        for (int i = fromIndex; i < _phaseShader.Instructions.Count; i++)
+        {
+            if (_phaseShader.Instructions[i] is not D3D10Instruction next)
+            {
+                continue;
+            }
+            for (int operand = 1; operand < next.OperandTokens.OperandCount; operand++)
+            {
+                if (!next.IsDoubleOperand(operand)
+                    || next.GetParamRegisterKey(operand)
+                        is not D3D10RegisterKey { IsTempRegister: true } source
+                    || !source.Equals(register))
+                {
+                    continue;
+                }
+                byte[] swizzle = next.GetSourceSwizzleComponents(operand);
+                for (int value = 0; value < next.ValueCount; value++)
+                {
+                    if (swizzle[next.GetValuePair(value) * 2] / 2 == pair)
+                    {
+                        return true;
+                    }
+                }
+            }
+            // The read comes first, because a double instruction writes the pair it
+            // read: a dmul over r0.xy into r0.xy is a read of the pair and then the
+            // end of what was in it.
+            if (next.GetDestinationParamIndex() is int destination
+                && next.GetParamRegisterKey(destination)
+                    is D3D10RegisterKey { IsTempRegister: true } written
+                && written.Equals(register)
+                && (next.GetWriteMask(destination) & (0b11 << (pair * 2))) != 0)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a structured load fills a register pair with a double built out of
+    /// the two components of the element it read, rather than with the element's
+    /// own two numbers. The member is not a double - the element says nothing - and
+    /// what makes it one is that a double instruction goes on to read the pair.
+    /// </summary>
+    private bool MakesDoubleFromBits(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode != D3D10Opcode.LdStructured
+            || !_madeDoublePairs.ContainsKey(instruction)
+            || IsDoubleStructuredComponent(instruction, 3))
+        {
+            return false;
+        }
+        // The one shape the join can be written in: the whole of what the load
+        // writes is one pair, and the element is a vector whose components can be
+        // named one at a time. An element with members of its own puts the two words
+        // who knows where in it, and `asdouble` of a member is not something this
+        // writer can spell.
+        return instruction.GetDestinationWriteMask() is 0b0011 or 0b1100
+            && _registers.FindStructuredBuffer(instruction.GetParamRegisterKey(3))
+                ?.ElementType is { MemberInfo: null or { Count: 0 } };
     }
 
     /// <summary>
@@ -558,9 +723,15 @@ public class HlslSimpleWriter : HlslWriter
         bool isStructuredDouble = instruction.Opcode switch
         {
             D3D10Opcode.LdStructured => operandIndex == 0
-                && IsDoubleStructuredComponent(instruction, 3),
+                && (IsDoubleStructuredComponent(instruction, 3)
+                    || MakesDoubleFromBits(instruction)),
+            // And a store of a double into a member that is not one, which is how
+            // a shader writes the number's two words out: the value is still the
+            // double in the shadow, and the asuint that splits it is written where
+            // the store is.
             D3D10Opcode.StoreStructured => operandIndex == 3
-                && IsDoubleStructuredComponent(instruction, 0),
+                && (IsDoubleStructuredComponent(instruction, 0)
+                    || StoresLiveDouble(instruction)),
             _ => false,
         };
         // And a mov says so only through the walk: which of its halves carry a
@@ -2159,6 +2330,19 @@ public class HlslSimpleWriter : HlslWriter
                             readElement += "." + picked;
                         }
                     }
+                    // Two components a double instruction goes on to read as one
+                    // number are its two words, and the asdouble that joins them
+                    // belongs here, where they enter: the destination names the
+                    // shadow, which holds the double itself, and the arithmetic over
+                    // it reads that. Written as a load of two floats instead, the
+                    // components were converted to the numbers their bits spell and
+                    // the arithmetic read a shadow nothing had assigned to.
+                    if (MakesDoubleFromBits(instruction) && read.Count == 2)
+                    {
+                        readElement = string.Format("asdouble({0}.{1}, {0}.{2})", element,
+                            "xyzw"[(read[0] + offset / 4) % 4],
+                            "xyzw"[(read[1] + offset / 4) % 4]);
+                    }
                     WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), readElement);
                     break;
                 }
@@ -2633,8 +2817,20 @@ public class HlslSimpleWriter : HlslWriter
                             is var (storeName, _, _)
                             ? $".{storeName}"
                             : "";
+                        if (WriteDoubleBitsStore(instruction, $"{element}{storedMember}"))
+                        {
+                            break;
+                        }
                         WriteLine("{0}{1} = {2};", element, storedMember,
                             GetOperandName(instruction, 3));
+                        break;
+                    }
+                    // One member, or the double's two words would be written once
+                    // per run. A double is one member wherever it is split: the
+                    // uint2 it goes into is one, and a pair of uints beside each
+                    // other in a struct is not something fxc writes with one store.
+                    if (runs.Count == 1 && WriteDoubleBitsStore(instruction, runs[0].Name))
+                    {
                         break;
                     }
                     byte[] valueSwizzle = instruction.GetSourceSwizzleComponents(3);

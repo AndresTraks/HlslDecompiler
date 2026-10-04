@@ -105,16 +105,6 @@ public class RecompileTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownInstructionFailures = new()
     {
-        ["cs_5_0/stored_double_bits"] =
-            "A store of a register pair that holds a double, where the instruction "
-            + "writer never declared the register. It keeps a double namespace of "
-            + "its own - d0 beside r0 - so the load and the multiply are written as "
-            + "d0 while the store names the r0 the bytecode gave it, and nothing "
-            + "ever writes a float into r0 for it to be declared by. The same cause "
-            + "as the asdouble_bits entry in EquivalenceTests.KnownDifferences, one "
-            + "step further on: there a float2 r0 was declared by a load of the "
-            + "uint2 beside the dmul, and here the element is a double and there is "
-            + "no such load.",
     };
 
     /// <summary>

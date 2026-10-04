@@ -1283,6 +1283,8 @@ public class StatementFinalizer
             // accumulator, so a second msad over the first declared its variable int4
             // and handed it back through a conversion.
             Msad4Node => true,
+            // The two words asuint takes a double apart into are uints.
+            DoubleBitsNode => true,
             _ => null,
         };
     }
@@ -1303,6 +1305,10 @@ public class StatementFinalizer
             // float2 had them written as an int2, which truncates them.
             FloatToHalfOperation => true,
             HalfToFloatOperation => false,
+            // And asdouble, which takes uints and makes a double.
+            BitsToDoubleOperation => false,
+            // And the other way: a word of a double is a uint.
+            DoubleBitsNode => true,
             ConstantNode constant => constant.IntegerValue != null,
             // A select of two constants makes what its arms are, and constants
             // have their kind already settled: a movc between two floats makes a

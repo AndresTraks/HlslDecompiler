@@ -23,6 +23,10 @@ public class HlslAstWriter : HlslWriter
     // it, so that a second statement reading the same call finds them.
     private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _consumeVariables =
         new(ReferenceEqualityComparer.Instance);
+    // And the variables each double taken apart was named into, by the double, so
+    // that a statement reading one word finds the call the other was named by.
+    private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _doubleBitsVariables =
+        new(ReferenceEqualityComparer.Instance);
 
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
@@ -40,6 +44,7 @@ public class HlslAstWriter : HlslWriter
         _declaredIndices.Clear();
         _everDeclaredVariables.Clear();
         _consumeVariables.Clear();
+        _doubleBitsVariables.Clear();
         _loopDepth = 0;
 
         if (HasOutputStruct)
@@ -308,7 +313,7 @@ public class HlslAstWriter : HlslWriter
         // Not the calls that fill a whole variable through out parameters, which
         // are one assignment however wide.
         if (group[0] is TempAssignmentNode { IsReassignment: false } first
-            && first.Value is not ConsumeNode and not ResourceInfoNode
+            && first.Value is not ConsumeNode and not ResourceInfoNode and not DoubleBitsNode
             && first.TempVariable.VariableSize is int size && group.Length < size)
         {
             string type = first.TempVariable.TypeName;
@@ -1577,6 +1582,7 @@ public class HlslAstWriter : HlslWriter
         // out parameters - so a resinfo result is always named, whatever it costs.
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
         resourceInfo.AddRange(NameConsumes(order));
+        resourceInfo.AddRange(NameDoubleBits(order));
 
         // Sharing alone is not a reason to name something - almost every expression
         // shares a register read. What is worth naming is a subexpression of some
@@ -2676,6 +2682,66 @@ public class HlslAstWriter : HlslWriter
                 continue;
             }
             foreach (ConsumeNode component in call)
+            {
+                component.NamedAs = variables[component.ComponentIndex];
+            }
+        }
+        return assignments;
+    }
+
+    /// <summary>
+    /// Names every double taken apart into its two words, the two words of one
+    /// double together. `asuint` over a double hands them back through out
+    /// parameters - there is no expression for one word of it - so the call is named
+    /// and the words are read out of the variable, the same shape a GetDimensions
+    /// takes and for the same reason.
+    /// </summary>
+    private List<HlslTreeNode[]> NameDoubleBits(IList<HlslTreeNode> order)
+    {
+        var assignments = new List<HlslTreeNode[]>();
+        var named = HlslTreeNode.NewNodeSet();
+        foreach (DoubleBitsNode bits in order.OfType<DoubleBitsNode>())
+        {
+            if (named.Contains(bits) || bits.NamedAs != null)
+            {
+                continue;
+            }
+            // One call is one double: both words come out of the same asuint.
+            List<DoubleBitsNode> call = [.. order.OfType<DoubleBitsNode>()
+                .Where(other => other.NamedAs == null
+                    && ReferenceEquals(other.Value, bits.Value))
+                .OrderBy(other => other.ComponentIndex)];
+            foreach (DoubleBitsNode component in call)
+            {
+                named.Add(component);
+            }
+            // Both words, not the ones this statement happens to read: the call
+            // fills a pair of out parameters whether or not the shader stored both,
+            // and a one wide variable has nowhere to put the other. The variables
+            // are remembered by the double so a second statement finds the first
+            // one's rather than calling again.
+            if (!_doubleBitsVariables.TryGetValue(bits.Value, out TempVariableNode[] variables))
+            {
+                variables = _compiler.CreateTempVariables(2);
+                foreach (TempVariableNode variable in variables)
+                {
+                    // asuint's out parameters are uints, and these are a double's
+                    // bits rather than a number - which is what a float reader of
+                    // one has to be told, so that it reinterprets.
+                    variable.IsInteger = true;
+                    variable.IsUnsigned = true;
+                    variable.IsBits = true;
+                }
+                _doubleBitsVariables[bits.Value] = variables;
+                assignments.Add([.. call.Select(component =>
+                {
+                    TempVariableNode variable = variables[component.ComponentIndex];
+                    component.NamedAs = variable;
+                    return (HlslTreeNode)NameSubexpression(component, variable);
+                })]);
+                continue;
+            }
+            foreach (DoubleBitsNode component in call)
             {
                 component.NamedAs = variables[component.ComponentIndex];
             }

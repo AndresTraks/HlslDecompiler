@@ -27,11 +27,20 @@ public class InstructionParser
     /// not something the register can be asked either, because fxc reuses a register
     /// for a double in one place and a float in another and a set of register
     /// components has no notion of when. It is a fact about the value, recorded where
-    /// the value is made, and the one thing that needs it is the plain mov fxc copies
-    /// a double's raw halves with.
+    /// the value is made, and what needs it is everything that has to tell a register
+    /// pair holding a double from one holding two numbers: the plain mov fxc copies a
+    /// double's raw halves with, the join a double operand reads a pair of dwords
+    /// through, and the split a store of one takes it apart with.
     /// </summary>
     private readonly HashSet<HlslTreeNode> _doubleValues =
         new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// The register components holding the high word of a double that is keyed at
+    /// the component below them. Kept apart from the values above because a word
+    /// nothing reads must not exist: see ParseAssignmentInstruction.
+    /// </summary>
+    private readonly HashSet<RegisterComponentKey> _doubleHighWords = [];
 
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
@@ -359,6 +368,7 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
                             .ToArray();
+                        SplitStoredDoubles(values);
                         RecordStoredType(instruction, values);
                         InsertStatement(new StoreTypedStatement(
                             output, coordinates, values, ActiveOutputs));
@@ -487,6 +497,7 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
+                        SplitStoredDoubles(values);
                         RecordStoredType(instruction, values);
                         // Storing at a slot an alloc took is the second half of an
                         // Append, and is written as one rather than as a subscripted
@@ -656,6 +667,7 @@ public class InstructionParser
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[1])
                             .ToArray();
+                        SplitStoredDoubles(values);
                         RecordStoredType(instruction, values);
                         if (IsGroupSharedResource(instruction, 0))
                         {
@@ -1695,6 +1707,19 @@ public class InstructionParser
                 return new ConstantNode(d3D10RegisterKey.ImmediateInt.Value);
             }
         }
+        if (_doubleHighWords.Contains(registerComponent)
+            && ActiveOutputs.TryGetValue(new RegisterComponentKey(
+                registerComponent.RegisterKey, registerComponent.ComponentIndex - 1),
+                out HlslTreeNode pairedDouble))
+        {
+            // The upper half of a pair a double sits in, read as a 32-bit value of
+            // its own: what is there is the double's high word. Whatever the
+            // register held at that component before is stale - the double
+            // instruction wrote over it - and read as that a uint2 load's high word
+            // was stored back unchanged beside a multiply of the low one, or there
+            // was nothing there at all and the parse stopped.
+            return new DoubleBitsNode(pairedDouble, 1);
+        }
         return ActiveOutputs[registerComponent];
     }
 
@@ -1702,6 +1727,15 @@ public class InstructionParser
     {
         InsertAssignment();
         ActiveOutputs[registerComponent] = value;
+        // A write of either half ends whatever double was in the pair: the upper
+        // component holds a word of its own now, or the lower one does and there is
+        // no double left for the upper one to be the high word of.
+        _doubleHighWords.Remove(registerComponent);
+        if (registerComponent.ComponentIndex % 2 == 0)
+        {
+            _doubleHighWords.Remove(new RegisterComponentKey(
+                registerComponent.RegisterKey, registerComponent.ComponentIndex + 1));
+        }
     }
 
     private void ParseAssignmentInstruction(D3D10Instruction instruction)
@@ -1709,6 +1743,7 @@ public class InstructionParser
         _registerState.DeclareDestinationRegister(instruction);
 
         var newOutputs = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+        var doubleDestinations = new List<RegisterComponentKey>();
 
         RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
         foreach (RegisterComponentKey destinationKey in destinationKeys)
@@ -1725,6 +1760,7 @@ public class InstructionParser
             if (IsDoubleResult(instruction, destinationKey))
             {
                 _doubleValues.Add(instructionTree);
+                doubleDestinations.Add(destinationKey);
             }
             newOutputs[destinationKey] = instructionTree;
         }
@@ -1732,6 +1768,20 @@ public class InstructionParser
         foreach (var output in newOutputs)
         {
             SetActiveOutput(output.Key, output.Value);
+        }
+        // The upper component of every pair a double went into, recorded after the
+        // writes rather than keyed like one. The instruction wrote both halves of
+        // the pair and the double is keyed at the lower one, so what the upper one
+        // holds is the double's high word - but keying a value there would make it
+        // an output of the statement and a second reader of the double, and what
+        // reads a value is what decides whether the writer names it or writes it
+        // inline: half the double fixtures grew a variable for a word no store ever
+        // asked for. Recorded instead, the word is made where something reads it
+        // and nowhere else - see GetActiveOutput.
+        foreach (RegisterComponentKey destinationKey in doubleDestinations)
+        {
+            _doubleHighWords.Add(new RegisterComponentKey(
+                destinationKey.RegisterKey, destinationKey.ComponentIndex + 1));
         }
     }
 
@@ -1868,7 +1918,7 @@ public class InstructionParser
         }
         return ActiveOutputs != null
             && ActiveOutputs.TryGetValue(sourceKey, out HlslTreeNode source)
-            && _doubleValues.Contains(source);
+            && HoldsDouble(sourceKey, source);
     }
 
     /// <summary>
@@ -3953,12 +4003,90 @@ public class InstructionParser
             {
                 var inputKey = GetParamRegisterComponentKey(instruction, inputParameterIndex, componentIndex);
                 HlslTreeNode input = GetActiveOutput(inputKey);
+                if (instruction.IsDoubleOperand(inputParameterIndex))
+                {
+                    input = ReadDoublePair(instruction, inputParameterIndex, componentIndex, input);
+                }
                 D3D10OperandModifier modifier = instruction.GetOperandModifier(inputParameterIndex);
                 input = ApplyModifier(input, modifier);
                 inputs[i] = input;
             }
         }
         return inputs;
+    }
+
+    /// <summary>
+    /// The double a double operand's register pair holds: the value at the lower
+    /// component where that one is a double already, and the bits of both
+    /// components joined where it is not.
+    ///
+    /// A pair holds a double already where a double instruction wrote it or a
+    /// member declared one was loaded into it, which is what the parser's record of
+    /// doubles says. Where neither did, the two components are two values of their
+    /// own - a uint2 member loaded into the pair, say - and what the instruction
+    /// reads is a double built out of their bits. That is `asdouble`, and it costs
+    /// no instruction: reading a register pair as a double is free, so the only
+    /// thing that says a join happened is that the pair was not a double before it.
+    /// Read as the lower component alone the high word went missing, and a dmul of
+    /// the pair came back as a single multiply of the low word.
+    /// </summary>
+    private HlslTreeNode ReadDoublePair(
+        D3D10Instruction instruction, int inputParameterIndex, int componentIndex, HlslTreeNode low)
+    {
+        RegisterComponentKey lowKey = GetParamRegisterComponentKey(
+            instruction, inputParameterIndex, componentIndex);
+        if (HoldsDouble(lowKey, low))
+        {
+            return low;
+        }
+        // The pair's upper slot, which fxc writes beside the lower one: a double
+        // operand repeats its pair across the four swizzle slots - .xyxy for the
+        // double at x - so the high word of the double at slot n is at slot n + 1.
+        RegisterComponentKey highKey = GetParamRegisterComponentKey(
+            instruction, inputParameterIndex, componentIndex + 1);
+        var joined = new BitsToDoubleOperation(low, GetActiveOutput(highKey));
+        _doubleValues.Add(joined);
+        return joined;
+    }
+
+    /// <summary>
+    /// A double a store is writing out as the two dwords it is made of. A store
+    /// names the components of the element it writes, so one that names both halves
+    /// of the pair a double sits in is taking it apart: the high word is keyed at
+    /// the upper component already, and this is what makes the lower one the low
+    /// word rather than the double itself.
+    ///
+    /// Where the element's member is a double nothing names the upper half - the
+    /// load and the store of a `StructuredBuffer&lt;double&gt;` key one value to the
+    /// pair, which is what the element holds - so that store is left alone.
+    /// </summary>
+    private void SplitStoredDoubles(HlslTreeNode[] values)
+    {
+        for (int value = 0; value + 1 < values.Length; value++)
+        {
+            if (_doubleValues.Contains(values[value])
+                && values[value + 1] is DoubleBitsNode { ComponentIndex: 1 } high
+                && ReferenceEquals(high.Value, values[value]))
+            {
+                values[value] = new DoubleBitsNode(values[value], 0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the pair a component begins is a double already, rather than two
+    /// 32-bit values a double instruction is about to read as one. Two things say
+    /// so, and both have to be asked: the parser's record, which holds every double
+    /// an instruction wrote or a member declared one was loaded into, and the
+    /// declaration, for the one operand that is read without being written. A
+    /// constant buffer variable declared double is read straight off the register
+    /// pair it occupies - `dmul r0.xy, r0.xy, cb0[0].zw` - and its two components
+    /// name the one variable, so joined they came out as `asdouble(scale, scale)`.
+    /// </summary>
+    private bool HoldsDouble(RegisterComponentKey registerComponent, HlslTreeNode value)
+    {
+        return _doubleValues.Contains(value)
+            || _registerState.GetConstantComponentsPerElement(registerComponent) == 2;
     }
 
     private HlslTreeNode[] GetInputComponents(Instruction instruction, int inputParameterIndex, int numComponents)

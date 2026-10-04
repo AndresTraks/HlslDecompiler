@@ -817,6 +817,9 @@ public sealed class NodeCompiler
             // left alone, and `asint` around half float bits says nothing true.
             FloatToHalfOperation => false,
             HalfToFloatOperation => true,
+            // asdouble reads uints and makes a double, so the same warning applies
+            // to it: ConsumesInteger answers about what goes in.
+            BitsToDoubleOperation => true,
             ComparisonNode => false,
             Operation operation => operation.ConsumesInteger == false,
             _ => false,
@@ -1132,6 +1135,27 @@ public sealed class NodeCompiler
                     string name = operation.HlslFunction;
                     string value = Compile(components.Select(g => g.Inputs[0]));
                     return $"{name}({value})";
+                }
+
+            case BitsToDoubleOperation _:
+                {
+                    // Both halves as unsigned integers: asdouble takes uints, and a
+                    // half read as a float would come out as the number its bits
+                    // spell. Gathered across the group the way an ordinary operand
+                    // is, so that the two doubles of a double2 are one call over a
+                    // uint2 of low words and a uint2 of high ones.
+                    bool wasAssigningToUnsigned = _assigningToUnsigned;
+                    _assigningToUnsigned = true;
+                    try
+                    {
+                        string low = CompileAsInteger(components.Select(c => c.Inputs[0]));
+                        string high = CompileAsInteger(components.Select(c => c.Inputs[1]));
+                        return $"asdouble({low}, {high})";
+                    }
+                    finally
+                    {
+                        _assigningToUnsigned = wasAssigningToUnsigned;
+                    }
                 }
 
             case SignGreaterOrEqualOperation _:
@@ -2301,6 +2325,10 @@ public sealed class NodeCompiler
             {
                 return CompileConsumeCall(components.Cast<TempAssignmentNode>().ToList());
             }
+            if (tempAssignment.Value is DoubleBitsNode)
+            {
+                return CompileDoubleBitsCall(components.Cast<TempAssignmentNode>().ToList());
+            }
 
             // Compile variable once with all components
             string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
@@ -2392,6 +2420,19 @@ public sealed class NodeCompiler
                     "A Consume result was compiled before its call was named.");
             }
             return Compile(components.Select(c => (HlslTreeNode)((ConsumeNode)c).NamedAs));
+        }
+
+        if (first is DoubleBitsNode doubleBits)
+        {
+            // A word of a double standing as an output's own value is read from the
+            // variable its asuint was hoisted into; the hoist rewires every other
+            // reader, but a root has none to rewire.
+            if (doubleBits.NamedAs == null)
+            {
+                throw new NotImplementedException(
+                    "A word of a double was compiled before its asuint was named.");
+            }
+            return Compile(components.Select(c => (HlslTreeNode)((DoubleBitsNode)c).NamedAs));
         }
 
         if (first is ResourceInfoNode resourceInfo)
@@ -2513,6 +2554,21 @@ public sealed class NodeCompiler
             ? buffer.ElementType.ParameterType.ToString().ToLowerInvariant()
             : "float";
         return $"{scalar}{width} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
+    }
+
+    /// <summary>
+    /// The declaration and the call for a hoisted asuint over a double: the two
+    /// words come back through out parameters, so the variable is declared first
+    /// and the call fills it. Two statements, which the writer indents line by line
+    /// - the same shape the resinfo call below takes.
+    /// </summary>
+    private string CompileDoubleBitsCall(List<TempAssignmentNode> assignments)
+    {
+        var bits = (DoubleBitsNode)assignments[0].Value;
+        TempVariableNode variable = assignments[0].TempVariable;
+        string name = $"{_registers.TemporaryPrefix}{variable.DeclarationIndex}";
+        return $"uint2 {name};" + "\r\n"
+            + $"asuint({Compile(bits.Value)}, {name}.x, {name}.y);";
     }
 
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)

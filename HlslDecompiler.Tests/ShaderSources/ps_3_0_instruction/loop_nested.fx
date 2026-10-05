@@ -14,13 +14,13 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r2.x = 3;
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r2.x >= count.x) {
-			if (1 != -1) break;
+			break;
 		}
 		r3 = r1;
 		r2.y = 5;
 		for (int i1 = 0; i1 < 255; i1++) {
 			if (r2.y >= count2.x) {
-				if (1 != -1) break;
+				break;
 			}
 			r3 = r3 + texcoord;
 			r2.y = r2.y + 1;

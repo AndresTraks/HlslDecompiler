@@ -13,7 +13,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	r0.y = 0;
 	for (int i0 = 0; i0 < 255; i0++) {
 		if (r0.y >= count.x) {
-			if (1 != -1) break;
+			break;
 		}
 		r2 = r1 + texcoord;
 		r1 = (r0.x >= 0) ? r1 : r2;

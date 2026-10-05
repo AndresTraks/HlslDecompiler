@@ -28,7 +28,7 @@ float4 main(float2 texcoord : TEXCOORD) : COLOR
 		r0.w = (-abs(r4.z) >= 0) ? offsets[6].w : r0.w;
 		r0.w = (-abs(r4.w) >= 0) ? offsets[7].w : r0.w;
 		if (-r0.w >= 0) {
-			if (1 != -1) break;
+			break;
 		}
 		r5 = (-abs(r3.xx) >= 0) ? offsets[0].xy : r0.xx;
 		r3.xy = (-abs(r3.yy) >= 0) ? offsets[1].xy : r5.xy;

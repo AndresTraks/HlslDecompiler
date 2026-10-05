@@ -16,7 +16,7 @@ float4 main(float2 texcoord : TEXCOORD) : COLOR
 		r2.xyz = r2.xyz * k.xxx + r0.xyz;
 		if (k.y < r2.x) {
 			r0 = r2.xyz;
-			if (1 != -1) break;
+			break;
 		}
 		r1 = r1.xy + k.zw;
 		r0 = r2.xyz;

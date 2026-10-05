@@ -1043,6 +1043,63 @@ public class HlslSimpleWriter : HlslWriter
         return instruction.Opcode.ConsumedKind();
     }
 
+    /// <summary>
+    /// Whether a conditional break's comparison is one the shader itself settled:
+    /// both sides constants it defined, and the comparison between them true.
+    ///
+    /// True only, never false. fxc does not emit a break that never breaks, so a
+    /// false answer here means this has misread something - and dropping the break
+    /// on that reading is a larger claim than writing the `break;` on a true one.
+    /// </summary>
+    private bool IsSettledComparison(D3D9Instruction instruction)
+    {
+        if (DefinedConstantValue(instruction, 0) is not float left
+            || DefinedConstantValue(instruction, 1) is not float right)
+        {
+            return false;
+        }
+        return instruction.Comparison switch
+        {
+            IfComparison.GT => left > right,
+            IfComparison.EQ => left == right,
+            IfComparison.GE => left >= right,
+            IfComparison.LT => left < right,
+            IfComparison.NE => left != right,
+            IfComparison.LE => left <= right,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// The one value a source operand reads, where it is a constant the shader
+    /// defined with def and carries a modifier that can be applied to it here.
+    /// Null for a register the shader computes or a uniform the application sets,
+    /// neither of which has a value to read at this point.
+    /// </summary>
+    private float? DefinedConstantValue(D3D9Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetParamRegisterKey(operandIndex)
+            is not D3D9RegisterKey { Type: RegisterType.Const } key)
+        {
+            return null;
+        }
+        ConstantRegister definition = _registers.ConstantDefinitions
+            .FirstOrDefault(c => c.RegisterIndex == key.Number);
+        if (definition == null)
+        {
+            return null;
+        }
+        float value = definition[instruction.GetSourceSwizzleComponents(operandIndex)[0]];
+        return instruction.GetSourceModifier(operandIndex) switch
+        {
+            SourceModifier.None => value,
+            SourceModifier.Negate => -value,
+            SourceModifier.Abs => Math.Abs(value),
+            SourceModifier.AbsAndNegate => -Math.Abs(value),
+            _ => null,
+        };
+    }
+
     private static string AsInt(string name)
     {
         return $"asint({name})";
@@ -1355,6 +1412,17 @@ public class HlslSimpleWriter : HlslWriter
                     $"{GetSourceName(instruction, 1)} + {GetSourceName(instruction, 2)}");
                 break;
             case Opcode.BreakC:
+                // fxc writes an unconditional break as a comparison it already knows
+                // the answer to - `break_ne c11.y, -c11.y` over a defined 1 - because
+                // a break inside an if is what shader model 3 has instead of one.
+                // Written out literally that reads `if (1 != -1) break;`, which is
+                // every loop in the profile that breaks. The ast writer evaluates the
+                // comparison and says `break;`, and this is the same answer.
+                if (IsSettledComparison(instruction))
+                {
+                    WriteLine("break;");
+                    break;
+                }
                 WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 break;
             case Opcode.Cmp:

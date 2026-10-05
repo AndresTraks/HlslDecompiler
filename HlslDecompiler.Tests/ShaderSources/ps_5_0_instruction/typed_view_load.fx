@@ -13,15 +13,15 @@ float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 	r0.zw = int2(0, 0);
 	r0.xy = (int2)sv_position.xy;
 	r1 = scene.Load(r0.xyz);
-	r2 = marked[r0.xy];
+	r2 = marked[(int2)r0.xy];
 	r1 = r1 + r2;
-	r0.z = atlas[r0.x].w;
+	r0.z = atlas[(int)r0.x].w;
 	r0.z = (float)(uint)r0.z;
 	r1 = r0.z + r1;
-	r0.z = tiles[r0.y].x;
+	r0.z = tiles[(int)r0.y].x;
 	r0.z = (float)(uint)r0.z;
 	r1 = r0.z * sv_position.w + r1;
-	marked[r0.xy] = r1;
+	marked[(int2)r0.xy] = r1;
 	o = r1;
 
 	return o;

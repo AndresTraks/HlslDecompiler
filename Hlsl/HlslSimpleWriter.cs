@@ -2006,6 +2006,18 @@ public class HlslSimpleWriter : HlslWriter
     /// </summary>
     private bool IsWrittenAsFloat(int fromIndex, RegisterKey register, int component)
     {
+        return LastWriterOf(fromIndex, register, component) is D3D10Instruction previous
+            && GetProducedKind(previous) == ValueKind.Float;
+    }
+
+    /// <summary>
+    /// The last instruction before this point to write a register component, or null
+    /// where nothing did. What put a value in a register is the only thing that says
+    /// what the value is, the register itself holding a texel address here and a
+    /// colour there.
+    /// </summary>
+    private D3D10Instruction LastWriterOf(int fromIndex, RegisterKey register, int component)
+    {
         for (int i = fromIndex; i >= 0; i--)
         {
             if (_phaseShader.Instructions[i] is not D3D10Instruction previous
@@ -2016,9 +2028,49 @@ public class HlslSimpleWriter : HlslWriter
             {
                 continue;
             }
-            return GetProducedKind(previous) == ValueKind.Float;
+            return previous;
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Whether an operand is an index HLSL takes unsigned. A subscript of a buffer
+    /// or of a typed view takes a uint, and a byte address buffer's offset is one
+    /// too; a texture's Load takes a signed int3 and is not one of these. Each of
+    /// them carries its index as its second operand, loads and stores alike.
+    /// </summary>
+    private static bool IsUnsignedIndexOperand(D3D10Instruction instruction, int operandIndex)
+    {
+        return operandIndex == 1
+            && instruction.Opcode is D3D10Opcode.LdUAVTyped or D3D10Opcode.StoreUAVTyped
+                or D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured
+                or D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw;
+    }
+
+    /// <summary>
+    /// Whether the register components an operand reads were last written with a
+    /// signed integer, in a register declared float.
+    ///
+    /// Only an ftoi says so. Every other way a number reaches a float register
+    /// leaves a float there, or an unsigned integer an ftou made, or whatever a mov
+    /// carried in from somewhere this does not follow - and calling any of those
+    /// signed would be a claim about them rather than a reading of them.
+    /// </summary>
+    private bool HoldsSignedInteger(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetParamRegisterKey(operandIndex)
+            is not D3D10RegisterKey { IsTempRegister: true } register)
+        {
+            return false;
+        }
+        int[] components = GetSourceComponents(instruction, operandIndex,
+            instruction.GetSourceSwizzleComponents(operandIndex));
+        int index = _phaseShader.Instructions.IndexOf(instruction);
+        // Every component, so that an address built half one way and half the other
+        // is left as it was rather than called signed whole.
+        return components.Length != 0
+            && components.All(component =>
+                LastWriterOf(index - 1, register, component)?.Opcode == D3D10Opcode.Ftoi);
     }
 
     /// <summary>
@@ -4182,6 +4234,25 @@ public class HlslSimpleWriter : HlslWriter
                 string size = length == 1 ? "" : length.ToString();
                 return ApplyModifier(modifier,
                     $"(int{size}){string.Format("{0}{1}", registerName, writeMaskName)}");
+            }
+            // And an index HLSL takes unsigned, out of a float register holding a
+            // signed integer. The subscript of a buffer or of a typed view takes a
+            // uint, so the implicit conversion clamps a negative to zero where the
+            // bytecode's ftoi kept it negative, and a read past the edge of a
+            // texture became a read of texel zero. Cast to int it wraps instead,
+            // which is what the instruction did with the dwords it was handed.
+            if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
+                && !IsIntegerConstant(instruction, operandIndex)
+                && IsUnsignedIndexOperand(instruction, operandIndex)
+                && HoldsSignedInteger(instruction, operandIndex))
+            {
+                // As wide as the index: a typed view's coordinate counts by the
+                // dimensions of the resource, and an element index is one.
+                int indexLength = maskedLength ?? 1;
+                string indexSize = indexLength == 1 ? "" : indexLength.ToString();
+                return ApplyModifier(modifier,
+                    $"(int{indexSize}){string.Format("{0}{1}", registerName, writeMaskName)}");
             }
             // An int register holding bits: what a float instruction reading it
             // wants is the float those bits are, and not the number they make. A

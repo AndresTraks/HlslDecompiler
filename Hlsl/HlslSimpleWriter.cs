@@ -28,6 +28,11 @@ public class HlslSimpleWriter : HlslWriter
     protected override void WriteMethodBody()
     {
         _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);
+        // Before the walk below, which asks it what reads a pair it has just seen
+        // filled.
+        _programOrder = new ProgramOrder(_phaseShader,
+            (instruction, operand) => GetSourceComponents(
+                instruction, operand, instruction.GetSourceSwizzleComponents(operand)));
         FindMovedDoubles();
         // Per function, not per shader: a hull shader's two functions are written
         // through one writer, and neither inherits the other's loop counters or the
@@ -454,6 +459,10 @@ public class HlslSimpleWriter : HlslWriter
     /// </summary>
     private bool _hasDoubleInstructions;
 
+    /// <summary>What wrote a register component and what reads it, which is the whole
+    /// of what this writer knows about a value: see ProgramOrder.</summary>
+    private ProgramOrder _programOrder;
+
     /// <summary>
     /// Walks the instructions in order keeping track of which register pairs hold a
     /// double, so that a mov between two of them can be told from a mov of two
@@ -472,9 +481,8 @@ public class HlslSimpleWriter : HlslWriter
             ReferenceEqualityComparer.Instance);
         _doubleRegisterPairs = [];
         var live = new HashSet<(RegisterKey Register, int Pair)>();
-        for (int index = 0; index < _phaseShader.Instructions.Count; index++)
+        foreach (Instruction instruction in _phaseShader.Instructions)
         {
-            Instruction instruction = _phaseShader.Instructions[index];
             // Before the destination is looked at, and before the write below
             // changes what is live: a store has no temp destination and is exactly
             // the instruction that has to know what the pair it reads was holding.
@@ -490,7 +498,7 @@ public class HlslSimpleWriter : HlslWriter
                 continue;
             }
             int writeMask = d3d10.GetWriteMask(destinationIndex);
-            int madeDouble = FindDoublesMade(d3d10, destination, writeMask, live, index);
+            int madeDouble = FindDoublesMade(d3d10, destination, writeMask, live);
             if (madeDouble != 0)
             {
                 _madeDoublePairs[d3d10] = madeDouble;
@@ -576,7 +584,7 @@ public class HlslSimpleWriter : HlslWriter
 
     // The pairs of the destination this instruction leaves holding a double.
     private int FindDoublesMade(D3D10Instruction instruction, RegisterKey destination,
-        int writeMask, HashSet<(RegisterKey Register, int Pair)> live, int index)
+        int writeMask, HashSet<(RegisterKey Register, int Pair)> live)
     {
         int made = 0;
         for (int pair = 0; pair < 2; pair++)
@@ -606,7 +614,7 @@ public class HlslSimpleWriter : HlslWriter
                     // number's bits: the load is where they enter, so it is where
                     // the asdouble that joins them goes. Left as a load of two
                     // floats, the arithmetic read a shadow nothing had assigned to.
-                    || IsReadAsDouble(index + 1, destination, pair);
+                    || _programOrder.IsReadAsDouble(instruction, destination, pair);
             }
             else if (instruction.Opcode == D3D10Opcode.Mov)
             {
@@ -633,7 +641,7 @@ public class HlslSimpleWriter : HlslWriter
                 // a float's bits is the one thing this writer does not record - see
                 // the entries in EquivalenceTests.KnownDifferences that turn on it.
                 else if (_hasDoubleInstructions && isAlignedPair
-                    && IsReadAsDouble(index + 1, destination, pair)
+                    && _programOrder.IsReadAsDouble(instruction, destination, pair)
                     && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
                 {
                     isDouble = true;
@@ -650,53 +658,6 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         return made;
-    }
-
-    /// <summary>
-    /// Whether a double instruction reads the register pair as a double before
-    /// anything writes over it. Read in program order from the instruction after the
-    /// one that filled it, the way the walk this belongs to counts: a pair holds what
-    /// it holds until something else writes a component of it.
-    /// </summary>
-    private bool IsReadAsDouble(int fromIndex, RegisterKey register, int pair)
-    {
-        for (int i = fromIndex; i < _phaseShader.Instructions.Count; i++)
-        {
-            if (_phaseShader.Instructions[i] is not D3D10Instruction next)
-            {
-                continue;
-            }
-            for (int operand = 1; operand < next.OperandTokens.OperandCount; operand++)
-            {
-                if (!next.IsDoubleOperand(operand)
-                    || next.GetParamRegisterKey(operand)
-                        is not D3D10RegisterKey { IsTempRegister: true } source
-                    || !source.Equals(register))
-                {
-                    continue;
-                }
-                byte[] swizzle = next.GetSourceSwizzleComponents(operand);
-                for (int value = 0; value < next.ValueCount; value++)
-                {
-                    if (swizzle[next.GetValuePair(value) * 2] / 2 == pair)
-                    {
-                        return true;
-                    }
-                }
-            }
-            // The read comes first, because a double instruction writes the pair it
-            // read: a dmul over r0.xy into r0.xy is a read of the pair and then the
-            // end of what was in it.
-            if (next.GetDestinationParamIndex() is int destination
-                && next.GetParamRegisterKey(destination)
-                    is D3D10RegisterKey { IsTempRegister: true } written
-                && written.Equals(register)
-                && (next.GetWriteMask(destination) & (0b11 << (pair * 2))) != 0)
-            {
-                return false;
-            }
-        }
-        return false;
     }
 
     /// <summary>
@@ -1993,44 +1954,20 @@ public class HlslSimpleWriter : HlslWriter
         }
         int[] components = GetSourceComponents(instruction, operandIndex,
             instruction.GetSourceSwizzleComponents(operandIndex));
-        int index = _phaseShader.Instructions.IndexOf(instruction);
         // Every component, so that a store of a register holding a float and an
         // integer at once is left alone rather than reinterpreted whole.
         return components.Length != 0
-            && components.All(component => IsWrittenAsFloat(index - 1, register, component));
+            && components.All(component => IsWrittenAsFloat(instruction, register, component));
     }
 
     /// <summary>
     /// Whether the last instruction to write a register component wrote a float.
     /// Read backwards in program order, the way IsReadAsFloat reads forwards.
     /// </summary>
-    private bool IsWrittenAsFloat(int fromIndex, RegisterKey register, int component)
+    private bool IsWrittenAsFloat(D3D10Instruction before, RegisterKey register, int component)
     {
-        return LastWriterOf(fromIndex, register, component) is D3D10Instruction previous
+        return _programOrder.LastWriterOf(before, register, component) is D3D10Instruction previous
             && GetProducedKind(previous) == ValueKind.Float;
-    }
-
-    /// <summary>
-    /// The last instruction before this point to write a register component, or null
-    /// where nothing did. What put a value in a register is the only thing that says
-    /// what the value is, the register itself holding a texel address here and a
-    /// colour there.
-    /// </summary>
-    private D3D10Instruction LastWriterOf(int fromIndex, RegisterKey register, int component)
-    {
-        for (int i = fromIndex; i >= 0; i--)
-        {
-            if (_phaseShader.Instructions[i] is not D3D10Instruction previous
-                || previous.GetDestinationParamIndex() is not int destination
-                || previous.GetParamRegisterKey(destination) is not D3D10RegisterKey written
-                || !written.Equals(register)
-                || (previous.GetWriteMask(destination) & (1 << component)) == 0)
-            {
-                continue;
-            }
-            return previous;
-        }
-        return null;
     }
 
     /// <summary>
@@ -2065,12 +2002,11 @@ public class HlslSimpleWriter : HlslWriter
         }
         int[] components = GetSourceComponents(instruction, operandIndex,
             instruction.GetSourceSwizzleComponents(operandIndex));
-        int index = _phaseShader.Instructions.IndexOf(instruction);
         // Every component, so that an address built half one way and half the other
         // is left as it was rather than called signed whole.
         return components.Length != 0
-            && components.All(component =>
-                LastWriterOf(index - 1, register, component)?.Opcode == D3D10Opcode.Ftoi);
+            && components.All(component => _programOrder
+                .LastWriterOf(instruction, register, component)?.Opcode == D3D10Opcode.Ftoi);
     }
 
     /// <summary>
@@ -2107,12 +2043,11 @@ public class HlslSimpleWriter : HlslWriter
         // address and a colour at once is left alone rather than reinterpreted
         // whole.
         RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex);
-        int index = _phaseShader.Instructions.IndexOf(instruction);
         int mask = DestinationMask(instruction);
         for (int component = 0; component < 4; component++)
         {
             if ((mask & (1 << component)) != 0
-                && !IsReadAsFloat(index + 1, registerKey, component))
+                && !IsReadAsFloat(instruction, registerKey, component))
             {
                 return false;
             }
@@ -2129,39 +2064,11 @@ public class HlslSimpleWriter : HlslWriter
     /// False where nothing reads it, which leaves a load whose value goes nowhere
     /// as the plain load it looks like.
     /// </summary>
-    private bool IsReadAsFloat(int fromIndex, RegisterKey register, int component)
+    private bool IsReadAsFloat(D3D10Instruction after, RegisterKey register, int component)
     {
-        for (int i = fromIndex; i < _phaseShader.Instructions.Count; i++)
-        {
-            if (_phaseShader.Instructions[i] is not D3D10Instruction next)
-            {
-                continue;
-            }
-            for (int operand = 0; operand < next.OperandTokens.OperandCount; operand++)
-            {
-                if (next.IsDestinationOperand(operand)
-                    || next.GetOperandType(operand)
-                        is OperandType.Immediate32 or OperandType.Immediate64
-                    || next.GetParamRegisterKey(operand) is not D3D10RegisterKey source
-                    || !source.Equals(register))
-                {
-                    continue;
-                }
-                if (GetSourceComponents(next, operand,
-                        next.GetSourceSwizzleComponents(operand)).Contains(component))
-                {
-                    return GetConsumedKind(next, operand) == ValueKind.Float;
-                }
-            }
-            if (next.GetDestinationParamIndex() is int destination
-                && next.GetParamRegisterKey(destination) is D3D10RegisterKey written
-                && written.Equals(register)
-                && (next.GetWriteMask(destination) & (1 << component)) != 0)
-            {
-                return false;
-            }
-        }
-        return false;
+        return _programOrder.FirstReaderOf(after, register, component)
+                is (D3D10Instruction reader, int operand)
+            && GetConsumedKind(reader, operand) == ValueKind.Float;
     }
 
     // Whether the destination is an output register the signature does not type as

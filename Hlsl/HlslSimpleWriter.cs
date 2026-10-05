@@ -1856,11 +1856,9 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteResult(D3D10Instruction instruction, int destinationIndex, string format, params object[] args)
     {
-        const string assignment = "{0} = ";
         if (instruction.Saturate)
         {
-            string expression = format[assignment.Length..^1];
-            format = $"{assignment}saturate({expression});";
+            format = Wrapped(format, "saturate");
         }
         // An output register the signature types as a float holds an integer result
         // as its bits: a shader packing two half floats ends with `iadd o0.x, ...`,
@@ -1869,8 +1867,7 @@ public class HlslSimpleWriter : HlslWriter
             && IsFloatOutput(instruction, destinationIndex)
             && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
-            string expression = format[assignment.Length..^1];
-            format = $"{assignment}asfloat({expression});";
+            format = Wrapped(format, "asfloat");
         }
         // And a dword a buffer handed back, into a register declared float: those
         // bits are a float's. A buffer holds whatever was stored in it, and fxc
@@ -1881,8 +1878,7 @@ public class HlslSimpleWriter : HlslWriter
         // is zero.
         if (IsLoadedBitsResult(instruction, destinationIndex))
         {
-            string expression = format[assignment.Length..^1];
-            format = $"{assignment}asfloat({expression});";
+            format = Wrapped(format, "asfloat");
         }
         // A float result into an int register keeps its bits the same way, which is
         // how that register holds a float at all. Around the saturate above and not
@@ -1893,10 +1889,35 @@ public class HlslSimpleWriter : HlslWriter
         if (IsReinterpretedResult(instruction, destinationIndex)
             && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
-            string expression = format[assignment.Length..^1];
-            format = $"{assignment}asint({expression});";
+            format = Wrapped(format, "asint");
         }
         WriteLine(format, args);
+    }
+
+    /// <summary>
+    /// A result's expression wrapped in a call: `{0} = x;` becomes `{0} = f(x);`.
+    ///
+    /// Every format reaching WriteResult assigns one expression to the destination,
+    /// which is what lets a wrapper go round the middle of it rather than round the
+    /// whole statement - `asint({0} = x;)` is not a thing. Four rules wrap one in
+    /// turn, each of them with its own copy of the two slices that take the
+    /// expression out and put it back; this is that, once, with the shape they all
+    /// assumed said out loud.
+    ///
+    /// Said out loud and checked, because a format of another shape would otherwise
+    /// be sliced into nonsense and written out as if nothing were wrong. It can only
+    /// be reached by a caller that is already wrong, so nothing in the corpus does.
+    /// </summary>
+    private static string Wrapped(string format, string call)
+    {
+        const string assignment = "{0} = ";
+        if (!format.StartsWith(assignment) || !format.EndsWith(";"))
+        {
+            throw new NotImplementedException(
+                $"A result that is not `{assignment}<expression>;` cannot be wrapped "
+                + $"in {call}(): {format}");
+        }
+        return $"{assignment}{call}({format[assignment.Length..^1]});";
     }
 
     /// <summary>

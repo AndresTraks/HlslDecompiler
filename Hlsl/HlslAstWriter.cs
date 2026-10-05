@@ -609,7 +609,7 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private string CompileStoredValue(HlslTreeNode[] values, bool? destinationHoldsIntegers)
     {
-        if (values.All(v => StatementFinalizer.IsIntegerValue(v) == true))
+        if (values.All(v => ValueTypes.IsIntegerValue(v) == true))
         {
             return _compiler.CompileAsInteger(values);
         }
@@ -619,7 +619,7 @@ public class HlslAstWriter : HlslWriter
         // of an int array came out `asuint(g1[i])` and msad4, which answers uints
         // already, came out wrapped in it too.
         return destinationHoldsIntegers == true
-            && values.Any(v => StatementFinalizer.IsIntegerValue(v) == false)
+            && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
             ? CompileRawStoredValue(values)
             : _compiler.Compile(values);
     }
@@ -628,11 +628,11 @@ public class HlslAstWriter : HlslWriter
     // and a mix as a uint constructor of both.
     private string CompileRawStoredValue(HlslTreeNode[] values)
     {
-        if (values.All(v => StatementFinalizer.IsIntegerValue(v) != true))
+        if (values.All(v => ValueTypes.IsIntegerValue(v) != true))
         {
             return $"asuint({_compiler.Compile(values)})";
         }
-        List<string> dwords = [.. values.Select(v => StatementFinalizer.IsIntegerValue(v) == true
+        List<string> dwords = [.. values.Select(v => ValueTypes.IsIntegerValue(v) == true
             ? _compiler.CompileAsInteger([v])
             : $"asuint({_compiler.Compile([v])})")];
         return $"uint{values.Length}({string.Join(", ", dwords)})";
@@ -654,7 +654,7 @@ public class HlslAstWriter : HlslWriter
         string compiledAddress = _compiler.Compile(address);
         // Into a buffer of integers as integers. A vector constructor is typed by
         // what it is being assigned to and there is nothing else here to say so.
-        bool storesIntegers = storedValues.All(v => StatementFinalizer.IsIntegerValue(v) == true);
+        bool storesIntegers = storedValues.All(v => ValueTypes.IsIntegerValue(v) == true);
         string compiledValue = storesIntegers
             ? _compiler.CompileAsInteger(storedValues)
             : _compiler.Compile(storedValues);
@@ -2535,8 +2535,8 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private void ApplyValueTypes(TempVariableNode[] variables, IList<HlslTreeNode> nodes)
     {
-        bool isInteger = nodes.All(node => StatementFinalizer.IsIntegerValue(node) == true);
-        bool isBits = nodes.All(node => StatementFinalizer.IsBitsVariable(node, isInteger));
+        bool isInteger = nodes.All(node => ValueTypes.IsIntegerValue(node) == true);
+        bool isBits = nodes.All(node => ValueTypes.IsBitsVariable(node, isInteger));
         // A double where every component is one, the way an integer is. The value is
         // not asked - a multiply of two doubles is the same node either way - so what
         // answers is the record the parser kept of what the instructions wrote.
@@ -2544,7 +2544,7 @@ public class HlslAstWriter : HlslWriter
         // Unsigned only where every component is, and not for bits: those are a
         // float's, and calling them uint says something about them that is not so.
         bool isUnsigned = isInteger && !isBits
-            && nodes.All(node => StatementFinalizer.IsUnsignedValue(node) == true);
+            && nodes.All(node => ValueTypes.IsUnsignedValue(node) == true);
         foreach (TempVariableNode variable in variables)
         {
             variable.IsInteger = isInteger;

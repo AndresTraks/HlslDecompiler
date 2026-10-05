@@ -345,28 +345,51 @@ public sealed class RegisterState
         };
     }
 
+    /// <summary>
+    /// What one element of a structured buffer holds, whichever of the kinds it is
+    /// bound as. FindStructuredBuffer answers the two whose members get named; an
+    /// append buffer, a consume buffer and one carrying a counter bind as kinds of
+    /// their own, and what their element holds is the same question.
+    ///
+    /// By the kind of register as well as by the number, which is the whole
+    /// difficulty: groupshared memory is g0 and a structured buffer t0, both number
+    /// zero, so a lookup taking any definition at the right bind point hands a load
+    /// from the first the element type of the second - which is what taking
+    /// GetBufferDefinition for the wider lookup did, and it read as a fixture
+    /// quietly changing its mind about whether a groupshared uint was signed.
+    /// Groupshared memory has no reflection data at all - what it holds is read off
+    /// the stores into it - so it answers nothing here, and rightly.
+    ///
+    /// Written twice before this, and the two had diverged: the integer question
+    /// below had the append and consume kinds inline while the unsigned and the
+    /// double ones beside it did not, so a ConsumeStructuredBuffer could be known to
+    /// hold an integer and not known to hold a signed one.
+    /// </summary>
+    private ShaderTypeInfo FindStructuredElementType(RegisterKey resourceKey)
+    {
+        D3DShaderInputType[] inputTypes = (resourceKey as D3D10RegisterKey)?.OperandType switch
+        {
+            OperandType.Resource => [D3DShaderInputType.Structured],
+            OperandType.UnorderedAccessView =>
+            [
+                D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavRWStucturedWithCounter,
+                D3DShaderInputType.UavAppendStructured,
+                D3DShaderInputType.UavConsumeStructured,
+            ],
+            _ => [],
+        };
+        return ResourceDefinitions.FirstOrDefault(d => inputTypes.Contains(d.ShaderInputType)
+            && d.BindPoint == resourceKey.Number)?.ElementType;
+    }
+
     public bool? IsIntegerStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
-        // An append or a consume buffer binds as a kind of its own, which
-        // FindStructuredBuffer does not look among - it answers the kinds whose
-        // members get named. The element type is the same question for all of them,
-        // so the wider lookup answers it where the narrower one finds nothing.
-        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType
-            ?? GetBufferDefinition(resourceKey)?.ElementType;
-        if (elementType == null)
+        if (FindStructuredTypeAt(resourceKey, byteAddress) is not var (type, _))
         {
             return null;
         }
-        if (elementType.MemberInfo is { Count: > 0 } members)
-        {
-            var found = FindStructuredMember(members, byteAddress, 0);
-            if (found == null)
-            {
-                return null;
-            }
-            elementType = found.Value.Member.TypeInfo;
-        }
-        return elementType.ParameterType switch
+        return type.ParameterType switch
         {
             ParameterType.Int or ParameterType.Uint or ParameterType.Bool => true,
             ParameterType.Float => false,
@@ -382,7 +405,7 @@ public sealed class RegisterState
     private (ShaderTypeInfo Type, int ByteOffset)? FindStructuredTypeAt(
         RegisterKey resourceKey, int byteAddress)
     {
-        ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
+        ShaderTypeInfo elementType = FindStructuredElementType(resourceKey);
         if (elementType == null)
         {
             return null;

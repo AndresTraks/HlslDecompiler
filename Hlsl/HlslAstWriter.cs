@@ -741,9 +741,28 @@ public class HlslAstWriter : HlslWriter
         // A typed texture is addressed by a coordinate, and a vector of integers says
         // so where a constructor over the components would be typed by nothing - the
         // same as the store into it.
-        string address = atomic.Coordinates != null
-            ? _compiler.CompileAsInteger([.. atomic.Coordinates.Select(Reduce)])
-            : _compiler.Compile(Reduce(atomic.Address));
+        HlslTreeNode[] coordinates = atomic.Coordinates == null
+            ? null
+            : [.. atomic.Coordinates.Select(Reduce)];
+        HlslTreeNode addressNode = coordinates != null ? null : Reduce(atomic.Address);
+        HlslTreeNode valueNode = Reduce(atomic.Value);
+        HlslTreeNode compareNode = atomic.Compare == null ? null : Reduce(atomic.Compare);
+        // The hoist a store needs, for the same reason it needs it: an atomic
+        // computes what it works on from here rather than through GroupAssignments,
+        // so a call whose result nothing but this statement reads is named nowhere
+        // else. A Consume is one of those - its result comes back through a method
+        // and cannot be an expression - and an atomic over a consumed element
+        // stopped the writer outright, the name never having been given.
+        List<HlslTreeNode[]> held = [[valueNode]];
+        if (compareNode != null)
+        {
+            held.Add([compareNode]);
+        }
+        held.Add(coordinates ?? [addressNode]);
+        WriteSharedSubexpressions(held);
+        string address = coordinates != null
+            ? _compiler.CompileAsInteger(coordinates)
+            : _compiler.Compile(addressNode);
         // An interlocked operation works on integers, so a float reaching it is the
         // bits it holds rather than the number they make - as unsigned where the
         // destination is, which for groupshared memory is what the unsigned minimum
@@ -754,10 +773,10 @@ public class HlslAstWriter : HlslWriter
             }
             && CreateIntegerOperandAnalysis()
                 .IsUnsignedThreadGroupSharedMemory(resourceKey.Number);
-        string value = _compiler.CompileIntegerArgument(Reduce(atomic.Value), unsigned);
-        string compare = atomic.Compare == null
+        string value = _compiler.CompileIntegerArgument(valueNode, unsigned);
+        string compare = compareNode == null
             ? null
-            : _compiler.CompileIntegerArgument(Reduce(atomic.Compare), unsigned);
+            : _compiler.CompileIntegerArgument(compareNode, unsigned);
 
         // The variable the old value goes into has to exist before the call takes
         // its address, and compiling it is what numbers it. Declared here rather

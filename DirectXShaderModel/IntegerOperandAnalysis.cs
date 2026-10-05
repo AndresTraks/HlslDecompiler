@@ -1090,14 +1090,24 @@ public sealed class IntegerOperandAnalysis
                 ? StoredType.Integer
                 : StoredType.Float;
         }
-        D3DShaderInputType inputType = type switch
+        D3DShaderInputType[] inputTypes = type switch
         {
-            OperandType.Resource => D3DShaderInputType.Structured,
-            OperandType.UnorderedAccessView => D3DShaderInputType.UavRWStructured,
-            _ => (D3DShaderInputType)(-1),
+            OperandType.Resource => [D3DShaderInputType.Structured],
+            // An append buffer and a consume buffer are structured buffers that bind
+            // as their own kinds, and what their element holds is the same question.
+            // Asked of the read-write kind alone, a ConsumeStructuredBuffer answered
+            // that nothing was known about its element, and the uint it holds was
+            // taken for a number wherever the bits of a float were what was there.
+            OperandType.UnorderedAccessView =>
+            [
+                D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavAppendStructured,
+                D3DShaderInputType.UavConsumeStructured,
+            ],
+            _ => [],
         };
         ResourceDefinition definition = _shader.ResourceDefinitions?
-            .FirstOrDefault(d => d.ShaderInputType == inputType
+            .FirstOrDefault(d => inputTypes.Contains(d.ShaderInputType)
                 && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
         if (definition?.ElementType == null)
         {

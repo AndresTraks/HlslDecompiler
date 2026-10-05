@@ -88,7 +88,8 @@ public class HlslSimpleWriter : HlslWriter
                     && IsAppendPair(alloc, d9d10Instruction))
                 {
                     WriteLine("{0}.Append({1});", GetOperandName(alloc, 1),
-                        GetOperandName(d9d10Instruction, 3));
+                        StoredBits(d9d10Instruction, 3)
+                            ?? GetOperandName(d9d10Instruction, 3));
                     _allocatedSlots.Remove(d9d10Instruction.GetParamRegisterKey(1));
                     continue;
                 }
@@ -1910,6 +1911,18 @@ public class HlslSimpleWriter : HlslWriter
             string expression = format[assignment.Length..^1];
             format = $"{assignment}asfloat({expression});";
         }
+        // And a dword a buffer handed back, into a register declared float: those
+        // bits are a float's. A buffer holds whatever was stored in it, and fxc
+        // converts with an instruction of its own - a utof behind the load - so a
+        // load with no conversion behind it whose register a float instruction
+        // reads is a load of a float's bit pattern. Converted instead, it came back
+        // as the number those bits happen to make, which for a texel below 2^-126
+        // is zero.
+        if (IsLoadedBitsResult(instruction, destinationIndex))
+        {
+            string expression = format[assignment.Length..^1];
+            format = $"{assignment}asfloat({expression});";
+        }
         // A float result into an int register keeps its bits the same way, which is
         // how that register holds a float at all. Around the saturate above and not
         // inside it: what is clamped to [0, 1] is the number, not its bits. Never
@@ -1923,6 +1936,180 @@ public class HlslSimpleWriter : HlslWriter
             format = $"{assignment}asint({expression});";
         }
         WriteLine(format, args);
+    }
+
+    /// <summary>
+    /// The value a store or an interlocked operation writes, where a float register
+    /// is holding it and the memory it goes into is integer: the float's bits, which
+    /// is what the instruction writes. Null where that is not the case, which leaves
+    /// the operand as the caller would have named it.
+    ///
+    /// The mirror of IsLoadedBitsResult on the way out. fxc converts with an
+    /// instruction of its own - an ftou in front of the store - so a store with none
+    /// writes the bits that are in the register, and converting them wrote the whole
+    /// number nearest the float instead. Which for a depth in [0, 1] is nought or
+    /// one, so every tile came out with bounds of zero.
+    /// </summary>
+    private string StoredBits(D3D10Instruction instruction, int operandIndex)
+    {
+        if (GetConsumedKind(instruction, operandIndex) != ValueKind.Integer
+            || GetSourceStorage(instruction, operandIndex) != ComponentStorage.Numeric
+            || !HoldsStoredFloat(instruction, operandIndex))
+        {
+            return null;
+        }
+        string name = GetOperandName(instruction, operandIndex);
+        // Signed where the element says so, which keeps fxc's X3203 away: it
+        // resolves a mismatch by assuming unsigned and warns, and the shader this
+        // came from had no such warning.
+        return instruction.Opcode == D3D10Opcode.StoreStructured
+            && _registers.IsUnsignedStructuredMember(
+                instruction.GetParamRegisterKey(0),
+                // The member this store reaches: the element's offset plus where in
+                // the element the mask starts, the way IsDoubleStructuredComponent
+                // counts. The element's own base answers for a scalar element and
+                // for the first member of a struct, and for nothing further in.
+                instruction.GetParamInt(2, 0)
+                    + FirstComponent(DestinationMask(instruction)) * 4) == false
+            ? AsInt(name)
+            : $"asuint({name})";
+    }
+
+    /// <summary>
+    /// Whether what the register components an operand reads were last written with
+    /// is a float, rather than an integer that a float register happens to be
+    /// holding. Asked of the writer and not of the register, for the reason
+    /// IsReadAsFloat is asked of the readers: fxc fills one register with a texel
+    /// address here and a colour there, and only what put the value in says which it
+    /// is. A mov says nothing - its own kind is unknown - so a value moved in is left
+    /// to convert, which is what it did before.
+    /// </summary>
+    private bool HoldsStoredFloat(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetParamRegisterKey(operandIndex)
+            is not D3D10RegisterKey { IsTempRegister: true } register)
+        {
+            return false;
+        }
+        int[] components = GetSourceComponents(instruction, operandIndex,
+            instruction.GetSourceSwizzleComponents(operandIndex));
+        int index = _phaseShader.Instructions.IndexOf(instruction);
+        // Every component, so that a store of a register holding a float and an
+        // integer at once is left alone rather than reinterpreted whole.
+        return components.Length != 0
+            && components.All(component => IsWrittenAsFloat(index - 1, register, component));
+    }
+
+    /// <summary>
+    /// Whether the last instruction to write a register component wrote a float.
+    /// Read backwards in program order, the way IsReadAsFloat reads forwards.
+    /// </summary>
+    private bool IsWrittenAsFloat(int fromIndex, RegisterKey register, int component)
+    {
+        for (int i = fromIndex; i >= 0; i--)
+        {
+            if (_phaseShader.Instructions[i] is not D3D10Instruction previous
+                || previous.GetDestinationParamIndex() is not int destination
+                || previous.GetParamRegisterKey(destination) is not D3D10RegisterKey written
+                || !written.Equals(register)
+                || (previous.GetWriteMask(destination) & (1 << component)) == 0)
+            {
+                continue;
+            }
+            return GetProducedKind(previous) == ValueKind.Float;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether what a memory load writes into a register declared float is the bits
+    /// of a float rather than a number to convert. The mirror of
+    /// IntegerOperandAnalysis.HoldsFloatBits, which is the same question about an
+    /// int register: there a float's bits are what the register holds all along,
+    /// and here they arrive as a dword out of a buffer.
+    ///
+    /// Only a load of memory, not any integer-producing instruction. An ftou puts
+    /// an integer in a register because the shader asked for the number; a buffer
+    /// hands back whatever was stored in it, and nothing but a conversion
+    /// instruction would have made that a number.
+    /// </summary>
+    private bool IsLoadedBitsResult(D3D10Instruction instruction, int destinationIndex)
+    {
+        if (instruction.Opcode is not (D3D10Opcode.LdStructured or D3D10Opcode.LdRaw
+                or D3D10Opcode.LD or D3D10Opcode.LDMS)
+            || GetProducedKind(instruction) != ValueKind.Integer
+            || instruction.GetOperandType(destinationIndex) != OperandType.Temp
+            || GetDestinationStorage(instruction, destinationIndex) != ComponentStorage.Numeric
+            || GetDoubleRegisterOperandName(instruction, destinationIndex) != null)
+        {
+            return false;
+        }
+        // Asked of this load's own readers, not of the register. Whether a float
+        // instruction ever touches the component says nothing about the dword this
+        // load put there: `ld r0, r0.x, t1` over a Buffer&lt;uint&gt; of indices
+        // writes a register a mul wrote before it and a mul reads after it, and
+        // what it loaded is an index the next ld addresses a texel with. What says
+        // is what reads the value before anything writes over it.
+        //
+        // Every component the load writes, so that one filling a register with an
+        // address and a colour at once is left alone rather than reinterpreted
+        // whole.
+        RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex);
+        int index = _phaseShader.Instructions.IndexOf(instruction);
+        int mask = DestinationMask(instruction);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) != 0
+                && !IsReadAsFloat(index + 1, registerKey, component))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Whether the first thing to read a register component reads it as a float,
+    /// before anything writes over it. Read in program order, the way the shadow
+    /// walk above counts: a component holds what it holds until something else
+    /// writes it, and what the readers make of it is what the value is.
+    ///
+    /// False where nothing reads it, which leaves a load whose value goes nowhere
+    /// as the plain load it looks like.
+    /// </summary>
+    private bool IsReadAsFloat(int fromIndex, RegisterKey register, int component)
+    {
+        for (int i = fromIndex; i < _phaseShader.Instructions.Count; i++)
+        {
+            if (_phaseShader.Instructions[i] is not D3D10Instruction next)
+            {
+                continue;
+            }
+            for (int operand = 0; operand < next.OperandTokens.OperandCount; operand++)
+            {
+                if (next.IsDestinationOperand(operand)
+                    || next.GetOperandType(operand)
+                        is OperandType.Immediate32 or OperandType.Immediate64
+                    || next.GetParamRegisterKey(operand) is not D3D10RegisterKey source
+                    || !source.Equals(register))
+                {
+                    continue;
+                }
+                if (GetSourceComponents(next, operand,
+                        next.GetSourceSwizzleComponents(operand)).Contains(component))
+                {
+                    return GetConsumedKind(next, operand) == ValueKind.Float;
+                }
+            }
+            if (next.GetDestinationParamIndex() is int destination
+                && next.GetParamRegisterKey(destination) is D3D10RegisterKey written
+                && written.Equals(register)
+                && (next.GetWriteMask(destination) & (1 << component)) != 0)
+            {
+                return false;
+            }
+        }
+        return false;
     }
 
     // Whether the destination is an output register the signature does not type as
@@ -2875,7 +3062,8 @@ public class HlslSimpleWriter : HlslWriter
                 // A texel, addressed by as many coordinates as the resource has
                 // dimensions - which is what GetSourceLength answers for it.
                 WriteLine("{0}[{1}] = {2};", GetOperandName(instruction, 0),
-                    GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                    GetOperandName(instruction, 1),
+                    StoredBits(instruction, 2) ?? GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.StoreStructured:
                 {
@@ -2911,7 +3099,7 @@ public class HlslSimpleWriter : HlslWriter
                             break;
                         }
                         WriteLine("{0}{1} = {2};", element, storedMember,
-                            GetOperandName(instruction, 3));
+                            StoredBits(instruction, 3) ?? GetOperandName(instruction, 3));
                         break;
                     }
                     // One member, or the double's two words would be written once
@@ -2975,13 +3163,21 @@ public class HlslSimpleWriter : HlslWriter
                     string address = GetOperandName(instruction, first + 1);
                     bool hasCompare = instruction.Opcode
                         is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
-                    string value = GetOperandName(instruction, first + (hasCompare ? 3 : 2));
+                    int valueIndex = first + (hasCompare ? 3 : 2);
+                    // A float whose bits the memory holds is reinterpreted rather
+                    // than cast: a depth written in as asuint is minimised as the
+                    // integer those bits make, and a cast made it the whole number
+                    // nearest the depth, which for every tile was nought or one.
+                    string bits = StoredBits(instruction, valueIndex);
+                    string value = bits ?? GetOperandName(instruction, valueIndex);
                     // InterlockedMax and InterlockedMin come signed and unsigned,
                     // chosen by the type of the value, and a register here is an int
                     // or a float: the unsigned one has to say so at the value or the
-                    // signed one is what is written back.
-                    if (instruction.Opcode is D3D10Opcode.AtomicUMax or D3D10Opcode.AtomicUMin
-                        or D3D10Opcode.ImmAtomicUMax or D3D10Opcode.ImmAtomicUMin)
+                    // signed one is what is written back. An asuint has said it
+                    // already.
+                    if (bits == null
+                        && instruction.Opcode is D3D10Opcode.AtomicUMax or D3D10Opcode.AtomicUMin
+                            or D3D10Opcode.ImmAtomicUMax or D3D10Opcode.ImmAtomicUMin)
                     {
                         value = $"(uint){value}";
                     }

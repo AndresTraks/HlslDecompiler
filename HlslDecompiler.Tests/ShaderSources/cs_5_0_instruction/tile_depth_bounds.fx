@@ -22,11 +22,11 @@ void main(CS_IN i)
 	r0.xy = (float2)i.sv_groupthreadid.xy;
 	r0.zw = int2(0, 0);
 	r0.x = depth.Load(r0.xyz).x;
-	InterlockedMin(g0[0], (uint)r0.x);
-	InterlockedMax(g1[0], (uint)r0.x);
+	InterlockedMin(g0[0], asuint(r0.x));
+	InterlockedMax(g1[0], asuint(r0.x));
 	GroupMemoryBarrierWithGroupSync();
-	r0.x = g1[0];
-	r0.y = g0[0];
+	r0.x = asfloat(g1[0]);
+	r0.y = asfloat(g0[0]);
 	r0.x = -(r0.y) + r0.x;
 	bounds[i.sv_groupindex.x] = r0.x;
 }

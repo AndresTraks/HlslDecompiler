@@ -50,50 +50,17 @@ public class EquivalenceTests
             + "the mip level and around `address` where a comparison wants an index "
             + "- numbers, both of them, in registers a float instruction reads "
             + "because that is all shader model 3 has. Which of the two a declared "
-            + "integer holds is the same question the instruction writer cannot "
-            + "answer about its float registers; for a load the element type settles "
-            + "it, and for a uniform nothing does."),
+            + "integer holds is the same question both writers now answer at a "
+            + "memory boundary and neither answers at a uniform: a load has an "
+            + "element type to ask and a conversion instruction that would have been "
+            + "there if the number were meant, and a uniform read has neither. "
+            + "Nothing says whether `packedScale` is a count or a float's bits "
+            + "except what the shader goes on to do with it, and what it goes on to "
+            + "do is the same either way."),
             ("instruction",
             "The same, from the same cause: `i.position.xyz * i.blendweight` and "
             + "`r0.xyz * packedScale` read both as numbers. Neither writer has the "
             + "evidence, so neither is singled out."),
-        ],
-        ["cs_5_0/consume_bits_scaled"] = [("instruction",
-            "The bits limitation the two entries below describe, reached through a "
-            + "consume. The element is a uint whose bits are a float's, and the "
-            + "register that reads it is declared float because a float mad reads it "
-            + "- so `r0 = consumed0.x` converts the bits into the number they spell. "
-            + "append_consume holds the same kind of element and shifts it instead, "
-            + "which makes its register an int, and there the same assignment keeps "
-            + "the bits. Which of the two a float register is holding is what this "
-            + "writer does not record. The ast writer reads the element back through "
-            + "asfloat and agrees."),
-        ],
-        ["cs_5_0/stored_float_bits"] = [("instruction",
-            "The same limitation tile_depth_bounds runs into, on the store side "
-            + "rather than the interlocked one. A uint texel whose bits are a "
-            + "float's is loaded into a float register and scaled, and the product "
-            + "is stored back into a uint buffer as the bits it is. The instruction "
-            + "writer converts at both ends - at the load because an integer value "
-            + "reaching a float register is normally the number it spells, and at "
-            + "the store for the same reason in reverse - and converting bits gives "
-            + "whatever number they happen to make. Telling this apart from an "
-            + "integer genuinely held in a float register is what its register model "
-            + "does not record. The ast writer reinterprets at both ends, and "
-            + "agrees."),
-        ],
-        ["cs_5_0/tile_depth_bounds"] = [("instruction",
-            "A depth written into groupshared memory as asuint and minimised there "
-            + "as the integer its bits make. The instruction writer casts the value "
-            + "to unsigned, and a cast converts the depth to the whole number "
-            + "nearest it, so every tile comes out with bounds of zero. The cast is "
-            + "no longer what picks the unsigned interlocked operation - the uint the "
-            + "memory is declared as does that - so what is left is a choice between "
-            + "converting and reinterpreting, and that turns on the one thing this "
-            + "writer's register model does not record: whether a float register "
-            + "holds a number that happens to be integral, which a cast is right "
-            + "for, or a float whose bits are wanted. The ast writer names the depth "
-            + "a float and reinterprets at the call, and agrees."),
         ],
         ["ps_5_0/typed_view_load"] = [("instruction",
             "The texel coordinate, made by an ftoi of sv_position, and the buffer "

@@ -53,6 +53,7 @@ public class TemplateMatcher
             new SignTemplate(),
             new FloorTemplate(),
             new TruncateTemplate(),
+            new GuardedReciprocalTemplate(),
             new PowerTemplate(),
             new NaturalExponentialTemplate(),
             new NaturalLogarithmTemplate(),

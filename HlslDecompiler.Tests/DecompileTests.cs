@@ -148,6 +148,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "float_modulo_negate")]
     [TestCase("ps_3_0", "duplicated_component")]
     [TestCase("ps_2_0", "splat_layers")]
+    [TestCase("ps_3_0", "guarded_average")]
     public void DecompileShaderTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

@@ -6,10 +6,9 @@ public static class FileUtil
 {
     public static void MakeFolder(string hlslOutputFilename)
     {
-        string directory = Path.GetDirectoryName(hlslOutputFilename);
-        if (!Directory.Exists(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        // Unconditional: CreateDirectory does nothing where the folder is there
+        // already, and the Exists test in front of it was two tests racing to make
+        // the same one.
+        Directory.CreateDirectory(Path.GetDirectoryName(hlslOutputFilename));
     }
 }

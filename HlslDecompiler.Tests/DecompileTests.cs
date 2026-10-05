@@ -6,6 +6,9 @@ using System.IO;
 namespace HlslDecompiler.Tests;
 
 [TestFixture]
+// Every case is independent: it reads one .fxc, writes its output under a path
+// named after its profile and shader, and shares nothing with the others.
+[Parallelizable(ParallelScope.All)]
 public class DecompileTests
 {
     [TestCase("ps_2_0", "tex2d")]

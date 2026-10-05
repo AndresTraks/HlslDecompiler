@@ -19,6 +19,9 @@ namespace HlslDecompiler.Tests;
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
+// Every case is independent: it reads one .fxc, writes its output under a path
+// named after its profile and shader, and shares nothing with the others.
+[Parallelizable(ParallelScope.All)]
 public class RecompileTests
 {
     /// <summary>

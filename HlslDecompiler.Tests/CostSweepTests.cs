@@ -33,6 +33,10 @@ namespace HlslDecompiler.Tests;
 /// </summary>
 [TestFixture]
 [Explicit("Run deliberately with HLSL_SWEEP set; it calls fxc and takes minutes.")]
+// SweepFlags is process-global and this is the one thing that writes it, so a
+// sweep runs beside nothing else. Explicit keeps it out of an ordinary run
+// already; this is what says why it must stay out of a parallel one.
+[NonParallelizable]
 public class CostSweepTests
 {
     [Test]

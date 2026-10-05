@@ -2717,6 +2717,25 @@ public sealed class NodeCompiler
             string flag = Compile(first.Left);
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
         }
+        // Two comparisons compared for equality are the bools they came from, not
+        // the masks they wrote. A mask is all ones or all zeroes, so one mask
+        // equalling another answers exactly what one bool equalling the other does,
+        // and `(a == b) == (c < d)` is what the shader said - a bitonic sort's
+        // `(a > b) == ascending`, say. Read as the values they are, the masks leak
+        // into the text: `((a == b) ? -1 : 0) == ((c < d) ? -1 : 0)` for the one
+        // ieq. Bracketed because a comparison binds no tighter than this one does.
+        //
+        // Both sides, because a mask compared against anything else is the mask: a
+        // comparison against zero is the negation of the condition and is written
+        // where that is recognised, not here.
+        if (first.Comparison is IfComparison.EQ or IfComparison.NE
+            && components.Cast<ComparisonNode>().All(
+                c => c.Left is ComparisonNode && c.Right is ComparisonNode))
+        {
+            string leftBool = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
+            string rightBool = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
+            return $"({leftBool}) {first.Comparison.ToHlslString()} ({rightBool})";
+        }
         // Through CompileOperand, since a comparison binds tighter than the bitwise
         // operators and the conditional: `(x & 0x7f800000) == 0x7f800000` is a bit
         // test, and written without the brackets it is `x & (a == b)`, which is a

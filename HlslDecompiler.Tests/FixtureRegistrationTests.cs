@@ -19,6 +19,12 @@ namespace HlslDecompiler.Tests;
 /// Nothing had gone missing when this was written - 499 shaders, 499 registered -
 /// which is the reason to write it down while that is still true rather than after
 /// a fixture has been quietly asleep for a year.
+///
+/// A shader named zz_ is exempt, because that is the probing workflow: a candidate
+/// is dropped into CompiledShaders to be run through the recompile and equivalence
+/// tiers, looked at, and then either deleted or made a fixture properly. Holding it
+/// to this while it is still a question would mean registering something that is
+/// about to be thrown away.
 /// </summary>
 [TestFixture]
 public class FixtureRegistrationTests
@@ -30,6 +36,7 @@ public class FixtureRegistrationTests
         // "everything those tiers decompile is also compared as text".
         List<string> corpus = [.. RecompileTests.Shaders()
             .Select(data => $"{data.Arguments[0]}/{data.Arguments[1]}")
+            .Where(name => !name.Contains("/zz_"))
             .OrderBy(name => name)];
         List<string> registered = [.. RegisteredCases().OrderBy(name => name)];
 

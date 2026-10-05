@@ -431,6 +431,29 @@ public class HlslSimpleWriter : HlslWriter
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
+    /// The movs that make a double out of two 32-bit values rather than carry one
+    /// that was already a double. Both kinds are in the mov record above, because
+    /// both leave a double in the destination pair - what this adds is which side
+    /// of the mov the shadow is on. A mov that carries one reads a shadow and
+    /// writes a shadow; one that makes a double reads two numbers and writes a
+    /// shadow, and naming a shadow on its source side named a pair that is not one.
+    ///
+    /// Per mov rather than per pair, which is as fine as the shape needs: a mov
+    /// that joined one of its pairs and carried the other would have to read a
+    /// uint2 and a double out of one operand, and fxc writes a double uniform as
+    /// the pair it already is rather than moving it anywhere.
+    /// </summary>
+    private HashSet<D3D10Instruction> _joinedDoubleMovs =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Whether any instruction passes doubles at all, which is what makes the look
+    /// forward below worth doing. Every shader without one answers no and never
+    /// scans.
+    /// </summary>
+    private bool _hasDoubleInstructions;
+
+    /// <summary>
     /// Walks the instructions in order keeping track of which register pairs hold a
     /// double, so that a mov between two of them can be told from a mov of two
     /// floats. A pair holds one from where a double instruction or a load of a double
@@ -441,6 +464,9 @@ public class HlslSimpleWriter : HlslWriter
     {
         _movedDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
         _madeDoublePairs = new Dictionary<D3D10Instruction, int>(ReferenceEqualityComparer.Instance);
+        _joinedDoubleMovs = new HashSet<D3D10Instruction>(ReferenceEqualityComparer.Instance);
+        _hasDoubleInstructions = _phaseShader.Instructions.OfType<D3D10Instruction>()
+            .Any(i => i.HasDoubleOperands);
         _liveDoublePairs = new Dictionary<D3D10Instruction, HashSet<(RegisterKey, int)>>(
             ReferenceEqualityComparer.Instance);
         _doubleRegisterPairs = [];
@@ -581,16 +607,37 @@ public class HlslSimpleWriter : HlslWriter
                     // floats, the arithmetic read a shadow nothing had assigned to.
                     || IsReadAsDouble(index + 1, destination, pair);
             }
-            else if (instruction.Opcode == D3D10Opcode.Mov
-                && instruction.GetParamRegisterKey(1)
-                    is D3D10RegisterKey { IsTempRegister: true } source)
+            else if (instruction.Opcode == D3D10Opcode.Mov)
             {
                 // The pair the mov reads for this pair of its destination, which the
                 // swizzle gives at the destination's own position.
                 byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
-                isDouble = swizzle[low] % 2 == 0
-                    && swizzle[low + 1] == swizzle[low] + 1
-                    && live.Contains((source, swizzle[low] / 2));
+                bool isAlignedPair = swizzle[low] % 2 == 0
+                    && swizzle[low + 1] == swizzle[low] + 1;
+                isDouble = false;
+                if (instruction.GetParamRegisterKey(1)
+                    is D3D10RegisterKey { IsTempRegister: true } source)
+                {
+                    isDouble = isAlignedPair && live.Contains((source, swizzle[low] / 2));
+                }
+                // Two integers moved out of something that is not a register, into a
+                // pair a double instruction goes on to read: the two words of a
+                // double. fxc reads a double uniform straight off the pair it
+                // occupies and a uint2 uniform it cannot, so it movs that one into a
+                // register first, and the words enter the shader at the mov.
+                //
+                // Integers, because what the join needs is their bits: a pair of
+                // floats held in a register declared float would have to be read
+                // back through asuint, and whether such a register holds a number or
+                // a float's bits is the one thing this writer does not record - see
+                // the entries in EquivalenceTests.KnownDifferences that turn on it.
+                else if (_hasDoubleInstructions && isAlignedPair
+                    && IsReadAsDouble(index + 1, destination, pair)
+                    && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
+                {
+                    isDouble = true;
+                    _joinedDoubleMovs.Add(instruction);
+                }
             }
             else
             {
@@ -649,6 +696,30 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// The two 32-bit values a two component operand names, one at a time, so that
+    /// the asdouble joining them can name each. Either a swizzle of two letters off
+    /// a wider variable - `bits.xy` - or a two wide one named whole, which a pair
+    /// that is the whole of what it is on comes out as.
+    ///
+    /// Null where the name is neither, which leaves the plain move the caller was
+    /// about to write rather than an asdouble of something that is not two values.
+    /// </summary>
+    private static (string Low, string High)? SplitTwoComponentName(string name)
+    {
+        int dot = name.LastIndexOf('.');
+        string swizzle = dot < 0 ? "" : name[(dot + 1)..];
+        // A dot inside a subscript is not a swizzle: `buffer[i.x]` names one value
+        // and ends in a letter all the same.
+        if (swizzle.Length == 0 || !swizzle.All(c => "xyzw".Contains(c)))
+        {
+            return ($"{name}.x", $"{name}.y");
+        }
+        return swizzle.Length == 2
+            ? ($"{name[..dot]}.{swizzle[0]}", $"{name[..dot]}.{swizzle[1]}")
+            : null;
     }
 
     /// <summary>
@@ -737,7 +808,12 @@ public class HlslSimpleWriter : HlslWriter
         // And a mov says so only through the walk: which of its halves carry a
         // double was decided by what the registers held when it was reached.
         int movedPairs = _movedDoublePairs.TryGetValue(instruction, out int moved) ? moved : 0;
-        bool isMovedDouble = movedPairs != 0 && operandIndex is 0 or 1;
+        // The destination of either kind of mov, and the source of one that carries
+        // a double rather than making one out of two numbers: there is no shadow on
+        // the reading side of a join.
+        bool isMovedDouble = movedPairs != 0
+            && (operandIndex == 0
+                || (operandIndex == 1 && !_joinedDoubleMovs.Contains(instruction)));
         if (!isStructuredDouble && !isMovedDouble
             && (isDestination ? !instruction.WritesDoubles : !instruction.IsDoubleOperand(operandIndex)))
         {
@@ -2409,6 +2485,19 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.Mov:
+                // A mov that is a double entering the shader as its two words: the
+                // destination names the shadow the number is kept in, and the two
+                // 32-bit values the source names are joined into it. Written as a
+                // plain move the shadow was assigned nothing at all, and fxc said so
+                // - X4000, used without having been completely initialized.
+                if (_joinedDoubleMovs.Contains(instruction)
+                    && SplitTwoComponentName(GetOperandName(instruction, 1))
+                        is (string lowWord, string highWord))
+                {
+                    WriteResult(instruction, "{0} = asdouble({1}, {2});",
+                        GetOperandName(instruction, 0), lowWord, highWord);
+                    break;
+                }
                 WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
                     Moved(instruction, 1, GetOperandName(instruction, 1)));
                 break;

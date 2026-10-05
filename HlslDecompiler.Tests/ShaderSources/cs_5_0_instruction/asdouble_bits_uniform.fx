@@ -11,7 +11,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float2 r0;
 	double d0;
-	r0 = (float2)bits.xy;
+	d0 = asdouble(bits.x, bits.y);
 	d0 = d0 * scale;
 	r0.x = (float)d0;
 	output[sv_dispatchthreadid.x] = r0.x;

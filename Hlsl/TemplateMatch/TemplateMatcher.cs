@@ -52,6 +52,7 @@ public class TemplateMatcher
             new SignedDivideTemplate(),
             new SignTemplate(),
             new FloorTemplate(),
+            new TruncateTemplate(),
             new PowerTemplate(),
             new NaturalExponentialTemplate(),
             new NaturalLogarithmTemplate(),

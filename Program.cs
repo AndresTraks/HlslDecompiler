@@ -104,11 +104,10 @@ class Program
     }
 
     /// <summary>
-    /// A Direct3D 10 or 11 effect is written back whole, as name.fx: its variables,
-    /// its shaders as functions, and its techniques. The disassembly is a listing
-    /// per shader, name_vs0.asm, name_ps0.asm and so on, numbered per stage in the
-    /// order the effect stores them. An fx_2_0 effect is written a shader at a time,
-    /// as though each had been compiled on its own.
+    /// An effect is written back whole, as name.fx: its parameters, its shaders as
+    /// functions, and its techniques. The disassembly is a listing per shader,
+    /// name_vs0.asm, name_ps0.asm and so on, numbered per stage in the order the
+    /// effect stores them.
     /// </summary>
     private static void ReadEffect(string baseFilename, FileStream inputStream, CommandLineOptions options)
     {
@@ -116,25 +115,30 @@ class Program
         using var input = new EffectReader(inputStream, true);
         bool isD3D9 = input.ReadUInt32() == EffectReader.Fx20;
         inputStream.Position = start;
+
+        Action<TextWriter> write;
         if (isD3D9)
         {
-            ReadShadersOfEffect(baseFilename, input, options, writeHlsl: true);
-            return;
+            var writer = new D3D9EffectWriter(input.ReadD3D9Effect(), options.DoAstAnalysis);
+            write = writer.Write;
         }
-
-        Effect effect = input.ReadEffect();
+        else
+        {
+            var writer = new EffectWriter(input.ReadEffect(), options.DoAstAnalysis);
+            write = writer.Write;
+        }
         inputStream.Position = start;
         ReadShadersOfEffect(baseFilename, input, options, writeHlsl: false);
 
-        var writer = new EffectWriter(effect, options.DoAstAnalysis);
         if (options.PrintToConsole)
         {
-            writer.Write(Console.Out);
+            write(Console.Out);
             return;
         }
         string hlslFilename = $"{baseFilename}.fx";
         Console.WriteLine("Writing {0}", hlslFilename);
-        writer.Write(hlslFilename);
+        using var file = new StreamWriter(hlslFilename);
+        write(file);
     }
 
     private static void ReadShadersOfEffect(string baseFilename, EffectReader input, CommandLineOptions options, bool writeHlsl)

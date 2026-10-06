@@ -37,6 +37,7 @@ public class EffectTests
     [TestCase("fx_2_0", "passes", "ps_2_0 ps_2_0 vs_2_0 ps_2_0 vs_1_1")]
     [TestCase("fx_2_0", "preshader", "ps_3_0 ps_2_0 ps_3_0 ps_2_0 ps_2_0 vs_2_0")]
     [TestCase("fx_2_0", "shader_model_3", "ps_3_0 vs_3_0")]
+    [TestCase("fx_2_0", "structure", "ps_2_0 ps_2_0 vs_2_0 ps_2_0 vs_2_0")]
     [TestCase("fx_4_0", "passes", "vs_4_0 gs_4_0 ps_4_0 ps_4_0")]
     [TestCase("fx_4_0", "structure", "vs_4_0 gs_4_0 ps_4_0 ps_4_0 ps_4_0 vs_4_0 gs_4_0")]
     [TestCase("fx_5_0", "structure", "gs_5_0 vs_5_0 ps_5_0 vs_5_0 hs_5_0 ds_5_0 cs_5_0")]
@@ -121,7 +122,7 @@ public class EffectTests
 
     public static IEnumerable<TestCaseData> WholeEffects()
     {
-        foreach (TestCaseData data in Effects().Where(data => (string)data.Arguments[0] != "fx_2_0"))
+        foreach (TestCaseData data in Effects())
         {
             yield return new TestCaseData(data.Arguments)
                 .SetName($"EffectRoundTrip({data.Arguments[0]},{data.Arguments[1]})");
@@ -146,8 +147,8 @@ public class EffectTests
         }
 
         string compiledFilename = Path.Combine(Root, profile, baseFilename + ".fxc");
-        Effect original = ReadEffectStructure(compiledFilename);
-        string originalDescription = EffectDescription.Describe(original);
+        bool isD3D9 = profile == "fx_2_0";
+        string originalDescription = Describe(compiledFilename, isD3D9);
         IList<ShaderModel> originalShaders = ReadEffectShaders(compiledFilename);
 
         var failures = new List<string>();
@@ -159,7 +160,15 @@ public class EffectTests
             FileUtil.MakeFolder(hlslFilename);
             try
             {
-                new EffectWriter(original, doAstAnalysis: writer == "ast").Write(hlslFilename);
+                using var reader = new EffectReader(File.OpenRead(compiledFilename));
+                if (isD3D9)
+                {
+                    new D3D9EffectWriter(reader.ReadD3D9Effect(), doAstAnalysis: writer == "ast").Write(hlslFilename);
+                }
+                else
+                {
+                    new EffectWriter(reader.ReadEffect(), doAstAnalysis: writer == "ast").Write(hlslFilename);
+                }
             }
             catch (Exception e)
             {
@@ -174,7 +183,7 @@ public class EffectTests
                 continue;
             }
 
-            string recompiledDescription = EffectDescription.Describe(ReadEffectStructure(objectFilename));
+            string recompiledDescription = Describe(objectFilename, isD3D9);
             if (recompiledDescription != originalDescription)
             {
                 failures.Add($"The {writer} writer's effect compiles to another effect:{Environment.NewLine}"
@@ -225,10 +234,12 @@ public class EffectTests
         return "(no line differs)";
     }
 
-    private static Effect ReadEffectStructure(string filename)
+    private static string Describe(string filename, bool isD3D9)
     {
         using var reader = new EffectReader(File.OpenRead(filename));
-        return reader.ReadEffect();
+        return isD3D9
+            ? EffectDescription.Describe(reader.ReadD3D9Effect())
+            : EffectDescription.Describe(reader.ReadEffect());
     }
 
     private static IList<ShaderModel> ReadEffectShaders(string filename)

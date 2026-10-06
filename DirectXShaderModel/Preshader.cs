@@ -119,10 +119,25 @@ public sealed class Preshader
         uint[] tokens = [.. Enumerable.Range(0, comment.Params.Count).Select(i => comment.Params[i])];
 
         // tokens[0] is PRES, tokens[1] the version.
+        return ReadTokens(tokens, 2);
+    }
+
+    /// <summary>
+    /// An expression an fx_2_0 effect evaluates for a state, or to pick an element
+    /// of an array: the same program as a preshader, stored as a token stream of its
+    /// own - its version, then its comments - rather than inside a shader's.
+    /// </summary>
+    public static Preshader ReadTokenStream(byte[] data)
+    {
+        uint[] tokens = [.. Enumerable.Range(0, data.Length / 4).Select(i => BitConverter.ToUInt32(data, i * 4))];
+        return ReadTokens(tokens, 1);
+    }
+
+    private static Preshader ReadTokens(uint[] tokens, int position)
+    {
         var inputs = new ConstantTable();
         double[] literals = [];
         List<PreshaderInstruction> instructions = [];
-        int position = 2;
         while (position < tokens.Length)
         {
             uint token = tokens[position];

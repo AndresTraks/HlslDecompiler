@@ -92,6 +92,21 @@ public class EffectReader : BinaryReader
     }
 
     /// <summary>
+    /// The parameters, techniques and passes of an fx_2_0 effect, with the shaders
+    /// where they are set.
+    /// </summary>
+    public D3D9Effect ReadD3D9Effect()
+    {
+        byte[] file = ReadBytes((int)(BaseStream.Length - BaseStream.Position));
+        uint tag = BitConverter.ToUInt32(file, 0);
+        if (tag != Fx20)
+        {
+            throw new InvalidDataException($"Not an fx_2_0 effect: tag 0x{tag:X8}.");
+        }
+        return D3D9EffectStructureReader.Read(file);
+    }
+
+    /// <summary>
     /// The variables, state objects, techniques and passes of a Direct3D 10 or 11
     /// effect, with the shaders where they are set.
     /// </summary>

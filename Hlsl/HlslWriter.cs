@@ -120,6 +120,13 @@ public abstract class HlslWriter
         }
     }
 
+    /// <summary>
+    /// The type each uniform is read as, from the shader model 3 constant tables -
+    /// the shader's and its preshader's. Which way a matrix is packed is in them and
+    /// not in an fx_2_0 effect's own parameters, which call every matrix rows.
+    /// </summary>
+    public Dictionary<string, ShaderTypeInfo> ConstantTypes { get; } = [];
+
     private void RecordResourceTypeNames()
     {
         foreach (ResourceDefinition resource in _registers.ResourceDefinitions ?? [])
@@ -128,6 +135,10 @@ public abstract class HlslWriter
             {
                 ResourceTypeNames.TryAdd(resource.Name, typeName);
             }
+        }
+        foreach (D3D9ConstantDeclaration constant in _registers.ConstantDeclarations.OfType<D3D9ConstantDeclaration>())
+        {
+            ConstantTypes.TryAdd(constant.Name, constant.TypeInfo);
         }
     }
 

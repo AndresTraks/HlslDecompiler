@@ -63,6 +63,7 @@ public class HlslSimpleWriter : HlslWriter
 
         WriteTemporaryVariableDeclarations();
         WriteIndexableTempDeclarations(_integerOperandAnalysis);
+        WritePreshaderOutputs();
         for (int index = 0; index < _phaseShader.Instructions.Count; index++)
         {
             Instruction instruction = _phaseShader.Instructions[index];
@@ -139,6 +140,64 @@ public class HlslSimpleWriter : HlslWriter
     {
         return _registers.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
             && d.ShaderInputType == D3DShaderInputType.UavAppendStructured);
+    }
+
+    /// <summary>
+    /// The constant registers an fx_2_0 preshader fills, as locals filled the same
+    /// way. The preshader runs before the shader, so these come first, and the
+    /// instructions that read c1 read the local c1 rather than a uniform: nothing
+    /// declares one there, because the effect compiler moved its arithmetic out of
+    /// the shader and left only the register.
+    /// </summary>
+    private void WritePreshaderOutputs()
+    {
+        var registers = _ast.PreshaderOutputs
+            .GroupBy(output => output.Key.RegisterKey)
+            .OrderBy(register => ((D3D9RegisterKey)register.Key).Type)
+            .ThenBy(register => register.Key.Number);
+        if (!registers.Any())
+        {
+            return;
+        }
+
+        var compiler = new NodeCompiler(_registers);
+        foreach (var register in registers)
+        {
+            string type = ((D3D9RegisterKey)register.Key).Type switch
+            {
+                RegisterType.ConstBool => "bool4",
+                RegisterType.ConstInt => "int4",
+                _ => "float4",
+            };
+            var components = register.OrderBy(output => output.Key.ComponentIndex).ToList();
+            string mask = string.Concat(components.Select(output => "xyzw"[output.Key.ComponentIndex]));
+            string name = GetPreshaderOutputName(register.Key);
+            WriteLine("{0} {1};", type, name);
+            WriteLine("{0}.{1} = {2};", name, mask,
+                compiler.Compile(components.Select(output => output.Value).ToList()));
+        }
+        WriteLine();
+    }
+
+    private bool IsPreshaderOutput(RegisterKey registerKey)
+    {
+        return _ast.PreshaderOutputs.Keys.Any(key => key.RegisterKey.Equals(registerKey));
+    }
+
+    // c1 for the register, unless a uniform is already called that.
+    private string GetPreshaderOutputName(RegisterKey registerKey)
+    {
+        string name = ((D3D9RegisterKey)registerKey).Type switch
+        {
+            RegisterType.ConstBool => "b",
+            RegisterType.ConstInt => "i",
+            _ => "c",
+        } + registerKey.Number;
+        while (_registers.ConstantDeclarations.Any(declaration => declaration.Name == name))
+        {
+            name += "_";
+        }
+        return name;
     }
 
     private void WriteTemporaryVariableDeclarations()
@@ -3463,6 +3522,12 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         return constantValue;
                     }
+                }
+
+                if (IsPreshaderOutput(registerKey))
+                {
+                    sourceRegisterName = GetPreshaderOutputName(registerKey);
+                    break;
                 }
 
                 if (_registers.FindConstantArray(registerKey) is ConstantArray literals)

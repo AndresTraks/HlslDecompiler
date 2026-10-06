@@ -118,22 +118,37 @@ class Program
             stageCounts[shader.Stage] = index + 1;
             string outFilename = $"{baseFilename}_{shader.Stage}{index}";
 
-            var hlslWriter = CreateHlslWriter(shader, options.DoAstAnalysis);
-            if (options.PrintToConsole)
+            if (!options.PrintToConsole)
             {
-                Console.WriteLine($"// {outFilename}: {shader.Profile}");
-                hlslWriter.Write(Console.Out);
-                Console.WriteLine();
+                string asmFilename = $"{outFilename}.asm";
+                Console.WriteLine("Writing {0}", asmFilename);
+                new AsmWriter(shader).Write(asmFilename);
+            }
+
+            // Written whole before it goes anywhere, so that one shader the writer
+            // cannot take - a preshader instruction it has no reading of - leaves
+            // no half-written file and does not stop the others.
+            var hlsl = new StringWriter();
+            try
+            {
+                CreateHlslWriter(shader, options.DoAstAnalysis).Write(hlsl);
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine($"Not decompiling {outFilename}: {e.Message}");
                 continue;
             }
 
-            string asmFilename = $"{outFilename}.asm";
-            Console.WriteLine("Writing {0}", asmFilename);
-            new AsmWriter(shader).Write(asmFilename);
+            if (options.PrintToConsole)
+            {
+                Console.WriteLine($"// {outFilename}: {shader.Profile}");
+                Console.WriteLine(hlsl);
+                continue;
+            }
 
             string hlslFilename = $"{outFilename}.fx";
             Console.WriteLine("Writing {0}", hlslFilename);
-            hlslWriter.Write(hlslFilename);
+            File.WriteAllText(hlslFilename, hlsl.ToString());
         }
     }
 

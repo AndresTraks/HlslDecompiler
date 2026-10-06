@@ -31,7 +31,12 @@ public class EffectTests
     /// which is not the order the source names them in. fxc writes a shader set by
     /// name where the variable is declared, ahead of those compiled in a pass, so
     /// the geometry shader in passes comes before the pixel shader of the first pass.
+    /// fx_2_0 stores the variables' shaders first as well, then the ones compiled in
+    /// passes from the last pass to the first, a pixel shader before a vertex shader.
     /// </summary>
+    [TestCase("fx_2_0", "passes", "ps_2_0 ps_2_0 vs_2_0 ps_2_0 vs_1_1")]
+    [TestCase("fx_2_0", "preshader", "ps_3_0 ps_2_0 ps_3_0 ps_2_0 ps_2_0 vs_2_0")]
+    [TestCase("fx_2_0", "shader_model_3", "ps_3_0 vs_3_0")]
     [TestCase("fx_4_0", "passes", "vs_4_0 gs_4_0 ps_4_0 ps_4_0")]
     [TestCase("fx_4_1", "gather", "vs_4_1 ps_4_1")]
     [TestCase("fx_5_0", "mixed_models", "vs_4_0 ps_4_0 vs_5_0 ps_5_0")]
@@ -57,6 +62,83 @@ public class EffectTests
     {
         using var stream = File.OpenRead(Path.Combine("CompiledShaders", profile, baseFilename + ".fxc"));
         Assert.That(FormatDetector.Detect(stream), Is.EqualTo(ShaderFileFormat.Dxbc));
+    }
+
+    public static IEnumerable<TestCaseData> PreshadedEffects()
+    {
+        foreach (TestCaseData data in Effects().Where(data => (string)data.Arguments[0] == "fx_2_0"))
+        {
+            yield return new TestCaseData(data.Arguments)
+                .SetName($"PreshadersComputeTheSame(fx_2_0,{data.Arguments[1]})");
+        }
+    }
+
+    /// <summary>
+    /// The interpreter runs a preshader before the shader, and what it makes of the
+    /// preshader's instructions is checked here rather than assumed: against the
+    /// same effect compiled with /Op, which keeps the arithmetic in the shaders,
+    /// where the machine already knows what every instruction means. Without this,
+    /// a preshader instruction the decompiler and the interpreter misread the same
+    /// way would agree with itself.
+    /// </summary>
+    [TestCaseSource(nameof(PreshadedEffects))]
+    [Category("Recompile")]
+    public void PreshadersComputeWhatTheShadersWould(string profile, string baseFilename)
+    {
+        if (RecompileTests.FxcPath == null)
+        {
+            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+        }
+
+        string sourceFilename = Path.Combine("EffectSources", profile, baseFilename + ".fx");
+        string withoutFilename = Path.Combine("Effects", profile + "_op", baseFilename + ".fxc");
+        FileUtil.MakeFolder(withoutFilename);
+        string diagnostics = RunFxc(profile, sourceFilename, withoutFilename, "/Op");
+        Assert.That(diagnostics, Is.Null, diagnostics);
+
+        IList<ShaderModel> preshaded = ReadEffect(Path.Combine(Root, profile, baseFilename + ".fxc"));
+        IList<ShaderModel> without = ReadEffect(withoutFilename);
+        Assert.That(without.Select(s => s.Profile), Is.EqualTo(preshaded.Select(s => s.Profile)),
+            "Compiled without preshaders, the effect has other shaders.");
+        Assert.That(preshaded.Any(s => Preshader.Find(s) != null), Is.True,
+            "Nothing in this effect has a preshader to check.");
+
+        var differences = new List<string>();
+        for (int i = 0; i < preshaded.Count; i++)
+        {
+            if (Preshader.Find(preshaded[i]) == null)
+            {
+                continue;
+            }
+            differences.AddRange(EquivalenceTests
+                .CompareRuns(preshaded[i], without[i], "the preshaded shader", "the shader compiled without it")
+                .Select(difference => $"{baseFilename} shader {i}: {difference}"));
+        }
+        Assert.That(differences, Is.Empty, string.Join(Environment.NewLine, differences));
+    }
+
+    private static IList<ShaderModel> ReadEffect(string filename)
+    {
+        using var reader = new EffectReader(File.OpenRead(filename));
+        return reader.ReadShaders();
+    }
+
+    // fxc on an effect: no entry point to name, and whatever else it is asked.
+    private static string RunFxc(string profile, string sourceFilename, string objectFilename, string option)
+    {
+        var startInfo = RecompileTests.CreateFxcProcessStartInfo();
+        startInfo.ArgumentList.Add("/nologo");
+        startInfo.ArgumentList.Add("/T");
+        startInfo.ArgumentList.Add(profile);
+        startInfo.ArgumentList.Add(option);
+        startInfo.ArgumentList.Add(sourceFilename);
+        startInfo.ArgumentList.Add("/Fo");
+        startInfo.ArgumentList.Add(objectFilename);
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return process.ExitCode == 0 ? null : output.Trim();
     }
 
     [Test]
@@ -95,7 +177,8 @@ public class EffectTests
     /// <summary>
     /// The recompile and equivalence tiers, for each shader of each effect and both
     /// writers. Each shader is recompiled alone for its own profile, as fxc would
-    /// compile it if it were not in an effect.
+    /// compile it if it were not in an effect. One an fx_2_0 preshader computes
+    /// constants for is run with them, and its decompilation computes them itself.
     /// </summary>
     [TestCaseSource(nameof(Effects))]
     [Category("Recompile")]

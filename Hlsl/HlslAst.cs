@@ -1,4 +1,5 @@
-﻿using HlslDecompiler.Hlsl.FlowControl;
+﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.FlowControl;
 using System.Collections.Generic;
 
 namespace HlslDecompiler.Hlsl;
@@ -16,6 +17,14 @@ public class HlslAst
     /// what knows is the instruction that wrote it, and this is what it knew.
     /// </summary>
     public ISet<HlslTreeNode> DoubleValues { get; private set; }
+
+    /// <summary>
+    /// The constant registers an fx_2_0 preshader writes, and what it writes there.
+    /// The tree writer reads them through the registers like any other value; the
+    /// instruction writer, which names registers, declares them.
+    /// </summary>
+    public IDictionary<RegisterComponentKey, HlslTreeNode> PreshaderOutputs { get; init; }
+        = new Dictionary<RegisterComponentKey, HlslTreeNode>();
 
     public HlslAst(IList<IStatement> statements, RegisterState registerState,
         ISet<HlslTreeNode> doubleValues = null)

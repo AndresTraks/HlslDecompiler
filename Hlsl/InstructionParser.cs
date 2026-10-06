@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -118,7 +119,10 @@ public class InstructionParser
         }
 
         ResolvePolymorphicImmediates();
-        return new HlslAst(_statements, _registerState, _doubleValues);
+        return new HlslAst(_statements, _registerState, _doubleValues)
+        {
+            PreshaderOutputs = _preshaderOutputs,
+        };
     }
 
     private void ParseInstruction(D3D9Instruction instruction)
@@ -139,7 +143,14 @@ public class InstructionParser
             switch (instruction.Opcode)
             {
                 case Opcode.Comment:
-                    ParseConstantTableComment(instruction);
+                    if (instruction.Params.Count > 0 && instruction.Params[0] == FourCC.Make("PRES"))
+                    {
+                        ParsePreshaderComment(instruction);
+                    }
+                    else
+                    {
+                        ParseConstantTableComment(instruction);
+                    }
                     break;
                 case Opcode.If:
                 case Opcode.IfC:
@@ -757,25 +768,99 @@ public class InstructionParser
         ConstantTable constantTable = reader.ReadTable();
         foreach (D3D9ConstantDeclaration constant in constantTable.Declarations)
         {
-            _registerState.DeclareConstant(constant);
+            DeclareConstant(constant);
+        }
+    }
 
-            var registerType = constant.RegisterSet switch
+    /// <summary>
+    /// Where the uniforms a preshader reads are put, when the shader does not read
+    /// them itself: past every float constant register any shader model has, so
+    /// that none of them is one the shader reads for something else.
+    /// </summary>
+    private const int PreshaderInputBase = 0x2000;
+
+    private readonly Dictionary<RegisterComponentKey, HlslTreeNode> _preshaderOutputs = [];
+
+    /// <summary>
+    /// The constants an fx_2_0 preshader computes, as what it computes them from.
+    /// The shader's own table lists only the uniforms it reads as they are, and the
+    /// preshader's lists those it reads, in a table of its own. One the shader reads
+    /// as well is the same uniform and is named once; the rest are declared beside
+    /// the shader's. Each register the preshader writes is then the expression it
+    /// wrote there, and every read of it is that expression.
+    /// </summary>
+    private void ParsePreshaderComment(D3D9Instruction instruction)
+    {
+        Preshader preshader = Preshader.Read(instruction);
+
+        var inputRegisters = new Dictionary<int, int>();
+        foreach (D3D9ConstantDeclaration input in preshader.Inputs.Declarations)
+        {
+            if (input.RegisterSet != RegisterSet.Float4)
             {
-                RegisterSet.Bool => RegisterType.ConstBool,
-                RegisterSet.Float4 => RegisterType.Const,
-                RegisterSet.Int4 => RegisterType.Input,
-                RegisterSet.Sampler => RegisterType.Sampler,
-                _ => throw new InvalidOperationException(),
-            };
-            for (int r = 0; r < constant.RegisterCount; r++)
+                throw new NotSupportedException($"A preshader input in the {input.RegisterSet} registers.");
+            }
+
+            var shaderConstant = _registerState.ConstantDeclarations
+                .OfType<D3D9ConstantDeclaration>()
+                .FirstOrDefault(c => c.Name == input.Name && c.RegisterSet == RegisterSet.Float4);
+            int register;
+            if (shaderConstant != null)
             {
-                var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
-                for (int i = 0; i < 4; i++)
+                register = shaderConstant.RegisterIndex;
+            }
+            else
+            {
+                register = PreshaderInputBase + input.RegisterIndex;
+                DeclareConstant(new D3D9ConstantDeclaration(
+                    input.Name, input.RegisterSet, (short)register, input.RegisterCount, input.TypeInfo)
                 {
-                    var destinationKey = new RegisterComponentKey(registerKey, i);
-                    var shaderInput = new RegisterInputNode(destinationKey);
-                    SetActiveOutput(destinationKey, shaderInput);
-                }
+                    IsPreshaderInput = true,
+                });
+            }
+            for (int r = 0; r < input.RegisterCount; r++)
+            {
+                inputRegisters[input.RegisterIndex + r] = register + r;
+            }
+        }
+
+        var outputs = PreshaderTree.Build(preshader, offset => GetActiveOutput(new RegisterComponentKey(
+            new D3D9RegisterKey(RegisterType.Const, inputRegisters[offset / 4]), offset % 4)));
+        foreach (((PreshaderRegisterTable table, int offset), HlslTreeNode value) in outputs)
+        {
+            RegisterType registerType = table switch
+            {
+                PreshaderRegisterTable.Output => RegisterType.Const,
+                PreshaderRegisterTable.OutputBool => RegisterType.ConstBool,
+                PreshaderRegisterTable.OutputInt => RegisterType.ConstInt,
+                _ => throw new InvalidOperationException(table.ToString()),
+            };
+            var key = new RegisterComponentKey(new D3D9RegisterKey(registerType, offset / 4), offset % 4);
+            SetActiveOutput(key, value);
+            _preshaderOutputs[key] = value;
+        }
+    }
+
+    private void DeclareConstant(D3D9ConstantDeclaration constant)
+    {
+        _registerState.DeclareConstant(constant);
+
+        var registerType = constant.RegisterSet switch
+        {
+            RegisterSet.Bool => RegisterType.ConstBool,
+            RegisterSet.Float4 => RegisterType.Const,
+            RegisterSet.Int4 => RegisterType.Input,
+            RegisterSet.Sampler => RegisterType.Sampler,
+            _ => throw new InvalidOperationException(),
+        };
+        for (int r = 0; r < constant.RegisterCount; r++)
+        {
+            var registerKey = new D3D9RegisterKey(registerType, constant.RegisterIndex + r);
+            for (int i = 0; i < 4; i++)
+            {
+                var destinationKey = new RegisterComponentKey(registerKey, i);
+                var shaderInput = new RegisterInputNode(destinationKey);
+                SetActiveOutput(destinationKey, shaderInput);
             }
         }
     }

@@ -87,6 +87,7 @@ function CompileAll {
     CompileByProfile "vs_4_0" $fxc
     CompileByProfile "gs_4_1" $fxc
     CompileByProfile "cs_4_1" $fxc
+    CompileEffectsByProfile "fx_2_0" $fxc
     CompileEffectsByProfile "fx_4_0" $fxc
     CompileEffectsByProfile "fx_4_1" $fxc
     CompileEffectsByProfile "fx_5_0" $fxc

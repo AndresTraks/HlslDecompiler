@@ -35,6 +35,9 @@
     <None Update="CompiledEffects\**\*.fxc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="EffectSources\**\*.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Bytecode the disassembler reads and the HLSL writers do not yet, with the
          listing it is expected to produce. -->
     <None Update="DisassemblyOnly\**\*.fxc">

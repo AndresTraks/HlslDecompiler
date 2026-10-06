@@ -44,6 +44,14 @@ public class D3D9ConstantDeclaration : ConstantDeclaration
     public RegisterSet RegisterSet { get; private set; }
     public short RegisterCount { get; }
 
+    /// <summary>
+    /// A uniform an fx_2_0 preshader reads rather than the shader. Its register is
+    /// one the parser chose so as not to collide with the shader's own: in the
+    /// preshader it was numbered in a table of its own, and a shader compiled from
+    /// the decompilation reads it directly, wherever fxc puts it.
+    /// </summary>
+    public bool IsPreshaderInput { get; init; }
+
     public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
         : base(name, registerIndex, typeInfo)
     {

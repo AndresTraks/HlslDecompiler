@@ -89,7 +89,11 @@ public sealed class ConstantDeclarationCompiler
         string typeName = GetTypeName(declaration.TypeInfo);
         string registerSpecifier = "";
         int registerSet = (int)declaration.RegisterSet;
-        if (_index[registerSet] == declaration.RegisterIndex)
+        if (declaration.IsPreshaderInput)
+        {
+            // Where it was in the preshader says nothing about where it goes.
+        }
+        else if (_index[registerSet] == declaration.RegisterIndex)
         {
             _index[registerSet] += declaration.RegisterCount;
         }

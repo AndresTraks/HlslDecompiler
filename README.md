@@ -8,10 +8,13 @@ cs_5_0), hull (hs_5_0) and domain (ds_5_0) shaders. Each has shaders in the
 test corpus, which recompiles every decompilation and compares what the two
 of them compute.
 
-Direct3D 10 and 11 effects (fx_4_0, fx_4_1 and fx_5_0) are read for the shaders
-in them: each is written out as its own shader, named after the effect and its
-stage (effect_vs0.fx, effect_ps0.fx, ...). The techniques, passes and state that
-set them are not decompiled yet.
+Effects (fx_2_0, fx_4_0, fx_4_1 and fx_5_0) are read for the shaders in them:
+each is written out as its own shader, named after the effect and its stage
+(effect_vs0.fx, effect_ps0.fx, ...). The techniques, passes and state that set
+them are not decompiled yet. In fx_2_0, arithmetic on uniforms alone is moved
+out of the shader into a preshader that runs before it; the decompilation puts
+it back, so a ps_2_0 shader can come out longer than the profile allows when it
+is compiled on its own.
 
 ## Usage
 `HlslDecompiler [--ast] [--print] shader.fxc`

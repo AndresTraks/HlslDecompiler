@@ -107,6 +107,29 @@ public class D3D9Machine
                 }
             }
         }
+
+        // What an fx_2_0 effect computes before the shader runs, into the registers
+        // the shader's own table does not name.
+        if (Preshader.Find(_shader) is Preshader preshader)
+        {
+            foreach (((PreshaderRegisterTable table, int offset), double value) in PreshaderMachine.Run(preshader, Named))
+            {
+                int register = offset / 4;
+                int component = offset % 4;
+                switch (table)
+                {
+                    case PreshaderRegisterTable.Output:
+                        _const[register][component] = (float)value;
+                        break;
+                    case PreshaderRegisterTable.OutputInt:
+                        _constInt[register][component] = (int)value;
+                        break;
+                    case PreshaderRegisterTable.OutputBool:
+                        _constBool[register] = value != 0;
+                        break;
+                }
+            }
+        }
     }
 
     private IEnumerable<D3D9ConstantDeclaration> ReadConstantTable()

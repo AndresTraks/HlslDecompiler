@@ -567,6 +567,21 @@ public sealed class NodeCompiler
         return ungrouped;
     }
 
+    /// <summary>
+    /// What a select tests, bracketed where it is a select itself. A conditional
+    /// binds more loosely than anything else, so one written bare where another's
+    /// condition goes is taken apart at the wrong `?`: `a >= 0 ? b : c >= 0 ? d : e`
+    /// is `a >= 0 ? b : (c >= 0 ? d : e)`, not `(a >= 0 ? b : c) >= 0 ? d : e`. A
+    /// preshader tests one compare's result with another as a matter of course.
+    /// </summary>
+    private string CompileCondition(List<HlslTreeNode> components)
+    {
+        string condition = Compile(components.Select(g => g.Inputs[0]));
+        return components.Any(g => g.Inputs[0] is CompareOperation or MoveConditionalOperation)
+            ? $"({condition})"
+            : condition;
+    }
+
     // An operation whose every result component depends on that component of its
     // operands alone, so that a vector of them is the same operation on vectors.
     // A conversion is left out: `(float4)float4(a, b, c, d)` says less than four
@@ -585,6 +600,7 @@ public sealed class NodeCompiler
             or ReciprocalSquareRootOperation or ExponentialOperation or LogOperation
             or NaturalExponentialOperation or NaturalLogarithmOperation
             or PowerOperation or SineOperation or CosineOperation or SignOperation
+            or ArcSineOperation or ArcCosineOperation or ArcTangentOperation or ArcTangent2Operation
             or FloatingModuloOperation or EvaluateAttributeOperation
             or IsNotANumberOperation or IsInfiniteOperation or IsFiniteOperation;
     }
@@ -1357,6 +1373,7 @@ public sealed class NodeCompiler
             case MaximumOperation _:
             case MinimumOperation _:
             case PowerOperation _:
+            case ArcTangent2Operation _:
                 {
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     var value2 = Compile(components.Select(g => g.Inputs[1]));
@@ -1394,7 +1411,7 @@ public sealed class NodeCompiler
                         // And so do the calls that take more than one argument,
                         // which were bracketed for no reason: `(float)(max(a, b))`.
                         || value[0] is MaximumOperation or MinimumOperation
-                            or PowerOperation or ClampOperation or SmoothStepOperation
+                            or PowerOperation or ArcTangent2Operation or ClampOperation or SmoothStepOperation
                             or LinearInterpolateOperation or FusedMultiplyAddOperation
                             or DotProductOperation or LengthOperation
                             or FirstBitHighOperation
@@ -1424,7 +1441,7 @@ public sealed class NodeCompiler
 
             case CompareOperation _:
                 {
-                    var value1 = Compile(components.Select(g => g.Inputs[0]));
+                    var value1 = CompileCondition(components);
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
@@ -1607,7 +1624,7 @@ public sealed class NodeCompiler
 
             case MoveConditionalOperation _:
                 {
-                    var value1 = Compile(components.Select(g => g.Inputs[0]));
+                    var value1 = CompileCondition(components);
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 

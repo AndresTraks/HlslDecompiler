@@ -9,16 +9,20 @@ namespace HlslDecompiler.Hlsl;
 // the length from however many defs sit next to it.
 public sealed class ConstantArray
 {
-    public ConstantArray(int baseRegisterIndex, IReadOnlyList<ConstantRegister> registers)
+    public ConstantArray(int baseRegisterIndex, IReadOnlyList<ConstantRegister> registers, string namePrefix = "")
     {
         BaseRegisterIndex = baseRegisterIndex;
         Registers = registers;
+        NamePrefix = namePrefix;
     }
 
     public int BaseRegisterIndex { get; }
     public IReadOnlyList<ConstantRegister> Registers { get; }
 
-    public string Name => $"c{BaseRegisterIndex}";
+    /// <summary>See <see cref="RegisterState.LocalNamePrefix"/>.</summary>
+    public string NamePrefix { get; }
+
+    public string Name => $"{NamePrefix}c{BaseRegisterIndex}";
 
     public bool Contains(int registerIndex)
     {

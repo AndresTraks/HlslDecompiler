@@ -53,13 +53,23 @@ public class D3D10RegisterKey : RegisterKey
         return new D3D10RegisterKey(attribute, vertex);
     }
 
+    /// <summary>
+    /// An attribute of one vertex or control point of the ones a shader is handed,
+    /// keyed the way another register of the same shader already is: a geometry
+    /// shader's as an input, a hull shader phase's as a control point.
+    /// </summary>
+    public D3D10RegisterKey WithAttribute(int attribute)
+    {
+        return new D3D10RegisterKey(OperandType, attribute) { GSVertex = GSVertex };
+    }
+
     public OperandType OperandType { get; }
     public int Number { get; }
     public int? ConstantBufferOffset { get; }
     public float[] ImmediateSingle { get; }
     public double[] ImmediateDouble { get; }
     public int? ImmediateInt { get; }
-    public int? GSVertex { get; }
+    public int? GSVertex { get; private init; }
 
     public bool IsTempRegister => OperandType == OperandType.Temp;
     // oDepth is written like any other output; it just names no register. Leaving

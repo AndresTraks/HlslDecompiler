@@ -73,45 +73,77 @@ public abstract class HlslWriter
     public Dictionary<string, string> ResourceTypeNames { get; } = [];
 
     /// <summary>
-    /// The inputs a pixel shader in an effect has, read or not. On its own a shader
-    /// declares what it reads and fxc lays the rest out as it likes; in a pass, fxc
-    /// checks that each register of the stage before lands in the same register
-    /// here, and an SV_Position nothing reads, left out, moved the TEXCOORD after it
-    /// from v1 to v0 and failed the pass. The signature has every element where it
-    /// was, so what the declarations lack is taken from it.
+    /// The inputs a shader in an effect has, read or not, where they come from the
+    /// stage before it: a pixel, geometry, hull or domain shader's. On its own a
+    /// shader declares what it reads and fxc lays the rest out as it likes; in a
+    /// pass, fxc checks that each register of the stage before lands in the same
+    /// register here, and an SV_Position nothing reads, left out, moved the TEXCOORD
+    /// after it from v1 to v0 and failed the pass. The signature has every element
+    /// where it was, so what the declarations lack is taken from it.
+    ///
+    /// The stages after the vertex shader read a primitive's vertices or a patch's
+    /// control points, each input an array of them, keyed by vertex; a field of the
+    /// struct is one register across all of them, so one vertex's is enough.
     /// </summary>
     private void DeclareWholeInputSignature()
     {
-        if (!IsEffectFunction || _shader.Type != ShaderType.Pixel)
+        if (!IsEffectFunction
+            || _shader.Type is not (ShaderType.Pixel or ShaderType.Geometry or ShaderType.Hull or ShaderType.Domain))
         {
             return;
         }
+        bool isPerVertex = _shader.Type != ShaderType.Pixel;
+        D3D10RegisterKey vertexKey = _registers.MethodInputRegisters
+            .Select(d => d.RegisterKey as D3D10RegisterKey)
+            .FirstOrDefault(k => k?.GSVertex != null);
+
+        static int Register(RegisterDeclaration d) => ((D3D10RegisterKey)d.RegisterKey).GetGSBaseKey().Number;
+        bool IsInput(RegisterDeclaration d) => d.RegisterKey is D3D10RegisterKey key
+            && (isPerVertex ? key.GSVertex != null : key.OperandType == OperandType.Input);
+
         foreach (RegisterSignature signature in _shader.InputSignatures)
         {
+            // What the stage is given once, rather than per vertex, is a parameter
+            // of its own and not a field.
+            if (isPerVertex && signature.Name.ToUpperInvariant() is "SV_PRIMITIVEID" or "SV_GSINSTANCEID"
+                or "SV_OUTPUTCONTROLPOINTID" or "SV_DOMAINLOCATION")
+            {
+                continue;
+            }
             string semantic = signature.Index == 0 ? signature.Name : signature.Name + signature.Index;
+            int register = signature.RegisterKey.Number;
             bool isDeclared = _registers.MethodInputRegisters.Any(d =>
-                d.RegisterKey.Equals(signature.RegisterKey)
+                IsInput(d) && Register(d) == register
                 && string.Equals(d.Semantic, semantic, StringComparison.OrdinalIgnoreCase));
             if (isDeclared)
             {
                 continue;
             }
-            RegisterDeclaration declaration = FromSignature(signature);
+
+            D3D10RegisterKey key = !isPerVertex
+                ? signature.RegisterKey
+                : vertexKey?.WithAttribute(register) ?? D3D10RegisterKey.CreateGSInput(register, 0);
+            var keyed = new RegisterSignature(key, signature.Name, signature.Index, signature.Mask,
+                signature.ValueType, signature.ComponentType, signature.ReadWriteMask);
+            RegisterDeclaration declaration = FromSignature(keyed);
             // A register it shares with an element that is declared holds the two
             // side by side, each as wide as its own components.
-            if (_registers.MethodInputRegisters.FirstOrDefault(d => d.RegisterKey.Equals(signature.RegisterKey))
+            if (_registers.MethodInputRegisters.FirstOrDefault(d => IsInput(d) && Register(d) == register)
                 is RegisterDeclaration neighbour)
             {
                 declaration.MaskedLengthOverride = BitOperations.PopCount((uint)signature.Mask);
                 neighbour.MaskedLengthOverride ??= BitOperations.PopCount((uint)neighbour.WriteMask);
             }
             _registers.MethodInputRegisters.Add(declaration);
-            _registers.RegisterDeclarations.TryAdd(signature.RegisterKey, declaration);
+            _registers.RegisterDeclarations.TryAdd(key, declaration);
         }
 
-        // In the order of the registers, which is the order fxc lays a struct out in.
+        // In the order of the registers, which is the order fxc lays a struct out
+        // in. What is not an input - a thread or a control point id - keeps its
+        // place after them.
         List<RegisterDeclaration> ordered = [.. _registers.MethodInputRegisters
-            .OrderBy(d => d.RegisterKey.Number)
+            .OrderBy(d => IsInput(d) ? 0 : 1)
+            .ThenBy(d => IsInput(d) ? Register(d) : 0)
             .ThenBy(d => BitOperations.TrailingZeroCount(d.WriteMask))];
         _registers.MethodInputRegisters.Clear();
         foreach (RegisterDeclaration declaration in ordered)
@@ -243,6 +275,7 @@ public abstract class HlslWriter
         _phaseShader = _shader;
         _ast = InstructionParser.Parse(_shader);
         _registers = _ast.RegisterState;
+        NameLocals();
 
         RecordResourceTypeNames();
         DeclareWholeInputSignature();
@@ -326,6 +359,10 @@ public abstract class HlslWriter
         // either has in full.
         EnterPhase(HullFunction.ControlPoint, hull.ControlPoint ?? hull.PatchConstant);
         RecordResourceTypeNames();
+        if (hull.ControlPoint != null)
+        {
+            DeclareWholeInputSignature();
+        }
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
         if (hull.ControlPoint != null)
@@ -460,6 +497,16 @@ public abstract class HlslWriter
         _phaseShader = phase.Shader;
         _ast = phase.Ast;
         _registers = phase.Ast.RegisterState;
+        NameLocals();
+    }
+
+    // In an effect, the names a shader makes up for itself are its function's.
+    private void NameLocals()
+    {
+        if (IsEffectFunction)
+        {
+            _registers.LocalNamePrefix = FunctionName + "_";
+        }
     }
 
     /// <summary>
@@ -813,11 +860,11 @@ public abstract class HlslWriter
                 }
                 WriteLine("};");
                 WriteLine();
-                WriteLine($"groupshared {elementType} g{register}[{elements}];");
+                WriteLine($"groupshared {elementType} {_registers.GroupSharedName(register)}[{elements}];");
                 continue;
             }
             string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
-            WriteLine($"groupshared {type}{size} g{register}[{elements}];");
+            WriteLine($"groupshared {type}{size} {_registers.GroupSharedName(register)}[{elements}];");
         }
         WriteLine();
     }

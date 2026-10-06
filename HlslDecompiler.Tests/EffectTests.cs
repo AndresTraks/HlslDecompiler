@@ -38,10 +38,13 @@ public class EffectTests
     [TestCase("fx_2_0", "preshader", "ps_3_0 ps_2_0 ps_3_0 ps_2_0 ps_2_0 vs_2_0")]
     [TestCase("fx_2_0", "shader_model_3", "ps_3_0 vs_3_0")]
     [TestCase("fx_2_0", "structure", "ps_2_0 ps_2_0 vs_2_0 ps_2_0 vs_2_0")]
+    [TestCase("fx_4_0", "linkage", "vs_4_0 gs_4_0 ps_4_0")]
     [TestCase("fx_4_0", "passes", "vs_4_0 gs_4_0 ps_4_0 ps_4_0")]
     [TestCase("fx_4_0", "structure", "vs_4_0 gs_4_0 ps_4_0 ps_4_0 ps_4_0 vs_4_0 gs_4_0")]
     [TestCase("fx_5_0", "structure", "gs_5_0 vs_5_0 ps_5_0 vs_5_0 hs_5_0 ds_5_0 cs_5_0")]
     [TestCase("fx_4_1", "gather", "vs_4_1 ps_4_1")]
+    [TestCase("fx_5_0", "linkage", "vs_5_0 gs_5_0 ps_5_0 vs_5_0 hs_5_0 ds_5_0 ps_5_0")]
+    [TestCase("fx_5_0", "local_names", "ps_5_0 ps_5_0 cs_5_0 cs_5_0")]
     [TestCase("fx_5_0", "mixed_models", "vs_4_0 ps_4_0 vs_5_0 ps_5_0")]
     [TestCase("fx_5_0", "stages", "vs_5_0 hs_5_0 ds_5_0 ps_5_0 cs_5_0")]
     public void ReadsEveryShader(string profile, string baseFilename, string shaderProfiles)

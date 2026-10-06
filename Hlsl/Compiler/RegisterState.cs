@@ -91,7 +91,8 @@ public sealed class RegisterState
     public string ImmediateConstantBufferName(int baseRow)
     {
         List<int> bases = ImmediateConstantBufferStarts();
-        return bases.Count <= 1 ? "icb" : "icb" + Math.Max(bases.IndexOf(baseRow), 0);
+        string name = LocalNamePrefix + "icb";
+        return bases.Count <= 1 ? name : name + Math.Max(bases.IndexOf(baseRow), 0);
     }
 
     private List<int> ImmediateConstantBufferStarts()
@@ -108,6 +109,25 @@ public sealed class RegisterState
     }
     private readonly HashSet<int> _indexedConstants = [];
     private List<ConstantArray> _constantArrays;
+
+    private string _localNamePrefix = "";
+
+    /// <summary>
+    /// What the names the shader makes up for itself start with: its literal
+    /// arrays, icb and c4, and its groupshared memory, g0. Nothing in the bytecode
+    /// names them, so two shaders name theirs alike, which is nothing to a shader
+    /// on its own and a redefinition to two functions of one effect. In an effect
+    /// each function's start with its own name.
+    /// </summary>
+    public string LocalNamePrefix
+    {
+        get => _localNamePrefix;
+        set
+        {
+            _localNamePrefix = value;
+            _constantArrays = null;
+        }
+    }
     public ICollection<ConstantIntRegister> ConstantIntDefinitions = [];
     public ICollection<ConstantDeclaration> ConstantDeclarations { get; } = [];
     public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
@@ -1840,7 +1860,7 @@ public sealed class RegisterState
                         .Name;
                 // Groupshared memory has no reflection entry to take a name from.
                 case OperandType.ThreadGroupSharedMemory:
-                    return "g" + registerKey.Number;
+                    return GroupSharedName(registerKey.Number);
                 default:
                     throw new NotImplementedException();
             }
@@ -2047,9 +2067,15 @@ public sealed class RegisterState
             {
                 registers.Add(register);
             }
-            arrays.Add(new ConstantArray(start, registers));
+            arrays.Add(new ConstantArray(start, registers, LocalNamePrefix));
         }
         return arrays;
+    }
+
+    /// <summary>What groupshared memory declared at this register is called.</summary>
+    public string GroupSharedName(int register)
+    {
+        return $"{LocalNamePrefix}g{register}";
     }
 
     public ConstantIntRegister FindConstantIntRegister(int index)

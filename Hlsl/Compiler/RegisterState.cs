@@ -1226,6 +1226,47 @@ public sealed class RegisterState
     /// a row must not be: `transpose(m)[i]` of a float4x3 has only three rows to
     /// give and the fourth register of one asks for a subscript it has not got.
     /// </summary>
+    /// <summary>
+    /// The row of a matrix a run of components is, where it is one row whole and in
+    /// order. A column major matrix keeps a row across four registers, a component of
+    /// each, which is how a preshader reads a row of one to multiply it by another.
+    /// </summary>
+    public (string Matrix, int Row)? TryGetMatrixRow(IList<HlslTreeNode> components)
+    {
+        if (components.Count < 2)
+        {
+            return null;
+        }
+        string matrix = null;
+        int row = -1;
+        int columns = 0;
+        for (int i = 0; i < components.Count; i++)
+        {
+            if (components[i] is not RegisterInputNode input
+                || TryGetMatrixRegister(input.RegisterComponentKey.RegisterKey) is not (ShaderTypeInfo type, string name, int register))
+            {
+                return null;
+            }
+            int component = input.RegisterComponentKey.ComponentIndex;
+            (int elementRow, int elementColumn) = type.ParameterClass == ParameterClass.MatrixRows
+                ? (register, component)
+                : (component, register);
+            if (elementColumn != i)
+            {
+                return null;
+            }
+            if (i == 0)
+            {
+                (matrix, row, columns) = (name, elementRow, type.Columns);
+            }
+            else if (name != matrix || elementRow != row)
+            {
+                return null;
+            }
+        }
+        return components.Count == columns ? (matrix, row) : null;
+    }
+
     public static string MatrixRegisterName(ShaderTypeInfo typeInfo, string name, int register)
     {
         return typeInfo.ParameterClass == ParameterClass.MatrixRows

@@ -17,7 +17,7 @@ public class DotProduct2Template : IGroupTemplate
 
     public IGroupContext Match(HlslTreeNode node)
     {
-        return MatchDotProduct2(node);
+        return DotProductContext.UnlessFactored(MatchDotProduct2(node), _templateMatcher);
     }
 
     private DotProductContext MatchDotProduct2(HlslTreeNode node)

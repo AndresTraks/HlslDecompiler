@@ -70,6 +70,23 @@ public class EffectTests
         Assert.That(FormatDetector.Detect(stream), Is.EqualTo(ShaderFileFormat.Dxbc));
     }
 
+    /// <summary>
+    /// What a preshader computes reads as what was written, where the preshader and
+    /// the shader each did half of it. The matrix product the preshader works out
+    /// and the vector the shader multiplies by it are one mul of the two; a uniform
+    /// the shader multiplies a texel by and the preshader multiplies a scale by is a
+    /// common factor of two products, not four dot products of it repeated.
+    /// </summary>
+    [TestCase("ast", "o.position = mul(i.position, mul(world, viewProjection));")]
+    [TestCase("ast", "return t0 * tint + (2 * scale + 1) * tint;")]
+    public void PreshadedArithmeticReadsAsWritten(string writer, string line)
+    {
+        using var reader = new EffectReader(File.OpenRead(Path.Combine(Root, "fx_2_0", "preshader.fxc")));
+        var hlsl = new StringWriter();
+        new D3D9EffectWriter(reader.ReadD3D9Effect(), doAstAnalysis: writer == "ast").Write(hlsl);
+        Assert.That(hlsl.ToString().Split('\n').Select(l => l.Trim()), Does.Contain(line));
+    }
+
     public static IEnumerable<TestCaseData> PreshadedEffects()
     {
         foreach (TestCaseData data in Effects().Where(data => (string)data.Arguments[0] == "fx_2_0"))

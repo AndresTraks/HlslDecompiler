@@ -163,6 +163,107 @@ public sealed class NodeCompiler
         GroupMatches?.Add([.. matched]);
     }
 
+    /// <summary>
+    /// A vector times the product of two matrices: `mul(p, mul(world, viewProjection))`.
+    /// An fx_2_0 preshader multiplies the matrices before the shader runs, and the
+    /// shader multiplies the vector by what it was handed, so the two halves meet
+    /// only in the graph - each component is the vector's components times a row of
+    /// the product each, added up, and each row is a row of the first matrix times
+    /// the second. Recognised a row at a time, it came out as the sum it is:
+    /// `p.x * mul(world[0], viewProjection) + p.y * mul(world[1], ...) + ...`.
+    /// </summary>
+    private string TryCompileVectorByMatrixProduct(List<HlslTreeNode> components)
+    {
+        List<(HlslTreeNode, HlslTreeNode)>[] terms = [.. components.Select(Terms)];
+        int rowCount = terms[0]?.Count ?? 0;
+        if (rowCount < 2 || terms.Any(t => t == null || t.Count != rowCount))
+        {
+            return null;
+        }
+
+        // Each term is a component of the vector, the same in every component of
+        // the result, times an element of a row of the matrix.
+        var pairs = new List<(HlslTreeNode Factor, List<HlslTreeNode> Row)>();
+        for (int i = 0; i < rowCount; i++)
+        {
+            (HlslTreeNode factor1, HlslTreeNode factor2) = terms[0][i];
+            HlslTreeNode shared = new[] { factor1, factor2 }.FirstOrDefault(candidate => terms.All(t =>
+                NodeGrouper.AreNodesEquivalent(t[i].Item1, candidate)
+                || NodeGrouper.AreNodesEquivalent(t[i].Item2, candidate)));
+            if (shared == null)
+            {
+                return null;
+            }
+            pairs.Add((shared, [.. terms.Select(t =>
+                NodeGrouper.AreNodesEquivalent(t[i].Item1, shared) ? t[i].Item2 : t[i].Item1)]));
+        }
+        if (pairs.All(p => p.Factor is IHasComponentIndex))
+        {
+            pairs = [.. pairs.OrderBy(p => ((IHasComponentIndex)p.Factor).ComponentIndex)];
+        }
+        List<HlslTreeNode> vector = [.. pairs.Select(p => p.Factor)];
+        if (_nodeGrouper.GroupComponents(vector).Count != 1)
+        {
+            return null;
+        }
+
+        // Each row a row of one matrix, in order, times the same second matrix.
+        MatrixMultiplicationContext first = null;
+        string leftMatrix = null;
+        for (int i = 0; i < rowCount; i++)
+        {
+            MatrixMultiplicationContext multiplication =
+                _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(pairs[i].Row);
+            if (multiplication?.MatrixDeclaration == null
+                || _registers.TryGetMatrixRow(multiplication.Vector) is not (string matrix, int row)
+                || row != i)
+            {
+                return null;
+            }
+            if (i == 0)
+            {
+                (first, leftMatrix) = (multiplication, matrix);
+            }
+            else if (matrix != leftMatrix
+                || !multiplication.MatrixDeclaration.Equals(first.MatrixDeclaration)
+                || multiplication.IsMatrixByVector != first.IsMatrixByVector)
+            {
+                return null;
+            }
+        }
+        if (_registers.ConstantDeclarations.FirstOrDefault(d => d.Name == leftMatrix)?.TypeInfo.Rows != rowCount)
+        {
+            return null;
+        }
+        string product = _matrixMultiplicationCompiler.CompileMatrixProduct(first, leftMatrix);
+        if (product == null)
+        {
+            return null;
+        }
+        MarkGrouped(components, vector);
+        return $"mul({Compile(vector)}, {product})";
+    }
+
+    // The products a sum adds up, as their two factors, or null for one that adds
+    // anything else.
+    private static List<(HlslTreeNode, HlslTreeNode)> Terms(HlslTreeNode node)
+    {
+        switch (node)
+        {
+            case AddOperation add:
+                List<(HlslTreeNode, HlslTreeNode)> left = Terms(add.Addend1);
+                List<(HlslTreeNode, HlslTreeNode)> right = Terms(add.Addend2);
+                return left == null || right == null ? null : [.. left, .. right];
+            case MultiplyAddOperation multiplyAdd:
+                List<(HlslTreeNode, HlslTreeNode)> rest = Terms(multiplyAdd.Addend);
+                return rest == null ? null : [(multiplyAdd.Factor1, multiplyAdd.Factor2), .. rest];
+            case MultiplyOperation multiply:
+                return [(multiply.Factor1, multiply.Factor2)];
+            default:
+                return null;
+        }
+    }
+
     private void MarkGrouped(IEnumerable<HlslTreeNode> matched, params IEnumerable<HlslTreeNode>[] operands)
     {
         if (Grouped == null)
@@ -355,6 +456,11 @@ public sealed class NodeCompiler
 
         if (components.Count > 1)
         {
+            if (TryCompileVectorByMatrixProduct(components) is string product)
+            {
+                return product;
+            }
+
             IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
@@ -21,6 +22,61 @@ public class DotProductContext : IGroupContext
     public GroupNode Value2 { get; private set; }
 
     public int Dimension => Value1.Length;
+
+    /// <summary>
+    /// The match, unless one side of it is one value over and over and the other is
+    /// not a vector at all. `a*x + a*y` is a dot product of (a, a) with (x, y) as far
+    /// as the arithmetic goes, and a common factor as far as anyone writing it goes:
+    /// `tint * t1 + tint * k` came back as four `dot(tint.xx, float2(t1.x, k))`, one
+    /// per component, where the products and their sum say what it is.
+    ///
+    /// Against a vector it is a dot product however it is written - `dot(weight.xxx,
+    /// normal)` is a dp3 in the shader and attribute_snapped's source says so - and
+    /// so are two sides of one value each, `dot(v.ww, v.xx)`, which is what
+    /// dot_product2_add_scalar's source says.
+    /// </summary>
+    public static DotProductContext UnlessFactored(DotProductContext context, TemplateMatcher templateMatcher)
+    {
+        if (context == null)
+        {
+            return null;
+        }
+        bool firstIsOneValue = IsOneValue(context.Value1);
+        bool secondIsOneValue = IsOneValue(context.Value2);
+        if (firstIsOneValue == secondIsOneValue)
+        {
+            return context;
+        }
+        GroupNode other = firstIsOneValue ? context.Value2 : context.Value1;
+        bool otherIsVector = Enumerable.Range(1, other.Length - 1)
+            .All(i => templateMatcher.CanGroupComponents(other[0], other[i], true));
+        return otherIsVector ? context : null;
+    }
+
+    private static bool IsOneValue(GroupNode group)
+    {
+        return Enumerable.Range(1, group.Length - 1).All(i => IsSameValue(group[0], group[i]));
+    }
+
+    // The same value, and not merely the same expression of other components - which
+    // is what NodeGrouper.AreNodesEquivalent asks, for grouping: the x and y of one
+    // matrix product are equivalent to it and are not one value.
+    private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
+    {
+        if (ReferenceEquals(a, b))
+        {
+            return true;
+        }
+        return (a, b) switch
+        {
+            (RegisterInputNode x, RegisterInputNode y) => x.RegisterComponentKey.Equals(y.RegisterComponentKey),
+            (ConstantNode x, ConstantNode y) => x.Value == y.Value,
+            (Operation x, Operation y) => x.GetType() == y.GetType()
+                && x.Inputs.Count == y.Inputs.Count
+                && x.Inputs.Zip(y.Inputs).All(pair => IsSameValue(pair.First, pair.Second)),
+            _ => false,
+        };
+    }
 
     private void OrderByComponent()
     {

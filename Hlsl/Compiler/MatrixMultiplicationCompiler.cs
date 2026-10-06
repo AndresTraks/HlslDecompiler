@@ -36,6 +36,33 @@ public sealed class MatrixMultiplicationCompiler
             : $"mul({vector}, {matrixName})";
     }
 
+    /// <summary>
+    /// The product of a matrix with the one the context multiplies by, where the
+    /// context's vector is a row of that matrix: `mul(world, viewProjection)` from
+    /// `mul(world[0], viewProjection)`. Null where the vector is on the other side,
+    /// or the matrix is read in part or through an index, which a row of a product
+    /// does not say anything about.
+    /// </summary>
+    public string CompileMatrixProduct(MatrixMultiplicationContext context, string leftMatrix)
+    {
+        if (context.StructuredElement != null || context.ElementIndexNode != null
+            || context.ElementIndex != null || context.MemberPath != null)
+        {
+            return null;
+        }
+        ShaderTypeInfo matrixType = context.MatrixTypeInfo ?? context.MatrixDeclaration.TypeInfo;
+        bool matrixByVector = matrixType.ParameterClass == ParameterClass.MatrixRows
+            ? !context.IsMatrixByVector
+            : context.IsMatrixByVector;
+        int rows = matrixByVector ? context.MatrixRowCount : context.MatrixColumnCount;
+        int columns = matrixByVector ? context.MatrixColumnCount : context.MatrixRowCount;
+        if (matrixByVector || rows != matrixType.Rows || columns != matrixType.Columns)
+        {
+            return null;
+        }
+        return $"mul({leftMatrix}, {context.MatrixDeclaration.Name})";
+    }
+
     public string Compile(MatrixMultiplicationContext context)
     {
         if (context.StructuredElement != null)

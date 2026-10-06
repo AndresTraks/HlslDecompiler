@@ -48,7 +48,7 @@ public class HlslSimpleWriter : HlslWriter
             {
                 foreach (int stream in _registers.Streams)
                 {
-                    WriteLine("{0} {1};", _registers.StreamStructureName(stream),
+                    WriteLine("{0} {1};", StreamStructureName(stream),
                         _registers.StreamVariableName(stream));
                 }
             }

@@ -38,6 +38,8 @@ public class EffectTests
     [TestCase("fx_2_0", "preshader", "ps_3_0 ps_2_0 ps_3_0 ps_2_0 ps_2_0 vs_2_0")]
     [TestCase("fx_2_0", "shader_model_3", "ps_3_0 vs_3_0")]
     [TestCase("fx_4_0", "passes", "vs_4_0 gs_4_0 ps_4_0 ps_4_0")]
+    [TestCase("fx_4_0", "structure", "vs_4_0 gs_4_0 ps_4_0 ps_4_0 ps_4_0 vs_4_0 gs_4_0")]
+    [TestCase("fx_5_0", "structure", "gs_5_0 vs_5_0 ps_5_0 vs_5_0 hs_5_0 ds_5_0 cs_5_0")]
     [TestCase("fx_4_1", "gather", "vs_4_1 ps_4_1")]
     [TestCase("fx_5_0", "mixed_models", "vs_4_0 ps_4_0 vs_5_0 ps_5_0")]
     [TestCase("fx_5_0", "stages", "vs_5_0 hs_5_0 ds_5_0 ps_5_0 cs_5_0")]
@@ -96,8 +98,8 @@ public class EffectTests
         string diagnostics = RunFxc(profile, sourceFilename, withoutFilename, "/Op");
         Assert.That(diagnostics, Is.Null, diagnostics);
 
-        IList<ShaderModel> preshaded = ReadEffect(Path.Combine(Root, profile, baseFilename + ".fxc"));
-        IList<ShaderModel> without = ReadEffect(withoutFilename);
+        IList<ShaderModel> preshaded = ReadEffectShaders(Path.Combine(Root, profile, baseFilename + ".fxc"));
+        IList<ShaderModel> without = ReadEffectShaders(withoutFilename);
         Assert.That(without.Select(s => s.Profile), Is.EqualTo(preshaded.Select(s => s.Profile)),
             "Compiled without preshaders, the effect has other shaders.");
         Assert.That(preshaded.Any(s => Preshader.Find(s) != null), Is.True,
@@ -117,20 +119,135 @@ public class EffectTests
         Assert.That(differences, Is.Empty, string.Join(Environment.NewLine, differences));
     }
 
-    private static IList<ShaderModel> ReadEffect(string filename)
+    public static IEnumerable<TestCaseData> WholeEffects()
+    {
+        foreach (TestCaseData data in Effects().Where(data => (string)data.Arguments[0] != "fx_2_0"))
+        {
+            yield return new TestCaseData(data.Arguments)
+                .SetName($"EffectRoundTrip({data.Arguments[0]},{data.Arguments[1]})");
+        }
+    }
+
+    /// <summary>
+    /// The whole effect decompiled and compiled again, by each writer, is the same
+    /// effect: the same buffers, variables, values, annotations, state objects,
+    /// techniques, passes and assignments - <see cref="EffectDescription"/> has
+    /// every one of them - and each of its shaders computes what the original's
+    /// did. The structure is compared as the runtime would load it, so a state
+    /// written in other words that compiles to the same assignment is the same.
+    /// </summary>
+    [TestCaseSource(nameof(WholeEffects))]
+    [Category("Recompile")]
+    public void EffectRecompilesToItself(string profile, string baseFilename)
+    {
+        if (RecompileTests.FxcPath == null)
+        {
+            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+        }
+
+        string compiledFilename = Path.Combine(Root, profile, baseFilename + ".fxc");
+        Effect original = ReadEffectStructure(compiledFilename);
+        string originalDescription = EffectDescription.Describe(original);
+        IList<ShaderModel> originalShaders = ReadEffectShaders(compiledFilename);
+
+        var failures = new List<string>();
+        var unsupported = new List<string>();
+        foreach ((string writer, _) in Writers())
+        {
+            string hlslFilename = Path.Combine("Effects", $"{profile}_effect_{writer}", baseFilename + ".fx");
+            string objectFilename = Path.ChangeExtension(hlslFilename, ".fxo");
+            FileUtil.MakeFolder(hlslFilename);
+            try
+            {
+                new EffectWriter(original, doAstAnalysis: writer == "ast").Write(hlslFilename);
+            }
+            catch (Exception e)
+            {
+                failures.Add($"The {writer} writer threw: {e}");
+                continue;
+            }
+
+            string diagnostics = RunFxc(profile, hlslFilename, objectFilename);
+            if (diagnostics != null)
+            {
+                failures.Add($"The {writer} writer's effect at {hlslFilename} does not compile:{Environment.NewLine}{diagnostics}");
+                continue;
+            }
+
+            string recompiledDescription = EffectDescription.Describe(ReadEffectStructure(objectFilename));
+            if (recompiledDescription != originalDescription)
+            {
+                failures.Add($"The {writer} writer's effect compiles to another effect:{Environment.NewLine}"
+                    + FirstDifference(originalDescription, recompiledDescription));
+                continue;
+            }
+
+            IList<ShaderModel> recompiledShaders = ReadEffectShaders(objectFilename);
+            for (int i = 0; i < originalShaders.Count; i++)
+            {
+                try
+                {
+                    failures.AddRange(EquivalenceTests
+                        .CompareRuns(originalShaders[i], recompiledShaders[i], "the original", "its decompilation")
+                        .Select(difference => $"The {writer} writer's shader {i} ({originalShaders[i].Profile}) {difference}"));
+                }
+                catch (Exception e) when (e is D3D9Machine.UnsupportedException
+                    or D3D10Machine.UnsupportedException)
+                {
+                    unsupported.Add($"shader {i} ({originalShaders[i].Profile}): {e.Message}");
+                }
+            }
+        }
+
+        Assert.That(failures, Is.Empty, string.Join(Environment.NewLine, failures));
+        if (unsupported.Count != 0)
+        {
+            Assert.Warn("Compiled, and not run: " + string.Join(" ", unsupported.Distinct()));
+        }
+    }
+
+    // The line each description first says something else on, with the line before
+    // it for where it is.
+    private static string FirstDifference(string expected, string actual)
+    {
+        string[] expectedLines = expected.Split('\n');
+        string[] actualLines = actual.Split('\n');
+        for (int i = 0; i < Math.Max(expectedLines.Length, actualLines.Length); i++)
+        {
+            string e = i < expectedLines.Length ? expectedLines[i].TrimEnd() : "(end)";
+            string a = i < actualLines.Length ? actualLines[i].TrimEnd() : "(end)";
+            if (e != a)
+            {
+                string context = i > 0 ? expectedLines[i - 1].TrimEnd() : "";
+                return $"after: {context}{Environment.NewLine}expected: {e}{Environment.NewLine}actual:   {a}";
+            }
+        }
+        return "(no line differs)";
+    }
+
+    private static Effect ReadEffectStructure(string filename)
+    {
+        using var reader = new EffectReader(File.OpenRead(filename));
+        return reader.ReadEffect();
+    }
+
+    private static IList<ShaderModel> ReadEffectShaders(string filename)
     {
         using var reader = new EffectReader(File.OpenRead(filename));
         return reader.ReadShaders();
     }
 
     // fxc on an effect: no entry point to name, and whatever else it is asked.
-    private static string RunFxc(string profile, string sourceFilename, string objectFilename, string option)
+    private static string RunFxc(string profile, string sourceFilename, string objectFilename, string option = null)
     {
         var startInfo = RecompileTests.CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");
         startInfo.ArgumentList.Add("/T");
         startInfo.ArgumentList.Add(profile);
-        startInfo.ArgumentList.Add(option);
+        if (option != null)
+        {
+            startInfo.ArgumentList.Add(option);
+        }
         startInfo.ArgumentList.Add(sourceFilename);
         startInfo.ArgumentList.Add("/Fo");
         startInfo.ArgumentList.Add(objectFilename);

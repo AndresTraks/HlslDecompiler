@@ -24,7 +24,8 @@ namespace HlslDecompiler.DirectXShaderModel;
 /// fx_5_0 bare, the same body without the container around it. The body starts
 /// with a header of counts, then the "unstructured" data that the structured part
 /// after it points into - strings, default values, types, and the shaders, each
-/// stored as its length followed by its bytes.
+/// stored as its length followed by its bytes. The structured part says which of
+/// those are shaders: an expression the effect evaluates is a DXBC container too.
 /// </summary>
 public class EffectReader : BinaryReader
 {
@@ -76,54 +77,44 @@ public class EffectReader : BinaryReader
         }
         BaseStream.Position = start;
 
-        long bodyStart = FindBody();
-        BaseStream.Position = bodyStart;
+        // The variables' shaders, then those the passes compile, in order.
+        Effect effect = ReadEffect();
+        IEnumerable<EffectShader> variableShaders = effect.ObjectVariables.SelectMany(v => v.Shaders);
+        IEnumerable<EffectShader> passShaders = effect.Groups
+            .SelectMany(g => g.Techniques)
+            .SelectMany(t => t.Passes)
+            .SelectMany(p => p.Assignments)
+            .Select(a => a.Shader)
+            .Where(shader => shader != null);
+        return [.. variableShaders.Concat(passShaders)
+            .Select(shader => shader.Bytecode)
+            .Where(bytecode => bytecode != null)];
+    }
 
-        uint tag = ReadUInt32();
-        if (!IsEffectTag(tag))
+    /// <summary>
+    /// The variables, state objects, techniques and passes of a Direct3D 10 or 11
+    /// effect, with the shaders where they are set.
+    /// </summary>
+    public Effect ReadEffect()
+    {
+        (long bodyStart, long bodySize) = FindBodyAndSize();
+        BaseStream.Position = bodyStart;
+        byte[] body = ReadBytes((int)bodySize);
+        uint tag = BitConverter.ToUInt32(body, 0);
+        if (tag is not (Fx40 or Fx41 or Fx50))
         {
             throw new InvalidDataException($"Not a Direct3D 10 or 11 effect: tag 0x{tag:X8}.");
         }
-
-        // The counts: the effect's buffers, numeric and object variables, the same
-        // three again for the pool it shares, the techniques, and then the size of
-        // the unstructured data and the counts of everything else. fx_5_0 adds five
-        // more at the end for groups, UAVs and interfaces.
-        uint[] counts = new uint[tag == Fx50 ? 23 : 18];
-        for (int i = 0; i < counts.Length; i++)
-        {
-            counts[i] = ReadUInt32();
-        }
-        int unstructuredSize = (int)counts[7];
-        int totalShaders = (int)counts[16];
-
-        byte[] unstructured = ReadBytes(unstructuredSize);
-        if (unstructured.Length != unstructuredSize)
-        {
-            throw new InvalidDataException("The effect ends inside its unstructured data.");
-        }
-
-        List<byte[]> blobs = FindShaderBlobs(unstructured);
-
-        // The header counts shader variables, and a null one - SetGeometryShader(NULL)
-        // - is counted without having a shader stored. So the count is a ceiling
-        // rather than a total; finding more than it says means something that was
-        // not a shader has been taken for one.
-        if (blobs.Count > totalShaders)
-        {
-            throw new InvalidDataException(
-                $"Found {blobs.Count} shaders in an effect that declares {totalShaders}.");
-        }
-        return blobs;
+        return EffectStructureReader.Read(body);
     }
 
-    /// <returns>Where the effect body starts: past the DXBC container's FX10 chunk header if there is one.</returns>
-    private long FindBody()
+    /// <returns>Where the effect body starts, past the DXBC container's FX10 chunk header if there is one, and how long it is.</returns>
+    private (long Start, long Size) FindBodyAndSize()
     {
         long start = BaseStream.Position;
         if (ReadInt32() != FourCC.Make("DXBC"))
         {
-            return start;
+            return (start, BaseStream.Length - start);
         }
 
         ReadBytes(16); // checksum
@@ -141,47 +132,14 @@ public class EffectReader : BinaryReader
             BaseStream.Position = start + chunkOffset;
             if (ReadInt32() == FourCC.Make("FX10"))
             {
-                return start + chunkOffset + 8;
+                return (start + chunkOffset + 8, ReadInt32());
             }
         }
         throw new InvalidDataException("A DXBC container with no FX10 chunk is not an effect.");
     }
 
     /// <summary>
-    /// The shaders in the unstructured data, found by what they look like rather than
-    /// by following the structured data to them. That would mean reading every
-    /// buffer, variable, type, annotation, technique, pass and state assignment in
-    /// order to reach the offsets, for nothing else they hold; what a shader looks
-    /// like is checked twice over. It is a length, then a DXBC header that gives its
-    /// own total size again, and the two agree. Strings and default values sit in
-    /// between, so a shader can start at any byte, not only a dword.
-    /// </summary>
-    private static List<byte[]> FindShaderBlobs(byte[] data)
-    {
-        int dxbc = FourCC.Make("DXBC");
-        var blobs = new List<byte[]>();
-        int position = 4;
-        while (position + 32 <= data.Length)
-        {
-            if (ReadInt32(data, position) == dxbc)
-            {
-                int size = ReadInt32(data, position - 4);
-                if (size >= 32
-                    && position + size <= data.Length
-                    && ReadInt32(data, position + 24) == size)
-                {
-                    blobs.Add(data[position..(position + size)]);
-                    position += size + 4;
-                    continue;
-                }
-            }
-            position++;
-        }
-        return blobs;
-    }
-
-    /// <summary>
-    /// The shaders in an fx_2_0 effect, found the same way: a length, then a vertex
+    /// The shaders in an fx_2_0 effect, found by what they look like: a length, then a vertex
     /// or pixel shader version token, and the end token as the last of the tokens
     /// the length covers. A preshader is a token stream too, of a version of its own
     /// that is neither, and it is left where it is - the shader it computes

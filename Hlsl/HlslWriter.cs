@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 
 namespace HlslDecompiler;
 
@@ -44,6 +45,134 @@ public abstract class HlslWriter
     {
         _shader = shader;
     }
+
+    /// <summary>
+    /// What the shader is written as when it is one of several in an effect: a
+    /// function of this name rather than main, with its structs named after it so
+    /// that two vertex shaders' VS_IN do not collide, and without the uniforms and
+    /// resources, which the effect declares once for all of its shaders. Null for a
+    /// shader written on its own.
+    /// </summary>
+    public string FunctionName { get; init; }
+
+    private bool IsEffectFunction => FunctionName != null;
+
+    private string EntryName => FunctionName ?? "main";
+
+    // VS_IN, or vs_main_VS_IN in an effect.
+    protected string Named(string name) => IsEffectFunction ? $"{FunctionName}_{name}" : name;
+
+    protected string StreamStructureName(int? stream) => Named(_registers.StreamStructureName(stream));
+
+    /// <summary>
+    /// The type each resource the shader reads is declared as, which an effect
+    /// declaring it once for all its shaders needs: Texture2D&lt;uint4&gt; and
+    /// RWTexture2D&lt;float4&gt; are in the shader's declarations and nowhere in the
+    /// effect's own types, which say Texture2D and RWTexture2D.
+    /// </summary>
+    public Dictionary<string, string> ResourceTypeNames { get; } = [];
+
+    /// <summary>
+    /// The inputs a pixel shader in an effect has, read or not. On its own a shader
+    /// declares what it reads and fxc lays the rest out as it likes; in a pass, fxc
+    /// checks that each register of the stage before lands in the same register
+    /// here, and an SV_Position nothing reads, left out, moved the TEXCOORD after it
+    /// from v1 to v0 and failed the pass. The signature has every element where it
+    /// was, so what the declarations lack is taken from it.
+    /// </summary>
+    private void DeclareWholeInputSignature()
+    {
+        if (!IsEffectFunction || _shader.Type != ShaderType.Pixel)
+        {
+            return;
+        }
+        foreach (RegisterSignature signature in _shader.InputSignatures)
+        {
+            string semantic = signature.Index == 0 ? signature.Name : signature.Name + signature.Index;
+            bool isDeclared = _registers.MethodInputRegisters.Any(d =>
+                d.RegisterKey.Equals(signature.RegisterKey)
+                && string.Equals(d.Semantic, semantic, StringComparison.OrdinalIgnoreCase));
+            if (isDeclared)
+            {
+                continue;
+            }
+            RegisterDeclaration declaration = FromSignature(signature);
+            // A register it shares with an element that is declared holds the two
+            // side by side, each as wide as its own components.
+            if (_registers.MethodInputRegisters.FirstOrDefault(d => d.RegisterKey.Equals(signature.RegisterKey))
+                is RegisterDeclaration neighbour)
+            {
+                declaration.MaskedLengthOverride = BitOperations.PopCount((uint)signature.Mask);
+                neighbour.MaskedLengthOverride ??= BitOperations.PopCount((uint)neighbour.WriteMask);
+            }
+            _registers.MethodInputRegisters.Add(declaration);
+            _registers.RegisterDeclarations.TryAdd(signature.RegisterKey, declaration);
+        }
+
+        // In the order of the registers, which is the order fxc lays a struct out in.
+        List<RegisterDeclaration> ordered = [.. _registers.MethodInputRegisters
+            .OrderBy(d => d.RegisterKey.Number)
+            .ThenBy(d => BitOperations.TrailingZeroCount(d.WriteMask))];
+        _registers.MethodInputRegisters.Clear();
+        foreach (RegisterDeclaration declaration in ordered)
+        {
+            _registers.MethodInputRegisters.Add(declaration);
+        }
+    }
+
+    private void RecordResourceTypeNames()
+    {
+        foreach (ResourceDefinition resource in _registers.ResourceDefinitions ?? [])
+        {
+            if (ResourceTypeName(resource) is string typeName)
+            {
+                ResourceTypeNames.TryAdd(resource.Name, typeName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The type a resource is declared with, or null for one that is not declared
+    /// as a resource of its own: a texture buffer is its block.
+    /// </summary>
+    private string ResourceTypeName(ResourceDefinition resource)
+    {
+        return resource.ShaderInputType switch
+        {
+            D3DShaderInputType.TBuffer => null,
+            D3DShaderInputType.Texture => resource.TypeName,
+            // SampleCmp and SampleCmpLevelZero only take the comparison kind,
+            // which the reflection data flags.
+            D3DShaderInputType.Sampler => resource.Flags.HasFlag(D3DShaderInputFlags.ComparisonSampler)
+                ? "SamplerComparisonState"
+                : "SamplerState",
+            D3DShaderInputType.Structured => $"StructuredBuffer<{GetStructuredElementType(resource)}>",
+            D3DShaderInputType.UavRWStructured => $"RWStructuredBuffer<{GetStructuredElementType(resource)}>",
+            D3DShaderInputType.ByteAddress => "ByteAddressBuffer",
+            // An append or consume buffer declares itself the same way a
+            // structured one does and is bound with a counter beside it, which
+            // is what the reflection data calls it and the only place it is
+            // said: the bytecode declares dcl_uav_structured for all three.
+            D3DShaderInputType.UavAppendStructured => $"AppendStructuredBuffer<{GetStructuredElementType(resource)}>",
+            D3DShaderInputType.UavConsumeStructured => $"ConsumeStructuredBuffer<{GetStructuredElementType(resource)}>",
+            D3DShaderInputType.UavRWStucturedWithCounter => $"RWStructuredBuffer<{GetStructuredElementType(resource)}>",
+            D3DShaderInputType.UavRWByteAddress => "RWByteAddressBuffer",
+            // A typed unordered access view is the texture type it would be as a
+            // resource, written RW - and it always names its element type, where
+            // a read only texture names one only when it holds integers: there is
+            // no bare RWTexture2D that means RWTexture2D<float4>. Written by an
+            // interlocked operation, its element is the scalar that operation
+            // needs, which the source must have had.
+            D3DShaderInputType.UavRWTyped => _registers.IsAtomicTarget(resource)
+                ? resource.ReadWriteAtomicTypeName
+                : resource.ReadWriteTypeName,
+            _ => throw new NotImplementedException(),
+        };
+    }
+
+    private string PatchConstantFunctionName => Named(PatchConstants.FunctionName);
+
+    private string PatchConstantStructureName(ShaderType type) => Named(PatchConstants.StructureName(type));
 
     protected abstract void WriteMethodBody();
 
@@ -104,6 +233,8 @@ public abstract class HlslWriter
         _ast = InstructionParser.Parse(_shader);
         _registers = _ast.RegisterState;
 
+        RecordResourceTypeNames();
+        DeclareWholeInputSignature();
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
 
@@ -162,7 +293,7 @@ public abstract class HlslWriter
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
 
-        WriteFunction($"{methodReturnType} main({methodParameters}){methodSemantic}",
+        WriteFunction($"{methodReturnType} {EntryName}({methodParameters}){methodSemantic}",
             WriteMethodBody);
     }
 
@@ -183,6 +314,7 @@ public abstract class HlslWriter
         // where there is one - and so do the declarations both phases share, which
         // either has in full.
         EnterPhase(HullFunction.ControlPoint, hull.ControlPoint ?? hull.PatchConstant);
+        RecordResourceTypeNames();
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
         if (hull.ControlPoint != null)
@@ -202,7 +334,7 @@ public abstract class HlslWriter
         if (hull.PatchConstant != null)
         {
             EnterPhase(HullFunction.PatchConstant, hull.PatchConstant);
-            WriteFunction($"{GetMethodReturnType()} {PatchConstants.FunctionName}"
+            WriteFunction($"{GetMethodReturnType()} {PatchConstantFunctionName}"
                 + $"({GetMethodParameters()})", WriteMethodBody);
             WriteLine();
         }
@@ -212,7 +344,7 @@ public abstract class HlslWriter
             EnterPhase(HullFunction.ControlPoint, hull.ControlPoint);
             WriteTessellatorAttributes();
             WriteFunction(
-                $"{GetMethodReturnType()} main({GetMethodParameters()}){GetMethodSemantic()}",
+                $"{GetMethodReturnType()} {EntryName}({GetMethodParameters()}){GetMethodSemantic()}",
                 WriteMethodBody);
             return;
         }
@@ -221,7 +353,7 @@ public abstract class HlslWriter
         WriteTessellatorAttributes();
         string controlPointId = CompileRegisterDeclaration(ControlPointIdDeclaration());
         WriteFunction(
-            $"{GetOutputStructureName()} main(InputPatch<{GetInputStructureName()}, "
+            $"{GetOutputStructureName()} {EntryName}(InputPatch<{GetInputStructureName()}, "
                 + $"{_registers.InputControlPointCount}> patch, {controlPointId})",
             WritePassThroughControlPoint);
     }
@@ -358,7 +490,7 @@ public abstract class HlslWriter
             });
         }
         WriteLine("[outputcontrolpoints({0})]", _registers.OutputControlPointCount);
-        WriteLine("[patchconstantfunc(\"{0}\")]", PatchConstants.FunctionName);
+        WriteLine("[patchconstantfunc(\"{0}\")]", PatchConstantFunctionName);
     }
 
     // The resources whose element is a struct of its own, in declaration order.
@@ -374,6 +506,14 @@ public abstract class HlslWriter
 
     private void WriteConstantDeclarations()
     {
+        // In an effect the uniforms and the resources are the effect's, declared
+        // once. What stays with the function is what is its own: literal arrays.
+        if (IsEffectFunction)
+        {
+            WriteStaticConstants();
+            return;
+        }
+
         // One compiler for the uniforms and for the structured buffer elements
         // alike: a struct-typed member is declared once, as struct1, struct2 and
         // so on, and whichever of the two holds it names that one declaration.
@@ -489,6 +629,12 @@ public abstract class HlslWriter
             }
         }
 
+        WriteStaticConstants();
+        WriteResourceDeclarations(compiler);
+    }
+
+    private void WriteStaticConstants()
+    {
         // Emitted after the uniforms so that a subscript reading one is already in
         // scope, though nothing in a literal array can reference anything anyway.
         // Only while something still reads it. A buffer whose every read was a row of
@@ -536,7 +682,10 @@ public abstract class HlslWriter
             WriteLine("};");
             WriteLine();
         }
+    }
 
+    private void WriteResourceDeclarations(ConstantDeclarationCompiler compiler)
+    {
         if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
         {
             // A structured buffer whose element is a struct needs that struct named
@@ -566,78 +715,30 @@ public abstract class HlslWriter
             int nextSampler = 0;
             foreach (var resource in _registers.ResourceDefinitions)
             {
+                string typeName = ResourceTypeName(resource);
                 // A texture buffer is declared by its block, with the constants,
                 // and not as a resource of its own.
-                if (resource.ShaderInputType == D3DShaderInputType.TBuffer)
+                if (typeName == null)
                 {
                     continue;
                 }
+                string slot;
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
-                    string slot = resource.BindPoint == nextTexture ? "" : $" : register(t{resource.BindPoint})";
+                    slot = resource.BindPoint == nextTexture ? "" : $" : register(t{resource.BindPoint})";
                     nextTexture = resource.BindPoint + 1;
-                    WriteLine($"{resource.TypeName} {resource.Name}{slot};");
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
-                    // SampleCmp and SampleCmpLevelZero only take the comparison kind,
-                    // which the reflection data flags.
-                    string samplerType = resource.Flags.HasFlag(D3DShaderInputFlags.ComparisonSampler)
-                        ? "SamplerComparisonState"
-                        : "SamplerState";
-                    string slot = resource.BindPoint == nextSampler ? "" : $" : register(s{resource.BindPoint})";
+                    slot = resource.BindPoint == nextSampler ? "" : $" : register(s{resource.BindPoint})";
                     nextSampler = resource.BindPoint + 1;
-                    WriteLine($"{samplerType} {resource.Name}{slot};");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.Structured)
-                {
-                    WriteLine($"StructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(t{resource.BindPoint});");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.UavRWStructured)
-                {
-                    WriteLine($"RWStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.ByteAddress)
-                {
-                    WriteLine($"ByteAddressBuffer {resource.Name} : register(t{resource.BindPoint});");
-                }
-                // An append or consume buffer declares itself the same way a
-                // structured one does and is bound with a counter beside it, which
-                // is what the reflection data calls it and the only place it is
-                // said: the bytecode declares dcl_uav_structured for all three.
-                else if (resource.ShaderInputType == D3DShaderInputType.UavAppendStructured)
-                {
-                    WriteLine($"AppendStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.UavConsumeStructured)
-                {
-                    WriteLine($"ConsumeStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.UavRWStucturedWithCounter)
-                {
-                    WriteLine($"RWStructuredBuffer<{GetStructuredElementType(resource)}> {resource.Name} : register(u{resource.BindPoint});");
-                }
-                else if (resource.ShaderInputType == D3DShaderInputType.UavRWByteAddress)
-                {
-                    WriteLine($"RWByteAddressBuffer {resource.Name} : register(u{resource.BindPoint});");
-                }
-                // A typed unordered access view is the texture type it would be as a
-                // resource, written RW - and it always names its element type, where
-                // a read only texture names one only when it holds integers: there is
-                // no bare RWTexture2D that means RWTexture2D<float4>. Written by an
-                // interlocked operation, its element is the scalar that operation
-                // needs, which the source must have had.
-                else if (resource.ShaderInputType == D3DShaderInputType.UavRWTyped)
-                {
-                    string viewTypeName = _registers.IsAtomicTarget(resource)
-                        ? resource.ReadWriteAtomicTypeName
-                        : resource.ReadWriteTypeName;
-                    WriteLine($"{viewTypeName} {resource.Name} : register(u{resource.BindPoint});");
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    bool isView = resource.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress;
+                    slot = $" : register({(isView ? 't' : 'u')}{resource.BindPoint})";
                 }
+                WriteLine($"{typeName} {resource.Name}{slot};");
                 declared++;
             }
             if (declared != 0)
@@ -770,7 +871,7 @@ public abstract class HlslWriter
     // takes its inputs, and more than one of them needs a structure to hold them.
     private string GetInputStructureName()
     {
-        return _shader.Type switch
+        return Named(_shader.Type switch
         {
             ShaderType.Pixel => "PS_IN",
             ShaderType.Vertex => "VS_IN",
@@ -779,7 +880,7 @@ public abstract class HlslWriter
             ShaderType.Domain => "DS_IN",
             ShaderType.Hull => "HS_IN",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
-        };
+        });
     }
 
     /// <summary>
@@ -791,9 +892,9 @@ public abstract class HlslWriter
     {
         if (_hullFunction == HullFunction.PatchConstant)
         {
-            return PatchConstants.StructureName(ShaderType.Hull);
+            return PatchConstantStructureName(ShaderType.Hull);
         }
-        return _shader.Type switch
+        return Named(_shader.Type switch
         {
             ShaderType.Pixel => "PS_OUT",
             ShaderType.Vertex => "VS_OUT",
@@ -801,7 +902,7 @@ public abstract class HlslWriter
             ShaderType.Hull => "HS_OUT",
             ShaderType.Domain => "DS_OUT",
             _ => throw new NotImplementedException(_shader.Type.ToString()),
-        };
+        });
     }
 
     private void WriteInputStructureDeclaration()
@@ -856,7 +957,7 @@ public abstract class HlslWriter
     /// </summary>
     private void WritePatchConstantStructureDeclaration()
     {
-        WriteLine($"struct {PatchConstants.StructureName(_shader.Type)}");
+        WriteLine($"struct {PatchConstantStructureName(_shader.Type)}");
         WriteLine("{");
         indent = "\t";
         IList<RegisterSignature> signatures = _shader.PatchConstantSignatures;
@@ -944,7 +1045,7 @@ public abstract class HlslWriter
 
     private void WriteStreamStructureDeclaration(int stream)
     {
-        WriteLine($"struct {_registers.StreamStructureName(stream)}");
+        WriteLine($"struct {StreamStructureName(stream)}");
         WriteLine("{");
         indent = "\t";
         foreach (RegisterDeclaration output in _registers.MethodOutputRegisters
@@ -1011,15 +1112,15 @@ public abstract class HlslWriter
             string stream = _registers.HasSeveralStreams
                 ? string.Join(", ", _registers.Streams.Select(s =>
                     $"inout {GetStreamType(_registers.TopologyByStream[s])}"
-                        + $"<{_registers.StreamStructureName(s)}> {_registers.StreamParameterName(s)}"))
-                : $"inout {GetStreamType(_registers.PrimitiveTopology)}<GS_OUT> stream";
+                        + $"<{StreamStructureName(s)}> {_registers.StreamParameterName(s)}"))
+                : $"inout {GetStreamType(_registers.PrimitiveTopology)}<{GetOutputStructureName()}> stream";
             string primitiveId = _registers.PrimitiveIdDeclaration == null
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration)}, ";
             string instanceId = _registers.GSInstanceIdDeclaration == null
                 ? ""
                 : $"{CompileRegisterDeclaration(_registers.GSInstanceIdDeclaration)}, ";
-            return $"{primitive} GS_IN i[{vertexCount}], {primitiveId}{instanceId}{stream}";
+            return $"{primitive} {GetInputStructureName()} i[{vertexCount}], {primitiveId}{instanceId}{stream}";
         }
         if (_shader.Type == ShaderType.Hull)
         {
@@ -1056,7 +1157,7 @@ public abstract class HlslWriter
             string domainLocation = location == null
                 ? ""
                 : CompileRegisterDeclaration(location) + ", ";
-            return $"{PatchConstants.StructureName(_shader.Type)} {PatchConstants.ParameterName}, {domainLocation}"
+            return $"{PatchConstantStructureName(_shader.Type)} {PatchConstants.ParameterName}, {domainLocation}"
                 + $"const OutputPatch<{GetInputStructureName()}, "
                 + $"{_registers.InputControlPointCount}> patch";
         }

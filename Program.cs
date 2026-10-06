@@ -104,13 +104,41 @@ class Program
     }
 
     /// <summary>
-    /// Each shader an effect holds, as if it had been compiled on its own: name_vs0,
-    /// name_ps0 and so on, numbered per stage in the order the effect stores them.
-    /// The techniques and passes that set them are not written yet.
+    /// A Direct3D 10 or 11 effect is written back whole, as name.fx: its variables,
+    /// its shaders as functions, and its techniques. The disassembly is a listing
+    /// per shader, name_vs0.asm, name_ps0.asm and so on, numbered per stage in the
+    /// order the effect stores them. An fx_2_0 effect is written a shader at a time,
+    /// as though each had been compiled on its own.
     /// </summary>
     private static void ReadEffect(string baseFilename, FileStream inputStream, CommandLineOptions options)
     {
+        long start = inputStream.Position;
         using var input = new EffectReader(inputStream, true);
+        bool isD3D9 = input.ReadUInt32() == EffectReader.Fx20;
+        inputStream.Position = start;
+        if (isD3D9)
+        {
+            ReadShadersOfEffect(baseFilename, input, options, writeHlsl: true);
+            return;
+        }
+
+        Effect effect = input.ReadEffect();
+        inputStream.Position = start;
+        ReadShadersOfEffect(baseFilename, input, options, writeHlsl: false);
+
+        var writer = new EffectWriter(effect, options.DoAstAnalysis);
+        if (options.PrintToConsole)
+        {
+            writer.Write(Console.Out);
+            return;
+        }
+        string hlslFilename = $"{baseFilename}.fx";
+        Console.WriteLine("Writing {0}", hlslFilename);
+        writer.Write(hlslFilename);
+    }
+
+    private static void ReadShadersOfEffect(string baseFilename, EffectReader input, CommandLineOptions options, bool writeHlsl)
+    {
         var stageCounts = new Dictionary<string, int>();
         foreach (ShaderModel shader in input.ReadShaders())
         {
@@ -123,6 +151,10 @@ class Program
                 string asmFilename = $"{outFilename}.asm";
                 Console.WriteLine("Writing {0}", asmFilename);
                 new AsmWriter(shader).Write(asmFilename);
+            }
+            if (!writeHlsl)
+            {
+                continue;
             }
 
             // Written whole before it goes anywhere, so that one shader the writer

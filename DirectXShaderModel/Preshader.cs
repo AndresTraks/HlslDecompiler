@@ -158,6 +158,50 @@ public sealed class Preshader
         return new Preshader(inputs, literals, instructions);
     }
 
+    /// <summary>
+    /// An expression a Direct3D 10 or 11 effect evaluates when it applies a pass -
+    /// the index of `shaders[mode]`, or a state set from uniforms. It is the same
+    /// program as an fx_2_0 preshader, stored in a DXBC container instead: chunks of
+    /// its constant table, its literals - single precision here, CLI4 - and its
+    /// instructions. Its one output is the value.
+    /// </summary>
+    public static Preshader ReadExpression(byte[] container)
+    {
+        uint Read(int position) => BitConverter.ToUInt32(container, position);
+
+        var inputs = new ConstantTable();
+        double[] literals = [];
+        List<PreshaderInstruction> instructions = [];
+        int chunkCount = (int)Read(28);
+        for (int i = 0; i < chunkCount; i++)
+        {
+            int chunk = (int)Read(32 + i * 4);
+            string type = FourCC.Decode((int)Read(chunk));
+            int size = (int)Read(chunk + 4);
+            // The chunk as the token stream's comments have it: its FOURCC, then
+            // its contents.
+            uint[] payload = [.. Enumerable.Range(0, size / 4 + 1).Select(t => Read(chunk + 4 + t * 4))];
+            payload[0] = Read(chunk);
+            switch (type)
+            {
+                case "CTAB":
+                    using (var reader = new ConstantTableCommentReader(new D3D9Instruction((uint)Opcode.Comment, payload)))
+                    {
+                        inputs = reader.ReadTable();
+                    }
+                    break;
+                case "CLI4":
+                    literals = [.. Enumerable.Range(0, (int)payload[1])
+                        .Select(l => (double)BitConverter.UInt32BitsToSingle(payload[2 + l]))];
+                    break;
+                case "FXLC":
+                    instructions = ReadInstructions(payload);
+                    break;
+            }
+        }
+        return new Preshader(inputs, literals, instructions);
+    }
+
     private static double[] ReadLiterals(uint[] payload)
     {
         int count = (int)payload[1];

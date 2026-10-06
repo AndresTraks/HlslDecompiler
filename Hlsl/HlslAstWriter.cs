@@ -55,7 +55,7 @@ public class HlslAstWriter : HlslWriter
                 ? _registers.Streams.Select(s => (int?)s)
                 : [null])
             {
-                WriteLine($"{(stream == null ? GetOutputStructureName() : _registers.StreamStructureName(stream))} "
+                WriteLine($"{(stream == null ? GetOutputStructureName() : StreamStructureName(stream))} "
                     + $"{_registers.StreamVariableName(stream)};");
             }
             WriteLine();

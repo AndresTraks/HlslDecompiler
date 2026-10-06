@@ -2,6 +2,7 @@
 using HlslDecompiler.Hlsl;
 using HlslDecompiler.Util;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace HlslDecompiler;
@@ -31,6 +32,9 @@ class Program
                 break;
             case ShaderFileFormat.Rgxa:
                 ReadRgxa(baseFilename, inputStream, options.DoAstAnalysis);
+                break;
+            case ShaderFileFormat.Effect:
+                ReadEffect(baseFilename, inputStream, options);
                 break;
             case ShaderFileFormat.Unknown:
                 Console.WriteLine("Unknown file format!");
@@ -96,6 +100,40 @@ class Program
                 Console.WriteLine("Writing {0}", hlslFilename);
                 hlslWriter.Write(hlslFilename);
             }
+        }
+    }
+
+    /// <summary>
+    /// Each shader an effect holds, as if it had been compiled on its own: name_vs0,
+    /// name_ps0 and so on, numbered per stage in the order the effect stores them.
+    /// The techniques and passes that set them are not written yet.
+    /// </summary>
+    private static void ReadEffect(string baseFilename, FileStream inputStream, CommandLineOptions options)
+    {
+        using var input = new EffectReader(inputStream, true);
+        var stageCounts = new Dictionary<string, int>();
+        foreach (ShaderModel shader in input.ReadShaders())
+        {
+            int index = stageCounts.GetValueOrDefault(shader.Stage);
+            stageCounts[shader.Stage] = index + 1;
+            string outFilename = $"{baseFilename}_{shader.Stage}{index}";
+
+            var hlslWriter = CreateHlslWriter(shader, options.DoAstAnalysis);
+            if (options.PrintToConsole)
+            {
+                Console.WriteLine($"// {outFilename}: {shader.Profile}");
+                hlslWriter.Write(Console.Out);
+                Console.WriteLine();
+                continue;
+            }
+
+            string asmFilename = $"{outFilename}.asm";
+            Console.WriteLine("Writing {0}", asmFilename);
+            new AsmWriter(shader).Write(asmFilename);
+
+            string hlslFilename = $"{outFilename}.fx";
+            Console.WriteLine("Writing {0}", hlslFilename);
+            hlslWriter.Write(hlslFilename);
         }
     }
 

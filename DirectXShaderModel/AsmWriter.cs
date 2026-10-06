@@ -87,17 +87,7 @@ public class AsmWriter
     public void Write(Stream stream)
     {
         asmWriter = new StreamWriter(stream) { NewLine = "\r\n" };
-        string shaderType = shader.Type switch
-        {
-            ShaderType.Vertex => "vs",
-            ShaderType.Pixel => "ps",
-            ShaderType.Geometry => "gs",
-            ShaderType.Compute => "cs",
-            ShaderType.Domain => "ds",
-            ShaderType.Hull => "hs",
-            _ => throw new NotImplementedException(shader.Type.ToString()),
-        };
-        WriteLine($"{shaderType}_{shader.MajorVersion}_{shader.MinorVersion}");
+        WriteLine(shader.Profile);
 
         foreach (Instruction instruction in shader.Instructions)
         {

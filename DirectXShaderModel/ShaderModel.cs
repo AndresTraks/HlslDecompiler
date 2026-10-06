@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace HlslDecompiler.DirectXShaderModel;
@@ -8,6 +9,21 @@ public class ShaderModel
     public int MajorVersion { get; }
     public int MinorVersion { get; }
     public ShaderType Type { get; }
+
+    /// <summary>The fxc target this was compiled for, vs_3_0 or cs_5_0.</summary>
+    public string Profile => $"{Stage}_{MajorVersion}_{MinorVersion}";
+
+    /// <summary>The two letters a profile starts with.</summary>
+    public string Stage => Type switch
+    {
+        ShaderType.Vertex => "vs",
+        ShaderType.Pixel => "ps",
+        ShaderType.Geometry => "gs",
+        ShaderType.Compute => "cs",
+        ShaderType.Domain => "ds",
+        ShaderType.Hull => "hs",
+        _ => throw new NotImplementedException(Type.ToString()),
+    };
 
     public IList<Instruction> Instructions { get; }
     public IList<RegisterSignature> InputSignatures { get; }

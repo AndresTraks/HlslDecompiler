@@ -61,6 +61,17 @@ function CompileByProfile($profile, $fxc) {
     }
 }
 
+# Effects hold several shaders each, so they go to CompiledEffects rather than
+# beside the shaders, and have no entry point to name.
+function CompileEffectsByProfile($profile, $fxc) {
+    ForEach ($effectSource in Get-ChildItem "EffectSources\$($profile)\*.fx") {
+        $basename = $effectSource.Basename
+        Write-Host "Compiling $profile\$basename..."
+        New-Item -ItemType Directory -Force -Path "CompiledEffects\$profile" | Out-Null
+        RunProgram $fxc "/T $profile EffectSources\$profile\$basename.fx /Fo CompiledEffects\$profile\$basename.fxc"
+    }
+}
+
 function CompileAll {
     $fxc = FindFxc
     if (-Not $fxc) {
@@ -76,6 +87,9 @@ function CompileAll {
     CompileByProfile "vs_4_0" $fxc
     CompileByProfile "gs_4_1" $fxc
     CompileByProfile "cs_4_1" $fxc
+    CompileEffectsByProfile "fx_4_0" $fxc
+    CompileEffectsByProfile "fx_4_1" $fxc
+    CompileEffectsByProfile "fx_5_0" $fxc
 }
 
 CompileAll

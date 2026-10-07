@@ -15,6 +15,12 @@ namespace HlslDecompiler.Hlsl;
 /// registers a body reads before writing it are the method's parameters, and the one
 /// register it writes is the method's result. A body that reads a register it never
 /// writes is reading what HLSL passed in as an argument.
+///
+/// The names come from the reflection data: the interface variables and the
+/// interface each was declared as from RDEF, the classes and which table each fills
+/// from IFCE. A host binds a class instance by its class name and finds the
+/// interface by its variable name, so those are kept. Without both chunks every
+/// interface instance gets an interface of its own and every table a class.
 /// </summary>
 public class LinkageModel
 {
@@ -40,6 +46,10 @@ public class LinkageModel
         public int[] Bodies { get; init; }
     }
 
+    /// <summary>
+    /// One interface instance as declared: an fp, its variable, the tables a class
+    /// bound to it fills, and the class each table belongs to.
+    /// </summary>
     public class InterfaceInfo
     {
         public int Number { get; init; }
@@ -47,16 +57,60 @@ public class LinkageModel
         public int FunctionsPerTable { get; init; }
         public int[] Tables { get; init; }
 
-        public string Name => $"I{Number}";
-        public string InstanceName => $"g{Number}";
-        public bool IsArray => InstanceArrayLength > 1;
-        public string ClassName(int tableSlot) => $"I{Number}C{Tables[tableSlot]}";
-        public static string MethodName(int function) => $"F{function}";
+        public string InstanceName { get; set; }
+        public bool IsArray { get; set; }
+        public InterfaceTypeInfo Type { get; set; }
+
+        /// <summary>The class filling each table, in the order of <see cref="Tables"/>.</summary>
+        public ClassInfo[] TableClasses { get; set; }
+
+        /// <summary>The method called through each function index of this instance.</summary>
+        public MethodInfo[] Methods { get; set; }
+
+        public string InstanceExpression(int instance) =>
+            IsArray ? $"{InstanceName}[{instance}]" : InstanceName;
+    }
+
+    /// <summary>
+    /// A method of an interface: what one function index of one interface instance
+    /// calls. Every class's body for it has to hand back the same register - the
+    /// call site reads one - and the parameters are every register any of them
+    /// reads, since the call site passes the same arguments whichever runs.
+    /// </summary>
+    public class MethodInfo
+    {
+        public string Name { get; init; }
+        public InterfaceInfo Interface { get; init; }
+        public int Function { get; init; }
+        public List<RegisterKey> Parameters { get; } = [];
+        public RegisterKey ReturnRegister { get; set; }
+        public List<FunctionBodyInfo> Bodies { get; } = [];
+    }
+
+    public class InterfaceTypeInfo
+    {
+        public string Name { get; init; }
+        public List<MethodInfo> Methods { get; } = [];
+    }
+
+    public class ClassInfo
+    {
+        public string Name { get; init; }
+
+        /// <summary>The class type ID, where IFCE gave one.</summary>
+        public int TypeId { get; init; }
+
+        public List<InterfaceTypeInfo> Implements { get; } = [];
+
+        /// <summary>The body this class runs for each method of what it implements.</summary>
+        public Dictionary<MethodInfo, FunctionBodyInfo> Bodies { get; } = [];
     }
 
     public List<InterfaceInfo> Interfaces { get; } = [];
     public List<FunctionTableInfo> Tables { get; } = [];
     public List<FunctionBodyInfo> Bodies { get; } = [];
+    public List<InterfaceTypeInfo> InterfaceTypes { get; } = [];
+    public List<ClassInfo> Classes { get; } = [];
 
     /// <summary>
     /// How many instructions the main program holds: everything before the first
@@ -70,11 +124,11 @@ public class LinkageModel
         Bodies.FirstOrDefault(b => b.Number == number)
         ?? throw new NotImplementedException($"label fb{number} names no function body");
 
-    public FunctionBodyInfo BodyForCall(int interfaceNumber, int instance, int function)
-    {
-        InterfaceInfo iface = Interfaces.First(i => i.Number == interfaceNumber);
-        return BodyByLabel(Tables.First(t => t.Number == iface.Tables[0]).Bodies[function]);
-    }
+    public InterfaceInfo InterfaceByNumber(int interfaceNumber) =>
+        Interfaces.First(i => i.Number == interfaceNumber);
+
+    public MethodInfo MethodForCall(int interfaceNumber, int function) =>
+        InterfaceByNumber(interfaceNumber).Methods[function];
 
     public static LinkageModel Read(ShaderModel shader)
     {
@@ -114,11 +168,13 @@ public class LinkageModel
                 case D3D10Opcode.DclInterface:
                     {
                         uint[] tokens = instruction.OperandTokens.Tokens;
+                        int arrayLength = (int)(tokens[2] >> 16);
                         model.Interfaces.Add(new InterfaceInfo
                         {
                             Number = (int)tokens[0],
                             FunctionsPerTable = (int)tokens[1],
-                            InstanceArrayLength = (int)(tokens[2] >> 16),
+                            InstanceArrayLength = arrayLength,
+                            IsArray = arrayLength > 1,
                             Tables = [.. tokens.Skip(3).Take((int)(tokens[2] & 0xFFFF))
                                 .Select(t => (int)t)],
                         });
@@ -143,10 +199,15 @@ public class LinkageModel
             body.Last = label.Index == labels[^1].Index
                 ? shader.Instructions.Count
                 : labels[labels.IndexOf(label) + 1].Index;
-            ReadSignature(model, shader, body);
+            ReadSignature(shader, body);
         }
 
-        CheckAbisMatch(model);
+        if (!ReadNames(model, shader))
+        {
+            NameByNumber(model);
+        }
+        ReadMethods(model);
+        ReadClasses(model);
         return model;
     }
 
@@ -156,7 +217,7 @@ public class LinkageModel
     /// something HLSL declares outside the method too, and not a parameter; anything
     /// else the body reads without first writing it came in as an argument.
     /// </summary>
-    private static void ReadSignature(LinkageModel model, ShaderModel shader, FunctionBodyInfo body)
+    private static void ReadSignature(ShaderModel shader, FunctionBodyInfo body)
     {
         var written = new HashSet<RegisterKey>();
         for (int i = body.First; i < body.Last; i++)
@@ -219,31 +280,198 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// Every body that one interface method could run has to take the same arguments
-    /// and hand back the same register, or the call site has no one shape to match:
-    /// they are implementations of the one HLSL method, and HLSL checks they agree.
+    /// The names the reflection data keeps. The fps take the interface slots in
+    /// order, as many each as the array declares, and an interface variable's offset
+    /// in $ThisPointer is the first slot it takes - so g_many at offset 1 is fp1
+    /// when g_one before it takes slot 0. The slot record covering that slot says
+    /// which class type fills which of the fp's tables. Every interface that has
+    /// the same declared type is one interface, and every table of one class type
+    /// one class, however many instances it was bound through.
+    ///
+    /// False, with nothing named, when either chunk is missing or the two do not
+    /// account for every fp and every table.
     /// </summary>
-    private static void CheckAbisMatch(LinkageModel model)
+    private static bool ReadNames(LinkageModel model, ShaderModel shader)
+    {
+        ShaderInterfaces interfaces = shader.Interfaces;
+        if (interfaces == null || shader.ConstantDeclarations == null)
+        {
+            return false;
+        }
+        if (interfaces.ClassInstanceCount != 0)
+        {
+            throw new NotImplementedException("a class instance declared in the shader");
+        }
+
+        var variables = shader.ConstantDeclarations
+            .Where(d => d.TypeInfo?.ParameterClass == ParameterClass.InterfacePointer
+                && d.TypeInfo.Name != null)
+            .ToList();
+        var named = new List<(InterfaceInfo Interface, D3D10ConstantDeclaration Variable,
+            InterfaceSlotRecord Record)>();
+        int slot = 0;
+        foreach (InterfaceInfo iface in model.Interfaces.OrderBy(i => i.Number))
+        {
+            D3D10ConstantDeclaration variable = variables
+                .FirstOrDefault(v => v.VariableOffset == slot);
+            InterfaceSlotRecord record = interfaces.RecordForSlot(slot);
+            if (variable == null || record == null
+                || iface.Tables.Any(t => !record.TableIds.Contains(t))
+                || record.TypeIds.Any(id => id >= interfaces.ClassTypeNames.Count))
+            {
+                return false;
+            }
+            named.Add((iface, variable, record));
+            slot += Math.Max(iface.InstanceArrayLength, 1);
+        }
+
+        var types = new Dictionary<string, InterfaceTypeInfo>();
+        var classes = new Dictionary<int, ClassInfo>();
+        foreach ((InterfaceInfo iface, D3D10ConstantDeclaration variable,
+            InterfaceSlotRecord record) in named)
+        {
+            iface.InstanceName = variable.Name;
+            iface.IsArray = variable.TypeInfo.NumElements > 0;
+            if (!types.TryGetValue(variable.TypeInfo.Name, out InterfaceTypeInfo type))
+            {
+                type = new InterfaceTypeInfo { Name = variable.TypeInfo.Name };
+                types.Add(type.Name, type);
+                model.InterfaceTypes.Add(type);
+            }
+            iface.Type = type;
+            iface.TableClasses = [.. iface.Tables.Select(table =>
+            {
+                int typeId = record.TypeIds[Array.IndexOf(record.TableIds, table)];
+                if (!classes.TryGetValue(typeId, out ClassInfo classInfo))
+                {
+                    classInfo = new ClassInfo
+                    {
+                        Name = interfaces.ClassTypeNames[typeId],
+                        TypeId = typeId,
+                    };
+                    classes.Add(typeId, classInfo);
+                }
+                return classInfo;
+            })];
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Names for a shader whose reflection data is gone: each fp an interface of its
+    /// own with a global of its own, and each of its tables a class implementing it.
+    /// </summary>
+    private static void NameByNumber(LinkageModel model)
     {
         foreach (InterfaceInfo iface in model.Interfaces)
         {
-            foreach (int table in iface.Tables)
+            iface.InstanceName = $"g{iface.Number}";
+            iface.Type = new InterfaceTypeInfo { Name = $"I{iface.Number}" };
+            model.InterfaceTypes.Add(iface.Type);
+            iface.TableClasses = [.. iface.Tables.Select(table => new ClassInfo
             {
-                FunctionBodyInfo[] bodies = model.Tables
-                    .First(t => t.Number == table).Bodies
-                    .Select(model.BodyByLabel).ToArray();
-                foreach (FunctionBodyInfo body in bodies)
+                Name = $"I{iface.Number}C{table}",
+                TypeId = table,
+            })];
+        }
+    }
+
+    /// <summary>
+    /// One method per function index of each fp, numbered across the shader so that
+    /// two interfaces one class implements never declare the same name. Two fps of
+    /// one interface may be calling one method or two, and nothing in the bytecode
+    /// says which - each gets its own, which compiles to the same tables.
+    /// </summary>
+    private static void ReadMethods(LinkageModel model)
+    {
+        int methodNumber = 0;
+        foreach (InterfaceInfo iface in model.Interfaces.OrderBy(i => i.Number))
+        {
+            iface.Methods = new MethodInfo[iface.FunctionsPerTable];
+            for (int function = 0; function < iface.FunctionsPerTable; function++)
+            {
+                var method = new MethodInfo
                 {
-                    if (body.Parameters.Count != bodies[0].Parameters.Count
-                        || !body.Parameters.SequenceEqual(bodies[0].Parameters)
-                        || !Equals(body.ReturnRegister, bodies[0].ReturnRegister))
+                    Name = $"F{methodNumber++}",
+                    Interface = iface,
+                    Function = function,
+                };
+                foreach (int table in iface.Tables)
+                {
+                    FunctionBodyInfo body = model.BodyByLabel(
+                        model.Tables.First(t => t.Number == table).Bodies[function]);
+                    method.Bodies.Add(body);
+                    if (method.ReturnRegister == null)
+                    {
+                        method.ReturnRegister = body.ReturnRegister;
+                    }
+                    else if (!Equals(method.ReturnRegister, body.ReturnRegister))
                     {
                         throw new NotImplementedException(
                             "one interface method with two shapes of body");
                     }
+                    foreach (RegisterKey parameter in body.Parameters)
+                    {
+                        if (!method.Parameters.Contains(parameter))
+                        {
+                            method.Parameters.Add(parameter);
+                        }
+                    }
+                }
+                method.Parameters.Sort((a, b) => a.Number.CompareTo(b.Number));
+                iface.Methods[function] = method;
+                iface.Type.Methods.Add(method);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Each class with the interfaces it implements and the body it runs for every
+    /// method of them. A class bound through one instance of an interface and not
+    /// through another of the same interface has no body for half its methods, and
+    /// says so.
+    ///
+    /// The order is fxc's: it numbers the classes of one interface last declared
+    /// first, so declaring them by descending type ID within each interface gives
+    /// them back the IDs they had.
+    /// </summary>
+    private static void ReadClasses(LinkageModel model)
+    {
+        var classes = new List<ClassInfo>();
+        foreach (InterfaceInfo iface in model.Interfaces.OrderBy(i => i.Number))
+        {
+            for (int slot = 0; slot < iface.Tables.Length; slot++)
+            {
+                ClassInfo classInfo = iface.TableClasses[slot];
+                if (!classes.Contains(classInfo))
+                {
+                    classes.Add(classInfo);
+                }
+                if (!classInfo.Implements.Contains(iface.Type))
+                {
+                    classInfo.Implements.Add(iface.Type);
+                }
+                int[] bodies = model.Tables.First(t => t.Number == iface.Tables[slot]).Bodies;
+                foreach (MethodInfo method in iface.Methods)
+                {
+                    classInfo.Bodies[method] = model.BodyByLabel(bodies[method.Function]);
                 }
             }
         }
+
+        foreach (ClassInfo classInfo in classes)
+        {
+            if (classInfo.Implements.SelectMany(t => t.Methods)
+                .Any(method => !classInfo.Bodies.ContainsKey(method)))
+            {
+                throw new NotImplementedException(
+                    "a class bound through one instance of an interface and not another");
+            }
+        }
+
+        model.Classes.AddRange(classes
+            .OrderBy(c => model.InterfaceTypes.IndexOf(c.Implements[0]))
+            .ThenByDescending(c => c.TypeId));
     }
 
     private static bool IsOutsideTheMethod(OperandType type) =>

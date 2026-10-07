@@ -378,6 +378,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "cascaded_shadows")]
     [TestCase("ps_5_0", "parallax_steps")]
     [TestCase("ps_5_0", "dynamic_linkage")]
+    [TestCase("ps_5_0", "dynamic_linkage_methods")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

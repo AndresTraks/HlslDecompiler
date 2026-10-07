@@ -1,49 +1,39 @@
-interface I0
+interface IShade
 {
 	float4 F0(float4 color);
+	float4 F1(float4 color);
 };
 
-interface I1
-{
-	float4 F0(float4 color);
-};
-
-class I0C0 : I0
-{
-	float4 F0(float4 color)
-	{
-		return color - 0.125;
-	}
-};
-
-class I0C1 : I0
+class A : IShade
 {
 	float4 F0(float4 color)
 	{
 		return color + 0.25;
 	}
-};
 
-class I1C2 : I1
-{
-	float4 F0(float4 color)
-	{
-		return saturate(1.5 * color);
-	}
-};
-
-class I1C3 : I1
-{
-	float4 F0(float4 color)
+	float4 F1(float4 color)
 	{
 		return 0.5 * color;
 	}
 };
 
-I0 g0;
-I1 g1[3];
+class B : IShade
+{
+	float4 F0(float4 color)
+	{
+		return color - 0.125;
+	}
+
+	float4 F1(float4 color)
+	{
+		return saturate(1.5 * color);
+	}
+};
+
+IShade g_one;
+IShade g_many[3];
 
 float4 main(float4 color : COLOR) : SV_Target
 {
-	return g0.F0(color) + g1[2].F0(color);
+	return g_one.F0(color) + g_many[2].F1(color);
 }

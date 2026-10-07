@@ -289,23 +289,20 @@ public class HlslSimpleWriter : HlslWriter
 
     /// <summary>
     /// A call through an interface: the result lands in the register every body it
-    /// could run writes, and the arguments are the registers that body reads before
-    /// writing them - named as main names them, which is how they reach the body
-    /// under its own parameter names.
+    /// could run writes, and the arguments are the registers any of those bodies
+    /// reads before writing them - named as main names them, which is how they reach
+    /// the body under its own parameter names.
     /// </summary>
     private void WriteInterfaceCall(D3D10Instruction instruction)
     {
         int function = (int)instruction.OperandTokens.Tokens[0];
         int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
         int instance = (int)instruction.OperandTokens.Tokens[3];
-        LinkageModel.InterfaceInfo iface =
-            _registers.Linkage.Interfaces.First(i => i.Number == interfaceNumber);
-        LinkageModel.FunctionBodyInfo body =
-            _registers.Linkage.BodyForCall(interfaceNumber, instance, function);
-        string arguments = string.Join(", ", body.Parameters.Select(GetLinkageArgumentName));
-        WriteLine("{0} = {1}.{2}({3});", GetTempRegisterName(body.ReturnRegister),
-            iface.IsArray ? $"{iface.InstanceName}[{instance}]" : iface.InstanceName,
-            LinkageModel.InterfaceInfo.MethodName(function), arguments);
+        LinkageModel.InterfaceInfo iface = _registers.Linkage.InterfaceByNumber(interfaceNumber);
+        LinkageModel.MethodInfo method = iface.Methods[function];
+        string arguments = string.Join(", ", method.Parameters.Select(GetLinkageArgumentName));
+        WriteLine("{0} = {1}.{2}({3});", GetTempRegisterName(method.ReturnRegister),
+            iface.InstanceExpression(instance), method.Name, arguments);
     }
 
     private string GetLinkageArgumentName(RegisterKey parameter)
@@ -1453,9 +1450,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             return null;
         }
-        return _registers.Linkage.BodyForCall(
+        return _registers.Linkage.MethodForCall(
             (int)instruction.OperandTokens.Tokens[2],
-            (int)instruction.OperandTokens.Tokens[3],
             (int)instruction.OperandTokens.Tokens[0]).ReturnRegister;
     }
 

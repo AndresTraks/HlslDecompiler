@@ -11,6 +11,12 @@ public class ShaderTypeInfo
     public int NumElements { get; }
     public IList<ShaderStructMemberInfo> MemberInfo { get; }
 
+    /// <summary>
+    /// The name shader model 5 records for an interface pointer's type - the
+    /// interface it was declared as, IShade for `IShade g_one;`. Null elsewhere.
+    /// </summary>
+    public string Name { get; init; }
+
     public ShaderTypeInfo(ParameterClass parameterClass, ParameterType parameterType, int rows, int columns, int numElements, IList<ShaderStructMemberInfo> memberInfo)
     {
         ParameterClass = parameterClass;

@@ -1160,11 +1160,11 @@ public class InstructionParser
         int function = (int)instruction.OperandTokens.Tokens[0];
         int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
         int instance = (int)instruction.OperandTokens.Tokens[3];
-        LinkageModel.FunctionBodyInfo body =
-            _registerState.Linkage.BodyForCall(interfaceNumber, instance, function);
+        LinkageModel.MethodInfo method =
+            _registerState.Linkage.MethodForCall(interfaceNumber, function);
 
         var arguments = new List<HlslTreeNode>();
-        foreach (RegisterKey parameter in body.Parameters)
+        foreach (RegisterKey parameter in method.Parameters)
         {
             for (int component = 0; component < 4; component++)
             {
@@ -1179,7 +1179,7 @@ public class InstructionParser
             callNode.SourceInstruction = _instructionPointer + 1;
             callNode.SourceComponent = component;
             SetActiveOutput(
-                new RegisterComponentKey(body.ReturnRegister, component), callNode);
+                new RegisterComponentKey(method.ReturnRegister, component), callNode);
         }
     }
 

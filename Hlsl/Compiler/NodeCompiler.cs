@@ -2395,17 +2395,14 @@ public sealed class NodeCompiler
             // components at a time, and what it reads is what the call site had
             // in them.
             MarkMatched(components);
-            LinkageModel.InterfaceInfo iface = _registers.Linkage.Interfaces
-                .First(i => i.Number == call.InterfaceNumber);
-            string instance = iface.IsArray
-                ? $"{iface.InstanceName}[{call.InstanceIndex}]"
-                : iface.InstanceName;
+            LinkageModel.InterfaceInfo iface =
+                _registers.Linkage.InterfaceByNumber(call.InterfaceNumber);
             string arguments = string.Join(", ", call.Arguments.Chunk(4)
                 .Select(argument => Compile([.. argument])));
             string callSwizzle = GetAstSourceSwizzleName(
                 componentsWithIndices, 4, promoteToVectorSize);
-            return $"{instance}.{LinkageModel.InterfaceInfo.MethodName(call.FunctionIndex)}"
-                + $"({arguments}){callSwizzle}";
+            return $"{iface.InstanceExpression(call.InstanceIndex)}"
+                + $".{iface.Methods[call.FunctionIndex].Name}({arguments}){callSwizzle}";
         }
 
         if (first is LitOutputNode lit)

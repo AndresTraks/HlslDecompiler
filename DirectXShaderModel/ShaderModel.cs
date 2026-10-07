@@ -32,6 +32,12 @@ public class ShaderModel
     public IList<D3D10ConstantDeclaration> ConstantDeclarations { get; }
     public IList<ResourceDefinition> ResourceDefinitions { get; }
 
+    /// <summary>
+    /// The classes dynamic linkage can bind and which table each one fills, from
+    /// the IFCE chunk. Null when the shader has none.
+    /// </summary>
+    public ShaderInterfaces Interfaces { get; init; }
+
     public ShaderModel(int majorVersion,
         int minorVersion,
         ShaderType type,

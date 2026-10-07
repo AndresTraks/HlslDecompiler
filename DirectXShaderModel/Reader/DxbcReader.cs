@@ -13,6 +13,10 @@ public class DxbcReader : BinaryReader
     // shader the control points of a patch, and both read them that way.
     private bool _inputsAreVertexArrays = false;
 
+    // Whether the variable types carry shader model 5's longer record, which ends
+    // in the type's name.
+    private bool _typesHaveNames = false;
+
     public DxbcReader(Stream input, bool leaveOpen = false)
         : base(input, new UTF8Encoding(false, true), leaveOpen)
     {
@@ -44,6 +48,7 @@ public class DxbcReader : BinaryReader
         var instructions = new List<Instruction>();
         var constantDeclarations = new List<D3D10ConstantDeclaration>();
         var resourceDefinitions = new List<ResourceDefinition>();
+        ShaderInterfaces interfaces = null;
 
         foreach (int chunkOffset in chunkOffsets)
         {
@@ -75,6 +80,7 @@ public class DxbcReader : BinaryReader
                     ReadInt32(); // constant buffer record size
                     ReadInt32(); // resource binding record size
                     variableRecordSize = ReadInt32();
+                    _typesHaveNames = true;
                 }
 
                 // Which cb register each buffer binds to, from the resource
@@ -203,6 +209,10 @@ public class DxbcReader : BinaryReader
                 ReadSignatures(chunkOffset, OperandType.InputPatchConstant,
                     patchConstantSignatures);
             }
+            else if (chunkType == "IFCE")
+            {
+                interfaces = ReadInterfaces(chunkOffset + 8);
+            }
             else if (chunkType == "SHDR" || chunkType == "SHEX")
             {
                 ReadBytes(8);
@@ -228,7 +238,64 @@ public class DxbcReader : BinaryReader
             patchConstantSignatures,
             constantDeclarations,
             resourceDefinitions,
-            instructions);
+            instructions)
+        {
+            Interfaces = interfaces,
+        };
+    }
+
+    /// <summary>
+    /// The IFCE chunk: a header of counts and offsets, the class types, and the
+    /// slot records. Offsets count from the start of the chunk's data. A class
+    /// type's ID is its place in the list - the record has a field for it, which
+    /// fxc leaves zero.
+    /// </summary>
+    private ShaderInterfaces ReadInterfaces(int dataStart)
+    {
+        BaseStream.Position = dataStart;
+        int classInstanceCount = ReadInt32();
+        int classTypeCount = ReadInt32();
+        int slotRecordCount = ReadInt32();
+        ReadInt32(); // slot count
+        ReadInt32(); // class instance offset
+        int classTypeOffset = ReadInt32();
+        int slotRecordOffset = ReadInt32();
+
+        var interfaces = new ShaderInterfaces { ClassInstanceCount = classInstanceCount };
+        for (int i = 0; i < classTypeCount; i++)
+        {
+            BaseStream.Position = dataStart + classTypeOffset + i * 12;
+            int nameOffset = ReadInt32();
+            BaseStream.Position = dataStart + nameOffset;
+            interfaces.ClassTypeNames.Add(ReadStringNullTerminated());
+        }
+        for (int i = 0; i < slotRecordCount; i++)
+        {
+            BaseStream.Position = dataStart + slotRecordOffset + i * 16;
+            int slotSpan = ReadInt32();
+            int count = ReadInt32();
+            int typeIdsOffset = ReadInt32();
+            int tableIdsOffset = ReadInt32();
+            var typeIds = new int[count];
+            BaseStream.Position = dataStart + typeIdsOffset;
+            for (int j = 0; j < count; j++)
+            {
+                typeIds[j] = ReadUInt16();
+            }
+            var tableIds = new int[count];
+            BaseStream.Position = dataStart + tableIdsOffset;
+            for (int j = 0; j < count; j++)
+            {
+                tableIds[j] = ReadInt32();
+            }
+            interfaces.SlotRecords.Add(new InterfaceSlotRecord
+            {
+                SlotSpan = slotSpan,
+                TypeIds = typeIds,
+                TableIds = tableIds,
+            });
+        }
+        return interfaces;
     }
 
     /// <summary>
@@ -481,6 +548,20 @@ public class DxbcReader : BinaryReader
         short numStructMembers = ReadInt16();
         int firstMemberOffset = ReadInt32();
 
+        // An interface pointer's type names the interface, at the end of the
+        // record shader model 5 lengthened: the HLSL wrote `IShade g_one;`.
+        string name = null;
+        if (_typesHaveNames && variableClass == ParameterClass.InterfacePointer)
+        {
+            BaseStream.Position = chunkOffset + typeOffset + 8 + 32;
+            int nameOffset = ReadInt32();
+            if (nameOffset != 0)
+            {
+                BaseStream.Position = chunkOffset + nameOffset + 8;
+                name = ReadStringNullTerminated();
+            }
+        }
+
         List<ShaderStructMemberInfo> memberInfo = null;
         if (numStructMembers > 0)
         {
@@ -506,7 +587,10 @@ public class DxbcReader : BinaryReader
         }
 
         return new ShaderTypeInfo(
-            variableClass, variableType, rows, columns, numElements, memberInfo);
+            variableClass, variableType, rows, columns, numElements, memberInfo)
+        {
+            Name = name,
+        };
     }
 
     // A texel offset is four bits, signed.

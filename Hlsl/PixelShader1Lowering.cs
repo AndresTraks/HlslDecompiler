@@ -7,12 +7,12 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Rewrites a ps_1_1 to ps_1_3 pixel shader as the ps_2_0 one that computes the
+/// Rewrites a ps_1_1 to ps_1_4 pixel shader as the ps_2_0 one that computes the
 /// same, so that the writers - which know ps_2_0 - decompile it. Nothing compiles
 /// HLSL to ps_1_x any more, and the HLSL a ps_1_x shader decompiles to is HLSL
 /// for ps_2_0 anyway.
 ///
-/// What ps_1_x says that ps_2_0 cannot:
+/// What ps_1_1 to ps_1_3 say that ps_2_0 cannot:
 /// - A texture register is both the coordinate set and the result: `tex t0`
 ///   samples stage 0 at texture coordinate 0 and leaves the colour in t0, and
 ///   `texcoord t1` leaves texture coordinate 1 there, clamped to [0, 1] and with an
@@ -35,18 +35,34 @@ namespace HlslDecompiler.Hlsl;
 ///   held in r7 until the second has run.
 /// - r0 is the colour the shader returns.
 ///
+/// ps_1_4 keeps the modifiers, the scales, cnd and co-issue, and changes the rest:
+/// - t# is a texture coordinate and only that, read only, so nothing stands in
+///   for it. r0 to r5 are all temps, so the scratch temps are r6 to r10 and a
+///   co-issued first half is held in r11.
+/// - `texld r#, src` samples stage # - the register it writes - at a coordinate
+///   that is a t#, or in the second phase an r# the first phase computed. A
+///   coordinate may be swizzled .xyw, and projected: _dz divides x and y by the
+///   third component it selects and _dw by the fourth. ps_2_0 reads a texld
+///   coordinate whole, so a swizzled or projected one is computed into a scratch
+///   temp first.
+/// - `texcrd r#, t#` is the coordinate itself, unclamped. ps_1_4 says nothing of
+///   the alpha it would write, or of the blue of a projected one, so a texcrd that
+///   writes either is refused rather than guessed at.
+/// - _x2 doubles a source, like the other modifiers an instruction of its own.
+/// - `texdepth r5` writes r5.r / r5.g as the pixel's depth, and 1 where r5.g is 0.
+/// - phase separates the two halves and does nothing to what they compute. The
+///   registers the first half wrote are what the second reads.
+///
 /// The helper constants it needs - 0.5, 1, 2, -1 and the scales - go in c30 and
 /// c31, which ps_1_x cannot reach: it has eight constants.
 ///
-/// ps_1_4, and the texture addressing instructions of the earlier versions, are
-/// not rewritten yet, and say so.
+/// bem and the texture addressing instructions of the earlier versions are not
+/// rewritten yet, and say so: they read the bump environment matrix, which is
+/// texture stage state rather than anything in the shader.
 /// </summary>
 public static class PixelShader1Lowering
 {
     private const int FirstTextureStandIn = 8;
-    private const int FirstScratch = 2;
-    private const int LastScratch = 6;
-    private const int CoIssueHold = 7;
     private const int HelperConstant = 30; // (0.5, 1, 2, -1)
     private const int ScaleConstant = 31; // (4, 8, 0.25, 0.125)
 
@@ -66,10 +82,6 @@ public static class PixelShader1Lowering
         {
             return shader;
         }
-        if (shader.MinorVersion >= 4)
-        {
-            throw new NotImplementedException("a ps_1_4 pixel shader");
-        }
         return new Lowering(shader).Run();
     }
 
@@ -84,6 +96,13 @@ public static class PixelShader1Lowering
         private bool _usesHelper;
         private bool _usesScale;
         private int _nextScratch;
+
+        // ps_1_4 has six temps of its own and reads t# as the coordinates they
+        // are; the earlier versions have two, and write t#.
+        private bool IsVersion14 => shader.MinorVersion >= 4;
+        private int FirstScratch => IsVersion14 ? 6 : 2;
+        private int LastScratch => IsVersion14 ? 10 : 6;
+        private int CoIssueHold => IsVersion14 ? 11 : 7;
 
         public ShaderModel Run()
         {
@@ -129,13 +148,36 @@ public static class PixelShader1Lowering
                     return;
                 case Opcode.End:
                 case Opcode.Nop:
+                case Opcode.Phase:
+                    return;
+                case Opcode.Tex when IsVersion14:
+                    LowerTexld(instruction);
                     return;
                 case Opcode.Tex:
                     LowerTex(instruction);
                     return;
+                case Opcode.TexCoord when IsVersion14:
+                    LowerTexcrd(instruction);
+                    return;
                 case Opcode.TexCoord:
                     LowerTexCoord(instruction);
                     return;
+                case Opcode.TexDepth when IsVersion14:
+                    LowerTexDepth(instruction);
+                    return;
+                case Opcode.TexKill when IsVersion14:
+                    {
+                        // A coordinate or a temp, as it is named, and its first three
+                        // components.
+                        RegisterType type = instruction.GetParamRegisterType(0);
+                        int number = instruction.GetParamRegisterNumber(0);
+                        if (type == RegisterType.Texture)
+                        {
+                            UseCoordinate(number, 0x7);
+                        }
+                        Emit(Opcode.TexKill, DestinationToken(type, number, 0x7));
+                        return;
+                    }
                 case Opcode.TexKill:
                     {
                         // The coordinate set, not what a tex left in the register, and
@@ -188,14 +230,142 @@ public static class PixelShader1Lowering
                 Helper(ReplicateY));
         }
 
+        private void LowerTexld(D3D9Instruction instruction)
+        {
+            int stage = instruction.GetParamRegisterNumber(0);
+            SamplerTextureType type = SamplerType(stage);
+            _samplers[stage] = type;
+            if (type != SamplerTextureType.TwoD && IsProjected(instruction, 1))
+            {
+                throw new NotImplementedException(
+                    "a projected texld of a cube or volume texture, which ps_1_4 does not define");
+            }
+            uint coordinate = Coordinate(instruction, 1, type == SamplerTextureType.TwoD ? 0x3 : 0x7);
+            Emit(Opcode.Tex,
+                DestinationToken(RegisterType.Temp, stage, 0xF),
+                coordinate,
+                Source(RegisterType.Sampler, stage, Identity));
+        }
+
+        private void LowerTexcrd(D3D9Instruction instruction)
+        {
+            int mask = instruction.GetDestinationWriteMask();
+            if ((mask & 0x8) != 0)
+            {
+                throw new NotImplementedException(
+                    "a texcrd into an alpha, which ps_1_4 does not define");
+            }
+            if ((mask & 0x4) != 0 && IsProjected(instruction, 1))
+            {
+                throw new NotImplementedException(
+                    "a projected texcrd into a blue, which ps_1_4 does not define");
+            }
+            uint coordinate = Coordinate(instruction, 1, mask);
+            Emit(Opcode.Mov,
+                DestinationToken(RegisterType.Temp, instruction.GetParamRegisterNumber(0), mask),
+                coordinate);
+        }
+
+        /// <summary>
+        /// r5.r / r5.g as the pixel's depth, and 1 where r5.g is 0: 1 / g into x,
+        /// r / g into y, |g| into z, and the choice into w.
+        /// </summary>
+        private void LowerTexDepth(D3D9Instruction instruction)
+        {
+            int ratio = instruction.GetParamRegisterNumber(0);
+            int depth = TakeScratch();
+            Emit(Opcode.Rcp, DestinationToken(RegisterType.Temp, depth, 0x1),
+                Source(RegisterType.Temp, ratio, ReplicateY));
+            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, depth, 0x2),
+                Source(RegisterType.Temp, ratio, ReplicateX),
+                Source(RegisterType.Temp, depth, ReplicateX));
+            Emit(Opcode.Abs, DestinationToken(RegisterType.Temp, depth, 0x4),
+                Source(RegisterType.Temp, ratio, ReplicateY));
+            Emit(Opcode.Cmp, DestinationToken(RegisterType.Temp, depth, 0x8),
+                Negate(Source(RegisterType.Temp, depth, ReplicateZ)),
+                Helper(ReplicateY),
+                Source(RegisterType.Temp, depth, ReplicateY));
+            Emit(Opcode.Mov, DestinationToken(RegisterType.DepthOut, 0, 0xF),
+                Source(RegisterType.Temp, depth, ReplicateW));
+        }
+
+        private static bool IsProjected(D3D9Instruction instruction, int index) =>
+            instruction.GetSourceModifier(index) is SourceModifier.DivideByZ or SourceModifier.DivideByW;
+
+        /// <summary>
+        /// The coordinate a ps_1_4 texld or texcrd reads, as a register ps_2_0 reads
+        /// whole: the t# or r# as it is where nothing is done to it, and otherwise
+        /// the swizzled and projected value in a scratch temp. Only the components
+        /// in <paramref name="used"/> are what the instruction goes on to read, so
+        /// only those are computed, and only what they come from is declared.
+        /// </summary>
+        private uint Coordinate(D3D9Instruction instruction, int index, int used)
+        {
+            uint plain = WithModifier(instruction.Params[index], SourceModifier.None);
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(index);
+            int divisor = instruction.GetSourceModifier(index) switch
+            {
+                SourceModifier.None => -1,
+                SourceModifier.DivideByZ => swizzle[2],
+                SourceModifier.DivideByW => swizzle[3],
+                SourceModifier modifier => throw new NotImplementedException(
+                    $"source modifier {modifier} on a texture coordinate"),
+            };
+
+            if (instruction.GetParamRegisterType(index) == RegisterType.Texture)
+            {
+                int read = divisor < 0 ? 0 : 1 << divisor;
+                for (int i = 0; i < 4; i++)
+                {
+                    if ((used & (1 << i)) != 0)
+                    {
+                        read |= 1 << swizzle[i];
+                    }
+                }
+                UseCoordinate(instruction.GetParamRegisterNumber(index), read);
+            }
+
+            if (divisor < 0)
+            {
+                if (instruction.GetSourceSwizzle(index) == Identity)
+                {
+                    return plain;
+                }
+                int swizzled = TakeScratch();
+                Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, swizzled, used), plain);
+                return Source(RegisterType.Temp, swizzled, Identity);
+            }
+
+            // The reciprocal of the divisor goes in w, which neither a texld nor a
+            // texcrd reads: a texcrd that writes alpha is refused above.
+            int projected = TakeScratch();
+            Emit(Opcode.Rcp, DestinationToken(RegisterType.Temp, projected, 0x8),
+                WithSwizzle(plain, Replicate(divisor)));
+            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, projected, used),
+                plain, Source(RegisterType.Temp, projected, ReplicateW));
+            return Source(RegisterType.Temp, projected, Identity);
+        }
+
         private void LowerArithmetic(D3D9Instruction instruction, int? holdIn)
         {
             Opcode opcode = instruction.Opcode;
+
+            // The components of each source the instruction reads: a dot product
+            // reads three or four whatever it writes, anything else the ones it
+            // writes. A modifier is computed for those alone - computed for all four,
+            // a 1-x on an .rgb read kept the alpha of what it complemented alive in
+            // the decompilation, as a variable nothing read.
+            int read = opcode switch
+            {
+                Opcode.Dp3 => 0x7,
+                Opcode.Dp4 => 0xF,
+                _ => instruction.GetDestinationWriteMask(),
+            };
             int sourceCount = instruction.Params.Count - 1;
             var sources = new uint[sourceCount];
             for (int i = 0; i < sourceCount; i++)
             {
-                sources[i] = LowerSource(instruction, i + 1);
+                sources[i] = LowerSource(instruction, i + 1, read);
             }
 
             // fxc writes no sub at ps_2_0 or later, so nothing reads one: it is the
@@ -211,7 +381,7 @@ public static class PixelShader1Lowering
                 // cnd d, a, b, c is a > 0.5 ? b : c, and cmp d, x, c, b is
                 // x >= 0 ? c : b - so x is 0.5 - a.
                 int condition = TakeScratch();
-                Emit(Opcode.Add, DestinationToken(RegisterType.Temp, condition, 0xF),
+                Emit(Opcode.Add, DestinationToken(RegisterType.Temp, condition, read),
                     Negate(sources[0]), Helper(ReplicateX));
                 opcode = Opcode.Cmp;
                 sources = [Source(RegisterType.Temp, condition, Identity), sources[2], sources[1]];
@@ -241,16 +411,24 @@ public static class PixelShader1Lowering
         /// <summary>
         /// A source as ps_2_0 can read it: a texture register as the temp that
         /// stands in for it, and a modifier ps_2_0 lacks applied by an instruction
-        /// of its own into a scratch temp, which is then read whole.
+        /// of its own into a scratch temp, which is then read unswizzled. Only the
+        /// components in <paramref name="read"/> are computed there.
         /// </summary>
-        private uint LowerSource(D3D9Instruction instruction, int index)
+        private uint LowerSource(D3D9Instruction instruction, int index, int read)
         {
             uint token = instruction.Params[index];
             RegisterType type = instruction.GetParamRegisterType(index);
             if (type == RegisterType.Texture)
             {
-                token = Retarget(token, RegisterType.Temp,
-                    FirstTextureStandIn + instruction.GetParamRegisterNumber(index));
+                if (IsVersion14)
+                {
+                    UseCoordinate(instruction.GetParamRegisterNumber(index), 0xF);
+                }
+                else
+                {
+                    token = Retarget(token, RegisterType.Temp,
+                        FirstTextureStandIn + instruction.GetParamRegisterNumber(index));
+                }
             }
 
             SourceModifier modifier = instruction.GetSourceModifier(index);
@@ -261,7 +439,7 @@ public static class PixelShader1Lowering
 
             uint plain = WithModifier(token, SourceModifier.None);
             int scratch = TakeScratch();
-            uint result = DestinationToken(RegisterType.Temp, scratch, 0xF);
+            uint result = DestinationToken(RegisterType.Temp, scratch, read);
             switch (modifier)
             {
                 case SourceModifier.Bias:
@@ -292,10 +470,10 @@ public static class PixelShader1Lowering
         }
 
         // The destination as ps_2_0 writes it: a texture register as its stand-in.
-        private static uint Destination(D3D9Instruction instruction)
+        private uint Destination(D3D9Instruction instruction)
         {
             uint token = instruction.Params[0] & ~0x0F000000u; // the shift is lowered apart
-            return instruction.GetParamRegisterType(0) == RegisterType.Texture
+            return !IsVersion14 && instruction.GetParamRegisterType(0) == RegisterType.Texture
                 ? Retarget(token, RegisterType.Temp,
                     FirstTextureStandIn + instruction.GetParamRegisterNumber(0))
                 : token;
@@ -487,6 +665,13 @@ public static class PixelShader1Lowering
         (token & ~0x70001FFFu) | RegisterBits(type, number);
 
     private static uint ClearResultModifiers(uint destination) => destination & ~0x00F00000u;
+
+    private static uint WithSwizzle(uint source, byte swizzle) =>
+        (source & ~0x00FF0000u) | ((uint)swizzle << 16);
+
+    // Every component read from the one: x is 0x00, w is 0xFF.
+    private static byte Replicate(int component) =>
+        (byte)(component | component << 2 | component << 4 | component << 6);
 
     private static uint WithModifier(uint source, SourceModifier modifier) =>
         (source & ~0x0F000000u) | ((uint)modifier << 24);

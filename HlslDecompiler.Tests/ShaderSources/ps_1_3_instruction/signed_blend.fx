@@ -34,8 +34,8 @@ float4 main(PS_IN i) : COLOR
 	r0.xyz = r7.xyz;
 	r2 = dot(r0, float4(0.3, -0.7, 0.4, 0.9));
 	r1 = r2 * 0.25;
-	r2 = r1 + -0.5;
-	r3 = -r8 + 0.5;
+	r2.xyz = r1.xyz + -0.5;
+	r3.xyz = -r8.xyz + 0.5;
 	r0.xyz = (r2.xyz >= 0) ? r0.xyz : r3.xyz;
 	r2 = -r9 + 1;
 	r3 = -r0.w + 0.5;

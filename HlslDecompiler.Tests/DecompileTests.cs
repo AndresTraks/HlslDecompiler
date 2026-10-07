@@ -147,6 +147,8 @@ public class DecompileTests
     [TestCase("ps_1_1", "detail_modulate")]
     [TestCase("ps_1_1", "bump_dot3")]
     [TestCase("ps_1_3", "signed_blend")]
+    [TestCase("ps_1_4", "dependent_read")]
+    [TestCase("ps_1_4", "projected_depth")]
     [TestCase("ps_3_0", "float_modulo")]
     [TestCase("ps_3_0", "float_modulo_negate")]
     [TestCase("ps_3_0", "duplicated_component")]

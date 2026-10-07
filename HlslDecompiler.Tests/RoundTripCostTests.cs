@@ -1,4 +1,4 @@
-﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl;
 using NUnit.Framework;
 using System;
@@ -301,7 +301,7 @@ public class RoundTripCostTests
             "Six instructions, and the three more are the two _bx2 that expand the "
             + "normal and the light vector and the 1-x on the alpha, each a mad or "
             + "an add of its own in ps_2_0."),
-        ["ps_1_3/signed_blend"] = (29,
+        ["ps_1_3/signed_blend"] = (28,
             "Ten instructions, nearly every operand of which carries a modifier or "
             + "a result scale ps_2_0 has to spell out - _bias twice, _bx2 negated, "
             + "1-x, _d2, _x4 and _d4 - and a cnd that becomes a subtraction and a "
@@ -311,6 +311,20 @@ public class RoundTripCostTests
             + "reads is assembled from two values, which fxc compiles to four "
             + "instructions where a dot() would be one. Both writers compute the "
             + "same numbers as the original."),
+        ["ps_1_4/dependent_read"] = (15,
+            "Ten instructions, and the five more are what ps_1_4 says in a "
+            + "modifier: the _bx2 on the offset map is a mad, the _dw that "
+            + "projects the third read is a reciprocal and a mul, the _x2 on its "
+            + "alpha is an add, and the cnd is a subtraction before its cmp."),
+        ["ps_1_4/projected_depth"] = (19,
+            "Ten instructions. Each of the two projected coordinates is a "
+            + "reciprocal and a mul, and the one texdepth reads is a mul more: "
+            + "its x and y go on to be scaled and offset differently, the AST "
+            + "writer builds that float2 a component at a time, and fxc divides "
+            + "each apart. texdepth, which divides r5.r by r5.g and takes 1 where "
+            + "r5.g is 0, is a reciprocal, a mul, a square to test for zero and a "
+            + "cmp; and fxc pads the clip() of a float3 with two movs to fill the "
+            + "w its texkill reads."),
         // Instructions fxc has no spelling for, so a round trip cannot keep their
         // count: the shaders were assembled by hand, and what comes back is what
         // fxc writes instead of them.

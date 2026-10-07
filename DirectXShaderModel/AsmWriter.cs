@@ -412,8 +412,17 @@ public class AsmWriter
                 // texld.
                 if (shader.MajorVersion == 1 && shader.MinorVersion >= 4)
                 {
+                    // A projected coordinate reads the component it divides by as
+                    // well as the ones it writes - the third for _dz, the fourth
+                    // for _dw - so the swizzle names it: t0_dw.xyww, not t0_dw.xy.
+                    int? width = instruction.GetSourceModifier(1) switch
+                    {
+                        SourceModifier.DivideByZ => 3,
+                        SourceModifier.DivideByW => 4,
+                        _ => null,
+                    };
                     WriteLine("texcrd {0}, {1}", GetDestinationName(instruction),
-                        GetSourceName(instruction, 1));
+                        GetSourceName(instruction, 1, width));
                 }
                 else
                 {

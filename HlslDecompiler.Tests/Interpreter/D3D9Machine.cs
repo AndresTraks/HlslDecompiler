@@ -90,11 +90,12 @@ public class D3D9Machine
     }
 
     /// <summary>
-    /// ps_1_1 to ps_1_3, run as the specification has it rather than through the
+    /// ps_1_1 to ps_1_4, run as the specification has it rather than through the
     /// decompiler's rewrite of it into ps_2_0, so that the two are checked against
     /// each other. No declarations: v0 and v1 are the diffuse and specular
-    /// colours, texture register # is texture coordinate # until a texture
-    /// instruction writes it, and r0 is the colour the pixel gets.
+    /// colours, texture register # is texture coordinate # - until a texture
+    /// instruction writes it, before ps_1_4, and for good in ps_1_4, where t# is
+    /// read only - and r0 is the colour the pixel gets.
     /// </summary>
     private bool IsShaderModel1Pixel =>
         _shader.Type == ShaderType.Pixel && _shader.MajorVersion == 1;
@@ -103,18 +104,20 @@ public class D3D9Machine
     // the register it writes.
     private readonly float[][] _coordinates = NewFile(8);
 
+    private bool IsShaderModel14Pixel => IsShaderModel1Pixel && _shader.MinorVersion >= 4;
+
     private void LoadShaderModel1PixelInputs()
     {
-        if (_shader.MinorVersion >= 4)
-        {
-            throw new UnsupportedException("a ps_1_4 pixel shader");
-        }
         // Named as a ps_2_0 dcl names them, which is what the decompilation has.
         Array.Copy(PixelColour(Named("COLOR")), _input[0], 4);
         Array.Copy(PixelColour(Named("COLOR1")), _input[1], 4);
         for (int i = 0; i < _coordinates.Length; i++)
         {
             Array.Copy(Named(i == 0 ? "TEXCOORD" : "TEXCOORD" + i), _coordinates[i], 4);
+            if (IsShaderModel14Pixel)
+            {
+                Array.Copy(_coordinates[i], _texture[i], 4);
+            }
         }
     }
 
@@ -273,6 +276,7 @@ public class D3D9Machine
                 case Opcode.Dcl:
                 case Opcode.End:
                 case Opcode.Nop:
+                case Opcode.Phase:
                 case Opcode.Endif:
                     pc++;
                     continue;
@@ -323,11 +327,33 @@ public class D3D9Machine
                 case Opcode.TexKill:
                     // ps_1_x kills on the coordinate set the register is named for,
                     // not on what a tex left in it.
-                    Killed |= (IsShaderModel1Pixel
+                    Killed |= (IsShaderModel1Pixel && !IsShaderModel14Pixel
                         ? _coordinates[instruction.GetParamRegisterNumber(0)]
                         : Source(instruction, 0)).Take(3).Any(c => c < 0);
                     pc++;
                     continue;
+                // ps_1_4: texld samples the stage its destination is numbered for,
+                // at the coordinate it reads; texcrd is the coordinate.
+                case Opcode.Tex when IsShaderModel14Pixel:
+                    {
+                        int stage = instruction.GetParamRegisterNumber(0);
+                        Store(instruction, Texture.Sample(stage, Source(instruction, 1),
+                            ShaderModel1SamplerDimension(stage)));
+                        pc++;
+                        continue;
+                    }
+                case Opcode.TexCoord when IsShaderModel14Pixel:
+                    Store(instruction, Source(instruction, 1));
+                    pc++;
+                    continue;
+                case Opcode.TexDepth:
+                    {
+                        // r5.r / r5.g, and 1 where r5.g is 0.
+                        float[] ratio = _temp[instruction.GetParamRegisterNumber(0)];
+                        _results["DEPTH"] = Broadcast(ratio[1] == 0 ? 1 : ratio[0] / ratio[1]);
+                        pc++;
+                        continue;
+                    }
                 case Opcode.Tex when IsShaderModel1Pixel:
                     {
                         int stage = instruction.GetParamRegisterNumber(0);
@@ -730,6 +756,14 @@ public class D3D9Machine
                 break;
             case SourceModifier.X2AndNegate:
                 value = [.. value.Select(v => -2 * v)];
+                break;
+            // A ps_1_4 texture coordinate, projected: x and y divided by the third
+            // or the fourth component the swizzle selects.
+            case SourceModifier.DivideByZ:
+                value = [value[0] / value[2], value[1] / value[2], value[2], value[3]];
+                break;
+            case SourceModifier.DivideByW:
+                value = [value[0] / value[3], value[1] / value[3], value[2], value[3]];
                 break;
             default:
                 throw new UnsupportedException($"source modifier {instruction.GetSourceModifier(index)}");

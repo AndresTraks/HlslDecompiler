@@ -10,10 +10,9 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	float t0 = tex2D(s0, i.texcoord).w;
-	float3 t1 = 2 * tex2D(s0, i.texcoord).xyz - 1;
-	float3 t2 = 2 * i.color.xyz - 1;
-	float t3 = saturate(dot(t1, t2));
-	float4 t4 = tex2D(s1, i.texcoord1);
-	return float4(t4.xyz * (t3 + float3(0.200000003, 0.200000003, 0.25)), 1 - t4.w);
+	float3 t0 = 2 * tex2D(s0, i.texcoord).xyz - 1;
+	float3 t1 = 2 * i.color.xyz - 1;
+	float t2 = saturate(dot(t0, t1));
+	float4 t3 = tex2D(s1, i.texcoord1);
+	return float4(t3.xyz * (t2 + float3(0.200000003, 0.200000003, 0.25)), 1 - t3.w);
 }

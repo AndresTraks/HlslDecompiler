@@ -154,7 +154,7 @@ public class EffectTests
     /// effect: the same buffers, variables, values, annotations, state objects,
     /// techniques, passes and assignments - <see cref="EffectDescription"/> has
     /// every one of them - and each of its shaders computes what the original's
-    /// did. The structure is compared as the runtime would load it, so a state
+    /// did and declares what it declared, as <see cref="ReflectionSnapshot"/> has it. The structure is compared as the runtime would load it, so a state
     /// written in other words that compiles to the same assignment is the same.
     /// </summary>
     [TestCaseSource(nameof(WholeEffects))]
@@ -225,6 +225,18 @@ public class EffectTests
                 {
                     unsupported.Add($"shader {i} ({originalShaders[i].Profile}): {e.Message}");
                 }
+
+                // And declares what it did: the description above has each shader
+                // as its profile and nothing more, so its signatures, its resources
+                // and the declarations that change how it runs are compared the way
+                // a shader on its own is.
+                List<string> expected = ReflectionSnapshot.Lines(originalShaders[i]);
+                List<string> actual = ReflectionSnapshot.Lines(recompiledShaders[i]);
+                string shader = $"The {writer} writer's shader {i} ({originalShaders[i].Profile})";
+                failures.AddRange(ReflectionEquivalenceTests.Except(expected, actual)
+                    .Select(missing => $"{shader} lacks: {missing}"));
+                failures.AddRange(ReflectionEquivalenceTests.Except(actual, expected)
+                    .Select(extra => $"{shader} adds: {extra}"));
             }
         }
 

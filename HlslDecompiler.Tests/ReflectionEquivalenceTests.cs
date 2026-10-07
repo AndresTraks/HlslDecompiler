@@ -137,7 +137,7 @@ public class ReflectionEquivalenceTests
     }
 
     // A multiset difference: a line the original declares twice has to be there twice.
-    private static IEnumerable<string> Except(List<string> lines, List<string> other)
+    internal static IEnumerable<string> Except(List<string> lines, List<string> other)
     {
         var remaining = other.GroupBy(l => l).ToDictionary(g => g.Key, g => g.Count());
         foreach (string line in lines)

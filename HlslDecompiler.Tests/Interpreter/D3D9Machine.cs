@@ -601,12 +601,11 @@ public class D3D9Machine
                     // ps_1_4: the first source plus the bump offset of the second, by
                     // the matrix of the stage the destination is numbered for.
                     float[] value = Source(instruction, 1);
-                    float[] perturbation = Source(instruction, 2);
-                    float[] matrix = Named($"bumpEnvMat{instruction.GetParamRegisterNumber(0)}[0]");
+                    float[] offset = BumpOffset(instruction.GetParamRegisterNumber(0), Source(instruction, 2));
                     return
                     [
-                        value[0] + matrix[0] * perturbation[0] + matrix[2] * perturbation[1],
-                        value[1] + matrix[1] * perturbation[0] + matrix[3] * perturbation[1],
+                        value[0] + offset[0],
+                        value[1] + offset[1],
                         0,
                         0,
                     ];
@@ -681,9 +680,9 @@ public class D3D9Machine
             case Opcode.TexBeml:
                 {
                     float[] t = Source(instruction, 1);
-                    float[] matrix = Named($"bumpEnvMat{m}[0]");
-                    float u = _coordinates[m][0] + matrix[0] * t[0] + matrix[2] * t[1];
-                    float v = _coordinates[m][1] + matrix[1] * t[0] + matrix[3] * t[1];
+                    float[] offset = BumpOffset(m, t);
+                    float u = _coordinates[m][0] + offset[0];
+                    float v = _coordinates[m][1] + offset[1];
                     float[] colour = SampleStage(m, [u, v, 0, 0]);
                     if (instruction.Opcode == Opcode.TexBeml)
                     {
@@ -758,6 +757,23 @@ public class D3D9Machine
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// The bump environment matrix of a stage applied to a value's red and green:
+    /// (M00 r + M10 g, M01 r + M11 g). The matrix is named as the float2x2 the
+    /// decompilation declares it as, column-major, so a register per column -
+    /// bumpEnvMat#[0] holding (M00, M10) and bumpEnvMat#[1] holding (M01, M11).
+    /// </summary>
+    private float[] BumpOffset(int stage, float[] value)
+    {
+        float[] column0 = Named($"bumpEnvMat{stage}[0]");
+        float[] column1 = Named($"bumpEnvMat{stage}[1]");
+        return
+        [
+            column0[0] * value[0] + column0[1] * value[1],
+            column1[0] * value[0] + column1[1] * value[1],
+        ];
     }
 
     // Texture coordinate m dotted with texture n: one row of a texture matrix.

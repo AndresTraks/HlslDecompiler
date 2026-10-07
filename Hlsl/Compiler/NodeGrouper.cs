@@ -464,6 +464,15 @@ public class NodeGrouper
             return false;
         }
 
+        // The same kind of register before its number means anything: a matrix in
+        // c0 and c1 contains register number 1, and so - by number alone - did the
+        // texture coordinate t1, whose y was then taken for the matrix's own and
+        // folded into a three-wide dot with it.
+        if (!input1.RegisterComponentKey.RegisterKey.TypeEquals(input2.RegisterComponentKey.RegisterKey))
+        {
+            return false;
+        }
+
         ConstantDeclaration constant = _registers.FindConstant(input1);
         if (constant == null)
         {

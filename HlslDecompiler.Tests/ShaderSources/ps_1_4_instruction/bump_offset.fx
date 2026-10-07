@@ -1,4 +1,4 @@
-float4 bumpEnvMat2 : register(c10);
+float2x2 bumpEnvMat2 : register(c12);
 sampler2D s1 : register(s1);
 sampler2D s2 : register(s2);
 sampler2D s3 : register(s3);
@@ -22,8 +22,8 @@ float4 main(PS_IN i) : COLOR
 	float4 r0;
 	r1 = tex2D(s1, i.texcoord1.xy);
 	r2.xy = i.texcoord2.xy;
-	r6 = r1.xx * bumpEnvMat2.xy;
-	r6 = r1.yy * bumpEnvMat2.zw + r6.xy;
+	r6.x = dot(r1.xy, transpose(bumpEnvMat2)[0].xy) + 0;
+	r6.y = dot(r1.xy, transpose(bumpEnvMat2)[1].xy) + 0;
 	r2.xy = r2.xy + r6.xy;
 	r2 = tex2D(s2, r2.xy);
 	r3 = tex2D(s3, i.texcoord3.xy);

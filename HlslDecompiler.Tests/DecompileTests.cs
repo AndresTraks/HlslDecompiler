@@ -162,6 +162,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "duplicated_component")]
     [TestCase("ps_2_0", "splat_layers")]
     [TestCase("ps_2_0", "luminance_dot")]
+    [TestCase("ps_2_0", "matrix2x2_offset")]
     [TestCase("ps_3_0", "guarded_average")]
     public void DecompileShaderTest(string profile, string baseFilename)
     {

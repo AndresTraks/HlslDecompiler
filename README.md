@@ -17,9 +17,10 @@ fixed point clamped intermediate values, to [-1, 1] before ps_1_4 and to
 
 texbem, texbeml and bem read the bump environment matrix and luminance from
 texture stage state, which HLSL cannot name. The decompilation reads them from
-uniforms instead - `float4 bumpEnvMat1` holding (M00, M01, M10, M11) for stage
-1, `float2 bumpEnvLum1` holding the luminance scale and offset - which whoever
-runs it sets where the stage state was set.
+uniforms instead, which whoever runs it sets where the stage state was set. For
+stage 1 they are `float2x2 bumpEnvMat1`, whose rows are (M00, M01) and
+(M10, M11), so that the offset reads `mul(float2(du, dv), bumpEnvMat1)`, and
+`float2 bumpEnvLum1`, the luminance scale and offset.
 
 What ps_1_4 leaves undefined is not decompiled: a texcrd into an alpha, a
 projected texcrd into a blue, a projected read of a cube or volume texture.

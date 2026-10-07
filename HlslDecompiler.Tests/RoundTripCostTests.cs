@@ -328,14 +328,12 @@ public class RoundTripCostTests
         // The ps_1_x texture addressing instructions, which are a texture read and
         // the arithmetic that finds where in one instruction, and which ps_2_0
         // spells as that arithmetic and a texld.
-        ["ps_1_1/bump_env"] = (20,
-            "Six instructions. Each texbem's offset is the bump matrix applied to "
-            + "the du/dv texel's red and green, and the AST writer recovers it as "
-            + "two dot()s over swizzled pairs - float2(dot(m.zx, t.yx), dot(m.wy, "
-            + "t.yx)) - which fxc compiles a component at a time, four instructions "
-            + "where m.xy * t.x + m.zw * t.y would be two. Each offset is then an "
-            + "add to the coordinate, texbeml's luminance a mad and a mul, and the "
-            + "texreg2gb lookup a mov to bring g and b into a texld's x and y."),
+        ["ps_1_1/bump_env"] = (17,
+            "Six instructions. Each texbem's offset is mul(du/dv, bumpEnvMat#), "
+            + "which fxc compiles to two dp2adds, with a mov of the zero they add "
+            + "shared between both; each offset is then an add to the coordinate, "
+            + "texbeml's luminance a mad and a mul, and the texreg2gb lookup a mov "
+            + "to bring g and b into a texld's x and y."),
         ["ps_1_1/bumpy_reflection"] = (16,
             "Five instructions. texm3x3spec is three dot products of the normal "
             + "with the coordinates, the eye ray reflected about their vector - a "
@@ -363,9 +361,12 @@ public class RoundTripCostTests
             + "the depth, and 1 where the divisor is 0 - a reciprocal, a mul, a "
             + "square to test for zero and a cmp after the two dp3s - and texdp3tex "
             + "is a dp3 and a mov of the zero its texld reads as v."),
-        ["ps_1_4/bump_offset"] = (10,
-            "Eight instructions, and the two more are bem: the bump matrix applied "
-            + "to a texel's red and green, which ps_2_0 spells as a mul and a mad."),
+        ["ps_1_4/bump_offset"] = (9,
+            "Eight instructions, and the one more is bem: the bump matrix applied "
+            + "to a texel's red and green and added to a coordinate is one "
+            + "instruction there, and mul(du/dv, bumpEnvMat2) plus the coordinate "
+            + "is two dp2adds, the mov of their zero and an add here. fxc fuses the "
+            + "mul and add at the end into a mad, which gives one of them back."),
         // Instructions fxc has no spelling for, so a round trip cannot keep their
         // count: the shaders were assembled by hand, and what comes back is what
         // fxc writes instead of them.

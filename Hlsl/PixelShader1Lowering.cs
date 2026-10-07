@@ -70,9 +70,11 @@ namespace HlslDecompiler.Hlsl;
 ///   a luminance from its blue, clamped to [0, 1]. ps_1_4's bem is the same offset
 ///   applied to two registers. The matrix and the luminance scale and offset are
 ///   texture stage state, set by the application and in no register of the
-///   shader, so the decompilation declares them as uniforms it reads instead:
-///   bumpEnvMat# as (M00, M01, M10, M11) in c8 up, bumpEnvLum# as (scale,
-///   offset) in c16 up, both in a constant table of their own. Whoever runs the
+///   shader, so the decompilation declares them as uniforms it reads instead,
+///   in a constant table of their own: bumpEnvMat# a float2x2 whose rows are
+///   (M00, M01) and (M10, M11), so the offset is mul(float2(du, dv), it), laid
+///   out column-major from c8 two registers a stage, as fxc lays one out; and
+///   bumpEnvLum# a float2 of the scale and offset from c20. Whoever runs the
 ///   decompiled shader sets them where the stage state was set.
 ///
 /// The helper constants it needs - 0.5, 1, 2, -1, the scales and a zero - go in
@@ -83,7 +85,7 @@ public static class PixelShader1Lowering
     private const int FirstTextureStandIn = 8;
     private const int ZeroConstant = 29; // (0, 0, 0, 0)
     private const int BumpMatrixBase = 8;
-    private const int BumpLuminanceBase = 16;
+    private const int BumpLuminanceBase = 20;
     private const int HelperConstant = 30; // (0.5, 1, 2, -1)
     private const int ScaleConstant = 31; // (4, 8, 0.25, 0.125)
 
@@ -502,26 +504,25 @@ public static class PixelShader1Lowering
             Sample(stage, Source(RegisterType.Temp, reflected, Identity));
         }
 
-        // The bump environment matrix of a stage, (M00, M01, M10, M11), as a
-        // uniform: texture stage state the shader reads and does not hold.
-        private uint BumpMatrix(int stage, byte swizzle)
-        {
-            _bumpMatrices.Add(stage);
-            return Source(RegisterType.Const, BumpMatrixBase + stage, swizzle);
-        }
-
         /// <summary>
-        /// (M00 r + M10 g, M01 r + M11 g) of a value's red and green, into the x and
-        /// y of a scratch temp: the offset texbem and bem add.
+        /// mul(float2(r, g), bumpEnvMat) of a value's red and green - (M00 r + M10 g,
+        /// M01 r + M11 g) - into the x and y of a scratch temp: the offset texbem
+        /// and bem add. Spelled as fxc compiles that mul, a dp2add against each
+        /// column of the matrix, which is the shape the decompiler reads back as
+        /// the mul it is.
         /// </summary>
         private int BumpOffset(int stage, uint value)
         {
+            _bumpMatrices.Add(stage);
+            _usesZero = true;
             int offset = TakeScratch();
-            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, offset, 0x3),
-                SelectComponent(value, 0), BumpMatrix(stage, Identity));
-            Emit(Opcode.Mad, DestinationToken(RegisterType.Temp, offset, 0x3),
-                SelectComponent(value, 1), BumpMatrix(stage, 0xFE), // (M10, M11)
-                Source(RegisterType.Temp, offset, Identity));
+            for (int column = 0; column < 2; column++)
+            {
+                Emit(Opcode.DP2Add, DestinationToken(RegisterType.Temp, offset, 1 << column),
+                    value,
+                    Source(RegisterType.Const, BumpMatrixBase + 2 * stage + column, Identity),
+                    Source(RegisterType.Const, ZeroConstant, ReplicateX));
+            }
             return offset;
         }
 
@@ -925,9 +926,11 @@ public static class PixelShader1Lowering
         /// </summary>
         private uint[] StageStateTable()
         {
-            var constants = new List<(string Name, int Register, int Columns)>();
-            constants.AddRange(_bumpMatrices.Select(s => ($"bumpEnvMat{s}", BumpMatrixBase + s, 4)));
-            constants.AddRange(_bumpLuminances.Select(s => ($"bumpEnvLum{s}", BumpLuminanceBase + s, 2)));
+            var constants = new List<(string Name, int Register, int Rows, ParameterClass Class)>();
+            constants.AddRange(_bumpMatrices.Select(s =>
+                ($"bumpEnvMat{s}", BumpMatrixBase + 2 * s, 2, ParameterClass.MatrixColumns)));
+            constants.AddRange(_bumpLuminances.Select(s =>
+                ($"bumpEnvLum{s}", BumpLuminanceBase + s, 1, ParameterClass.Vector)));
 
             const int HeaderSize = 0x1C;
             const int ConstantInfoSize = 20;
@@ -962,17 +965,19 @@ public static class PixelShader1Lowering
                     writer.Write(nameOffsets[i]);
                     writer.Write((short)RegisterSet.Float4);
                     writer.Write((short)constants[i].Register);
-                    writer.Write((short)1);
+                    writer.Write((short)constants[i].Rows);
                     writer.Write((short)0);
                     writer.Write(typesStart + i * TypeInfoSize);
                     writer.Write(0); // no default
                 }
-                foreach ((_, _, int columns) in constants)
+                // A float2x2 bump matrix is two rows of two, in a register per
+                // column; the luminance is one row of two.
+                foreach ((_, _, int rows, ParameterClass parameterClass) in constants)
                 {
-                    writer.Write((short)ParameterClass.Vector);
+                    writer.Write((short)parameterClass);
                     writer.Write((short)ParameterType.Float);
-                    writer.Write((short)1);
-                    writer.Write((short)columns);
+                    writer.Write((short)rows);
+                    writer.Write((short)2);
                     writer.Write((short)1);
                     writer.Write((short)0);
                     writer.Write(0);

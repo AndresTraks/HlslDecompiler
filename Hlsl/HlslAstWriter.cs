@@ -28,6 +28,15 @@ public class HlslAstWriter : HlslWriter
     private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _doubleBitsVariables =
         new(ReferenceEqualityComparer.Instance);
 
+    // Set while a linkage method's body is being written: a return there hands
+    // back this register rather than the shader's outputs.
+    private RegisterKey _linkageReturnRegister;
+
+    // The statements of the function being written - main, or one linkage
+    // method - for the questions that are about a whole function rather than
+    // about the shader.
+    private IList<IStatement> _functionStatements;
+
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
     {
@@ -79,25 +88,61 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteAst(HlslAst ast)
     {
-        _doubleValues = ast.DoubleValues;
+        WriteFunctionStatements(ast.Statements, GetMethodReturnType() != "void",
+            HasOutputStruct, returnRegister: null);
+    }
+
+    /// <summary>
+    /// One function, written whole: main, or a linkage method's body - the same
+    /// lowering, the same folds, and the same order of both, because a body is a
+    /// function of its own and not a subroutine main happens to share a file with.
+    /// A body hands back <paramref name="returnRegister"/> where main hands back
+    /// its outputs.
+    /// </summary>
+    private void WriteFunctionStatements(IList<IStatement> statements, bool hasReturnValue,
+        bool hasOutputStruct, RegisterKey returnRegister)
+    {
+        _doubleValues = _ast.DoubleValues;
+        _functionStatements = statements;
+        _declaredVariables.Clear();
+        _declaredIndices.Clear();
+        _everDeclaredVariables.Clear();
+        _consumeVariables.Clear();
+        _doubleBitsVariables.Clear();
+        _loopDepth = 0;
         _compiler = new NodeCompiler(_registers, _doubleValues);
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
-        StatementFinalizer.Finalize(ast.Statements, GetMethodReturnType() != "void",
-            HasOutputStruct, CreateIntegerOperandAnalysis(), _doubleValues);
-        FindDeclaredVariables(ast.Statements);
+        StatementFinalizer.Finalize(statements, hasReturnValue, hasOutputStruct,
+            CreateIntegerOperandAnalysis(), _doubleValues,
+            liveOut: returnRegister == null ? null : [returnRegister]);
+        FindDeclaredVariables(statements);
 
         // A fold that sees through a variable can empty a statement above the one it
         // fires in, and what that statement named has to be gone from the output
         // before its line is written - so every fold runs, and the names no fold
         // leaves a reader for go, before any of the function is written.
-        TempResolver resolver = TempResolver.Build(ast.Statements);
+        TempResolver resolver = TempResolver.Build(statements);
         _templateMatcher.TempResolver = resolver;
-        ReduceAll(ast.Statements);
-        resolver.RemoveUnreadAssignments(ast.Statements);
+        ReduceAll(statements);
+        resolver.RemoveUnreadAssignments(statements);
 
-        WriteStatements(ast.Statements);
+        _linkageReturnRegister = returnRegister;
+        WriteStatements(statements);
+        _linkageReturnRegister = null;
+    }
+
+    /// <summary>
+    /// A body of the dynamic linkage, written as the method it is: the statements
+    /// the parser read off its instructions, lowered and folded the way main's
+    /// are, and returning the one register it writes.
+    /// </summary>
+    protected override void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body)
+    {
+        WriteFunctionStatements(
+            _ast.LinkageBodies.First(entry => ReferenceEquals(entry.Body, body)).Statements,
+            hasReturnValue: true, hasOutputStruct: false, body.ReturnRegister);
     }
 
     /// <summary>
@@ -244,7 +289,7 @@ public class HlslAstWriter : HlslWriter
         List<TempVariableNode> variables =
             [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.TempVariable)];
         bool onlyPartialPrecision = true;
-        new StatementVisitor(_ast.Statements).Visit(statement =>
+        new StatementVisitor(_functionStatements).Visit(statement =>
         {
             foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
             {
@@ -340,7 +385,7 @@ public class HlslAstWriter : HlslWriter
     // statement they are in.
     private void MarkPartsReassigned(TempVariableNode declared)
     {
-        new StatementVisitor(_ast.Statements).Visit(statement =>
+        new StatementVisitor(_functionStatements).Visit(statement =>
         {
             foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
             {
@@ -431,7 +476,14 @@ public class HlslAstWriter : HlslWriter
         }
         else if (statement is ReturnStatement returnStatement)
         {
-            WriteReturnStatement(returnStatement);
+            if (_linkageReturnRegister == null)
+            {
+                WriteReturnStatement(returnStatement);
+            }
+            else
+            {
+                WriteLinkageReturn(returnStatement);
+            }
         }
         else
         {
@@ -1187,6 +1239,57 @@ public class HlslAstWriter : HlslWriter
         return ReferenceEquals(input, variable)
             || (input is TempAssignmentNode assignment && ReferenceEquals(assignment.TempVariable, variable))
             || (input is PhiNode phi && phi.Inputs.Any(i => HandsVariable(i, variable)));
+    }
+
+    /// <summary>
+    /// A linkage method's return: the one register the body writes, taken from
+    /// what the return statement holds live for it - the expression itself where
+    /// the body computed it right here, the variable where one carried it. A
+    /// method has no output struct and no semantic: what it computes is what it
+    /// hands back.
+    /// </summary>
+    private void WriteLinkageReturn(ReturnStatement returnStatement)
+    {
+        // The variables this statement assigns are written first - except the
+        // result's own register, which the return itself is about to name, and
+        // which is often still an expression rather than a variable.
+        var temps = returnStatement.Outputs
+            .Where(o => o.Key.RegisterKey.IsTempRegister
+                && !o.Key.RegisterKey.Equals(_linkageReturnRegister))
+            .Where(o => !(returnStatement.Inputs.TryGetValue(o.Key, out var carried)
+                && ReferenceEquals(carried, o.Value)))
+            .ToDictionary();
+        foreach (var group in GroupAssignments(temps))
+        {
+            WriteLine(CompileAssignment(group));
+        }
+
+        HlslTreeNode[] result = [.. Enumerable.Range(0, 4).Select(component =>
+            ResultOf(returnStatement, new RegisterComponentKey(_linkageReturnRegister, component)))];
+        List<HlslTreeNode[]> roots = [result];
+        WriteSharedSubexpressions(roots);
+        string condition = returnStatement.Comparison == null
+            ? null
+            : _compiler.Compile(Reduce(returnStatement.Comparison));
+        string compiled = _compiler.CompileAsFloat(roots[0]);
+        WriteLine(condition == null
+            ? $"return {compiled};"
+            : $"if ({condition}) return {compiled};");
+    }
+
+    // The value the method hands back: a variable's assignment returns as the
+    // variable, whose line the statements above wrote; an expression is the
+    // value itself, and the return is where it is written.
+    private HlslTreeNode ResultOf(IStatement statement, RegisterComponentKey key)
+    {
+        if (!statement.Outputs.TryGetValue(key, out HlslTreeNode value))
+        {
+            throw new NotImplementedException(
+                "a linkage body that returns a register it does not write");
+        }
+        return Reduce(value is TempAssignmentNode assignment
+            ? assignment.TempVariable
+            : value);
     }
 
     private void WriteReturnStatement(ReturnStatement returnStatement)

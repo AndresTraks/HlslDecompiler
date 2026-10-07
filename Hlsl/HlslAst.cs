@@ -26,6 +26,14 @@ public class HlslAst
     public IDictionary<RegisterComponentKey, HlslTreeNode> PreshaderOutputs { get; init; }
         = new Dictionary<RegisterComponentKey, HlslTreeNode>();
 
+    /// <summary>
+    /// The bodies of a shader with dynamic linkage, parsed apart from the main
+    /// program: each one becomes the body of a method of the classes that hold it.
+    /// Null when the shader calls through no interface.
+    /// </summary>
+    public IList<(LinkageModel.FunctionBodyInfo Body, IList<IStatement> Statements)> LinkageBodies
+    { get; init; }
+
     public HlslAst(IList<IStatement> statements, RegisterState registerState,
         ISet<HlslTreeNode> doubleValues = null)
     {

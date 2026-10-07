@@ -2387,6 +2387,27 @@ public sealed class NodeCompiler
                 + msadSwizzle;
         }
 
+        if (first is InterfaceCallNode call)
+        {
+            // One call read at several components: the method runs once, and the
+            // swizzle picks the result, the way a sample's does. The arguments
+            // are whole registers - the body reads its parameters four
+            // components at a time, and what it reads is what the call site had
+            // in them.
+            MarkMatched(components);
+            LinkageModel.InterfaceInfo iface = _registers.Linkage.Interfaces
+                .First(i => i.Number == call.InterfaceNumber);
+            string instance = iface.IsArray
+                ? $"{iface.InstanceName}[{call.InstanceIndex}]"
+                : iface.InstanceName;
+            string arguments = string.Join(", ", call.Arguments.Chunk(4)
+                .Select(argument => Compile([.. argument])));
+            string callSwizzle = GetAstSourceSwizzleName(
+                componentsWithIndices, 4, promoteToVectorSize);
+            return $"{instance}.{LinkageModel.InterfaceInfo.MethodName(call.FunctionIndex)}"
+                + $"({arguments}){callSwizzle}";
+        }
+
         if (first is LitOutputNode lit)
         {
             // Every component reads the same three inputs, so they are compiled from

@@ -762,6 +762,14 @@ public sealed class RegisterState
     public IDictionary<int, (int Stride, int Elements)> ThreadGroupSharedMemory { get; } =
         new Dictionary<int, (int Stride, int Elements)>();
 
+    /// <summary>
+    /// The interfaces, their tables and their bodies, when the shader calls through
+    /// one: read off the declarations the parser is walking, and written back as
+    /// interface, class and global-instance declarations before the entry point.
+    /// Empty when the shader has no dynamic linkage.
+    /// </summary>
+    public LinkageModel Linkage { get; set; }
+
     private ShaderModel _shaderModel;
 
     public RegisterState(ShaderModel shaderModel)

@@ -290,6 +290,15 @@ public class D3D10Machine
                     }
                     pc++;
                     continue;
+                case D3D10Opcode.InterfaceCall:
+                    // Said out loud rather than run as the first table's body: which
+                    // class an interface instance holds is bound when the shader is
+                    // set up, and nothing in the bytecode says. Any body this picked
+                    // it could pick, and the shader's decompilation recompiled would
+                    // be free to mean something else by it - fxc is under no promise
+                    // to keep the tables in the order it was given.
+                    throw new UnsupportedException(
+                        "a call through an interface, which class being bound decides");
                 case D3D10Opcode.Discard:
                     Discarded |= Test(instruction);
                     pc++;

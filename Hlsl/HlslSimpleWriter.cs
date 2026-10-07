@@ -61,12 +61,20 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine();
         }
 
-        WriteTemporaryVariableDeclarations();
+        // A shader with dynamic linkage runs its bodies as methods of their own
+        // class: main reaches the first label and no further, and the temps main
+        // needs are only the ones written before it.
+        IList<Instruction> mainInstructions =
+            _registers.Linkage != null && _registers.Linkage.HasLinkage
+            ? [.. _phaseShader.Instructions.Take(_registers.Linkage.MainInstructionCount)]
+            : _phaseShader.Instructions;
+
+        WriteTemporaryVariableDeclarations(mainInstructions);
         WriteIndexableTempDeclarations(_integerOperandAnalysis);
         WritePreshaderOutputs();
-        for (int index = 0; index < _phaseShader.Instructions.Count; index++)
+        for (int index = 0; index < mainInstructions.Count; index++)
         {
-            Instruction instruction = _phaseShader.Instructions[index];
+            Instruction instruction = mainInstructions[index];
             if (instruction is D3D9Instruction d3d9Instruction)
             {
                 WriteInstruction(d3d9Instruction);
@@ -200,44 +208,53 @@ public class HlslSimpleWriter : HlslWriter
         return name;
     }
 
-    private void WriteTemporaryVariableDeclarations()
+    private void WriteTemporaryVariableDeclarations(IList<Instruction> instructions)
     {
-        Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(_phaseShader.Instructions);
+        Dictionary<RegisterKey, int> registerWriteMasks = FindTemporaryRegisterAssignments(instructions);
         foreach (var register in registerWriteMasks)
         {
-            int writeMask = register.Value;
-            // An array subscript has to be an integer, and the address register is
-            // only ever used as one.
-            bool isAddressRegister = register.Key is D3D9RegisterKey addressKey
-                && addressKey.Type == RegisterType.Addr;
-            // A register holding only integers has to be declared as one: a shift or a
-            // bitwise operator will not take a float, however the bits got there.
-            string scalarType = isAddressRegister || IsIntegerTempRegister(register.Key, writeMask)
-                ? "int"
-                : IsHalfTempRegister(register.Key) ? "half" : "float";
-            // The address register is as wide as it is written: `mova a0.xy`
-            // loads two indices, and reading them both out of a scalar is not
-            // possible.
-            string writeMaskName = isAddressRegister ? AddressTypeName(writeMask) : writeMask switch
-            {
-                0x1 => scalarType,
-                0x3 => scalarType + "2",
-                0x7 => scalarType + "3",
-                0xF => scalarType + "4",
-                _ => scalarType + "4",// TODO
-            };
-            // A register nothing but doubles is written to needs no float variable
-            // beside their shadow: every value in it is named through the shadow, and
-            // the float2 a StructuredBuffer<double> loads through was declared and
-            // never read. Asked of the writes rather than of the mask, because fxc
-            // reuses a register freely and one holding a double at .xy and a
-            // comparison mask at .x needs both.
-            if (FindFloatWrittenComponents(register.Key) != 0)
-            {
-                WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(register.Key));
-            }
-            WriteDoubleRegisterDeclaration(register.Key);
+            WriteTemporaryVariableDeclaration(register.Key, register.Value);
         }
+    }
+
+    /// <summary>
+    /// The line a temp variable is declared by: as wide as it is written and of the
+    /// type it is written as, with the doubles it holds shadowed beside it. The body
+    /// of a linkage method declares its locals the same way main declares its temps.
+    /// </summary>
+    private void WriteTemporaryVariableDeclaration(RegisterKey registerKey, int writeMask)
+    {
+        // An array subscript has to be an integer, and the address register is
+        // only ever used as one.
+        bool isAddressRegister = registerKey is D3D9RegisterKey addressKey
+            && addressKey.Type == RegisterType.Addr;
+        // A register holding only integers has to be declared as one: a shift or a
+        // bitwise operator will not take a float, however the bits got there.
+        string scalarType = isAddressRegister || IsIntegerTempRegister(registerKey, writeMask)
+            ? "int"
+            : IsHalfTempRegister(registerKey) ? "half" : "float";
+        // The address register is as wide as it is written: `mova a0.xy`
+        // loads two indices, and reading them both out of a scalar is not
+        // possible.
+        string writeMaskName = isAddressRegister ? AddressTypeName(writeMask) : writeMask switch
+        {
+            0x1 => scalarType,
+            0x3 => scalarType + "2",
+            0x7 => scalarType + "3",
+            0xF => scalarType + "4",
+            _ => scalarType + "4",// TODO
+        };
+        // A register nothing but doubles is written to needs no float variable
+        // beside their shadow: every value in it is named through the shadow, and
+        // the float2 a StructuredBuffer<double> loads through was declared and
+        // never read. Asked of the writes rather than of the mask, because fxc
+        // reuses a register freely and one holding a double at .xy and a
+        // comparison mask at .x needs both.
+        if (FindFloatWrittenComponents(registerKey) != 0)
+        {
+            WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(registerKey));
+        }
+        WriteDoubleRegisterDeclaration(registerKey);
     }
 
     /// <summary>
@@ -260,14 +277,84 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components of a register written by anything that is not a double, as a
-    /// write mask. A write that goes through the shadow variable leaves the float
-    /// components of the register untouched, so a register only doubles are written
-    /// to answers zero and needs no float variable at all.
+    /// The instruction main ends at: the last one there is, or the one before the
+    /// first label once dynamic linkage starts writing bodies of their own.
     /// </summary>
+    private Instruction LastMainInstruction()
+    {
+        return _registers.Linkage != null && _registers.Linkage.HasLinkage
+            ? _phaseShader.Instructions[_registers.Linkage.MainInstructionCount - 1]
+            : _phaseShader.Instructions[^1];
+    }
+
+    /// <summary>
+    /// A call through an interface: the result lands in the register every body it
+    /// could run writes, and the arguments are the registers that body reads before
+    /// writing them - named as main names them, which is how they reach the body
+    /// under its own parameter names.
+    /// </summary>
+    private void WriteInterfaceCall(D3D10Instruction instruction)
+    {
+        int function = (int)instruction.OperandTokens.Tokens[0];
+        int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
+        int instance = (int)instruction.OperandTokens.Tokens[3];
+        LinkageModel.InterfaceInfo iface =
+            _registers.Linkage.Interfaces.First(i => i.Number == interfaceNumber);
+        LinkageModel.FunctionBodyInfo body =
+            _registers.Linkage.BodyForCall(interfaceNumber, instance, function);
+        string arguments = string.Join(", ", body.Parameters.Select(GetLinkageArgumentName));
+        WriteLine("{0} = {1}.{2}({3});", GetTempRegisterName(body.ReturnRegister),
+            iface.IsArray ? $"{iface.InstanceName}[{instance}]" : iface.InstanceName,
+            LinkageModel.InterfaceInfo.MethodName(function), arguments);
+    }
+
+    private string GetLinkageArgumentName(RegisterKey parameter)
+    {
+        if (parameter is D3D10RegisterKey { OperandType: OperandType.Input } input)
+        {
+            return _registers.GetRegisterName(new RegisterComponentKey(input, 0));
+        }
+        return GetTempRegisterName(parameter);
+    }
+
+    /// <summary>
+    /// A body transcribed instruction by instruction: its locals declared the way
+    /// main's temps are, its ret replaced by the return of the one register it
+    /// writes, and the registers it reads before writing them already the
+    /// parameter names the signature declares.
+    /// </summary>
+    protected override void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body)
+    {
+        // The classes are written before main, and a body writes instructions the
+        // way main writes them - which asks for the analyses main's method body
+        // would have built by then. The same phase, so the same answers.
+        _integerOperandAnalysis ??= new IntegerOperandAnalysis(_phaseShader);
+        _programOrder ??= new ProgramOrder(_phaseShader,
+            (instruction, operand) => GetSourceComponents(
+                instruction, operand, instruction.GetSourceSwizzleComponents(operand)));
+        FindMovedDoubles();
+
+        foreach ((RegisterKey register, int writeMask) in FindTemporaryRegisterAssignments(
+            [.. _phaseShader.Instructions.Skip(body.First).Take(body.Last - body.First)]))
+        {
+            WriteTemporaryVariableDeclaration(register, writeMask);
+        }
+
+        for (int index = body.First; index < body.Last; index++)
+        {
+            if (_phaseShader.Instructions[index] is D3D10Instruction instruction
+                && instruction.Opcode != D3D10Opcode.Ret)
+            {
+                WriteInstruction(instruction);
+            }
+        }
+        WriteLine();
+        WriteLine("return {0};", GetTempRegisterName(body.ReturnRegister));
+    }
+
     /// <summary>
     /// Whether the instruction is the half of a call the writer folds into
-    /// the other half: the slot an append buffer allocates and the one a
+    /// the other half: the slot an append buffer took and the one a
     /// consume buffer takes are written as part of Append and Consume, so
     /// neither leaves an assignment behind to declare a register for.
     /// </summary>
@@ -332,6 +419,12 @@ public class HlslSimpleWriter : HlslWriter
         return true;
     }
 
+    /// <summary>
+    /// The components of a register written by anything that is not a double, as a
+    /// write mask. A write that goes through the shadow variable leaves the float
+    /// components of the register untouched, so a register only doubles are written
+    /// to answers zero and needs no float variable at all.
+    /// </summary>
     private int FindFloatWrittenComponents(RegisterKey registerKey)
     {
         int mask = 0;
@@ -348,6 +441,14 @@ public class HlslSimpleWriter : HlslWriter
             // nothing else in the function mentions.
             if (IsFoldedIntoCall(d3d10))
             {
+                continue;
+            }
+            // The register a call through an interface returns into is written
+            // by that call, floats, whatever its operand tokens say.
+            if (InterfaceCallDestination(d3d10) is RegisterKey returned
+                && Equals(returned, registerKey))
+            {
+                mask |= 0b1111;
                 continue;
             }
             foreach (int destination in GetDestinationParamIndices(d3d10))
@@ -1341,11 +1442,37 @@ public class HlslSimpleWriter : HlslWriter
         });
     }
 
+    /// <summary>
+    /// The register a call through an interface leaves its result in: not an operand
+    /// of the fcall - it has none - but the one register every body it could run
+    /// writes. Null for every other instruction.
+    /// </summary>
+    private RegisterKey InterfaceCallDestination(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode != D3D10Opcode.InterfaceCall || _registers.Linkage == null)
+        {
+            return null;
+        }
+        return _registers.Linkage.BodyForCall(
+            (int)instruction.OperandTokens.Tokens[2],
+            (int)instruction.OperandTokens.Tokens[3],
+            (int)instruction.OperandTokens.Tokens[0]).ReturnRegister;
+    }
+
     private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
     {
         var tempRegisters = new Dictionary<RegisterKey, int>();
         foreach (Instruction instruction in instructions)
         {
+            if (instruction is D3D10Instruction call
+                && InterfaceCallDestination(call) is RegisterKey result)
+            {
+                if (!tempRegisters.TryAdd(result, 0xF))
+                {
+                    tempRegisters[result] |= 0xF;
+                }
+                continue;
+            }
             foreach (int destIndex in GetDestinationParamIndices(instruction))
             {
                 if (!IsDestinationTempRegister(instruction, destIndex))
@@ -3411,6 +3538,13 @@ public class HlslSimpleWriter : HlslWriter
             // Declared at file scope, before main.
             case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
+            // Declared at file scope, before main, in their own words.
+            case D3D10Opcode.DclFunctionBody:
+            case D3D10Opcode.DclFunctionTable:
+            case D3D10Opcode.DclInterface:
+                break;
+            case D3D10Opcode.InterfaceCall:
+                WriteInterfaceCall(instruction);
                 break;
             case D3D10Opcode.RetC:
                 WriteLine("if ({0}) return{1};", ZeroTest(instruction, 0),
@@ -3421,8 +3555,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Ret:
                 // The last ret is the method returning, which is written after the
                 // body. Anywhere else it is an early return, and dropping it lost the
-                // branch that took it.
-                if (!ReferenceEquals(instruction, _phaseShader.Instructions[_phaseShader.Instructions.Count - 1]))
+                // branch that took it. With dynamic linkage main ends at the first
+                // label - the rets beyond it close the bodies, and each body writes
+                // its own return.
+                if (!ReferenceEquals(instruction, LastMainInstruction()))
                 {
                     WriteLine(_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
                         ? $"return {_registers.OutputVariableName};"

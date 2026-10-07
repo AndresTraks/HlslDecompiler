@@ -101,12 +101,65 @@ public class InstructionParser
         _currentStatements = new Stack<IStatement>();
 
         _instructionPointer = 0;
+        List<(LinkageModel.FunctionBodyInfo, IList<IStatement>)> linkageBodies = null;
         if (shader.Instructions[0] is D3D10Instruction)
         {
-            while (_instructionPointer < shader.Instructions.Count)
+            _registerState.Linkage = LinkageModel.Read(shader);
+            int mainEnd = _registerState.Linkage.HasLinkage
+                ? _registerState.Linkage.MainInstructionCount
+                : shader.Instructions.Count;
+            while (_instructionPointer < mainEnd)
             {
                 ParseInstruction(shader.Instructions[_instructionPointer] as D3D10Instruction);
                 _instructionPointer++;
+            }
+            if (_registerState.Linkage.HasLinkage)
+            {
+                // Each body is a method of its own: statements of their own, parsed
+                // against the same declarations the main program parsed (its inputs
+                // and constants are what the bodies read), and joined back to the
+                // classes by the writer.
+                IList<IStatement> mainStatements = _statements;
+                Stack<IStatement> mainStack = _currentStatements;
+                // What the declarations leave in the map where main parsed: every
+                // read is a RegisterInputNode naming the register itself - the
+                // inputs, the constant buffers, the resources, the samplers. A body
+                // starts from those and from none of main's values: what it reads
+                // before it writes is a parameter, and a parameter is named for the
+                // register, never for whatever main last left in one.
+                var declared = new Dictionary<RegisterComponentKey, HlslTreeNode>();
+                if (mainStatements.Count != 0)
+                {
+                    foreach (var entry in mainStatements[^1].Outputs)
+                    {
+                        if (entry.Value is RegisterInputNode)
+                        {
+                            declared[entry.Key] = entry.Value;
+                        }
+                    }
+                }
+                linkageBodies = [];
+                foreach (LinkageModel.FunctionBodyInfo body in _registerState.Linkage.Bodies)
+                {
+                    _statements = [];
+                    _currentStatements = new Stack<IStatement>();
+                    // Stands in for main's dcl instructions, which seeded the same
+                    // reads and are not re-parsed here: the body's first instruction
+                    // joins it the way main's first joined the first dcl, and its
+                    // declaration entries are nothing by the time the statements are
+                    // finalized.
+                    InsertStatement(new AssignmentStatement(declared));
+                    _instructionPointer = body.First;
+                    while (_instructionPointer < body.Last)
+                    {
+                        ParseInstruction(shader.Instructions[_instructionPointer] as D3D10Instruction);
+                        _instructionPointer++;
+                    }
+                    linkageBodies.Add((body, _statements));
+                }
+                _statements = mainStatements;
+                _currentStatements = mainStack;
+                _instructionPointer = mainEnd;
             }
         }
         else
@@ -122,6 +175,7 @@ public class InstructionParser
         return new HlslAst(_statements, _registerState, _doubleValues)
         {
             PreshaderOutputs = _preshaderOutputs,
+            LinkageBodies = linkageBodies,
         };
     }
 
@@ -756,6 +810,16 @@ public class InstructionParser
                 case D3D10Opcode.DclHSForkPhaseInstanceCount:
                 case D3D10Opcode.DclHSJoinPhaseInstanceCount:
                     break;
+                // The shape of the dynamic linkage is read off these three
+                // declarations before anything is parsed - see LinkageModel. Here
+                // they are instructions the walk still has to walk past.
+                case D3D10Opcode.DclFunctionBody:
+                case D3D10Opcode.DclFunctionTable:
+                case D3D10Opcode.DclInterface:
+                    break;
+                case D3D10Opcode.InterfaceCall:
+                    InsertInterfaceCall(instruction);
+                    break;
                 default:
                     throw new NotImplementedException(instruction.Opcode.ToString());
             }
@@ -1080,6 +1144,43 @@ public class InstructionParser
     private void InsertAppend(int? stream = null)
     {
         InsertStatement(new AppendStatement(ActiveOutputs) { Stream = stream });
+    }
+
+    /// <summary>
+    /// A call through an interface. The body it runs reads its arguments straight out
+    /// of the caller's registers - so the call site hands over what those registers
+    /// hold right here, whole registers at a time - and leaves its result in the one
+    /// register the body writes, which every later read of it then finds as the call.
+    /// </summary>
+    private void InsertInterfaceCall(D3D10Instruction instruction)
+    {
+        // The function index sits in front as a dword of its own, and the interface
+        // operand behind it carries the interface and the instance - the layout
+        // AsmWriter prints as fp1[2][0].
+        int function = (int)instruction.OperandTokens.Tokens[0];
+        int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
+        int instance = (int)instruction.OperandTokens.Tokens[3];
+        LinkageModel.FunctionBodyInfo body =
+            _registerState.Linkage.BodyForCall(interfaceNumber, instance, function);
+
+        var arguments = new List<HlslTreeNode>();
+        foreach (RegisterKey parameter in body.Parameters)
+        {
+            for (int component = 0; component < 4; component++)
+            {
+                arguments.Add(GetActiveOutput(new RegisterComponentKey(parameter, component)));
+            }
+        }
+
+        for (int component = 0; component < 4; component++)
+        {
+            var callNode = new InterfaceCallNode(
+                interfaceNumber, instance, function, [.. arguments], component);
+            callNode.SourceInstruction = _instructionPointer + 1;
+            callNode.SourceComponent = component;
+            SetActiveOutput(
+                new RegisterComponentKey(body.ReturnRegister, component), callNode);
+        }
     }
 
     private void InsertRestartStrip(int? stream = null)

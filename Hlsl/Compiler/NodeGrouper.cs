@@ -312,6 +312,19 @@ public class NodeGrouper
                     .All(operands => ReferenceEquals(operands.First, operands.Second));
         }
 
+        // A call through an interface is one call written once and swizzled, so two
+        // of its components are components of one expression only where they are
+        // components of one call: the same interface, the same instance, the same
+        // method, one instruction. The general rule below compares operands, and
+        // two calls of one register through two interfaces would group as one.
+        if (node1 is InterfaceCallNode call1 && node2 is InterfaceCallNode call2)
+        {
+            return HlslTreeNode.IsSameInstruction(node1, node2)
+                && call1.InterfaceNumber == call2.InterfaceNumber
+                && call1.InstanceIndex == call2.InstanceIndex
+                && call1.FunctionIndex == call2.FunctionIndex;
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)
@@ -608,6 +621,18 @@ public class NodeGrouper
                 && comparison1.IsBitsTest == comparison2.IsBitsTest
                 && AreNodesEquivalent(comparison1.Left, comparison2.Left)
                 && AreNodesEquivalent(comparison1.Right, comparison2.Right);
+        }
+
+        // Which interface, which instance and which method say which call a call
+        // node names as much as its arguments do: the general rule below compares
+        // arguments alone, and one register through two interfaces would answer
+        // that two calls are one value.
+        if (node1 is InterfaceCallNode call1 && node2 is InterfaceCallNode call2)
+        {
+            return call1.InterfaceNumber == call2.InterfaceNumber
+                && call1.InstanceIndex == call2.InstanceIndex
+                && call1.FunctionIndex == call2.FunctionIndex
+                && AreNodesEquivalent([.. call1.Arguments], [.. call2.Arguments]);
         }
 
         if ((node1 is IHasComponentIndex) ||

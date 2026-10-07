@@ -16,24 +16,29 @@ public class StatementFinalizer
     private readonly bool _hasOutputStruct;
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
     private readonly ISet<HlslTreeNode> _doubleValues;
+    // The registers the caller of this function reads when it returns - a linkage
+    // body's result, which nothing inside the body reads, being read out of it.
+    // The dead-value pass below would otherwise take it out as computing nothing.
+    private readonly HashSet<RegisterKey> _liveOut;
 
     private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue,
         bool hasOutputStruct, IntegerOperandAnalysis integerOperandAnalysis,
-        ISet<HlslTreeNode> doubleValues)
+        ISet<HlslTreeNode> doubleValues, IEnumerable<RegisterKey> liveOut)
     {
         _statements = statements;
         _hasReturnValue = hasReturnValue;
         _hasOutputStruct = hasOutputStruct;
         _integerOperandAnalysis = integerOperandAnalysis;
         _doubleValues = doubleValues ?? new HashSet<HlslTreeNode>();
+        _liveOut = liveOut == null ? [] : [.. liveOut];
     }
 
     public static void Finalize(IList<IStatement> statements, bool hasReturnValue,
         bool hasOutputStruct = false, IntegerOperandAnalysis integerOperandAnalysis = null,
-        ISet<HlslTreeNode> doubleValues = null)
+        ISet<HlslTreeNode> doubleValues = null, IEnumerable<RegisterKey> liveOut = null)
     {
-        var finalizer = new StatementFinalizer(
-            statements, hasReturnValue, hasOutputStruct, integerOperandAnalysis, doubleValues);
+        var finalizer = new StatementFinalizer(statements, hasReturnValue, hasOutputStruct,
+            integerOperandAnalysis, doubleValues, liveOut);
         finalizer.FinalizeStatements();
     }
 
@@ -155,6 +160,10 @@ public class StatementFinalizer
             var assignmentOutputs = assignment.Outputs
                 .Where(o => o.Key.RegisterKey.IsTempRegister)
                 .Where(o => !(assignment.Inputs.TryGetValue(o.Key, out var input) && ReferenceEquals(input, o.Value)))
+                // What the caller reads on the way out is read, whoever the
+                // reader is: a body's result has no reader inside the body, and
+                // nothing here can see the fcall that goes looking for it.
+                .Where(o => !_liveOut.Contains(o.Key.RegisterKey))
                 .ToDictionary();
             // Which registers this statement assigns have a component shared with a
             // statement that holds it. By register rather than by component, since a

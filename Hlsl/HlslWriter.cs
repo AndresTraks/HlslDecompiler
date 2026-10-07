@@ -333,12 +333,138 @@ public abstract class HlslWriter
             WriteLine("[earlydepthstencil]");
         }
 
+        if (_registers.Linkage != null && _registers.Linkage.HasLinkage)
+        {
+            WriteLinkageDeclarations();
+        }
+
         string methodReturnType = GetMethodReturnType();
         string methodParameters = GetMethodParameters();
         string methodSemantic = GetMethodSemantic();
 
         WriteFunction($"{methodReturnType} {EntryName}({methodParameters}){methodSemantic}",
             WriteMethodBody);
+    }
+
+    /// <summary>
+    /// What dynamic linkage declares, in the spelling HLSL wants: an interface for
+    /// each fp, the classes its tables hold with one method per function, and the
+    /// global the fcall calls through. HLSL insists on that order - a class names
+    /// the interface it implements, and the global names a class's type.
+    /// </summary>
+    private void WriteLinkageDeclarations()
+    {
+        LinkageModel linkage = _registers.Linkage;
+        if (linkage.Bodies.Any(b => b.Parameters.Count != 0)
+            && _registers.MethodInputRegisters.Count > 1)
+        {
+            throw new NotImplementedException(
+                "a linkage method argument named through an input struct");
+        }
+
+        foreach (LinkageModel.InterfaceInfo iface in linkage.Interfaces)
+        {
+            WriteLine($"interface {iface.Name}");
+            WriteLine("{");
+            indent = "\t";
+            for (int function = 0; function < iface.FunctionsPerTable; function++)
+            {
+                WriteLine($"{LinkageMethodSignature(iface, function)};");
+            }
+            indent = "";
+            WriteLine("};");
+            WriteLine();
+        }
+
+        WriteLinkageClasses();
+
+        foreach (LinkageModel.InterfaceInfo iface in linkage.Interfaces)
+        {
+            WriteLine($"{iface.Name} {iface.InstanceName}"
+                + $"{(iface.IsArray ? $"[{iface.InstanceArrayLength}]" : "")};");
+        }
+        WriteLine();
+    }
+
+    /// <summary>
+    /// The classes: each table of the interface is one class that could be bound to
+    /// it, and the bodies its row holds are that class's methods. Each writer fills
+    /// the bodies its own way - one from the value graph, one from the instructions.
+    /// </summary>
+    protected void WriteLinkageClasses()
+    {
+        LinkageModel linkage = _registers.Linkage;
+        foreach (LinkageModel.InterfaceInfo iface in linkage.Interfaces)
+        {
+            for (int tableSlot = 0; tableSlot < iface.Tables.Length; tableSlot++)
+            {
+                int[] bodies = linkage.Tables
+                    .First(t => t.Number == iface.Tables[tableSlot]).Bodies;
+                WriteLine("class {0} : {1}", iface.ClassName(tableSlot), iface.Name);
+                WriteLine("{");
+                indent = "\t";
+                for (int function = 0; function < iface.FunctionsPerTable; function++)
+                {
+                    if (function != 0)
+                    {
+                        WriteLine();
+                    }
+                    WriteLine(LinkageMethodSignature(iface, function));
+                    WriteLine("{");
+                    indent = "\t\t";
+                    WriteLinkageMethodBody(linkage.BodyByLabel(bodies[function]));
+                    indent = "\t";
+                    WriteLine("}");
+                }
+                indent = "";
+                WriteLine("};");
+                WriteLine();
+            }
+        }
+    }
+
+    protected abstract void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body);
+
+    protected string LinkageMethodSignature(
+        LinkageModel.InterfaceInfo iface, int function)
+    {
+        LinkageModel.FunctionBodyInfo body =
+            _registers.Linkage.BodyForCall(iface.Number, 0, function);
+        string parameters = string.Join(", ", body.Parameters.Select(parameter =>
+        {
+            RegisterDeclaration declaration = _registers.MethodInputRegisters
+                .FirstOrDefault(d => d.RegisterKey.Equals(parameter));
+            if (declaration == null)
+            {
+                throw new NotImplementedException(
+                    "a linkage method argument with no input declaration");
+            }
+            return $"{declaration.TypeName} {declaration.Name}";
+        }));
+        return $"{LinkageReturnTypeName(body)} "
+            + $"{LinkageModel.InterfaceInfo.MethodName(function)}({parameters})";
+    }
+
+    /// <summary>
+    /// What the method hands back. A body computes its result the way the shader
+    /// computes anything, and the register it lands in is typed by the same rules -
+    /// but a body that computes integers in it is not something the writers can
+    /// name yet, and says so rather than returning floats from an int4.
+    /// </summary>
+    private string LinkageReturnTypeName(LinkageModel.FunctionBodyInfo body)
+    {
+        for (int i = body.First; i < body.Last; i++)
+        {
+            if (_phaseShader.Instructions[i] is D3D10Instruction instruction
+                && instruction.GetDestinationParamIndex() != null
+                && Equals(instruction.GetParamRegisterKey(
+                    instruction.GetDestinationParamIndex().Value), body.ReturnRegister)
+                && instruction.Opcode.IsInteger())
+            {
+                throw new NotImplementedException("an integer-returning linkage method");
+            }
+        }
+        return "float4";
     }
 
     /// <summary>

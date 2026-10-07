@@ -14,6 +14,7 @@ Texture2D maskMap;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 normal : NORMAL;
 	float4 tangent : TANGENT;
 	float2 texcoord : TEXCOORD;

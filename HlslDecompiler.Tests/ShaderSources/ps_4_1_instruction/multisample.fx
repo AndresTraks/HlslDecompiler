@@ -1,6 +1,12 @@
 Texture2DMS<float4, 4> tex;
 
-float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
+struct PS_IN
+{
+	noperspective float4 sv_position : SV_Position;
+	float2 texcoord : TEXCOORD;
+};
+
+float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
@@ -8,7 +14,7 @@ float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 	float4 r1;
 	int2 r2;
 	float4 r3;
-	r0.xy = (int2)sv_position.xy;
+	r0.xy = (int2)i.sv_position.xy;
 	r0.zw = int2(0, 0);
 	r1 = float4(0, 0, 0, 0);
 	r2.x = 0;

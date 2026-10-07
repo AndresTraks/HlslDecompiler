@@ -91,14 +91,14 @@ public class ResourceDefinition
     /// Texture2D stands for its own.
     /// </summary>
     /// <remarks>
-    /// Four components, whatever the reflection data counts: a shader that declared
-    /// RWTexture2D&lt;float&gt; and one that declared RWTexture2D&lt;float4&gt;
+    /// As wide as it was declared. RWTexture2D&lt;float&gt; and RWTexture2D&lt;float4&gt;
     /// compile to the same dcl_uav_typed_texture2d (float,float,float,float) and the
-    /// same store over an xyzw mask, so four is what the bytecode says and the
-    /// narrower one cannot be told from it.
+    /// same store over an xyzw mask, but the reflection data counts the components
+    /// declared, and a host reading the view's type off it - or binding a view of a
+    /// one-channel format - saw four where the shader had one.
     /// </remarks>
     public string ReadWriteTypeName =>
-        $"RW{Dimension}<{(IsNormalisedReturnType ? NormalisedPrefix + " " : "")}{ReturnScalarTypeName}4>";
+        $"RW{Dimension}<{(IsNormalisedReturnType ? NormalisedPrefix + " " : "")}{ReturnTypeName}>";
 
     /// <summary>
     /// The HLSL type a typed view that an interlocked operation writes is declared
@@ -123,21 +123,21 @@ public class ResourceDefinition
         ResourceDimension.Texture2DmsArray => SampleCount > 0
             ? $"Texture2DMSArray<{ReturnTypeName}, {SampleCount}>"
             : $"Texture2DMSArray<{ReturnTypeName}>",
-        // Every other texture names its element type only where it holds integers,
+        // Every other texture names its element type where it holds integers,
         // which the declaration in the bytecode says. A G-buffer read with ld from
         // a Texture2D<uint4> was written as holding floats, so the bits packed into
         // it were anded as floats - X3082 - and the depth stored in it came back as
-        // whatever number those bits are. The width is not asked of a float
-        // texture: the component count comes from the reflection data, which counts
-        // the components the shader reads and not the ones it declared, so a
-        // Texture2D read for its .x alone would be narrowed to Texture2D<float>.
-        // A normalised texture says so, and at four components whatever the
-        // reflection counts: a bare Texture2D already means Texture2D<float4>, so
-        // the width is not new information here and the unreliable count is not
-        // worth consulting for it. Dropped, `Texture2D<unorm float4>` came back as
-        // a plain Texture2D and the declaration no longer said what the texels are.
+        // whatever number those bits are. A float texture names it where it is
+        // narrower than four: the reflection data counts the components declared,
+        // not the ones read - fxc reflects a Texture2D read for its .x alone as
+        // float4, and a Texture2D<float> as float - and a depth map declared
+        // Texture2D<float> came back as a bare Texture2D, a different declaration
+        // to anything that reflects it. A bare Texture2D already means float4.
+        // A normalised texture says so, and at four components: dropped,
+        // `Texture2D<unorm float4>` came back as a plain Texture2D and the
+        // declaration no longer said what the texels are.
         _ => IsNormalisedReturnType ? $"{Dimension}<{NormalisedPrefix} float4>"
-            : IsIntegerReturnType ? $"{Dimension}<{ReturnTypeName}>"
+            : IsIntegerReturnType || ReturnComponents < 4 ? $"{Dimension}<{ReturnTypeName}>"
             : Dimension.ToString(),
     };
 

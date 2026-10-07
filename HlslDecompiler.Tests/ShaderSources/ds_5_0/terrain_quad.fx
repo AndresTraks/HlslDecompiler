@@ -7,7 +7,7 @@ cbuffer Params : register(b0)
 };
 
 SamplerState linearSampler;
-Texture2D heights;
+Texture2D<float> heights;
 
 struct DS_IN
 {

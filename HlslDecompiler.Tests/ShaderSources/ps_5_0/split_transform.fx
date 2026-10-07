@@ -10,9 +10,15 @@ SamplerState linearSampler;
 Texture2D depthMap;
 Texture2D decalMap;
 
-float4 main(float2 texcoord : TEXCOORD) : SV_Target
+struct PS_IN
 {
-	float4 t0 = float4(2 * texcoord - 1, depthMap.Sample(linearSampler, texcoord).x, 1);
+	float4 sv_position : SV_Position;
+	float2 texcoord : TEXCOORD;
+};
+
+float4 main(PS_IN i) : SV_Target
+{
+	float4 t0 = float4(2 * i.texcoord - 1, depthMap.Sample(linearSampler, i.texcoord).x, 1);
 	float t1 = dot(transpose(invViewProjection)[3], t0);
 	float4 t2 = float4(mul(t0, (float4x3)invViewProjection), t1) / t1;
 	float2 t3 = mul(t2, (float4x2)decalMatrix);

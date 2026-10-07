@@ -5,7 +5,7 @@ cbuffer Exposure : register(b0)
 
 Texture2D<uint> packedLuminance;
 RWStructuredBuffer<uint> scaledBits : register(u0);
-RWTexture2D<uint4> brightMask : register(u1);
+RWTexture2D<uint> brightMask : register(u1);
 AppendStructuredBuffer<uint> brightPixels : register(u2);
 
 [numthreads(8, 8, 1)]

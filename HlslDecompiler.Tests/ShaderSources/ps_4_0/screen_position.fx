@@ -1,7 +1,7 @@
 float2 resolution;
 
 Texture2D sceneTex;
-Texture2D depthTex;
+Texture2D<float> depthTex;
 
 struct PS_IN
 {

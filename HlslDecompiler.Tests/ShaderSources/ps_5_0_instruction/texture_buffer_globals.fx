@@ -12,7 +12,7 @@ tbuffer Palette
 SamplerState linearSampler;
 TextureCubeArray probes : register(t1);
 
-float4 main() : SV_Target
+float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 

@@ -5,19 +5,25 @@ float farDepth;
 SamplerState samp;
 Texture2D tex;
 
+struct PS_IN
+{
+	float4 sv_position : SV_Position;
+	float2 texcoord : TEXCOORD;
+};
+
 struct PS_OUT
 {
 	float4 sv_target : SV_Target;
 	float sv_depth : SV_Depth;
 };
 
-PS_OUT main(float2 texcoord : TEXCOORD)
+PS_OUT main(PS_IN i)
 {
 	PS_OUT o;
 
 	float4 r0;
 	int3 r1;
-	r0 = tex.Sample(samp, texcoord.xy);
+	r0 = tex.Sample(samp, i.texcoord.xy);
 	r1.x = (r0.w < threshold) ? -1 : 0;
 	if (r1.x != 0) discard;
 	r1.x = (0.5 < r0.x) ? -1 : 0;

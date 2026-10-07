@@ -3,7 +3,7 @@ uint mip;
 Texture2DArray layers;
 Texture3D volume;
 
-float4 main() : SV_Target
+float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 

@@ -75,13 +75,15 @@ public abstract class HlslWriter
     public Dictionary<string, string> ResourceTypeNames { get; } = [];
 
     /// <summary>
-    /// The inputs a shader in an effect has, read or not, where they come from the
-    /// stage before it: a pixel, geometry, hull or domain shader's. On its own a
-    /// shader declares what it reads and fxc lays the rest out as it likes; in a
-    /// pass, fxc checks that each register of the stage before lands in the same
-    /// register here, and an SV_Position nothing reads, left out, moved the TEXCOORD
-    /// after it from v1 to v0 and failed the pass. The signature has every element
-    /// where it was, so what the declarations lack is taken from it.
+    /// The inputs a shader has, read or not, where they come from the stage before
+    /// it: a pixel, geometry, hull or domain shader's. That stage writes each into a
+    /// register, and this one is linked to it by register - in a pass, where fxc
+    /// checks it, and at run time beside the application's own vertex shader, where
+    /// nothing does. A shader that declared only what it read lost an SV_Position
+    /// nothing read and moved the TEXCOORD after it from v1 to v0: an effect's pass
+    /// failed to compile, and a decompiled pixel shader on its own read the wrong
+    /// interpolator. The signature has every element where it was, so what the
+    /// declarations lack is taken from it.
     ///
     /// The stages after the vertex shader read a primitive's vertices or a patch's
     /// control points, each input an array of them, keyed by vertex; a field of the
@@ -89,8 +91,7 @@ public abstract class HlslWriter
     /// </summary>
     private void DeclareWholeInputSignature()
     {
-        if (!IsEffectFunction
-            || _shader.Type is not (ShaderType.Pixel or ShaderType.Geometry or ShaderType.Hull or ShaderType.Domain))
+        if (_shader.Type is not (ShaderType.Pixel or ShaderType.Geometry or ShaderType.Hull or ShaderType.Domain))
         {
             return;
         }
@@ -638,12 +639,11 @@ public abstract class HlslWriter
     /// <summary>
     /// What the tessellator is to do, which only a hull shader says: what it divides,
     /// how it cuts an edge, what it makes of the result, how many points come out,
-    /// and which function computes the factors. [maxtessfactor] is not among them.
-    /// fxc emits dcl_hs_max_tessfactor only where it inserted the clamp to that bound
-    /// itself, and a decompilation already carries the clamp as a min, so the
-    /// declaration does not come back whether the attribute is written or not -
-    /// measured both ways. What the shader computes is the same either way; the
-    /// driver loses a hint about how far it will be asked to subdivide.
+    /// which function computes the factors, and the bound they keep to. The bound
+    /// is a float to fxc: [maxtessfactor(32)] is refused with X3554 and ignored, and
+    /// written that way it looked as though no attribute brought
+    /// dcl_hs_max_tessfactor back. [maxtessfactor(32.0)] does, at no cost - fxc
+    /// keeps the clamp the decompilation already carries as a min.
     /// </summary>
     private void WriteTessellatorAttributes()
     {
@@ -675,6 +675,15 @@ public abstract class HlslWriter
         }
         WriteLine("[outputcontrolpoints({0})]", _registers.OutputControlPointCount);
         WriteLine("[patchconstantfunc(\"{0}\")]", PatchConstantFunctionName);
+        if (_registers.MaxTessFactor is float bound)
+        {
+            string literal = bound.ToString("R", CultureInfo.InvariantCulture);
+            if (!literal.Contains('.') && !literal.Contains('E'))
+            {
+                literal += ".0";
+            }
+            WriteLine($"[maxtessfactor({literal})]");
+        }
     }
 
     // The resources whose element is a struct of its own, in declaration order.

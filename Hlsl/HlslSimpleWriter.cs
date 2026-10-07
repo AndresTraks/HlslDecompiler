@@ -3515,8 +3515,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclOutputControlPointCount:
             case D3D10Opcode.DclTessDomain:
             // And so are the rest of a hull shader's tessellation declarations,
-            // beside the phase markers it is split along. The bound on a factor is
-            // written nowhere: the shader clamps to it itself.
+            // beside the phase markers it is split along, the bound on a factor
+            // among them.
             case D3D10Opcode.DclTessPartitioning:
             case D3D10Opcode.DclTessOutputPrimitive:
             case D3D10Opcode.DclHSMaxTessFactor:

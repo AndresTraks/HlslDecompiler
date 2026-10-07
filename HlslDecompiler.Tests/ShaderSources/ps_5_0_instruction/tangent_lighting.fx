@@ -14,6 +14,7 @@ Texture2D normalMap;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 position : POSITION;
 	float3 normal : NORMAL;
 	float3 tangent : TANGENT;

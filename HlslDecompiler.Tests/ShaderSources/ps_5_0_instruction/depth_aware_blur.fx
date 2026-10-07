@@ -18,7 +18,13 @@ SamplerState linearSampler;
 Texture2D source;
 Texture2D depth;
 
-float4 main(float2 texcoord : TEXCOORD) : SV_Target
+struct PS_IN
+{
+	float4 sv_position : SV_Position;
+	float2 texcoord : TEXCOORD;
+};
+
+float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
@@ -27,7 +33,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	float4 r2;
 	int3 r3;
 	float4 r4;
-	r0.x = asint(depth.Sample(linearSampler, texcoord.xy).x);
+	r0.x = asint(depth.Sample(linearSampler, i.texcoord.xy).x);
 	r0.y = (asfloat(r0.x) >= 1) ? -1 : 0;
 	if (r0.y != 0) discard;
 	r0.y = -radius;
@@ -41,7 +47,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 		r1.w = (radius < r1.z) ? -1 : 0;
 		if (r1.w != 0) break;
 		r1.x = asint((float)r1.z);
-		r1.xw = asint(asfloat(r1.xy) * texelSize.xy + texcoord.xy);
+		r1.xw = asint(asfloat(r1.xy) * texelSize.xy + i.texcoord.xy);
 		r3.x = asint(depth.Sample(linearSampler, asfloat(r1.xw)).x);
 		r3.x = asint(-(asfloat(r0.x)) + asfloat(r3.x));
 		r3.x = (0.00999999978 < abs(asfloat(r3.x))) ? -1 : 0;
@@ -67,7 +73,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	}
 	r0.x = (0 < asfloat(r0.w)) ? -1 : 0;
 	r1 = asint(r2 / asfloat(r0.w));
-	r2 = source.Sample(linearSampler, texcoord.xy);
+	r2 = source.Sample(linearSampler, i.texcoord.xy);
 	o = (r0.x != 0) ? asfloat(r1) : r2;
 
 	return o;

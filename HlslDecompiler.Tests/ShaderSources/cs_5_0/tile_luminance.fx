@@ -6,7 +6,7 @@ cbuffer Params : register(b0)
 };
 
 Texture2D source;
-RWTexture2D<float4> luminance : register(u0);
+RWTexture2D<float> luminance : register(u0);
 RWStructuredBuffer<uint> histogram : register(u1);
 
 groupshared int g0[64];

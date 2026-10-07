@@ -7,6 +7,7 @@ Texture2DArray cascades;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 texcoord : TEXCOORD;
 	float texcoord1 : TEXCOORD1;
 	float3 normal : NORMAL;

@@ -4,7 +4,7 @@ cbuffer cb : register(b0)
 	uint count;
 };
 
-float4 main() : SV_Target
+float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 

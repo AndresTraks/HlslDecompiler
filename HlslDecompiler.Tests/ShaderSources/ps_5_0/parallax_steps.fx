@@ -10,6 +10,7 @@ Texture2D albedo;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float2 texcoord : TEXCOORD;
 	float3 viewtangent : VIEWTANGENT;
 };

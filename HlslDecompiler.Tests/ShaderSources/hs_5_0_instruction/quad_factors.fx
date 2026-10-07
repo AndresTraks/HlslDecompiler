@@ -43,6 +43,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 [outputtopology("triangle_ccw")]
 [outputcontrolpoints(4)]
 [patchconstantfunc("constants")]
+[maxtessfactor(32.0)]
 HS_OUT main(InputPatch<HS_IN, 4> patch, uint sv_outputcontrolpointid : SV_OutputControlPointID)
 {
 	HS_OUT o;

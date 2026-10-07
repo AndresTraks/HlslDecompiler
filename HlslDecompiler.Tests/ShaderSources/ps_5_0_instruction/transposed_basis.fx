@@ -12,7 +12,13 @@ Texture2D depthMap;
 Texture2D normalMap;
 Texture2D noiseMap;
 
-float4 main(float2 texcoord : TEXCOORD) : SV_Target
+struct PS_IN
+{
+	float4 sv_position : SV_Position;
+	float2 texcoord : TEXCOORD;
+};
+
+float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
@@ -22,12 +28,12 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	float4 r3;
 	float4 r4;
 	float3 r5;
-	r0.xyz = normalMap.Sample(pointSampler, texcoord.xy).xyz;
+	r0.xyz = normalMap.Sample(pointSampler, i.texcoord.xy).xyz;
 	r0.xyz = r0.xyz * float3(2, 2, 2) + float3(-1, -1, -1);
-	r1.xy = texcoord.xy * noiseScale.xy;
+	r1.xy = i.texcoord.xy * noiseScale.xy;
 	r1.xyz = noiseMap.Sample(pointSampler, r1.xy).xyz;
 	r1.xyz = r1.xyz * float3(2, 2, 2) + float3(-1, -1, -1);
-	r2.z = asint(depthMap.Sample(pointSampler, texcoord.xy).x);
+	r2.z = asint(depthMap.Sample(pointSampler, i.texcoord.xy).x);
 	r0.w = dot(r1.xyz, r0.xyz);
 	r1.xyz = -(r0.xyz) * r0.www + r1.xyz;
 	r0.w = dot(r1.xyz, r1.xyz);
@@ -35,7 +41,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r1.xyz = r0.www * r1.xyz;
 	r3.xyz = r0.zxy * r1.yzx;
 	r3.xyz = r0.yzx * r1.zxy + -(r3.xyz);
-	r2.xy = asint(texcoord.xy * float2(2, 2) + float2(-1, -1));
+	r2.xy = asint(i.texcoord.xy * float2(2, 2) + float2(-1, -1));
 	r4.w = 1;
 	r0.w = 0;
 	r1.w = 0;

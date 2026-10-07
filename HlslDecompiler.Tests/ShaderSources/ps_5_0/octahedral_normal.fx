@@ -3,7 +3,7 @@ cbuffer Decode : register(b0)
 	float3 lightDirection;
 };
 
-Texture2D encodedNormals;
+Texture2D<float2> encodedNormals;
 
 float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 {

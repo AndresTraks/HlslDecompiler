@@ -3,7 +3,7 @@ uint mip;
 Texture2DArray layers;
 Texture3D volume;
 
-float4 main() : SV_Target
+float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	uint4 t0;
 	volume.GetDimensions(mip, t0.x, t0.y, t0.z, t0.w);

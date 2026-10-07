@@ -13,6 +13,7 @@ Texture2D refraction;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 texcoord : TEXCOORD;
 	float4 texcoord1 : TEXCOORD1;
 	float2 texcoord2 : TEXCOORD2;

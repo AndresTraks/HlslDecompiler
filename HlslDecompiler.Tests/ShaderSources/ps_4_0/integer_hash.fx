@@ -4,7 +4,7 @@ cbuffer cb : register(b0)
 	uint count;
 };
 
-float4 main() : SV_Target
+float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	uint t0 = seed;
 	for (uint t1 = 0; t1 < count; t1 = t1 + 1) {

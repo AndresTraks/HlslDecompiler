@@ -1,4 +1,4 @@
-Texture2D depth;
+Texture2D<float> depth;
 RWStructuredBuffer<float> bounds : register(u0);
 
 groupshared uint g0[1];

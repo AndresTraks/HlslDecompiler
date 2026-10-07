@@ -11,6 +11,7 @@ Texture2D albedo;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float4 texcoord : TEXCOORD;
 	float2 texcoord1 : TEXCOORD1;
 };

@@ -1,7 +1,7 @@
 Texture2D scene;
 StructuredBuffer<uint4> atlas : register(t1);
 RWTexture2D<float4> marked : register(u1);
-RWBuffer<uint4> tiles : register(u2);
+RWBuffer<uint> tiles : register(u2);
 
 float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 {

@@ -28,7 +28,7 @@ static const float4 icb1[8] =
 };
 
 SamplerState pointSampler;
-Texture2D depthMap;
+Texture2D<float> depthMap;
 Texture2D normalMap;
 
 struct PS_IN

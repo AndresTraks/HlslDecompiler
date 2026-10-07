@@ -8,11 +8,12 @@ cbuffer Shadows : register(b0)
 
 SamplerComparisonState shadowSampler;
 SamplerState linearSampler;
-Texture2DArray shadowMaps;
+Texture2DArray<float> shadowMaps;
 Texture2D albedo;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 world : WORLD;
 	float3 normal : NORMAL;
 	float2 texcoord : TEXCOORD;

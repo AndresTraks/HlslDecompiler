@@ -15,6 +15,7 @@ Texture2D blendMap;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 normal : NORMAL;
 	float2 texcoord : TEXCOORD;
 	float texcoord1 : TEXCOORD1;

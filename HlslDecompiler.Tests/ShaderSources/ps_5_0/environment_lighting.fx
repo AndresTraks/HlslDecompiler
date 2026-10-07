@@ -10,8 +10,8 @@ cbuffer Lighting : register(b0)
 SamplerState trilinear;
 SamplerComparisonState shadowSampler;
 TextureCube environment;
-Texture2DArray shadowMaps;
-Texture2D brdfLut;
+Texture2DArray<float> shadowMaps;
+Texture2D<float2> brdfLut;
 
 struct PS_IN
 {

@@ -794,10 +794,11 @@ public class InstructionParser
                     _registerState.TessellatorOutputPrimitive =
                         instruction.TessellatorOutputPrimitive;
                     break;
-                // The bound on a factor, which the shader clamps to itself: the min
-                // is in the instructions, so nothing here has to remember the bound
-                // to reproduce it.
+                // The bound on a factor. The shader clamps to it as well - the min is
+                // in the instructions - but the bound is a declaration of its own,
+                // and comes back only as the attribute.
                 case D3D10Opcode.DclHSMaxTessFactor:
+                    _registerState.MaxTessFactor = BitConverter.Int32BitsToSingle(instruction.GetParamInt(0));
                     break;
                 // A phase boundary. One phase at a time reaches this parser, so the
                 // markers are only the seams they were split along.

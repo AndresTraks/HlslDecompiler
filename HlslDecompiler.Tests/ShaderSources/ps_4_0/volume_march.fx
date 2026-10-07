@@ -5,6 +5,7 @@ Texture3D volume;
 
 struct PS_IN
 {
+	float4 sv_position : SV_Position;
 	float3 texcoord : TEXCOORD;
 	float3 texcoord1 : TEXCOORD1;
 };

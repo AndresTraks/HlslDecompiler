@@ -706,6 +706,12 @@ public sealed class RegisterState
     public IList<RegisterDeclaration> PatchConstantRegisters { get; } = [];
     public int? OutputControlPointCount { get; set; }
 
+    /// <summary>
+    /// The bound a hull shader declares its tessellation factors keep to, from
+    /// dcl_hs_max_tessfactor, or null where it declares none.
+    /// </summary>
+    public float? MaxTessFactor { get; set; }
+
     /// <summary>What the tessellator subdivides, which the shader declares with
     /// the [domain(...)] attribute.</summary>
     public D3D10TessellatorDomain TessellatorDomain { get; set; }

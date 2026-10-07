@@ -1,4 +1,10 @@
-float4 main(sample float4 color : COLOR) : SV_Target
+struct PS_IN
 {
-	return color;
+	sample float4 color : COLOR;
+	float4 sv_position : SV_Position;
+};
+
+float4 main(PS_IN i) : SV_Target
+{
+	return i.color;
 }

@@ -36,6 +36,22 @@ public class DotProduct2Template : IGroupTemplate
 
         if (a is ConstantNode || b is ConstantNode || x is ConstantNode || y is ConstantNode)
         {
+            // A product with a literal is a weighted sum written out, and is left
+            // that way - except where the shader dotted a vector against weights of
+            // its own: a dp3 of a colour against a def'd (0.3, 0.59, 0.11) came back
+            // as three products added up, a mul and two mads recompiled where the
+            // shader had one dp3. Weights all alike are a common factor, not a dot.
+            // The weights first, as a constant register goes first: NodeFinalizer
+            // puts it there, and the three and four component templates extend the
+            // dot side by side as it stands.
+            if (IsLiteralWeights(a, b, x, y))
+            {
+                return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
+            }
+            if (IsLiteralWeights(x, y, a, b))
+            {
+                return new DotProductContext(new GroupNode(x, y), new GroupNode(a, b));
+            }
             return null;
         }
 
@@ -130,6 +146,17 @@ public class DotProduct2Template : IGroupTemplate
             // all - the components of one read, named halfway through.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
+    // Two literals that differ, weighting two components of one value.
+    private bool IsLiteralWeights(HlslTreeNode weight1, HlslTreeNode weight2,
+        HlslTreeNode value1, HlslTreeNode value2)
+    {
+        return weight1 is ConstantNode c1 && weight2 is ConstantNode c2
+            && c1.Value != c2.Value
+            && value1 is not ConstantNode && value2 is not ConstantNode
+            && value1 is IHasComponentIndex && value2 is IHasComponentIndex
+            && _templateMatcher.CanGroupComponents(value1, value2, allowMatrixColumn);
+    }
+
     public HlslTreeNode Reduce(HlslTreeNode node, IGroupContext groupContext)
     {
         var dotProductContext = groupContext as DotProductContext;

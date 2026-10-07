@@ -14,8 +14,8 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.position = float4(2, 11, 23, 41) * i.position.x + float4(3, 13, 29, 43) * i.position.y + float4(5, 17, 31, 47) * i.position.z + float4(7, 19, 37, 53) * i.position.w;
-	o.texcoord = float4(float3(59, 73, 97) * i.texcoord.x + float3(61, 79, 101) * i.texcoord.y + float3(67, 83, 103) * i.texcoord.z, 107);
+	o.position = float4(dot(float4(2, 3, 5, 7), i.position), dot(float4(11, 13, 17, 19), i.position), dot(float4(23, 29, 31, 37), i.position), dot(float4(41, 43, 47, 53), i.position));
+	o.texcoord = float4(dot(float3(59, 61, 67), i.texcoord.xyz), dot(float3(73, 79, 83), i.texcoord.xyz), dot(float3(97, 101, 103), i.texcoord.xyz), 107);
 
 	return o;
 }

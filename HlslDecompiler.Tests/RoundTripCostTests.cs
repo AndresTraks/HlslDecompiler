@@ -366,17 +366,20 @@ public class RoundTripCostTests
         ["ps_1_4/bump_offset"] = (10,
             "Eight instructions, and the two more are bem: the bump matrix applied "
             + "to a texel's red and green, which ps_2_0 spells as a mul and a mad."),
-        // Found decompiling the reflection above: the instruction writer cut a def'd
-        // vector against a dot product down to the component its destination
-        // names. This pins that fix; what it costs is the AST writer's.
-        ["ps_2_0/luminance_dot"] = (5,
-            "Three instructions. The AST writer does not recover dot() against a "
-            + "vector of literals - the luminance weights here - and writes the "
-            + "three products out, which fxc compiles to a mul and two mads where "
-            + "the shader had one dp3. signed_blend's dp4 is the same."),
         // Instructions fxc has no spelling for, so a round trip cannot keep their
         // count: the shaders were assembled by hand, and what comes back is what
         // fxc writes instead of them.
+        ["vs_3_0/matrix_product_rows"] = (8,
+            "Seven instructions: rows of three matrix products against def'd "
+            + "constants - a 4x3, a 3x4 and a 3x2 - mixed into two outputs by two "
+            + "movs each. A dot product against literal weights comes back as "
+            + "dot(), one per output component, and the eight components the "
+            + "outputs keep are eight dp4s and dp3s. Written as columns - each "
+            + "input component times a literal vector, added up - fxc fitted it in "
+            + "seven, but that is the shape of a matrix nothing in HLSL compiles "
+            + "these from; a dot against weights, which the luminance of a colour "
+            + "is, came back as three products and three instructions where the "
+            + "shader had one dp3."),
         ["vs_3_0/matrix_product"] = (8,
             "Five instructions, and they are the rows of two matrix products. The "
             + "original computes a four by four and a three by three in one "

@@ -8,8 +8,8 @@ VS_OUT main(float4 position : POSITION)
 {
 	VS_OUT o;
 
-	o.position = float4(float3(2, 11, 23) * position.x + float3(3, 13, 29) * position.y, 97 * position.x) + float4(5, 17, 31, 101) * position.zzzy + float4(7, 19, 37, 103) * position.wwwz;
-	o.texcoord = float4(109, 137, 41, 59) * position.x + float4(113, 139, 43, 61) * position.y + float4(127, 149, 47, 67) * position.z;
+	o.position = float4(dot(float4(2, 3, 5, 7), position), dot(float4(11, 13, 17, 19), position), dot(float4(23, 29, 31, 37), position), dot(float3(97, 101, 103), position.xyz));
+	o.texcoord = float4(dot(float3(109, 113, 127), position.xyz), dot(float3(137, 139, 149), position.xyz), dot(float3(41, 43, 47), position.xyz), dot(float3(59, 61, 67), position.xyz));
 
 	return o;
 }

@@ -270,6 +270,11 @@ public class D3D9Machine
             }
 
             D3D9Instruction instruction = instructions[pc];
+            if (IsShaderModel1Pixel && !IsShaderModel14Pixel && AddressTexture(instruction))
+            {
+                pc++;
+                continue;
+            }
             switch (instruction.Opcode)
             {
                 case Opcode.Comment:
@@ -591,6 +596,21 @@ public class D3D9Machine
                     float specular = v[0] > 0 && v[1] > 0 ? MathF.Pow(v[1], v[3]) : 0;
                     return [1, Math.Max(v[0], 0), specular, 1];
                 }
+            case Opcode.Bem:
+                {
+                    // ps_1_4: the first source plus the bump offset of the second, by
+                    // the matrix of the stage the destination is numbered for.
+                    float[] value = Source(instruction, 1);
+                    float[] perturbation = Source(instruction, 2);
+                    float[] matrix = Named($"bumpEnvMat{instruction.GetParamRegisterNumber(0)}[0]");
+                    return
+                    [
+                        value[0] + matrix[0] * perturbation[0] + matrix[2] * perturbation[1],
+                        value[1] + matrix[1] * perturbation[0] + matrix[3] * perturbation[1],
+                        0,
+                        0,
+                    ];
+                }
             case Opcode.M4x4:
                 return Multiply(instruction, 4, 4);
             case Opcode.M4x3:
@@ -631,6 +651,133 @@ public class D3D9Machine
 
     // How many coordinates each sampler reads, from its dcl.
     private readonly Dictionary<int, int> _samplerDimensions = [];
+
+    // A texm3x2 or texm3x3 under way: the rows its pads have computed so far.
+    private readonly List<float> _matrixRows = [];
+
+    /// <summary>
+    /// The ps_1_1 to ps_1_3 texture addressing instructions, each of which reads
+    /// texture n - what an earlier texture instruction left in t(n), through its
+    /// modifier, _bx2 for a normal map stored in [0, 1] - to find where stage m
+    /// samples, and leaves the colour in t(m). The bump environment
+    /// matrix and luminance are texture stage state; they are named here as the
+    /// uniforms the decompilation declares for them, so the two programs read the
+    /// same values. False for anything else.
+    /// </summary>
+    private bool AddressTexture(D3D9Instruction instruction)
+    {
+        if (instruction.Opcode is not (Opcode.TexBem or Opcode.TexBeml or Opcode.TexReg2AR
+            or Opcode.TexReg2GB or Opcode.TexReg2RGB or Opcode.TeXM3x2Pad or Opcode.TeXM3x3Pad
+            or Opcode.TexM3x2Tex or Opcode.TexM3x2Depth or Opcode.TexM3x3Tex or Opcode.TexM3x3
+            or Opcode.TexM3x3Spec or Opcode.TexM3x3VSpec or Opcode.TexDP3 or Opcode.TexDP3Tex
+            or Opcode.TexM3x3Diff))
+        {
+            return false;
+        }
+        int m = instruction.GetParamRegisterNumber(0);
+        switch (instruction.Opcode)
+        {
+            case Opcode.TexBem:
+            case Opcode.TexBeml:
+                {
+                    float[] t = Source(instruction, 1);
+                    float[] matrix = Named($"bumpEnvMat{m}[0]");
+                    float u = _coordinates[m][0] + matrix[0] * t[0] + matrix[2] * t[1];
+                    float v = _coordinates[m][1] + matrix[1] * t[0] + matrix[3] * t[1];
+                    float[] colour = SampleStage(m, [u, v, 0, 0]);
+                    if (instruction.Opcode == Opcode.TexBeml)
+                    {
+                        float[] luminance = Named($"bumpEnvLum{m}[0]");
+                        float scale = Math.Clamp(t[2] * luminance[0] + luminance[1], 0, 1);
+                        colour = [colour[0] * scale, colour[1] * scale, colour[2] * scale, colour[3]];
+                    }
+                    Array.Copy(colour, _texture[m], 4);
+                    return true;
+                }
+            case Opcode.TexReg2AR:
+                {
+                    float[] t = Source(instruction, 1);
+                    Array.Copy(SampleStage(m, [t[3], t[0], 0, 0]), _texture[m], 4);
+                    return true;
+                }
+            case Opcode.TexReg2GB:
+                {
+                    float[] t = Source(instruction, 1);
+                    Array.Copy(SampleStage(m, [t[1], t[2], 0, 0]), _texture[m], 4);
+                    return true;
+                }
+            case Opcode.TexReg2RGB:
+                {
+                    float[] t = Source(instruction, 1);
+                    Array.Copy(SampleStage(m, [t[0], t[1], t[2], 0]), _texture[m], 4);
+                    return true;
+                }
+            case Opcode.TeXM3x2Pad:
+            case Opcode.TeXM3x3Pad:
+                _matrixRows.Add(MatrixRow(instruction));
+                return true;
+            case Opcode.TexM3x2Tex:
+                Array.Copy(SampleStage(m, [_matrixRows[0], MatrixRow(instruction), 0, 0]), _texture[m], 4);
+                _matrixRows.Clear();
+                return true;
+            case Opcode.TexM3x2Depth:
+                {
+                    float z = _matrixRows[0];
+                    float w = MatrixRow(instruction);
+                    _results["DEPTH"] = Broadcast(w == 0 ? 1 : z / w);
+                    _matrixRows.Clear();
+                    return true;
+                }
+            case Opcode.TexM3x3Tex:
+                Array.Copy(SampleStage(m, [.. MatrixVector(instruction), 0]), _texture[m], 4);
+                return true;
+            case Opcode.TexM3x3:
+                Array.Copy((float[])[.. MatrixVector(instruction), 1], _texture[m], 4);
+                return true;
+            case Opcode.TexM3x3Spec:
+            case Opcode.TexM3x3VSpec:
+                {
+                    float[] n = MatrixVector(instruction);
+                    float[] eye = instruction.Opcode == Opcode.TexM3x3Spec
+                        ? _const[instruction.GetParamRegisterNumber(2)]
+                        : [_coordinates[m - 2][3], _coordinates[m - 1][3], _coordinates[m][3]];
+                    // The eye reflected about the normal: 2N(N.E)/(N.N) - E.
+                    float scale = 2 * Dot(n, eye, 3) / Dot(n, n, 3);
+                    Array.Copy(SampleStage(m, [n[0] * scale - eye[0], n[1] * scale - eye[1],
+                        n[2] * scale - eye[2], 0]), _texture[m], 4);
+                    return true;
+                }
+            case Opcode.TexDP3:
+                Array.Copy(Broadcast(MatrixRow(instruction)), _texture[m], 4);
+                return true;
+            case Opcode.TexDP3Tex:
+                Array.Copy(SampleStage(m, [MatrixRow(instruction), 0, 0, 0]), _texture[m], 4);
+                return true;
+            case Opcode.TexM3x3Diff:
+                throw new UnsupportedException("texm3x3diff");
+            default:
+                return false;
+        }
+    }
+
+    // Texture coordinate m dotted with texture n: one row of a texture matrix.
+    private float MatrixRow(D3D9Instruction instruction)
+    {
+        return Dot(_coordinates[instruction.GetParamRegisterNumber(0)], Source(instruction, 1), 3);
+    }
+
+    // The two pads' rows and this instruction's: the vector a texm3x3 computes.
+    private float[] MatrixVector(D3D9Instruction instruction)
+    {
+        float[] vector = [_matrixRows[0], _matrixRows[1], MatrixRow(instruction)];
+        _matrixRows.Clear();
+        return vector;
+    }
+
+    private float[] SampleStage(int stage, float[] coordinates)
+    {
+        return Texture.Sample(stage, coordinates, ShaderModel1SamplerDimension(stage));
+    }
 
     // ps_1_x declares no samplers. A texture is 2D unless the constant table says
     // it is a cube or a volume.

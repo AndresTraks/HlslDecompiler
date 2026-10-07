@@ -4026,10 +4026,26 @@ public class HlslSimpleWriter : HlslWriter
         // the first two made the mad add 1 to z and 0 to w, both wrong. This is
         // how GetSourceSwizzleName has always selected them. A caller naming a
         // length instead means the low components, as it does there.
+        // A dot product reads as many components as it is wide, whatever it
+        // writes: `dp3 r0.w, v0, c0` against a def'd c0 read c0's w alone, the one
+        // component the destination names, and came out `dot(color.xyz, 0)`. This
+        // is the width GetSourceSwizzleName gives the same operands.
+        int? dotWidth = instruction.Opcode switch
+        {
+            Opcode.Dp3 => 3,
+            Opcode.Dp4 => 4,
+            Opcode.DP2Add when srcIndex < 3 => 2,
+            _ => null,
+        };
+
         int[] components;
         if (destinationLength != null)
         {
             components = [.. swizzle.Take(destinationLength.Value).Select(c => (int)c)];
+        }
+        else if (dotWidth != null)
+        {
+            components = [.. swizzle.Take(dotWidth.Value).Select(c => (int)c)];
         }
         else if (instruction.HasDestination)
         {

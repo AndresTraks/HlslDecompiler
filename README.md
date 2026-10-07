@@ -13,9 +13,16 @@ Shader Model 6+ (DXIL) is not supported.
 A ps_1_x shader decompiles to HLSL for ps_2_0, since no compiler targets ps_1_x
 any more. Values are computed in floating point: hardware that ran ps_1_x in
 fixed point clamped intermediate values, to [-1, 1] before ps_1_4 and to
-[-8, 8] in it. bem and the texture addressing instructions (texbem, texm3x3
-and the rest) disassemble but do not decompile yet, and neither does a ps_1_4
-texcrd into an alpha, which ps_1_4 leaves undefined.
+[-8, 8] in it.
+
+texbem, texbeml and bem read the bump environment matrix and luminance from
+texture stage state, which HLSL cannot name. The decompilation reads them from
+uniforms instead - `float4 bumpEnvMat1` holding (M00, M01, M10, M11) for stage
+1, `float2 bumpEnvLum1` holding the luminance scale and offset - which whoever
+runs it sets where the stage state was set.
+
+What ps_1_4 leaves undefined is not decompiled: a texcrd into an alpha, a
+projected texcrd into a blue, a projected read of a cube or volume texture.
 
 ## Usage
 `HlslDecompiler [options] shader.fxc`

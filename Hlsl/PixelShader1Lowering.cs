@@ -1,4 +1,5 @@
 using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,16 +54,36 @@ namespace HlslDecompiler.Hlsl;
 /// - phase separates the two halves and does nothing to what they compute. The
 ///   registers the first half wrote are what the second reads.
 ///
-/// The helper constants it needs - 0.5, 1, 2, -1 and the scales - go in c30 and
-/// c31, which ps_1_x cannot reach: it has eight constants.
+/// The texture addressing instructions of ps_1_1 to ps_1_3, each of which reads
+/// texture n - an earlier stage's colour - to compute where stage m samples:
+/// - texreg2ar, texreg2gb and texreg2rgb sample at its (a, r), (g, b) or (r, g, b).
+/// - texm3x2pad and texm3x3pad dot it with texture coordinate m, a row of a
+///   matrix each, into the stand-in of the first pad; texm3x2tex and texm3x3tex
+///   add the last row and sample at the vector, texm3x3 is the vector with an
+///   alpha of 1, texm3x2depth divides its first component by its second into the
+///   depth, and texm3x3spec and texm3x3vspec sample at the eye ray reflected about
+///   it - the eye a constant for one, the fourth components of the three
+///   coordinates for the other. texdp3 is one such dot product, and texdp3tex
+///   samples at (dot, 0).
+/// - texbem offsets coordinate m by the bump environment matrix of stage m
+///   applied to texture n's red and green, and texbeml then scales the colour by
+///   a luminance from its blue, clamped to [0, 1]. ps_1_4's bem is the same offset
+///   applied to two registers. The matrix and the luminance scale and offset are
+///   texture stage state, set by the application and in no register of the
+///   shader, so the decompilation declares them as uniforms it reads instead:
+///   bumpEnvMat# as (M00, M01, M10, M11) in c8 up, bumpEnvLum# as (scale,
+///   offset) in c16 up, both in a constant table of their own. Whoever runs the
+///   decompiled shader sets them where the stage state was set.
 ///
-/// bem and the texture addressing instructions of the earlier versions are not
-/// rewritten yet, and say so: they read the bump environment matrix, which is
-/// texture stage state rather than anything in the shader.
+/// The helper constants it needs - 0.5, 1, 2, -1, the scales and a zero - go in
+/// c29 to c31, which ps_1_x cannot reach: it has eight constants.
 /// </summary>
 public static class PixelShader1Lowering
 {
     private const int FirstTextureStandIn = 8;
+    private const int ZeroConstant = 29; // (0, 0, 0, 0)
+    private const int BumpMatrixBase = 8;
+    private const int BumpLuminanceBase = 16;
     private const int HelperConstant = 30; // (0.5, 1, 2, -1)
     private const int ScaleConstant = 31; // (4, 8, 0.25, 0.125)
 
@@ -95,7 +116,15 @@ public static class PixelShader1Lowering
         private readonly SortedDictionary<int, SamplerTextureType> _samplers = [];
         private bool _usesHelper;
         private bool _usesScale;
+        private bool _usesZero;
         private int _nextScratch;
+        private readonly SortedSet<int> _bumpMatrices = [];
+        private readonly SortedSet<int> _bumpLuminances = [];
+
+        // A texm3x2 or texm3x3 under way: the stage of its first pad, whose stand-in
+        // collects the rows, and how many rows it has so far.
+        private int _matrixBase = -1;
+        private int _matrixRows;
 
         // ps_1_4 has six temps of its own and reads t# as the coordinates they
         // are; the earlier versions have two, and write t#.
@@ -199,6 +228,72 @@ public static class PixelShader1Lowering
                 case Opcode.Cnd:
                     LowerArithmetic(instruction, holdIn);
                     return;
+                case Opcode.Bem when IsVersion14 && holdIn == null:
+                    LowerBem(instruction);
+                    return;
+                case Opcode.TexBem when !IsVersion14:
+                case Opcode.TexBeml when !IsVersion14:
+                    LowerTexBem(instruction);
+                    return;
+                case Opcode.TexReg2AR when !IsVersion14:
+                    LowerTexReg2(instruction, 0x03); // (a, r)
+                    return;
+                case Opcode.TexReg2GB when !IsVersion14:
+                    LowerTexReg2(instruction, 0xA9); // (g, b)
+                    return;
+                case Opcode.TexReg2RGB when !IsVersion14:
+                    LowerTexReg2(instruction, Identity);
+                    return;
+                case Opcode.TeXM3x2Pad when !IsVersion14:
+                case Opcode.TeXM3x3Pad when !IsVersion14:
+                    MatrixRow(instruction, finalRow: false,
+                        instruction.Opcode == Opcode.TeXM3x2Pad ? 2 : 3);
+                    return;
+                case Opcode.TexM3x2Tex when !IsVersion14:
+                case Opcode.TexM3x3Tex when !IsVersion14:
+                    {
+                        int vector = MatrixRow(instruction, finalRow: true,
+                            instruction.Opcode == Opcode.TexM3x2Tex ? 2 : 3);
+                        Sample(instruction.GetParamRegisterNumber(0),
+                            Source(RegisterType.Temp, vector, Identity));
+                        return;
+                    }
+                case Opcode.TexM3x2Depth when !IsVersion14:
+                    EmitDepth(MatrixRow(instruction, finalRow: true, 2));
+                    return;
+                case Opcode.TexM3x3 when !IsVersion14:
+                    {
+                        int vector = MatrixRow(instruction, finalRow: true, 3);
+                        int standIn = FirstTextureStandIn + instruction.GetParamRegisterNumber(0);
+                        Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, standIn, 0x7),
+                            Source(RegisterType.Temp, vector, Identity));
+                        Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, standIn, 0x8),
+                            Helper(ReplicateY));
+                        return;
+                    }
+                case Opcode.TexM3x3Spec when !IsVersion14:
+                case Opcode.TexM3x3VSpec when !IsVersion14:
+                    LowerTexM3x3Spec(instruction);
+                    return;
+                case Opcode.TexDP3 when !IsVersion14:
+                    Emit(Opcode.Dp3,
+                        DestinationToken(RegisterType.Temp,
+                            FirstTextureStandIn + instruction.GetParamRegisterNumber(0), 0xF),
+                        CoordinateSet(instruction.GetParamRegisterNumber(0), 0x7),
+                        TextureColour(instruction, 1, 0x7));
+                    return;
+                case Opcode.TexDP3Tex when !IsVersion14:
+                    {
+                        int stage = instruction.GetParamRegisterNumber(0);
+                        int lookup = TakeScratch();
+                        Emit(Opcode.Dp3, DestinationToken(RegisterType.Temp, lookup, 0x1),
+                            CoordinateSet(stage, 0x7), TextureColour(instruction, 1, 0x7));
+                        _usesZero = true;
+                        Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, lookup, 0x2),
+                            Source(RegisterType.Const, ZeroConstant, ReplicateX));
+                        Sample(stage, Source(RegisterType.Temp, lookup, Identity));
+                        return;
+                    }
                 default:
                     throw new NotImplementedException(
                         $"{instruction.Opcode} in a ps_1_x pixel shader");
@@ -272,7 +367,12 @@ public static class PixelShader1Lowering
         /// </summary>
         private void LowerTexDepth(D3D9Instruction instruction)
         {
-            int ratio = instruction.GetParamRegisterNumber(0);
+            EmitDepth(instruction.GetParamRegisterNumber(0));
+        }
+
+        // The depth a temp's x over its y gives, and 1 where its y is 0.
+        private void EmitDepth(int ratio)
+        {
             int depth = TakeScratch();
             Emit(Opcode.Rcp, DestinationToken(RegisterType.Temp, depth, 0x1),
                 Source(RegisterType.Temp, ratio, ReplicateY));
@@ -287,6 +387,184 @@ public static class PixelShader1Lowering
                 Source(RegisterType.Temp, depth, ReplicateY));
             Emit(Opcode.Mov, DestinationToken(RegisterType.DepthOut, 0, 0xF),
                 Source(RegisterType.Temp, depth, ReplicateW));
+        }
+
+        // What a ps_1_1 to ps_1_3 texture instruction left in texture n - its
+        // stand-in - as the addressing instruction reads it: through _bx2, say,
+        // where texture n is a normal map stored in [0, 1]. Only the components in
+        // `read` are what it reads, and a modifier is computed for those alone.
+        private uint TextureColour(D3D9Instruction instruction, int index, int read) =>
+            LowerSource(instruction, index, read);
+
+        private uint CoordinateSet(int stage, int mask)
+        {
+            UseCoordinate(stage, mask);
+            return Source(RegisterType.Texture, stage, Identity);
+        }
+
+        // Stage m sampled at a coordinate in a temp, into t(m)'s stand-in.
+        private void Sample(int stage, uint coordinate)
+        {
+            _samplers[stage] = SamplerType(stage);
+            Emit(Opcode.Tex,
+                DestinationToken(RegisterType.Temp, FirstTextureStandIn + stage, 0xF),
+                coordinate,
+                Source(RegisterType.Sampler, stage, Identity));
+        }
+
+        private void LowerTexReg2(D3D9Instruction instruction, byte swizzle)
+        {
+            int stage = instruction.GetParamRegisterNumber(0);
+            if (swizzle == Identity)
+            {
+                Sample(stage, TextureColour(instruction, 1, 0x7));
+                return;
+            }
+            // The two components the swizzle takes, as a mask: (a, r) reads w and x.
+            int read = (1 << (swizzle & 0x3)) | (1 << ((swizzle >> 2) & 0x3));
+            int coordinate = TakeScratch();
+            Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, coordinate, 0x3),
+                WithSwizzle(TextureColour(instruction, 1, read), swizzle));
+            Sample(stage, Source(RegisterType.Temp, coordinate, Identity));
+        }
+
+        /// <summary>
+        /// One row of a texm3x2 or texm3x3: texture coordinate m dotted with texture
+        /// n, into the component of the first pad's stand-in that is the row's. The
+        /// rows come in order on consecutive stages, the last being the instruction
+        /// that uses them; the stand-in holding the vector is returned with it.
+        /// </summary>
+        private int MatrixRow(D3D9Instruction instruction, bool finalRow, int rows)
+        {
+            int stage = instruction.GetParamRegisterNumber(0);
+            if (_matrixRows == 0)
+            {
+                _matrixBase = stage;
+            }
+            if (stage != _matrixBase + _matrixRows || _matrixRows >= rows
+                || finalRow != (_matrixRows == rows - 1))
+            {
+                throw new NotImplementedException(
+                    $"{instruction.Opcode} out of the order of a {rows}-row texture matrix");
+            }
+            int vector = FirstTextureStandIn + _matrixBase;
+            Emit(Opcode.Dp3, DestinationToken(RegisterType.Temp, vector, 1 << _matrixRows),
+                CoordinateSet(stage, 0x7), TextureColour(instruction, 1, 0x7));
+            _matrixRows++;
+            if (finalRow)
+            {
+                _matrixRows = 0;
+                _matrixBase = -1;
+            }
+            return vector;
+        }
+
+        /// <summary>
+        /// texm3x3spec and texm3x3vspec: the eye ray E reflected about the normal N
+        /// the matrix gives, 2N(N.E)/(N.N) - E, and stage m sampled there. The eye
+        /// is a constant for texm3x3spec, and the fourth components of the three
+        /// texture coordinates for texm3x3vspec.
+        /// </summary>
+        private void LowerTexM3x3Spec(D3D9Instruction instruction)
+        {
+            int stage = instruction.GetParamRegisterNumber(0);
+            int normal = MatrixRow(instruction, finalRow: true, 3);
+            uint eye;
+            if (instruction.Opcode == Opcode.TexM3x3Spec)
+            {
+                eye = instruction.Params[2];
+            }
+            else
+            {
+                int eyeRegister = TakeScratch();
+                for (int row = 0; row < 3; row++)
+                {
+                    Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, eyeRegister, 1 << row),
+                        WithSwizzle(CoordinateSet(stage - 2 + row, 0x8), ReplicateW));
+                }
+                eye = Source(RegisterType.Temp, eyeRegister, Identity);
+            }
+            uint n = Source(RegisterType.Temp, normal, Identity);
+            int scale = TakeScratch();
+            Emit(Opcode.Dp3, DestinationToken(RegisterType.Temp, scale, 0x1), n, eye);
+            Emit(Opcode.Dp3, DestinationToken(RegisterType.Temp, scale, 0x2), n, n);
+            Emit(Opcode.Rcp, DestinationToken(RegisterType.Temp, scale, 0x4),
+                Source(RegisterType.Temp, scale, ReplicateY));
+            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, scale, 0x8),
+                Source(RegisterType.Temp, scale, ReplicateX),
+                Source(RegisterType.Temp, scale, ReplicateZ));
+            Emit(Opcode.Add, DestinationToken(RegisterType.Temp, scale, 0x8),
+                Source(RegisterType.Temp, scale, ReplicateW),
+                Source(RegisterType.Temp, scale, ReplicateW));
+            int reflected = TakeScratch();
+            Emit(Opcode.Mad, DestinationToken(RegisterType.Temp, reflected, 0x7),
+                n, Source(RegisterType.Temp, scale, ReplicateW), Negate(eye));
+            Sample(stage, Source(RegisterType.Temp, reflected, Identity));
+        }
+
+        // The bump environment matrix of a stage, (M00, M01, M10, M11), as a
+        // uniform: texture stage state the shader reads and does not hold.
+        private uint BumpMatrix(int stage, byte swizzle)
+        {
+            _bumpMatrices.Add(stage);
+            return Source(RegisterType.Const, BumpMatrixBase + stage, swizzle);
+        }
+
+        /// <summary>
+        /// (M00 r + M10 g, M01 r + M11 g) of a value's red and green, into the x and
+        /// y of a scratch temp: the offset texbem and bem add.
+        /// </summary>
+        private int BumpOffset(int stage, uint value)
+        {
+            int offset = TakeScratch();
+            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, offset, 0x3),
+                SelectComponent(value, 0), BumpMatrix(stage, Identity));
+            Emit(Opcode.Mad, DestinationToken(RegisterType.Temp, offset, 0x3),
+                SelectComponent(value, 1), BumpMatrix(stage, 0xFE), // (M10, M11)
+                Source(RegisterType.Temp, offset, Identity));
+            return offset;
+        }
+
+        private void LowerTexBem(D3D9Instruction instruction)
+        {
+            int stage = instruction.GetParamRegisterNumber(0);
+            uint perturbation = TextureColour(instruction, 1,
+                instruction.Opcode == Opcode.TexBeml ? 0x7 : 0x3);
+            int coordinate = BumpOffset(stage, perturbation);
+            Emit(Opcode.Add, DestinationToken(RegisterType.Temp, coordinate, 0x3),
+                Source(RegisterType.Temp, coordinate, Identity), CoordinateSet(stage, 0x3));
+            Sample(stage, Source(RegisterType.Temp, coordinate, Identity));
+            if (instruction.Opcode != Opcode.TexBeml)
+            {
+                return;
+            }
+
+            // The colour scaled by a luminance from texture n's blue.
+            _bumpLuminances.Add(stage);
+            int luminance = TakeScratch();
+            Emit(Opcode.Mad, DestinationToken(RegisterType.Temp, luminance, 0x1, ResultModifier.Saturate),
+                SelectComponent(perturbation, 2),
+                Source(RegisterType.Const, BumpLuminanceBase + stage, ReplicateX),
+                Source(RegisterType.Const, BumpLuminanceBase + stage, ReplicateY));
+            int standIn = FirstTextureStandIn + stage;
+            Emit(Opcode.Mul, DestinationToken(RegisterType.Temp, standIn, 0x7),
+                Source(RegisterType.Temp, standIn, Identity),
+                Source(RegisterType.Temp, luminance, ReplicateX));
+        }
+
+        // ps_1_4: bem dst.rg, src0, src1 is src0 plus the bump offset of src1, by the
+        // matrix of the stage dst is numbered for.
+        private void LowerBem(D3D9Instruction instruction)
+        {
+            if (instruction.GetDestinationResultShift() != 0)
+            {
+                throw new NotImplementedException("a scaled bem");
+            }
+            uint value = LowerSource(instruction, 1, 0x3);
+            uint perturbation = LowerSource(instruction, 2, 0x3);
+            int offset = BumpOffset(instruction.GetParamRegisterNumber(0), perturbation);
+            Emit(Opcode.Add, Destination(instruction), value,
+                Source(RegisterType.Temp, offset, Identity));
         }
 
         private static bool IsProjected(D3D9Instruction instruction, int index) =>
@@ -581,6 +859,10 @@ public static class PixelShader1Lowering
             {
                 words.AddRange(comment);
             }
+            if (_bumpMatrices.Count != 0 || _bumpLuminances.Count != 0)
+            {
+                words.AddRange(StageStateTable());
+            }
 
             foreach ((int stage, int mask) in _coordinateMasks)
             {
@@ -610,6 +892,10 @@ public static class PixelShader1Lowering
             {
                 AddDefinition(words, ScaleConstant, 4, 8, 0.25f, 0.125f);
             }
+            if (_usesZero)
+            {
+                AddDefinition(words, ZeroConstant, 0, 0, 0, 0);
+            }
 
             foreach (uint[] instruction in _body)
             {
@@ -628,6 +914,87 @@ public static class PixelShader1Lowering
             stream.Position = 0;
             using var shaderReader = new ShaderReader(stream, true);
             return shaderReader.ReadShader();
+        }
+
+        /// <summary>
+        /// A constant table, as a comment of its own beside the shader's, declaring
+        /// the texture stage state the shader reads as the uniforms the decompilation
+        /// reads it from: a float4 bumpEnvMat# and a float2 bumpEnvLum# per stage.
+        /// The layout is D3DXSHADER_CONSTANTTABLE's, offsets counted from the start
+        /// of the table.
+        /// </summary>
+        private uint[] StageStateTable()
+        {
+            var constants = new List<(string Name, int Register, int Columns)>();
+            constants.AddRange(_bumpMatrices.Select(s => ($"bumpEnvMat{s}", BumpMatrixBase + s, 4)));
+            constants.AddRange(_bumpLuminances.Select(s => ($"bumpEnvLum{s}", BumpLuminanceBase + s, 2)));
+
+            const int HeaderSize = 0x1C;
+            const int ConstantInfoSize = 20;
+            const int TypeInfoSize = 16;
+            int typesStart = HeaderSize + constants.Count * ConstantInfoSize;
+            int stringsStart = typesStart + constants.Count * TypeInfoSize;
+            var strings = new List<byte>();
+            int AddString(string value)
+            {
+                int offset = stringsStart + strings.Count;
+                strings.AddRange(System.Text.Encoding.ASCII.GetBytes(value));
+                strings.Add(0);
+                return offset;
+            }
+
+            using var table = new MemoryStream();
+            using (var writer = new BinaryWriter(table, System.Text.Encoding.ASCII, leaveOpen: true))
+            {
+                var nameOffsets = constants.Select(c => AddString(c.Name)).ToList();
+                int creator = AddString("HlslDecompiler");
+                int target = AddString("ps_2_0");
+
+                writer.Write(HeaderSize);
+                writer.Write(creator);
+                writer.Write(0xFFFF0200u);
+                writer.Write(constants.Count);
+                writer.Write(HeaderSize);
+                writer.Write(0); // flags
+                writer.Write(target);
+                for (int i = 0; i < constants.Count; i++)
+                {
+                    writer.Write(nameOffsets[i]);
+                    writer.Write((short)RegisterSet.Float4);
+                    writer.Write((short)constants[i].Register);
+                    writer.Write((short)1);
+                    writer.Write((short)0);
+                    writer.Write(typesStart + i * TypeInfoSize);
+                    writer.Write(0); // no default
+                }
+                foreach ((_, _, int columns) in constants)
+                {
+                    writer.Write((short)ParameterClass.Vector);
+                    writer.Write((short)ParameterType.Float);
+                    writer.Write((short)1);
+                    writer.Write((short)columns);
+                    writer.Write((short)1);
+                    writer.Write((short)0);
+                    writer.Write(0);
+                }
+                writer.Write(strings.ToArray());
+                while (table.Length % 4 != 0)
+                {
+                    writer.Write((byte)0);
+                }
+            }
+
+            byte[] bytes = table.ToArray();
+            var words = new List<uint>
+            {
+                (uint)Opcode.Comment | ((uint)(bytes.Length / 4 + 1) << 16),
+                (uint)FourCC.Make("CTAB"),
+            };
+            for (int i = 0; i < bytes.Length; i += 4)
+            {
+                words.Add(BitConverter.ToUInt32(bytes, i));
+            }
+            return [.. words];
         }
 
         private static void AddInstruction(List<uint> words, Opcode opcode, params uint[] parameters)
@@ -665,6 +1032,10 @@ public static class PixelShader1Lowering
         (token & ~0x70001FFFu) | RegisterBits(type, number);
 
     private static uint ClearResultModifiers(uint destination) => destination & ~0x00F00000u;
+
+    // One component of what a source reads, read into all four.
+    private static uint SelectComponent(uint source, int component) =>
+        WithSwizzle(source, Replicate((int)((source >> (16 + 2 * component)) & 0x3)));
 
     private static uint WithSwizzle(uint source, byte swizzle) =>
         (source & ~0x00FF0000u) | ((uint)swizzle << 16);

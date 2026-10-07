@@ -325,6 +325,55 @@ public class RoundTripCostTests
             + "r5.g is 0, is a reciprocal, a mul, a square to test for zero and a "
             + "cmp; and fxc pads the clip() of a float3 with two movs to fill the "
             + "w its texkill reads."),
+        // The ps_1_x texture addressing instructions, which are a texture read and
+        // the arithmetic that finds where in one instruction, and which ps_2_0
+        // spells as that arithmetic and a texld.
+        ["ps_1_1/bump_env"] = (20,
+            "Six instructions. Each texbem's offset is the bump matrix applied to "
+            + "the du/dv texel's red and green, and the AST writer recovers it as "
+            + "two dot()s over swizzled pairs - float2(dot(m.zx, t.yx), dot(m.wy, "
+            + "t.yx)) - which fxc compiles a component at a time, four instructions "
+            + "where m.xy * t.x + m.zw * t.y would be two. Each offset is then an "
+            + "add to the coordinate, texbeml's luminance a mad and a mul, and the "
+            + "texreg2gb lookup a mov to bring g and b into a texld's x and y."),
+        ["ps_1_1/bumpy_reflection"] = (16,
+            "Five instructions. texm3x3spec is three dot products of the normal "
+            + "with the coordinates, the eye ray reflected about their vector - a "
+            + "dot with the eye, a dot with itself, a reciprocal, a doubling and a "
+            + "mad - and a texld, and the _bx2 on the normal map is a mad."),
+        ["ps_1_2/dot_lookups"] = (8,
+            "Five instructions. texdp3 and the two texm3x2 rows are a dp3 each, the "
+            + "_bx2 on the normal map they read is a mad, and the vector the rows "
+            + "make is a texld of its own."),
+        ["ps_1_2/register_lookups"] = (9,
+            "Five instructions. texreg2ar and texreg2gb read another texel's (a, r) "
+            + "and (g, b) as coordinates, which ps_2_0's texld cannot take swizzled, "
+            + "so each is a mov before its texld."),
+        ["ps_1_2/matrix_colour"] = (9,
+            "Five instructions. texm3x3 is three dot products made a colour with an "
+            + "alpha of 1, and the AST writer multiplies that colour by the diffuse "
+            + "a component at a time, since the vector is built from three scalars."),
+        ["ps_1_3/view_reflection"] = (16,
+            "Five instructions. texm3x3vspec is texm3x3spec with the eye taken from "
+            + "the fourth components of the three coordinates: three dot products, "
+            + "the reflection - its dot with the eye written out over the three "
+            + "coordinates' w - and a texld, and the _bx2 on the normal map a mad."),
+        ["ps_1_3/depth_lookup"] = (13,
+            "Five instructions. texm3x2depth divides one dot product by another into "
+            + "the depth, and 1 where the divisor is 0 - a reciprocal, a mul, a "
+            + "square to test for zero and a cmp after the two dp3s - and texdp3tex "
+            + "is a dp3 and a mov of the zero its texld reads as v."),
+        ["ps_1_4/bump_offset"] = (10,
+            "Eight instructions, and the two more are bem: the bump matrix applied "
+            + "to a texel's red and green, which ps_2_0 spells as a mul and a mad."),
+        // Found decompiling the reflection above: the instruction writer cut a def'd
+        // vector against a dot product down to the component its destination
+        // names. This pins that fix; what it costs is the AST writer's.
+        ["ps_2_0/luminance_dot"] = (5,
+            "Three instructions. The AST writer does not recover dot() against a "
+            + "vector of literals - the luminance weights here - and writes the "
+            + "three products out, which fxc compiles to a mul and two mads where "
+            + "the shader had one dp3. signed_blend's dp4 is the same."),
         // Instructions fxc has no spelling for, so a round trip cannot keep their
         // count: the shaders were assembled by hand, and what comes back is what
         // fxc writes instead of them.

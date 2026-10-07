@@ -146,14 +146,17 @@ public class DotProduct2Template : IGroupTemplate
             // all - the components of one read, named halfway through.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
-    // Two literals that differ, weighting two components of one value.
+    // Two literals that differ, weighting two components that group - reads of
+    // one register, or a vector computed a component at a time, as a lerp's is.
+    // The corpus took a dot claiming computed components badly where both sides
+    // were computed (the comment in MatchDotProduct2); against literal weights there is nothing else
+    // for those components to have been claimed by.
     private bool IsLiteralWeights(HlslTreeNode weight1, HlslTreeNode weight2,
         HlslTreeNode value1, HlslTreeNode value2)
     {
         return weight1 is ConstantNode c1 && weight2 is ConstantNode c2
             && c1.Value != c2.Value
             && value1 is not ConstantNode && value2 is not ConstantNode
-            && value1 is IHasComponentIndex && value2 is IHasComponentIndex
             && _templateMatcher.CanGroupComponents(value1, value2, allowMatrixColumn);
     }
 

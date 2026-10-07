@@ -1083,7 +1083,7 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction.GetOperandType(operandIndex) is not (OperandType.Temp or OperandType.Input
             or OperandType.InputThreadID or OperandType.InputThreadGroupID
             or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened
-            or OperandType.InputPrimitiveID))
+            or OperandType.InputPrimitiveID or OperandType.InputGSInstanceID))
         {
             return ComponentStorage.Numeric;
         }
@@ -1129,8 +1129,14 @@ public class HlslSimpleWriter : HlslWriter
         }
         // oMask joins the temps because the analysis has a type for it - a uint -
         // where a register outside them usually holds whatever number it is given.
+        // Outputs join them too, typed by their signature: `mov o1.x, vPrim` moves
+        // the primitive id whole, and a float carried on the way into a uint output
+        // keeps its bits only below 2^24. The same answer IsFloatOutput already
+        // gives of them - the instructions say nothing about what an output holds,
+        // and left untyped, an integer reaching an int output was always a crossing
+        // into a float one.
         if (instruction.GetOperandType(operandIndex)
-            is not (OperandType.Temp or OperandType.OutputCoverageMask))
+            is not (OperandType.Temp or OperandType.OutputCoverageMask or OperandType.Output))
         {
             return ComponentStorage.Numeric;
         }
@@ -1142,7 +1148,12 @@ public class HlslSimpleWriter : HlslWriter
             {
                 continue;
             }
-            storage = GetStorage(instruction, operandIndex, component);
+            storage = instruction.GetOperandType(operandIndex) == OperandType.Output
+                ? _integerOperandAnalysis.IsIntegerOutputSignature(
+                    new RegisterComponentKey(instruction.GetParamRegisterKey(operandIndex), component))
+                    ? ComponentStorage.Integer
+                    : ComponentStorage.Numeric
+                : GetStorage(instruction, operandIndex, component);
         }
         return storage;
     }

@@ -37,7 +37,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 			o.sv_position.z = r1.y;
 			o.sv_position.w = r1.z;
 			o.texcoord = i[r0.z].texcoord.xyz;
-			o.sv_rendertargetarrayindex = r0.x;
+			o.sv_rendertargetarrayindex = (int)r0.x;
 			stream.Append(o);
 			r0.z = r0.z + 1;
 		}

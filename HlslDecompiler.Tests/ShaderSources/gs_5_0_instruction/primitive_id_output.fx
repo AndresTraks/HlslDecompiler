@@ -20,7 +20,7 @@ void main(triangle GS_IN i[3], uint sv_primitiveid : SV_PrimitiveID, inout Trian
 		r0.y = (r0.x >= 3) ? -1 : 0;
 		if (r0.y != 0) break;
 		o.sv_position = i[r0.x].sv_position;
-		o.sv_primitiveid = (float)sv_primitiveid;
+		o.sv_primitiveid = sv_primitiveid;
 		stream.Append(o);
 		r0.x = r0.x + 1;
 	}

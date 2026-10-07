@@ -16,7 +16,7 @@ PS_OUT main(PS_IN i)
 
 	o.sv_target.y = i.sv_primitiveid * 7 + 3;
 	o.sv_target.z = i.sv_primitiveid & 255;
-	o.sv_target.x = (float)i.sv_primitiveid;
+	o.sv_target.x = i.sv_primitiveid;
 	o.sv_target.w = 1;
 	o.sv_target1.z = (float)(uint)i.sv_primitiveid;
 	o.sv_target1.xy = i.sv_position.xy * float2(0.00100000005, 0.00100000005);

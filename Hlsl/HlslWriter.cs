@@ -43,7 +43,9 @@ public abstract class HlslWriter
 
     public HlslWriter(ShaderModel shader)
     {
-        _shader = shader;
+        // A ps_1_x shader is written as the ps_2_0 one that computes the same:
+        // ps_2_0 is what its HLSL compiles to, and what both writers know.
+        _shader = PixelShader1Lowering.Lower(shader);
     }
 
     /// <summary>

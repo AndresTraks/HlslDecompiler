@@ -11,6 +11,10 @@ public class AsmWriter
 {
     private ShaderModel shader;
     private StreamWriter asmWriter;
+
+    // What the line being written starts with: "+ " for the second instruction of a
+    // ps_1_x co-issued pair, the way fxc marks it.
+    private string _linePrefix = "";
     private IDictionary<RegisterKey, int> _samplerDimensions = new Dictionary<RegisterKey, int>();
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
 
@@ -22,12 +26,12 @@ public class AsmWriter
 
     void WriteLine(string value)
     {
-        asmWriter.WriteLine(value);
+        asmWriter.WriteLine(_linePrefix + value);
     }
 
     void WriteLine(string format, params object[] args)
     {
-        asmWriter.WriteLine(string.Format(CultureInfo.InvariantCulture, format, args));
+        asmWriter.WriteLine(_linePrefix + string.Format(CultureInfo.InvariantCulture, format, args));
     }
 
     private string GetDestinationName(D3D9Instruction instruction)
@@ -97,7 +101,10 @@ public class AsmWriter
             }
             else
             {
-                WriteInstruction(instruction as D3D9Instruction);
+                var d3D9Instruction = (D3D9Instruction)instruction;
+                _linePrefix = d3D9Instruction.CoIssue ? "+ " : "";
+                WriteInstruction(d3D9Instruction);
+                _linePrefix = "";
             }
         }
 
@@ -1442,7 +1449,14 @@ public class AsmWriter
 
     private static string GetModifier(D3D9Instruction instruction)
     {
-        string result = "";
+        // A ps_1_x result scale comes before the saturate, as fxc writes it:
+        // add_x2_sat. The scale is applied first, too.
+        string result = instruction.GetDestinationResultShift() switch
+        {
+            0 => "",
+            int shift when shift > 0 => $"_x{1 << shift}",
+            int shift => $"_d{1 << -shift}",
+        };
         ResultModifier modifier = instruction.GetDestinationResultModifier();
         if ((modifier & ResultModifier.Saturate) != 0)
         {
@@ -1481,7 +1495,7 @@ public class AsmWriter
             SourceModifier.BiasAndNegate => $"-{value}_bias",
             SourceModifier.Sign => $"{value}_bx2",
             SourceModifier.SignAndNegate => $"-{value}_bx2",
-            SourceModifier.Complement => throw new NotImplementedException(),
+            SourceModifier.Complement => $"1-{value}",
             SourceModifier.X2 => $"{value}_x2",
             SourceModifier.X2AndNegate => $"-{value}_x2",
             SourceModifier.DivideByZ => $"{value}_dz",

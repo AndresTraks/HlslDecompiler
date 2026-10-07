@@ -76,9 +76,55 @@ public class D3D9Machine
         var machine = new D3D9Machine(shader, trial);
         machine.LoadConstants();
         machine.LoadDeclarations();
+        if (machine.IsShaderModel1Pixel)
+        {
+            machine.LoadShaderModel1PixelInputs();
+        }
         machine.Execute();
+        if (machine.IsShaderModel1Pixel)
+        {
+            // There is no colour output register: the colour is r0, as it is left.
+            machine._results["COLOR0"] = [.. machine._temp[0]];
+        }
         return machine.Killed ? [] : machine._results;
     }
+
+    /// <summary>
+    /// ps_1_1 to ps_1_3, run as the specification has it rather than through the
+    /// decompiler's rewrite of it into ps_2_0, so that the two are checked against
+    /// each other. No declarations: v0 and v1 are the diffuse and specular
+    /// colours, texture register # is texture coordinate # until a texture
+    /// instruction writes it, and r0 is the colour the pixel gets.
+    /// </summary>
+    private bool IsShaderModel1Pixel =>
+        _shader.Type == ShaderType.Pixel && _shader.MajorVersion == 1;
+
+    // The coordinate sets, which a ps_1_x texture instruction reads by the number of
+    // the register it writes.
+    private readonly float[][] _coordinates = NewFile(8);
+
+    private void LoadShaderModel1PixelInputs()
+    {
+        if (_shader.MinorVersion >= 4)
+        {
+            throw new UnsupportedException("a ps_1_4 pixel shader");
+        }
+        // Named as a ps_2_0 dcl names them, which is what the decompilation has.
+        Array.Copy(PixelColour(Named("COLOR")), _input[0], 4);
+        Array.Copy(PixelColour(Named("COLOR1")), _input[1], 4);
+        for (int i = 0; i < _coordinates.Length; i++)
+        {
+            Array.Copy(Named(i == 0 ? "TEXCOORD" : "TEXCOORD" + i), _coordinates[i], 4);
+        }
+    }
+
+    /// <summary>
+    /// A pixel shader's colour inputs are colours: the vertex pipeline clamps
+    /// them to [0, 1] before they are interpolated. The same in either program,
+    /// so a ps_1_x shader and its ps_2_0 decompilation read the same colour.
+    /// </summary>
+    private static float[] PixelColour(float[] value) =>
+        [.. value.Select(v => (v + 2) / 4)];
 
     private void LoadConstants()
     {
@@ -172,6 +218,11 @@ public class D3D9Machine
                         if (semantic.StartsWith("BLENDINDICES", StringComparison.OrdinalIgnoreCase))
                         {
                             value = [.. value.Select(v => (float)((int)Math.Abs(v * 4) % 8))];
+                        }
+                        if (_shader.Type == ShaderType.Pixel
+                            && semantic.StartsWith("COLOR", StringComparison.OrdinalIgnoreCase))
+                        {
+                            value = PixelColour(value);
                         }
                         Array.Copy(value, _input[number], 4);
                     }
@@ -270,9 +321,45 @@ public class D3D9Machine
                         : pc + 1;
                     continue;
                 case Opcode.TexKill:
-                    Killed |= Source(instruction, 0).Take(3).Any(c => c < 0);
+                    // ps_1_x kills on the coordinate set the register is named for,
+                    // not on what a tex left in it.
+                    Killed |= (IsShaderModel1Pixel
+                        ? _coordinates[instruction.GetParamRegisterNumber(0)]
+                        : Source(instruction, 0)).Take(3).Any(c => c < 0);
                     pc++;
                     continue;
+                case Opcode.Tex when IsShaderModel1Pixel:
+                    {
+                        int stage = instruction.GetParamRegisterNumber(0);
+                        Array.Copy(Texture.Sample(stage, _coordinates[stage], ShaderModel1SamplerDimension(stage)),
+                            _texture[stage], 4);
+                        pc++;
+                        continue;
+                    }
+                case Opcode.TexCoord when IsShaderModel1Pixel:
+                    {
+                        // The coordinate as a colour: clamped, with an alpha of one.
+                        int stage = instruction.GetParamRegisterNumber(0);
+                        float[] c = _coordinates[stage];
+                        _texture[stage][0] = Math.Clamp(c[0], 0, 1);
+                        _texture[stage][1] = Math.Clamp(c[1], 0, 1);
+                        _texture[stage][2] = Math.Clamp(c[2], 0, 1);
+                        _texture[stage][3] = 1;
+                        pc++;
+                        continue;
+                    }
+            }
+
+            // A co-issued pair runs as one: both read their sources before either
+            // writes.
+            if (pc + 1 < instructions.Count && instructions[pc + 1].CoIssue)
+            {
+                float[] first = Evaluate(instruction);
+                float[] second = Evaluate(instructions[pc + 1]);
+                Store(instruction, first);
+                Store(instructions[pc + 1], second);
+                pc += 2;
+                continue;
             }
 
             Store(instruction, Evaluate(instruction));
@@ -519,6 +606,15 @@ public class D3D9Machine
     // How many coordinates each sampler reads, from its dcl.
     private readonly Dictionary<int, int> _samplerDimensions = [];
 
+    // ps_1_x declares no samplers. A texture is 2D unless the constant table says
+    // it is a cube or a volume.
+    private int ShaderModel1SamplerDimension(int stage)
+    {
+        D3D9ConstantDeclaration sampler = ReadConstantTable().FirstOrDefault(d =>
+            d.RegisterSet == RegisterSet.Sampler && d.ContainsIndex(stage));
+        return sampler == null ? 2 : sampler.GetSamplerDimension();
+    }
+
     private float[] Multiply(D3D9Instruction instruction, int columns, int rows)
     {
         float[] vector = Source(instruction, 1);
@@ -613,6 +709,28 @@ public class D3D9Machine
             case SourceModifier.AbsAndNegate:
                 value = [.. value.Select(v => -Math.Abs(v))];
                 break;
+            // ps_1_x, after the swizzle like the rest.
+            case SourceModifier.Bias:
+                value = [.. value.Select(v => v - 0.5f)];
+                break;
+            case SourceModifier.BiasAndNegate:
+                value = [.. value.Select(v => -(v - 0.5f))];
+                break;
+            case SourceModifier.Sign:
+                value = [.. value.Select(v => 2 * v - 1)];
+                break;
+            case SourceModifier.SignAndNegate:
+                value = [.. value.Select(v => -(2 * v - 1))];
+                break;
+            case SourceModifier.Complement:
+                value = [.. value.Select(v => 1 - v)];
+                break;
+            case SourceModifier.X2:
+                value = [.. value.Select(v => 2 * v)];
+                break;
+            case SourceModifier.X2AndNegate:
+                value = [.. value.Select(v => -2 * v)];
+                break;
             default:
                 throw new UnsupportedException($"source modifier {instruction.GetSourceModifier(index)}");
         }
@@ -669,6 +787,14 @@ public class D3D9Machine
         if (destinationIndex == null)
         {
             return;
+        }
+
+        // A ps_1_x result scale, applied before the saturate.
+        int shift = instruction.GetDestinationResultShift();
+        if (shift != 0)
+        {
+            float scale = MathF.Pow(2, shift);
+            value = [.. value.Select(v => v * scale)];
         }
 
         ResultModifier modifier = instruction.GetDestinationResultModifier();

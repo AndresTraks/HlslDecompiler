@@ -133,6 +133,65 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
+    // What ps_1_x says about an operand and a result that later models do not: the
+    // source modifiers _bias, _bx2 and 1-x, a result scale from _x8 down to _d8
+    // that fxc writes before _sat, and the + of a co-issued pair. The expected text
+    // is fxc's own, from /dumpbin over the same assembled bytes, but for the
+    // swizzle this writer narrows to the components read.
+    [Test]
+    public void DisassemblesTheModifiersOfShaderModel1()
+    {
+        ShaderModel shader = Assemble(ShaderType.Pixel, 1, 1, [
+            Constant(0, 1, 0.5f, 0.25f, 0),
+            FixedSizeInstruction(Opcode.Tex, Destination(RegisterType.Texture, 0)),
+            FixedSizeInstruction(Opcode.TexCoord, Destination(RegisterType.Texture, 1)),
+            FixedSizeInstruction(Opcode.Add, Rd(0, 0x7, ResultModifier.Saturate) | Scale(1),
+                Source(RegisterType.Texture, 0, SourceModifier.Sign),
+                V(0, modifier: SourceModifier.Complement)),
+            CoIssued(FixedSizeInstruction(Opcode.Mov, Rd(0, 0x8), C(0, 0xFF, SourceModifier.Bias))),
+            FixedSizeInstruction(Opcode.Mul, Rd(1) | Scale(-1), R(0),
+                Source(RegisterType.Texture, 1, SourceModifier.BiasAndNegate)),
+            FixedSizeInstruction(Opcode.Mul, Rd(1) | Scale(2), R(1),
+                Source(RegisterType.Texture, 1, SourceModifier.SignAndNegate)),
+            FixedSizeInstruction(Opcode.Mul, Rd(1, modifier: ResultModifier.Saturate) | Scale(3), R(1),
+                Source(RegisterType.Texture, 1, swizzle: 0xAA)),
+            FixedSizeInstruction(Opcode.Mul, Rd(1) | Scale(-2), R(1), V(1)),
+            FixedSizeInstruction(Opcode.Mul, Rd(1) | Scale(-3), R(1), V(1)),
+            FixedSizeInstruction(Opcode.Cnd, Rd(0), R(0, 0xFF),
+                Source(RegisterType.Texture, 0), R(1)),
+            FixedSizeInstruction(Opcode.End),
+        ]);
+
+        Assert.That(WriteAsm(shader), Is.EqualTo("""
+            ps_1_1
+            def c0, 1, 0.5, 0.25, 0
+            tex t0
+            texcoord t1
+            add_x2_sat r0.xyz, t0_bx2.xyz, 1-v0.xyz
+            + mov r0.w, c0_bias.w
+            mul_d2 r1, r0, -t1_bias
+            mul_x4 r1, r1, -t1_bx2
+            mul_x8_sat r1, r1, t1.z
+            mul_d4 r1, r1, v1
+            mul_d8 r1, r1, v1
+            cnd r0, r0.w, t0, r1
+
+            """));
+    }
+
+    // A ps_1_x result scale, as a power of two: the four bits above the result
+    // modifier, signed.
+    private static uint Scale(int shift)
+    {
+        return (uint)(shift & 0xF) << 24;
+    }
+
+    private static uint[] CoIssued(uint[] instruction)
+    {
+        instruction[0] |= 0x40000000;
+        return instruction;
+    }
+
     // ps_1_4 renamed two instructions and gave each the register the older one
     // implied, and added a phase to split the shader in two. texld is NOT the
     // ps_2_0 one: it names no sampler, which is the operand a ps_2_0 texld reads

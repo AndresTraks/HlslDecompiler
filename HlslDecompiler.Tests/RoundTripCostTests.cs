@@ -289,6 +289,28 @@ public class RoundTripCostTests
             + "from source higher level than the bytecode, not the decompilation "
             + "doing work twice - both writers compute the same numbers as the "
             + "original on every trial."),
+        // ps_1_x, assembled by hand because fxc no longer compiles it, and compiled
+        // back as ps_2_0 - which has none of ps_1_x's free modifiers. _bias, _bx2,
+        // 1-x and a result scale are each part of the instruction that reads or
+        // writes them there and an instruction of their own here, and cnd is a
+        // subtraction and a cmp.
+        ["ps_1_1/detail_modulate"] = (6,
+            "Five instructions, and the sixth is the _x2 on the detail modulate: "
+            + "ps_2_0 scales a result with an add of it to itself."),
+        ["ps_1_1/bump_dot3"] = (9,
+            "Six instructions, and the three more are the two _bx2 that expand the "
+            + "normal and the light vector and the 1-x on the alpha, each a mad or "
+            + "an add of its own in ps_2_0."),
+        ["ps_1_3/signed_blend"] = (29,
+            "Ten instructions, nearly every operand of which carries a modifier or "
+            + "a result scale ps_2_0 has to spell out - _bias twice, _bx2 negated, "
+            + "1-x, _d2, _x4 and _d4 - and a cnd that becomes a subtraction and a "
+            + "cmp. Two causes are not ps_1_x's: fxc pads the clip() of a float3 "
+            + "with two movs to fill the w its texkill reads, and the AST writer "
+            + "spells the dp4 out a component at a time because the vector it "
+            + "reads is assembled from two values, which fxc compiles to four "
+            + "instructions where a dot() would be one. Both writers compute the "
+            + "same numbers as the original."),
         // Instructions fxc has no spelling for, so a round trip cannot keep their
         // count: the shaders were assembled by hand, and what comes back is what
         // fxc writes instead of them.

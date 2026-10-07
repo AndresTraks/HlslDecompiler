@@ -72,7 +72,7 @@ public class InstructionParser
     public static HlslAst Parse(ShaderModel shader)
     {
         var parser = new InstructionParser();
-        return parser.ParseToAst(shader);
+        return parser.ParseToAst(PixelShader1Lowering.Lower(shader));
     }
 
     /// <summary>
@@ -189,6 +189,11 @@ public class InstructionParser
             }
             else
             {
+                if (instruction.Opcode == Opcode.Dcl
+                    && instruction.GetParamRegisterType(1) == RegisterType.Sampler)
+                {
+                    DeclareUnnamedSampler(instruction);
+                }
                 ParseAssignmentInstruction(instruction);
             }
         }
@@ -903,6 +908,29 @@ public class InstructionParser
             SetActiveOutput(key, value);
             _preshaderOutputs[key] = value;
         }
+    }
+
+    /// <summary>
+    /// A sampler the constant table does not name - there is no table, as in a
+    /// shader assembled by hand or one rewritten from ps_1_x - is named for its
+    /// register, and its type is the one its dcl gives it. The constant table
+    /// comes first, so a sampler it names is already declared by here.
+    /// </summary>
+    private void DeclareUnnamedSampler(D3D9Instruction instruction)
+    {
+        int number = instruction.GetParamRegisterNumber(1);
+        if (_registerState.Samplers.ContainsKey(new D3D9RegisterKey(RegisterType.Sampler, number)))
+        {
+            return;
+        }
+        ParameterType type = instruction.GetDeclSamplerTextureType() switch
+        {
+            SamplerTextureType.Cube => ParameterType.SamplerCube,
+            SamplerTextureType.Volume => ParameterType.Sampler3D,
+            _ => ParameterType.Sampler2D,
+        };
+        DeclareConstant(new D3D9ConstantDeclaration($"s{number}", RegisterSet.Sampler,
+            (short)number, 1, new ShaderTypeInfo(ParameterClass.Object, type, 1, 1, 1, null)));
     }
 
     private void DeclareConstant(D3D9ConstantDeclaration constant)

@@ -4,11 +4,17 @@ Decompiles Direct3D shader bytecode into HLSL code
 ## Supported shader models
 All DXBC and earlier: \
 vs_1_1 to vs_5_0 \
-ps_2_0 to ps_5_0 \
+ps_1_1 to ps_1_3, ps_2_0 to ps_5_0 \
 gs_4_0 to gs_5_0, cs_4_0 to cs_5_0, hs_5_0, ds_5_0 \
 fx_2_0, fx_4_0, fx_4_1 and fx_5_0.
 
 Shader Model 6+ (DXIL) is not supported.
+
+A ps_1_x shader decompiles to HLSL for ps_2_0, since no compiler targets ps_1_x
+any more. Values are computed in floating point: hardware that ran ps_1_1 to
+ps_1_3 in fixed point clamped intermediate values to [-1, 1]. ps_1_4 and the
+ps_1_x texture addressing instructions (texbem, texm3x3 and the rest)
+disassemble but do not decompile yet.
 
 ## Usage
 `HlslDecompiler [options] shader.fxc`

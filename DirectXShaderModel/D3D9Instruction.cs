@@ -17,7 +17,7 @@ namespace HlslDecompiler.DirectXShaderModel;
 // Destination parameter
 // 80000000 set to 1
 // 70001800 register type
-// 0F000000 reserved, set to 0
+// 0F000000 result shift, ps_1_x only: 1 _x2, 2 _x4, 3 _x8, 13 _d8, 14 _d4, 15 _d2
 // 00F00000 result modifier
 // 000F0000 write mask
 // 0000C000 reserved, set to 0
@@ -84,6 +84,13 @@ public class D3D9Instruction : Instruction
     public IfComparison Comparison => (IfComparison)((InstructionToken >> 16) & 7);
     public TexldControls TexldControls => (TexldControls)((InstructionToken >> 16) & 3);
     public bool Predicated => (InstructionToken & 0x10000000) != 0;
+
+    /// <summary>
+    /// A ps_1_x instruction run beside the one before it, as one pair: the colour
+    /// half and the alpha half of a pixel at once. Neither sees what the other
+    /// writes. fxc writes it with a + in front.
+    /// </summary>
+    public bool CoIssue => (InstructionToken & 0x40000000) != 0;
 
     public override bool HasDestination => Opcode.HasDestination();
     public override bool IsTextureOperation => Opcode.IsTextureOperation();
@@ -338,6 +345,18 @@ public class D3D9Instruction : Instruction
     {
         int destIndex = GetDestinationParamIndex().Value;
         return (ResultModifier)((Params[destIndex] >> 20) & 0xF);
+    }
+
+    /// <summary>
+    /// The power of two a ps_1_x result is scaled by before it is saturated and
+    /// stored: 1 for _x2, 3 for _x8, -1 for _d2. Four bits, signed. Zero for
+    /// every later model, which has the bits reserved.
+    /// </summary>
+    public int GetDestinationResultShift()
+    {
+        int destIndex = GetDestinationParamIndex().Value;
+        int shift = (int)((Params[destIndex] >> 24) & 0xF);
+        return shift >= 8 ? shift - 16 : shift;
     }
 
     public override string ToString()

@@ -192,12 +192,20 @@ public class RecompileTests
         return startInfo;
     }
 
+    /// <summary>
+    /// The profile a decompilation is compiled for. fxc answers X3539 for ps_1_x,
+    /// and a ps_1_x shader decompiles to the ps_2_0 one that computes the same, so
+    /// that is what its HLSL is compiled as.
+    /// </summary>
+    public static string CompileProfile(string profile) =>
+        profile.StartsWith("ps_1_") ? "ps_2_0" : profile;
+
     private static string Recompile(string profile, string hlslOutputFilename, string objectFilename)
     {
         var startInfo = CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");
         startInfo.ArgumentList.Add("/T");
-        startInfo.ArgumentList.Add(profile);
+        startInfo.ArgumentList.Add(CompileProfile(profile));
         startInfo.ArgumentList.Add("/E");
         startInfo.ArgumentList.Add("main");
         startInfo.ArgumentList.Add(hlslOutputFilename);

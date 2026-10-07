@@ -2802,9 +2802,20 @@ public class InstructionParser
         {
             return;
         }
-        foreach (HlslTreeNode value in values)
+        for (int i = 0; i < values.Length; i++)
         {
-            _storedTypes[value] = kind == ValueKind.Integer;
+            // A literal the store is handed itself, rather than through a mov, was
+            // typed by the opcode, and store_structured is not an integer one: the
+            // bits 0x7F7FFFFF stored into a uint array came out as the float they
+            // spell, 3.4e38, which the array then converted. Into integer memory it
+            // is the integer its bits are - the same thirty-two bits either way.
+            if (kind == ValueKind.Integer
+                && values[i] is ConstantNode { IntegerValue: null } literal
+                && !_polymorphicImmediates.Any(p => ReferenceEquals(p.Constant, literal)))
+            {
+                values[i] = new ConstantNode(BitConverter.SingleToInt32Bits(literal.Value));
+            }
+            _storedTypes[values[i]] = kind == ValueKind.Integer;
         }
     }
 
@@ -2813,6 +2824,16 @@ public class InstructionParser
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
         {
             bool? consumedAsInteger = GetConsumedType(constant, _storedTypes);
+            // Bits that are a NaN as a float were not a float the source wrote - HLSL
+            // has no NaN literal - so where the readers do not say, they are the
+            // integer they are. A -1 flag carried through a movc into the condition
+            // of another, which only asks whether its bits are zero, came out as
+            // `NaN`: an undeclared identifier to fxc.
+            if (consumedAsInteger == null && constant.IntegerValue == null
+                && float.IsNaN(BitConverter.UInt32BitsToSingle(bits)))
+            {
+                consumedAsInteger = true;
+            }
             if (consumedAsInteger == null || consumedAsInteger == (constant.IntegerValue != null))
             {
                 continue;
@@ -3142,11 +3163,19 @@ public class InstructionParser
                                     // The component the resource operand selects is
                                     // which part of the element this load is, so the
                                     // member it reads is the one at that address and
-                                    // not the one the element starts with.
-                                    IsIntegerElement = _registerState.IsIntegerStructuredMember(
-                                        instruction.GetParamRegisterKey(3),
-                                        elementByteOffset
-                                            + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
+                                    // not the one the element starts with. Groupshared
+                                    // memory has no reflection data to ask, and holds
+                                    // what the writer declares it as - the rule the
+                                    // analysis answers by. A uint array an atomic
+                                    // reaches holds a float's bits where the shader
+                                    // stores one, and a float read back out of it was
+                                    // converted from the integer those bits are.
+                                    IsIntegerElement = instruction.GetOperandType(3) == OperandType.ThreadGroupSharedMemory
+                                        ? _integerOperandAnalysis.GetStructuredElementKind(instruction) == ValueKind.Integer
+                                        : _registerState.IsIntegerStructuredMember(
+                                            instruction.GetParamRegisterKey(3),
+                                            elementByteOffset
+                                                + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
                                     IsUnsignedElement = _registerState.IsUnsignedStructuredMember(
                                         instruction.GetParamRegisterKey(3),
                                         elementByteOffset

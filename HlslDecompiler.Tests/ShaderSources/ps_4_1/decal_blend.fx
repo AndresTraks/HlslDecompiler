@@ -13,7 +13,7 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	float3 t0;
-	int t1;
+	bool t1;
 	if (decalCount != 0) {
 		float3 t2 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[0]);
 		if (all(abs(t2) < 0.5)) {
@@ -23,7 +23,7 @@ float4 main(PS_IN i) : SV_Target
 			t0 = i.color.xyz;
 		}
 		t1 = decalCount <= 1;
-		if (t1 == 0) {
+		if (!t1) {
 			float3 t4 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[1]);
 			if (all(abs(t4) < 0.5)) {
 				float4 t5 = decalAlbedo.Sample(linearClamp, float3(t4.xy + 0.5, 1));
@@ -32,9 +32,9 @@ float4 main(PS_IN i) : SV_Target
 		}
 	} else {
 		t0 = i.color.xyz;
-		t1 = -1;
+		t1 = true;
 	}
-	if (t1 == 0) {
+	if (!t1) {
 		if (decalCount > 2) {
 			float3 t6 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[2]);
 			if (all(abs(t6) < 0.5)) {

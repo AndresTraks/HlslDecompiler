@@ -77,7 +77,6 @@ reworded ps_4_0/uint_convert
 reworded ps_4_0/vector_subscript
 reworded ps_4_1/alpha_to_coverage
 reworded ps_4_1/cascade_shadow
-reworded ps_4_1/decal_blend
 reworded ps_5_0/depth_aware_blur
 reworded ps_5_0/double_compare
 reworded ps_5_0/environment_lighting

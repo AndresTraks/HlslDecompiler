@@ -2752,7 +2752,14 @@ public sealed class NodeCompiler
             // to the number nearest it, which is not the same bits at all. Every
             // component, not the first: a vector of some of each reinterprets its
             // floats one by one, in the constructor.
-            if (tempAssignment.TempVariable.IsInteger
+            // A mask constant into a bool is the bool: `t = -1` is `t = true`.
+            if (tempAssignment.TempVariable.IsBool
+                && components.Count == 1
+                && AssignedValue(tempAssignment) is ConstantNode mask)
+            {
+                compiled = mask.Value == 0 && mask.IntegerValue is null or 0 ? "false" : "true";
+            }
+            else if (tempAssignment.TempVariable.IsInteger
                 && components.All(a => IsFloatValued(((TempAssignmentNode)a).Value)))
             {
                 compiled = $"asint({compiled})";
@@ -3098,8 +3105,9 @@ public sealed class NodeCompiler
         if (components.Count == 1
             && first.Comparison is IfComparison.NE or IfComparison.EQ
             && first.Right is ConstantNode { Value: 0 }
-            && first.Left is RegisterInputNode register
-            && _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Bool)
+            && (first.Left is TempVariableNode { IsBool: true }
+                || (first.Left is RegisterInputNode register
+                    && _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Bool)))
         {
             string flag = Compile(first.Left);
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";

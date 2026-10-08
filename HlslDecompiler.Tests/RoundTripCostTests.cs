@@ -143,24 +143,6 @@ public class RoundTripCostTests
             + "twice. The components one instruction wrote are named together "
             + "where the text writes them apart, but not where one of them is "
             + "folded into a longer expression."),
-        ["ps_4_1/decal_blend"] = (62,
-            "One instruction, fxc's.\n\n"
-            + "It was six. One was the flag: `decalCount <= 1` is kept in a register "
-            + "for the third decal, and the second decal tested `decalCount > 1` "
-            + "again where the original read the register. An if right after the "
-            + "assignment of its own test, or the opposite, reads the variable when "
-            + "something after the if reads it too (ReadAssignedFlag).\n\n"
-            + "Three were the box test. Each decal's position is one "
-            + "multiply over three rows and its test one lt over all three, but fxc "
-            + "overwrites the third row in its register with the test's answer, so "
-            + "only two rows reached a variable and the test came back as "
-            + "abs(dot(...)) < 0.5 && all(abs(t3) < 0.5). The register's variable is "
-            + "given the multiply's other rows as lanes of its own where the statement "
-            + "is written (WidenWithSiblingRows), and the test is all(abs(t3) < 0.5). "
-            + "For the second and third decals that needed the variable declared "
-            + "where it is computed, not above the ifs that handed it on - "
-            + "LocalizeDeadJoins, which asks liveness whether anything reads it "
-            + "after them."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

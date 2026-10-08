@@ -1349,6 +1349,19 @@ public class StatementFinalizer
     /// </summary>
     private bool HoldsOnlyACondition(HlslTreeNode value, IEnumerable<HlslTreeNode> readers)
     {
+        // A flag an if/else joins - `t = a <= 1` in one branch, `t = -1` in the
+        // other, as decal_blend's is - holds a mask whichever branch ran, and a
+        // join read only as a condition is one too. Declared int, the comparison
+        // is normalised to 0 or 1 on the way in, which is the `and` the shader
+        // did not have. Whichever of the values is lowered first declares the
+        // variable, so a mask constant into such a join counts the same.
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        if (readers.Any() && readers.All(reader => reader is PhiNode)
+            && IsMask(value, seen, out bool compares)
+            && readers.All(reader => IsMaskJoin(reader, seen, ref compares)) && compares)
+        {
+            return true;
+        }
         if (value is not ComparisonNode)
         {
             return false;
@@ -1366,6 +1379,71 @@ public class StatementFinalizer
             tested |= statement.HeldNodes.Contains(value);
         });
         return !named && (tested || readers.Any());
+    }
+
+    // A comparison, or a constant all ones or all zeroes.
+    private static bool IsMask(HlslTreeNode value, HashSet<HlslTreeNode> seen, out bool compares)
+    {
+        while (value is MoveOperation move)
+        {
+            value = move.Inputs[0];
+        }
+        compares = value is ComparisonNode;
+        return compares
+            || value is ConstantNode { IntegerValue: -1 or 0 }
+            || value is ConstantNode { IntegerValue: null, Value: 0 };
+    }
+
+    // A join of masks that nothing reads but a test against zero, a select's
+    // condition, or another such join.
+    private static bool IsMaskJoin(HlslTreeNode phi, HashSet<HlslTreeNode> seen, ref bool compares)
+    {
+        if (phi is not PhiNode)
+        {
+            return false;
+        }
+        if (!seen.Add(phi))
+        {
+            return true;
+        }
+        foreach (HlslTreeNode input in phi.Inputs)
+        {
+            if (input is PhiNode)
+            {
+                if (!IsMaskJoin(input, seen, ref compares))
+                {
+                    return false;
+                }
+            }
+            else if (IsMask(input, seen, out bool inputCompares))
+            {
+                compares |= inputCompares;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        if (phi.Outputs.Count == 0)
+        {
+            return false;
+        }
+        foreach (HlslTreeNode reader in phi.Outputs)
+        {
+            bool ok = reader switch
+            {
+                PhiNode => IsMaskJoin(reader, seen, ref compares),
+                MoveConditionalOperation select => ReferenceEquals(select.Condition, phi),
+                ComparisonNode { Comparison: IfComparison.EQ or IfComparison.NE } test =>
+                    ReferenceEquals(test.Left, phi) && test.Right is ConstantNode { Value: 0 },
+                _ => false,
+            };
+            if (!ok)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static bool IsFreeToRead(HlslTreeNode node)

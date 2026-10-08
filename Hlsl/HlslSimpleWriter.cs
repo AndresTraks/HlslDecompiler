@@ -4674,7 +4674,9 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        ConstantDeclaration constant = _registers.FindConstant(instruction.GetParamRegisterKey(operandIndex));
+        ConstantDeclaration constant = _registers.FindConstant(
+            (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex),
+            instruction.GetSourceSwizzleComponents(operandIndex)[0]);
         return constant?.TypeInfo.ParameterType is ParameterType.Bool or ParameterType.Int or ParameterType.Uint;
     }
 

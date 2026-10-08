@@ -62,7 +62,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.x = asint(log2(asfloat(r0.x)));
 	r0.x = asint(asfloat(r0.x) * 32);
 	r0.x = asint(exp2(asfloat(r0.x)));
-	r0.yz = asint(flags) & int2(1, 2);
+	r0.yz = flags & int2(1, 2);
 	r0.y = (r0.y != 0) ? 1065353216 : 0;
 	r0.x = asint(asfloat(r0.y) * asfloat(r0.x));
 	r2 = albedoMap.Sample(linearSampler, i.texcoord.xy);

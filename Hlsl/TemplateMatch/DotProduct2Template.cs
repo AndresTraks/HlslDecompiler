@@ -112,6 +112,14 @@ public class DotProduct2Template : IGroupTemplate
             // time therefore stays three products added up, which is the price of
             // the richer idioms keeping theirs.
             //
+            // Measured again on 2026-10-09, after the transposed dot rewrite and the
+            // fresh-variable rule: gbuffer_write and tangent_lighting now cost the same
+            // either way, and what the refusal still saves is packed_matrix_members,
+            // ten instructions dearer without it. A cost-ranked choice between the two
+            // was tried and does not work from this side of fxc: an estimate of one
+            // instruction per vector operation tracks a shader's size (0.86 across the
+            // corpus) but moved the wrong way on all six shaders this refusal changes.
+            //
             // Except where this side's components are reads - of a variable, an
             // input, a load - which no other grouper builds anything out of. Which
             // side of each product a component lands on is the order fxc wrote the

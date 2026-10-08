@@ -12,7 +12,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	if (count != 0) {
 		t0.x = t0.x + a.x;
 		t2 = count <= 1;
-		if (count > 1) {
+		if (t2 == 0) {
 			t0.y = t0.y + a.y;
 		}
 	} else {

@@ -36,6 +36,7 @@ public class HlslAstWriter : HlslWriter
     // method - for the questions that are about a whole function rather than
     // about the shader.
     private IList<IStatement> _functionStatements;
+    private VariableLiveness _liveness;
 
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
@@ -104,6 +105,7 @@ public class HlslAstWriter : HlslWriter
     {
         _doubleValues = _ast.DoubleValues;
         _functionStatements = statements;
+        _liveness = null;
         _declaredVariables.Clear();
         _declaredIndices.Clear();
         _everDeclaredVariables.Clear();
@@ -1179,6 +1181,7 @@ public class HlslAstWriter : HlslWriter
         // than an ugly condition: the cast the half-ness puts on each component is
         // sized to the group, so four components come out `(half4)`, and comparing
         // those is X3019 rather than merely wide.
+        comparison = [.. comparison.Select(c => ReadAssignedFlag(ifStatement, c))];
         var tested = comparison.Select(Reduce).ToList();
         if (tested.Count > 1
             && tested.All(c => NodeGrouper.AreNodesEquivalent(c, tested[0])))
@@ -1201,6 +1204,77 @@ public class HlslAstWriter : HlslWriter
             indent = indent.Substring(0, indent.Length - 1);
         }
         WriteLine("}");
+    }
+
+    /// <summary>
+    /// A test of a flag the statement before has just put in a variable, as a test of
+    /// the variable. A predicate is written out again rather than named (see
+    /// IStatement.NamedHeldNodes): named for the if alone, a mask is converted to
+    /// the 0 or 1 an int holds on the way in, which is an instruction the shader
+    /// did not have - and so here too where nothing reads the variable after the
+    /// if: tile_luminance and groupshared_scan assign theirs only for fxc to drop
+    /// the assignment, and read, it costs one. But where the variable is there
+    /// anyway - decal_blend keeps `decalCount <= 1` for a later test - testing the
+    /// comparison again is the extra instruction: `t1 = decalCount <= 1;
+    /// if (decalCount > 1)` where the shader read the register it had just
+    /// written. Only the statement right before the if, so that nothing can have
+    /// assigned the variable in between.
+    /// </summary>
+    private HlslTreeNode ReadAssignedFlag(IfStatement ifStatement, HlslTreeNode test)
+    {
+        if (test is not ComparisonNode comparison
+            || FindPlace(_functionStatements, ifStatement) is not (IList<IStatement> body, int index)
+            || index == 0)
+        {
+            return test;
+        }
+        HlslTreeNode opposite = comparison.Inverted();
+        foreach (TempAssignmentNode assignment in body[index - 1].Outputs.Values.OfType<TempAssignmentNode>())
+        {
+            if (assignment.Value is not ComparisonNode flag)
+            {
+                continue;
+            }
+            _liveness ??= VariableLiveness.Analyze(_functionStatements);
+            if (!_liveness.MayBeLiveAfter(assignment.TempVariable, ifStatement))
+            {
+                continue;
+            }
+            bool same = IsSameComparison(flag, comparison);
+            if (same || (opposite is ComparisonNode inverse && IsSameComparison(flag, inverse)))
+            {
+                return new ComparisonNode(assignment.TempVariable, new ConstantNode(0),
+                    same ? IfComparison.NE : IfComparison.EQ, isInteger: true);
+            }
+        }
+        return test;
+    }
+
+    // Either way round: decal_blend assigns `decalCount <= 1` and tests `1 < decalCount`,
+    // whose opposite is `1 >= decalCount`.
+    private static bool IsSameComparison(ComparisonNode a, ComparisonNode b)
+    {
+        if (a.IsInteger != b.IsInteger || a.IsUnsigned != b.IsUnsigned)
+        {
+            return false;
+        }
+        if (a.Comparison == b.Comparison
+            && NodeGrouper.AreNodesEquivalent(a.Inputs[0], b.Inputs[0])
+            && NodeGrouper.AreNodesEquivalent(a.Inputs[1], b.Inputs[1]))
+        {
+            return true;
+        }
+        IfComparison mirrored = b.Comparison switch
+        {
+            IfComparison.LT => IfComparison.GT,
+            IfComparison.GT => IfComparison.LT,
+            IfComparison.LE => IfComparison.GE,
+            IfComparison.GE => IfComparison.LE,
+            _ => b.Comparison,
+        };
+        return a.Comparison == mirrored
+            && NodeGrouper.AreNodesEquivalent(a.Inputs[0], b.Inputs[1])
+            && NodeGrouper.AreNodesEquivalent(a.Inputs[1], b.Inputs[0]);
     }
 
     /// <summary>

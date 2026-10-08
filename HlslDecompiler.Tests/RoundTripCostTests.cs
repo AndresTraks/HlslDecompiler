@@ -143,12 +143,14 @@ public class RoundTripCostTests
             + "twice. The components one instruction wrote are named together "
             + "where the text writes them apart, but not where one of them is "
             + "folded into a longer expression."),
-        ["ps_4_1/decal_blend"] = (63,
-            "Two instructions. One is the flag: `decalCount <= 1` is kept in a "
-            + "register for the third decal, and the second decal tests "
-            + "`decalCount > 1` again where the original read the register - "
-            + "written as `if (t1 == 0)` by hand it is 62. The other is fxc's.\n\n"
-            + "It was five, three of them the box test. Each decal's position is one "
+        ["ps_4_1/decal_blend"] = (62,
+            "One instruction, fxc's.\n\n"
+            + "It was six. One was the flag: `decalCount <= 1` is kept in a register "
+            + "for the third decal, and the second decal tested `decalCount > 1` "
+            + "again where the original read the register. An if right after the "
+            + "assignment of its own test, or the opposite, reads the variable when "
+            + "something after the if reads it too (ReadAssignedFlag).\n\n"
+            + "Three were the box test. Each decal's position is one "
             + "multiply over three rows and its test one lt over all three, but fxc "
             + "overwrites the third row in its register with the test's answer, so "
             + "only two rows reached a variable and the test came back as "

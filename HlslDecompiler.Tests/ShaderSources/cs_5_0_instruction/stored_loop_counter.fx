@@ -8,7 +8,7 @@ StructuredBuffer<float> scores : register(t0);
 RWStructuredBuffer<uint> survivors : register(u0);
 
 groupshared int g0[1];
-groupshared int g1[64];
+groupshared uint g1[64];
 
 [numthreads(64, 1, 1)]
 void main(uint sv_groupindex : SV_GroupIndex)

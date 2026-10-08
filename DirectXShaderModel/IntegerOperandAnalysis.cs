@@ -897,22 +897,189 @@ public sealed class IntegerOperandAnalysis
     /// says float.
     /// </summary>
     /// <summary>
-    /// Whether the integers a groupshared array holds are unsigned, which only an
-    /// unsigned min or max over it can say. Nothing declares the type of groupshared
-    /// memory the way reflection data declares a buffer's element, so the writer
-    /// picks one - and for a min or a max the pick decides the answer. HLSL chooses
-    /// between the signed and the unsigned interlocked operation from the type it is
-    /// given, so an array fxc minimises with atomic_umin has to be declared uint or
-    /// the signed one is what comes back. Every other atomic is the same operation
-    /// either way: an add, an and, an or, an xor and an exchange do not read the
-    /// sign bit as a sign.
+    /// Whether the integers a groupshared array holds are unsigned. Nothing declares
+    /// the type of groupshared memory the way reflection data declares a buffer's
+    /// element, so the writer picks one.
+    ///
+    /// For a min or a max the pick decides the answer: HLSL chooses between the
+    /// signed and the unsigned interlocked operation from the type it is given, so
+    /// an array fxc minimises with atomic_umin has to be declared uint and one it
+    /// minimises with atomic_imin int, whatever else is stored. Every other atomic
+    /// is the same operation either way.
+    ///
+    /// Otherwise it is what is stored: uint where some store's value is unsigned and
+    /// none is signed. An array of `ushr(x, 16) ^ x` over a StructuredBuffer of
+    /// uints was declared int, and every value read back out of it - into nothing
+    /// but unsigned arithmetic - was declared uint against the array it came from.
     /// </summary>
     public bool IsUnsignedThreadGroupSharedMemory(int register)
     {
-        return _shader.Instructions.OfType<D3D10Instruction>().Any(instruction =>
+        var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
+        if (instructions.Any(instruction =>
             instruction.Opcode is D3D10Opcode.AtomicUMin or D3D10Opcode.AtomicUMax
                 or D3D10Opcode.ImmAtomicUMin or D3D10Opcode.ImmAtomicUMax
-            && IsThreadGroupSharedAtomicOn(instruction, register));
+            && IsThreadGroupSharedAtomicOn(instruction, register)))
+        {
+            return true;
+        }
+        if (instructions.Any(instruction =>
+            instruction.Opcode is D3D10Opcode.AtomicIMin or D3D10Opcode.AtomicIMax
+                or D3D10Opcode.ImmAtomicIMin or D3D10Opcode.ImmAtomicIMax
+            && IsThreadGroupSharedAtomicOn(instruction, register)))
+        {
+            return false;
+        }
+        const int ValueIndex = 3;
+        Signedness stored = Signedness.Unknown;
+        for (int i = 0; i < instructions.Count; i++)
+        {
+            D3D10Instruction store = instructions[i];
+            if (store.Opcode == D3D10Opcode.StoreStructured
+                && store.GetOperandType(0) == OperandType.ThreadGroupSharedMemory
+                && store.GetParamRegisterNumber(0) == register)
+            {
+                stored |= StoredSignedness(instructions, i, ValueIndex, depth: 0);
+            }
+        }
+        return stored == Signedness.Unsigned;
+    }
+
+    [System.Flags]
+    private enum Signedness { Unknown = 0, Unsigned = 1, Signed = 2 }
+
+    // How deep the trace through sign-neutral arithmetic goes. A stored value is
+    // a few instructions from what made it; past that the answer is not worth the
+    // walk.
+    private const int SignednessDepth = 8;
+
+    // What the operand of the instruction at index says about sign, by the
+    // instructions that made it: those that read or make a sign answer, and those
+    // that are the same instruction either way - a move, an add, a bitwise
+    // operator - pass the question on to their operands. Straight-line order, as
+    // StoredValueType.
+    private Signedness StoredSignedness(List<D3D10Instruction> instructions, int index,
+        int operandIndex, int depth)
+    {
+        D3D10Instruction reader = instructions[index];
+        OperandType type = reader.GetOperandType(operandIndex);
+        if (type == OperandType.Immediate32 || depth > SignednessDepth)
+        {
+            return Signedness.Unknown;
+        }
+        if (type != OperandType.Temp)
+        {
+            return DeclaredSignedness(reader, operandIndex);
+        }
+        RegisterKey source = reader.GetParamRegisterKey(operandIndex);
+        int component = reader.GetSourceSwizzleComponents(operandIndex)[0];
+        for (int i = index - 1; i >= 0; i--)
+        {
+            D3D10Instruction writer = instructions[i];
+            if (writer.Opcode.IsDeclaration() || !writer.HasDestination
+                || writer.Opcode == D3D10Opcode.StoreStructured)
+            {
+                continue;
+            }
+            int destination = writer.GetDestinationParamIndex().Value;
+            if (!writer.GetParamRegisterKey(destination).Equals(source)
+                || (writer.GetWriteMask(destination) & (1 << component)) == 0)
+            {
+                continue;
+            }
+            switch (writer.Opcode)
+            {
+                case D3D10Opcode.UShr or D3D10Opcode.UMin or D3D10Opcode.UMax
+                    or D3D10Opcode.Udiv or D3D10Opcode.Ftou or D3D10Opcode.UBFE
+                    or D3D10Opcode.ImmAtomicAlloc or D3D10Opcode.ImmAtomicConsume:
+                    return Signedness.Unsigned;
+                case D3D10Opcode.IShr or D3D10Opcode.IMin or D3D10Opcode.IMax
+                    or D3D10Opcode.Ftoi or D3D10Opcode.IBFE:
+                    return Signedness.Signed;
+                case D3D10Opcode.LdStructured:
+                    return LoadedElementSignedness(writer);
+                case D3D10Opcode.Mov:
+                    return StoredSignedness(instructions, i, 1, depth + 1);
+                case D3D10Opcode.MovC:
+                    return StoredSignedness(instructions, i, 2, depth + 1)
+                        | StoredSignedness(instructions, i, 3, depth + 1);
+                case D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
+                    or D3D10Opcode.IAdd or D3D10Opcode.IMul or D3D10Opcode.IShl:
+                    return StoredSignedness(instructions, i, destination + 1, depth + 1)
+                        | StoredSignedness(instructions, i, destination + 2, depth + 1);
+                case D3D10Opcode.Not:
+                    return StoredSignedness(instructions, i, destination + 1, depth + 1);
+                default:
+                    return Signedness.Unknown;
+            }
+        }
+        return Signedness.Unknown;
+    }
+
+    // An input or a constant, by its declaration: a thread id is a uint, a
+    // signature component or a constant buffer variable is what it says it is.
+    private Signedness DeclaredSignedness(D3D10Instruction reader, int operandIndex)
+    {
+        OperandType type = reader.GetOperandType(operandIndex);
+        if (D3D10Instruction.IsThreadRegister(type))
+        {
+            return Signedness.Unsigned;
+        }
+        RegisterKey key = reader.GetParamRegisterKey(operandIndex);
+        int component = reader.GetSourceSwizzleComponents(operandIndex)[0];
+        if (type == OperandType.Input)
+        {
+            RegisterSignature signature = _shader.InputSignatures.FirstOrDefault(s =>
+                s.RegisterKey.Equals(key) && (s.Mask & (1 << component)) != 0);
+            return signature?.ComponentType switch
+            {
+                1 => Signedness.Unsigned,
+                2 => Signedness.Signed,
+                _ => Signedness.Unknown,
+            };
+        }
+        if (type == OperandType.ConstantBuffer && key is D3D10RegisterKey constantKey)
+        {
+            int offset = constantKey.ConstantBufferOffset.GetValueOrDefault() * 16 + component * 4;
+            D3D10ConstantDeclaration constant = _shader.ConstantDeclarations
+                .OfType<D3D10ConstantDeclaration>()
+                .FirstOrDefault(c => c.RegisterIndex == constantKey.Number
+                    && offset >= c.VariableOffset && offset < c.VariableOffset + c.VariableSize);
+            return constant?.TypeInfo.ParameterType switch
+            {
+                ParameterType.Uint => Signedness.Unsigned,
+                ParameterType.Int => Signedness.Signed,
+                _ => Signedness.Unknown,
+            };
+        }
+        return Signedness.Unknown;
+    }
+
+    // What a structured load reads, by the element type the reflection data gives
+    // its buffer. Nothing for groupshared memory, which is the question being asked.
+    private Signedness LoadedElementSignedness(D3D10Instruction load)
+    {
+        const int ResourceIndex = 3;
+        OperandType type = load.GetOperandType(ResourceIndex);
+        D3DShaderInputType[] inputTypes = type switch
+        {
+            OperandType.Resource => [D3DShaderInputType.Structured],
+            OperandType.UnorderedAccessView =>
+            [
+                D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavAppendStructured,
+                D3DShaderInputType.UavConsumeStructured,
+            ],
+            _ => [],
+        };
+        ResourceDefinition definition = _shader.ResourceDefinitions?
+            .FirstOrDefault(d => inputTypes.Contains(d.ShaderInputType)
+                && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
+        return definition?.ElementType?.ParameterType switch
+        {
+            ParameterType.Uint => Signedness.Unsigned,
+            ParameterType.Int => Signedness.Signed,
+            _ => Signedness.Unknown,
+        };
     }
 
     // Which operand an atomic names its destination in: the imm_ forms keep the old

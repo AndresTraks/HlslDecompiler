@@ -1,7 +1,7 @@
 StructuredBuffer<uint> input : register(t0);
 RWStructuredBuffer<uint> output : register(u0);
 
-groupshared int g0[64];
+groupshared uint g0[64];
 
 struct CS_IN
 {

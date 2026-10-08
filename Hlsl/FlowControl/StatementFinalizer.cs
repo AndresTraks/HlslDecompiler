@@ -485,29 +485,6 @@ public class StatementFinalizer
                     // there: whether the bits are a float's is a question about the
                     // readers as much as the maker, and there are none afterwards.
                     bool isBits = ValueTypes.IsBitsVariable(tempValue, isInteger);
-                    // A loop entered with a variable already - the accumulator another
-                    // loop left, or an outer loop's value an inner one carries on - goes
-                    // on as that variable. fxc moves it into a register of its own
-                    // first, and given a variable of its own it was copied on the way in:
-                    // `float t7 = t3;` and a loop over t7, then `float t10 = t7;` before
-                    // the next. Only where nothing after this statement reads the variable
-                    // but through the move, and the loops it enters are all that read the
-                    // move, so that nothing can see it overwritten - and only at the top
-                    // of the function: in a loop's body, a reader earlier in the text
-                    // runs again after this, on the next pass.
-                    HlslTreeNode carried = tempValue is MoveOperation move ? move.Inputs[0] : tempValue;
-                    TempVariableNode continued = carried is TempVariableNode incoming
-                        && ReferenceEquals(statements, _statements)
-                        && IsReadOnlyBefore(incoming, tempValue, statement)
-                        && tempInputAssignment == null && tempInputVariable == null
-                        && tempUsages.Count != 0
-                        && tempUsages.All(usage => usage is PhiNode { IsLoopHeader: true } phi
-                            && ReferenceEquals(phi.PreLoopValue, tempValue))
-                        && FindHoldingStatements(tempValue).Length == 0
-                        && incoming.IsInteger == isInteger
-                        && incoming.IsDouble == _doubleValues.Contains(tempValue)
-                        ? incoming
-                        : null;
                     tempValue.Outputs.Clear();
                     // A register fxc reuses for a value of the other type is not
                     // one variable: a flag register that goes on to hold a dot
@@ -540,7 +517,6 @@ public class StatementFinalizer
                         tempInputVariable = null;
                     }
                     TempVariableNode tempVariable = existing
-                        ?? continued
                         ?? new TempVariableNode
                         {
                             IsInteger = isInteger,
@@ -605,19 +581,8 @@ public class StatementFinalizer
                     }
                     // A statement holding the value reads the variable from now on.
                     ReplaceInStatementNodes(tempValue, tempVariable);
-                    // A variable carried on is not assigned: the register holds it as
-                    // it is, and the writer writes nothing for that. The move into the
-                    // register is read by nothing now.
-                    if (continued == null)
-                    {
-                        ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
-                        assignmentByKey[newAssignment.Key] = tempAssignment;
-                    }
-                    else
-                    {
-                        continued.Outputs.Remove(tempValue);
-                        ReplaceAnyAssignment(newAssignment.Key, tempValue, continued);
-                    }
+                    ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
+                    assignmentByKey[newAssignment.Key] = tempAssignment;
                 }
             }
 
@@ -1371,66 +1336,6 @@ public class StatementFinalizer
                 || (node is not Operation && node is not GroupNode && node is not ComparisonNode))
             {
                 continue;
-            }
-            foreach (HlslTreeNode input in node.Inputs)
-            {
-                pending.Push(input);
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Whether every reader of a variable but the one given sits in a statement that
-    /// comes before this one, so that nothing from here on reads what it holds.
-    /// </summary>
-    private bool IsReadOnlyBefore(TempVariableNode variable, HlslTreeNode except, IStatement current)
-    {
-        HashSet<HlslTreeNode> readers = HlslTreeNode.NewNodeSet();
-        foreach (HlslTreeNode reader in variable.Outputs)
-        {
-            if (!ReferenceEquals(reader, except))
-            {
-                readers.Add(reader);
-            }
-        }
-        bool reached = false;
-        bool readAfter = false;
-        new StatementVisitor(_statements).Visit(statement =>
-        {
-            if (ReferenceEquals(statement, current))
-            {
-                reached = true;
-            }
-            else if (reached && !readAfter && Reaches(statement, readers))
-            {
-                readAfter = true;
-            }
-        });
-        return reached && !readAfter;
-    }
-
-    // Whether any of the nodes is among the values a statement holds or computes -
-    // not the ones it carries on unchanged, which every statement after a value is
-    // made lists in its registers whether or not it reads it.
-    private static bool Reaches(IStatement statement, HashSet<HlslTreeNode> nodes)
-    {
-        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
-        var computed = statement.Outputs
-            .Where(output => !statement.Inputs.TryGetValue(output.Key, out HlslTreeNode input)
-                || !ReferenceEquals(input, output.Value))
-            .Select(output => output.Value);
-        var pending = new Stack<HlslTreeNode>(computed.Concat(statement.HeldNodes));
-        while (pending.Count != 0)
-        {
-            HlslTreeNode node = pending.Pop();
-            if (node == null || !seen.Add(node))
-            {
-                continue;
-            }
-            if (nodes.Contains(node))
-            {
-                return true;
             }
             foreach (HlslTreeNode input in node.Inputs)
             {

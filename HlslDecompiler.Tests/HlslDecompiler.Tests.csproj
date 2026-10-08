@@ -46,6 +46,12 @@
     <None Update="DisassemblyOnly\**\*.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Bytecode in a shape an idiom has to be recovered from, kept apart from the
+         fixtures because what it decompiles to is not a fixed point: each holds
+         one shape fxc produced, and a test that names what has to come back. -->
+    <None Update="IdiomShapes\**\*.fxc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

@@ -495,6 +495,14 @@ public sealed class NodeCompiler
             if (components.All(c => c is DotProductOperation)
                 && components.Distinct(ReferenceEqualityComparer.Instance).Count() > 1)
             {
+                // The rows in another order are still one multiply, read through a
+                // swizzle: fxc puts them into a register as it schedules them, and a
+                // projection's x and y in .yx came back as two dots where the compile
+                // before had them as mul(position, (float4x2)cascadeTransform).
+                if (TryCompilePermutedMultiplication(components) is string permuted)
+                {
+                    return permuted;
+                }
                 return CompileVectorConstructor(components,
                     [.. components.Select(c => (IList<HlslTreeNode>)[c])]);
             }
@@ -994,6 +1002,56 @@ public sealed class NodeCompiler
         return node is not AddOperation add
             ? (integer ? new ConstantNode(0) : new ConstantNode(0f))
             : add.Addend1 is ConstantNode ? add.Addend1 : add.Addend2;
+    }
+
+    /// <summary>
+    /// Dot products that are the rows of one matrix multiply in some order other
+    /// than their own, as the multiply read through the swizzle that puts each row
+    /// back in its component; or null where no order of them is the whole matrix.
+    /// The grouper checks each row against the first, so in an order it takes,
+    /// position k really is row k.
+    /// </summary>
+    private string TryCompilePermutedMultiplication(List<HlslTreeNode> components)
+    {
+        foreach (int[] order in Orders(components.Count).Skip(1))
+        {
+            List<HlslTreeNode> rows = [.. order.Select(i => components[i])];
+            MatrixMultiplicationContext multiplication =
+                _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(rows);
+            if (multiplication == null || multiplication.MatrixRowCount != rows.Count)
+            {
+                continue;
+            }
+            MarkGrouped(rows, multiplication.Vector,
+                multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
+            // Component i of the result is the row it holds: the position of i in
+            // the order.
+            string swizzle = string.Concat(Enumerable.Range(0, components.Count)
+                .Select(i => "xyzw"[Array.IndexOf(order, i)]));
+            return $"{_matrixMultiplicationCompiler.Compile(multiplication)}.{swizzle}";
+        }
+        return null;
+    }
+
+    // Every order of the indices below count, the one they are in first.
+    private static IEnumerable<int[]> Orders(int count)
+    {
+        static IEnumerable<int[]> Permute(int[] prefix, int[] rest)
+        {
+            if (rest.Length == 0)
+            {
+                yield return prefix;
+                yield break;
+            }
+            for (int i = 0; i < rest.Length; i++)
+            {
+                foreach (int[] order in Permute([.. prefix, rest[i]], [.. rest.Where((_, j) => j != i)]))
+                {
+                    yield return order;
+                }
+            }
+        }
+        return Permute([], [.. Enumerable.Range(0, count)]);
     }
 
     private string CompileVectorConstructor(List<HlslTreeNode> components, IList<IList<HlslTreeNode>> componentGroups)

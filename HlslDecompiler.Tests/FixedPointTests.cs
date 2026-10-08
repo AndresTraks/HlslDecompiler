@@ -52,7 +52,7 @@ public class FixedPointTests
         "cs_4_1/compute_hash", "cs_4_1/groupshared_reduce", "cs_4_1/integer_multiply",
         "cs_4_1/shared_float_int_index", "cs_5_0/double_select", "cs_5_0/groupshared_neighbours",
         "cs_5_0/groupshared_scan", "cs_5_0/half_pack", "cs_5_0/high_bit",
-        "cs_5_0/local_array_window", "cs_5_0/luminance_histogram", "cs_5_0/prefix_flags",
+        "cs_5_0/local_array_window", "cs_5_0/prefix_flags",
         "cs_5_0/switch_stored_index", "cs_5_0/tile_depth_bounds", "cs_5_0/tile_luminance",
         "ds_5_0/isoline_curve", "ds_5_0/quad_patch", "ds_5_0/terrain_quad",
         "gs_4_0/adjacency_viewport", "gs_4_0/primitive_id", "hs_5_0/carried_constants",

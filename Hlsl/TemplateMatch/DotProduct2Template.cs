@@ -111,7 +111,17 @@ public class DotProduct2Template : IGroupTemplate
             // have taken. A dp3 of an input against a vector built a component at a
             // time therefore stays three products added up, which is the price of
             // the richer idioms keeping theirs.
-            return null;
+            //
+            // Except where this side's components are reads - of a variable, an
+            // input, a load - which no other grouper builds anything out of. Which
+            // side of each product a component lands on is the order fxc wrote the
+            // multiply in, so without this a luminance dot of levels.xyz against a
+            // texel's channels was recovered in one compile and written out as
+            // three products in the next, as the operands fell.
+            if (!IsPlainRead(x) || !IsPlainRead(y) || IsTransposedGather(x, y))
+            {
+                return null;
+            }
         }
 
         return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
@@ -146,6 +156,11 @@ public class DotProduct2Template : IGroupTemplate
             // all - the components of one read, named halfway through.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
+    // A component read out of something, rather than computed: an operation is what
+    // the cross product and normalize groupers claim, and a read is nothing they do.
+    private static bool IsPlainRead(HlslTreeNode node) =>
+        node is IHasComponentIndex && node is not Operation && node is not DotProductOperation;
+
     // Two literals that differ, weighting two components that group - reads of
     // one register, or a vector computed a component at a time, as a lerp's is.
     // The corpus took a dot claiming computed components badly where both sides

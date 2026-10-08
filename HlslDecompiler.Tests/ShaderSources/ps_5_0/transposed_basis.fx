@@ -30,7 +30,7 @@ float4 main(PS_IN i) : SV_Target
 	float3 t7 = float3(2 * i.texcoord - 1, depthMap.Sample(pointSampler, i.texcoord).x);
 	float t8 = 0;
 	for (int t9 = 0; t9 < 8; t9 = t9 + 1) {
-		float3 t10 = float3(dot(float3(t1.x, t6.x, t0.x), kernel[t9].xyz), dot(float3(t1.y, t6.y, t0.y), kernel[t9].xyz), dot(float3(t1.z, t6.z, t0.z), kernel[t9].xyz));
+		float3 t10 = t1 * kernel[t9].x + t6 * kernel[t9].y + t0 * kernel[t9].z;
 		float3 t11 = t10 * radius + t7;
 		float t12 = dot(transpose(projection)[3], float4(t11, 1));
 		float t13 = depthMap.Sample(pointSampler, 0.5 * (mul(float4(t11, 1), (float4x2)projection) / t12) + 0.5).x;

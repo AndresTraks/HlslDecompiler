@@ -91,7 +91,6 @@ reworded ps_5_0/octahedral_normal
 reworded ps_5_0/parallax_steps
 reworded ps_5_0/split_transform
 reworded ps_5_0/tangent_lighting
-reworded ps_5_0/transposed_basis
 reworded ps_5_0/typed_view_load
 reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform

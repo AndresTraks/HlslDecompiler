@@ -446,6 +446,12 @@ public sealed class NodeCompiler
             IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {
+                // Dot products the grouper took apart, one per group, which is where
+                // they would be written one by one.
+                if (TryCompileTransposedDots(components) is string weighted)
+                {
+                    return weighted;
+                }
                 // The grouper splits a vector operation whose operands do not all
                 // group - a mad whose addend is ddx in .xy and ddy in .zw. Written
                 // as two half-mads inside a constructor, fxc keeps the halves apart;
@@ -484,6 +490,10 @@ public sealed class NodeCompiler
                 if (TryCompilePermutedMultiplication(components) is string permuted)
                 {
                     return permuted;
+                }
+                if (TryCompileTransposedDots(components) is string weighted)
+                {
+                    return weighted;
                 }
                 return CompileVectorConstructor(components,
                     [.. components.Select(c => (IList<HlslTreeNode>)[c])]);
@@ -1013,6 +1023,112 @@ public sealed class NodeCompiler
         return node is not AddOperation add
             ? (integer ? new ConstantNode(0) : new ConstantNode(0f))
             : add.Addend1 is ConstantNode ? add.Addend1 : add.Addend2;
+    }
+
+    /// <summary>
+    /// A vector of dot products against one vector of weights, over vectors whose
+    /// components line up across the dots - the first of every left side from one
+    /// value, the second from another - as those values weighted and added up:
+    /// `float3(dot(float3(t1.x, t6.x, t0.x), k), dot(float3(t1.y, t6.y, t0.y), k), ...)`
+    /// is `t1 * k.x + t6 * k.y + t0 * k.z`. That is a basis applied to a direction,
+    /// three vector mads in the shader it came from; as the dots, fxc transposes the
+    /// basis into registers of its own and does a dp3 per component, which cost
+    /// transposed_basis eight instructions.
+    ///
+    /// Recognising it means seeing the components together, which only happens here,
+    /// and deciding means knowing whether each value comes out as one - `t1`, a
+    /// normalize, a cross product - or as a constructor of loose components, which is
+    /// no better than the dots. That is asked by measuring, which leaves nothing
+    /// behind; the first attempt at this compiled to decide, and moved nine goldens
+    /// with no transpose in them by numbering their variables in passing.
+    /// </summary>
+    private string TryCompileTransposedDots(List<HlslTreeNode> components)
+    {
+        if (!components.All(c => c is DotProductOperation))
+        {
+            return null;
+        }
+        List<DotProductOperation> dots = [.. components.Cast<DotProductOperation>()];
+        for (int shared = 0; shared < 2; shared++)
+        {
+            if (dots[0].Inputs[shared] is not GroupNode weights || weights.Length < 2
+                || !dots.All(dot => dot.Inputs[shared] is GroupNode other
+                    && other.Length == weights.Length
+                    && Enumerable.Range(0, weights.Length).All(j => SameValue(other[j], weights[j])))
+                || !dots.All(dot => dot.Inputs[1 - shared] is GroupNode values
+                    && values.Length == weights.Length)
+                // A dot broadcast across the vector is one value, not a transpose:
+                // every component the same dot, every column one component repeated -
+                // read again for each component, so asked by value, not by node.
+                || !Enumerable.Range(0, weights.Length).All(j => ColumnDiffers(dots, 1 - shared, j)))
+            {
+                continue;
+            }
+            // Each component as the sum it is, for the compiler to group across the
+            // components the way it groups any arithmetic: the values' components into
+            // the values, and a weight read by every component into a broadcast.
+            var built = new List<HlslTreeNode>();
+            var sums = new List<HlslTreeNode>();
+            foreach (DotProductOperation dot in dots)
+            {
+                var values = (GroupNode)dot.Inputs[1 - shared];
+                HlslTreeNode sum = null;
+                for (int j = 0; j < weights.Length; j++)
+                {
+                    HlslTreeNode product = new MultiplyOperation(values[j], weights[j]) { ConsumesInteger = false };
+                    built.Add(product);
+                    if (sum != null)
+                    {
+                        sum = new AddOperation(sum, product) { ConsumesInteger = false };
+                        built.Add(sum);
+                    }
+                    else
+                    {
+                        sum = product;
+                    }
+                }
+                sums.Add(sum);
+            }
+            try
+            {
+                string measured = Measure([sums]).Recording[^1].Text;
+                if (System.Text.RegularExpressions.Regex.IsMatch(measured, @"\b(float|int|uint|half|double|bool)[234]\("))
+                {
+                    continue;
+                }
+                return Compile(sums);
+            }
+            finally
+            {
+                // Built to be compiled and nothing else: left as readers of what they
+                // read, they would count in every question asked of the graph after.
+                foreach (HlslTreeNode node in built)
+                {
+                    foreach (HlslTreeNode input in node.Inputs)
+                    {
+                        input.Outputs.Remove(node);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // Whether no two of the dots read the same value at this place of this side.
+    private static bool ColumnDiffers(List<DotProductOperation> dots, int side, int place)
+    {
+        var column = dots.Select(dot => ((GroupNode)dot.Inputs[side])[place]).ToList();
+        for (int a = 0; a < column.Count; a++)
+        {
+            for (int b = a + 1; b < column.Count; b++)
+            {
+                if (SameValue(column[a], column[b]))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /// <summary>

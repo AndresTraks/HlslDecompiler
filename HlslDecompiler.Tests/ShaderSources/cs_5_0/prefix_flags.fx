@@ -56,9 +56,8 @@ void main(CS_IN i)
 	t3 = t3 + t10;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	int t11;
 	if (i.sv_dispatchthreadid.x < elementCount) {
-		t11 = g0[i.sv_groupindex - 64];
+		int t11 = g0[i.sv_groupindex - 64];
 		output.Store2(t0, uint2(asuint(asfloat(t2) * scale), (i.sv_groupindex >= 64 ? t11 : 0) + t3));
 		if ((t1 & 2) != 0) {
 			output.InterlockedAdd(elementCount * stride, 1);

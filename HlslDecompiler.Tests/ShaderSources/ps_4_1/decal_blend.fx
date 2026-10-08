@@ -12,38 +12,36 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	float2 t0;
-	float3 t1;
-	int t2;
+	float3 t0;
+	int t1;
 	if (decalCount != 0) {
-		float2 t3 = mul(float4(i.texcoord, 1, 1), (float4x2)decalMatrices[0]);
-		if (abs(dot(transpose(decalMatrices[0])[2], float4(i.texcoord, 1, 1))) < 0.5 && all(abs(t3) < 0.5)) {
-			float4 t4 = decalAlbedo.Sample(linearClamp, float3(t3 + 0.5, 0));
-			t1 = lerp(i.color.xyz, t4.xyz, t4.w);
+		float3 t2 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[0]);
+		if (all(abs(t2) < 0.5)) {
+			float4 t3 = decalAlbedo.Sample(linearClamp, float3(t2.xy + 0.5, 0));
+			t0 = lerp(i.color.xyz, t3.xyz, t3.w);
 		} else {
-			t1 = i.color.xyz;
+			t0 = i.color.xyz;
 		}
-		t2 = decalCount <= 1;
+		t1 = decalCount <= 1;
 		if (decalCount > 1) {
-			t0 = mul(float4(i.texcoord, 1, 1), (float4x2)decalMatrices[1]);
-			if (abs(dot(transpose(decalMatrices[1])[2], float4(i.texcoord, 1, 1))) < 0.5 && all(abs(t0) < 0.5)) {
-				float4 t5 = decalAlbedo.Sample(linearClamp, float3(t0 + 0.5, 1));
-				t1 = lerp(t1, t5.xyz, t5.w);
+			float3 t4 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[1]);
+			if (all(abs(t4) < 0.5)) {
+				float4 t5 = decalAlbedo.Sample(linearClamp, float3(t4.xy + 0.5, 1));
+				t0 = lerp(t0, t5.xyz, t5.w);
 			}
 		}
 	} else {
-		t1 = i.color.xyz;
-		t2 = -1;
+		t0 = i.color.xyz;
+		t1 = -1;
 	}
-	float2 t6;
-	if (t2 == 0) {
+	if (t1 == 0) {
 		if (decalCount > 2) {
-			t6 = mul(float4(i.texcoord, 1, 1), (float4x2)decalMatrices[2]);
-			if (abs(dot(transpose(decalMatrices[2])[2], float4(i.texcoord, 1, 1))) < 0.5 && all(abs(t6) < 0.5)) {
-				float4 t7 = decalAlbedo.Sample(linearClamp, float3(t6 + 0.5, 2));
-				t1 = lerp(t1, t7.xyz, t7.w);
+			float3 t6 = mul(float4(i.texcoord, 1, 1), (float4x3)decalMatrices[2]);
+			if (all(abs(t6) < 0.5)) {
+				float4 t7 = decalAlbedo.Sample(linearClamp, float3(t6.xy + 0.5, 2));
+				t0 = lerp(t0, t7.xyz, t7.w);
 			}
 		}
 	}
-	return float4(t1, i.color.w);
+	return float4(t0, i.color.w);
 }

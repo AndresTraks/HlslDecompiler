@@ -416,7 +416,24 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
+    // The statement being written, for what it does to need to know where it is.
+    private IStatement _currentStatement;
+
     private void WriteStatement(IStatement statement)
+    {
+        IStatement outerStatement = _currentStatement;
+        _currentStatement = statement;
+        try
+        {
+            WriteStatementOfKind(statement);
+        }
+        finally
+        {
+            _currentStatement = outerStatement;
+        }
+    }
+
+    private void WriteStatementOfKind(IStatement statement)
     {
         if (statement is AssignmentStatement assignmentStatement)
         {
@@ -1495,6 +1512,8 @@ public class HlslAstWriter : HlslWriter
             .ToList();
         registerGroups = TempAssignmentOrder.Sort(registerGroups);
 
+        WidenWithSiblingRows(registerGroups);
+
         // After reducing, not before: naming a subexpression hides it from the
         // templates, and a node feeding four components would be named rather than
         // broadcast.
@@ -2167,6 +2186,152 @@ public class HlslAstWriter : HlslWriter
     /// component their input reads, so the variable's components come out in the
     /// order a swizzle of it wants them.
     /// </summary>
+    /// <summary>
+    /// A register assigned rows of a matrix multiply, given the multiply's other rows
+    /// as lanes of its own. A decal's position is three rows of its transform, and
+    /// the box test compares all three with one lt - but fxc overwrites the third in
+    /// its register with the test's answer within the same instructions, so only
+    /// two reached a variable, the third was written as a dot of its own, and the
+    /// test as `abs(dot(...)) < 0.5 && all(abs(t3) < 0.5)`: three instructions
+    /// dearer for each decal. With the third row a lane of the same variable the
+    /// test is all(abs(t3) < 0.5), and the position one float3.
+    ///
+    /// The variable is the register's, keyed by the register's components, and the
+    /// row it is given has no component of that register to be. So it is given here,
+    /// where the statement's assignments are gathered, as one more assignment in the
+    /// group - and only where every reader of the row is this statement or one after
+    /// it in the same block, inside which the variable is declared, and the variable
+    /// is assigned nowhere else, so that its declaration is the one this writes.
+    /// </summary>
+    private void WidenWithSiblingRows(List<HlslTreeNode[]> registerGroups)
+    {
+        if (_currentStatement == null
+            || FindPlace(_functionStatements, _currentStatement) is not (IList<IStatement> body, int index))
+        {
+            return;
+        }
+        HashSet<HlslTreeNode> inScope = ValuesOf(body.Skip(index));
+        for (int g = 0; g < registerGroups.Count; g++)
+        {
+            HlslTreeNode[] group = registerGroups[g];
+            if (group.Length < 2
+                || !group.All(root => root is TempAssignmentNode { IsReassignment: false, Value: DotProductOperation }))
+            {
+                continue;
+            }
+            TempAssignmentNode[] assignments = [.. group.Cast<TempAssignmentNode>()];
+            HlslTreeNode[] rows = [.. assignments.Select(assignment => assignment.Value)];
+            HashSet<HlslTreeNode> candidates = HlslTreeNode.NewNodeSet();
+            foreach (HlslTreeNode node in inScope)
+            {
+                if (node is DotProductOperation && !rows.Contains(node, ReferenceEqualityComparer.Instance)
+                    && !node.Outputs.Any(reader => reader is TempAssignmentNode)
+                    && node.Outputs.All(inScope.Contains))
+                {
+                    candidates.Add(node);
+                }
+            }
+            if (candidates.Count == 0
+                || WithSiblingRows(rows, candidates, HlslTreeNode.NewNodeSet()) is not HlslTreeNode[] run
+                || IsAssignedElsewhere(assignments))
+            {
+                continue;
+            }
+            TempVariableNode first = assignments[0].TempVariable;
+            var widened = new List<HlslTreeNode>();
+            foreach (HlslTreeNode row in run)
+            {
+                int existing = Array.FindIndex(rows, r => ReferenceEquals(r, row));
+                if (existing >= 0)
+                {
+                    widened.Add(assignments[existing]);
+                    continue;
+                }
+                var lane = new TempVariableNode
+                {
+                    IsInteger = first.IsInteger,
+                    IsUnsigned = first.IsUnsigned,
+                    IsBits = first.IsBits,
+                    IsDouble = first.IsDouble,
+                    IsHalf = first.IsHalf,
+                };
+                Rewire(row, lane);
+                widened.Add(new TempAssignmentNode(lane, row));
+            }
+            registerGroups[g] = [.. widened];
+        }
+    }
+
+    // Where a statement sits: the body holding it, and its place in that body.
+    private static (IList<IStatement> Body, int Index)? FindPlace(IList<IStatement> body, IStatement statement)
+    {
+        for (int i = 0; i < body.Count; i++)
+        {
+            if (ReferenceEquals(body[i], statement))
+            {
+                return (body, i);
+            }
+            IEnumerable<IList<IStatement>> inner = body[i] switch
+            {
+                IfStatement ifStatement => [ifStatement.TrueBody, ifStatement.FalseBody ?? []],
+                LoopStatement loop => [loop.Body],
+                SwitchStatement switchStatement => switchStatement.Cases.Select(c => c.Body),
+                _ => [],
+            };
+            foreach (IList<IStatement> nested in inner)
+            {
+                if (FindPlace(nested, statement) is (IList<IStatement>, int) found)
+                {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Every value the statements reach, and those inside them.
+    private static HashSet<HlslTreeNode> ValuesOf(IEnumerable<IStatement> statements)
+    {
+        var roots = new List<HlslTreeNode>();
+        new StatementVisitor([.. statements]).Visit(statement =>
+        {
+            roots.AddRange(statement.Outputs.Values);
+            roots.AddRange(statement.Inputs.Values);
+            roots.AddRange(statement.HeldNodes);
+        });
+        HashSet<HlslTreeNode> values = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in Reachable(roots.Where(root => root != null)))
+        {
+            values.Add(node);
+        }
+        return values;
+    }
+
+    // Whether any of these variables is assigned by anything but these assignments.
+    private bool IsAssignedElsewhere(TempAssignmentNode[] assignments)
+    {
+        HashSet<HlslTreeNode> variables = HlslTreeNode.NewNodeSet();
+        HashSet<HlslTreeNode> own = HlslTreeNode.NewNodeSet();
+        foreach (TempAssignmentNode assignment in assignments)
+        {
+            variables.Add(assignment.TempVariable);
+            own.Add(assignment);
+        }
+        bool elsewhere = false;
+        new StatementVisitor(_functionStatements).Visit(statement =>
+        {
+            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.HeldNodes))
+            {
+                if (value is TempAssignmentNode other && !own.Contains(other)
+                    && variables.Contains(other.TempVariable))
+                {
+                    elsewhere = true;
+                }
+            }
+        });
+        return elsewhere;
+    }
+
     /// <summary>
     /// The other rows of a matrix multiply, where the candidate is some of them. A
     /// decal's position is three rows of one transform, and only the first two were

@@ -143,15 +143,22 @@ public class RoundTripCostTests
             + "twice. The components one instruction wrote are named together "
             + "where the text writes them apart, but not where one of them is "
             + "folded into a longer expression."),
-        ["ps_4_1/decal_blend"] = (66,
-            "Five instructions, and they are a register reused. The decal's "
-            + "position is one mul over three rows, and the z of it is compared and "
-            + "its register taken over by the mask, so the xy come back as a "
-            + "float4x2 multiply and the z as a dot on its own, and the one lt over "
-            + "three components is three - twice over, for the two decals. And the "
-            + "flag `decalCount <= 1` is tested again as `decalCount > 1` where the "
-            + "original read the register. Telling a reused register from a carried "
-            + "one is the liveness the finalizer has not got."),
+        ["ps_4_1/decal_blend"] = (63,
+            "Two instructions. One is the flag: `decalCount <= 1` is kept in a "
+            + "register for the third decal, and the second decal tests "
+            + "`decalCount > 1` again where the original read the register - "
+            + "written as `if (t1 == 0)` by hand it is 62. The other is fxc's.\n\n"
+            + "It was five, three of them the box test. Each decal's position is one "
+            + "multiply over three rows and its test one lt over all three, but fxc "
+            + "overwrites the third row in its register with the test's answer, so "
+            + "only two rows reached a variable and the test came back as "
+            + "abs(dot(...)) < 0.5 && all(abs(t3) < 0.5). The register's variable is "
+            + "given the multiply's other rows as lanes of its own where the statement "
+            + "is written (WidenWithSiblingRows), and the test is all(abs(t3) < 0.5). "
+            + "For the second and third decals that needed the variable declared "
+            + "where it is computed, not above the ifs that handed it on - "
+            + "LocalizeDeadJoins, which asks liveness whether anything reads it "
+            + "after them."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

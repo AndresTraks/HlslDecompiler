@@ -11,9 +11,8 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	uint t0 = sv_dispatchthreadid.x * stride;
 	uint2 t1 = uint2(t0, t0 + stride);
-	uint t2;
 	if (t1.y < n) {
-		t2 = data[t1.y];
+		uint t2 = data[t1.y];
 		data[t1.y] = data[t1.x] + t2;
 	}
 }

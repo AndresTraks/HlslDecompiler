@@ -31,9 +31,8 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	for (uint t4 = 32; t4 > 0; t4 = t4 >> 1) {
 		int t5 = i.sv_groupindex < t4;
-		uint t6;
 		if (i.sv_groupindex < t4) {
-			t6 = t4 + i.sv_groupindex;
+			uint t6 = t4 + i.sv_groupindex;
 			t0 = g1[i.sv_groupindex];
 			g1[i.sv_groupindex] = g1[t6] + t0;
 			t1 = g0[i.sv_groupindex];

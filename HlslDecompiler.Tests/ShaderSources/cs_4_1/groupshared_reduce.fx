@@ -15,9 +15,8 @@ void main(CS_IN i)
 	g0[i.sv_groupindex] = input[(i.sv_groupid.x * 64) + i.sv_groupindex];
 	GroupMemoryBarrierWithGroupSync();
 	for (uint t0 = 32; t0 > 0; t0 = t0 >> 1) {
-		float t1;
 		if (i.sv_groupindex < t0) {
-			t1 = g0[i.sv_groupindex];
+			float t1 = g0[i.sv_groupindex];
 			g0[i.sv_groupindex] = g0[t0 + i.sv_groupindex] + t1;
 		}
 		GroupMemoryBarrierWithGroupSync();

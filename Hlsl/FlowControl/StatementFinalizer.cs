@@ -51,6 +51,122 @@ public class StatementFinalizer
         LoopRecovery.Recover(_statements);
         SetReturnStatement(_statements);
         CoalesceCopies();
+        LocalizeDeadJoins();
+    }
+
+    /// <summary>
+    /// A variable an if hands on that nothing reads after the if, assigned in one
+    /// branch only, declared in that branch instead. The finalizer joins whatever
+    /// the branches leave in a register, which declares the variable above the if
+    /// for both branches to assign - and a decal's position, read by nothing but
+    /// the test in the same branch, came out as `float2 t0;` at the top of the
+    /// function and `t0 = mul(...)` deep inside, a reassignment, and nothing can be
+    /// done with a variable whose declaration is somewhere else. Asked of
+    /// VariableLiveness, after everything else, so the answer is the one the
+    /// writer gets.
+    ///
+    /// The if and everything after it stop handing the variable on: they hand on
+    /// what the register held before the if, or nothing where it held nothing.
+    /// Neither is read, which is what dead means. The outermost if goes first, so
+    /// that each level puts back what its own register held on the way in.
+    /// </summary>
+    private void LocalizeDeadJoins()
+    {
+        VariableLiveness liveness = VariableLiveness.Analyze(_statements);
+        List<IfStatement> ifStatements = [];
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is IfStatement ifStatement)
+            {
+                ifStatements.Add(ifStatement);
+            }
+        });
+        foreach (IfStatement ifStatement in ifStatements)
+        {
+            foreach (var output in ifStatement.Outputs.ToList())
+            {
+                if (output.Value is not TempVariableNode variable
+                    || (ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entry)
+                        && ReferenceEquals(entry, variable))
+                    || liveness.MayBeLiveAfter(variable, ifStatement)
+                    || IsLoopClauseVariable(variable))
+                {
+                    continue;
+                }
+                IList<IStatement> branch = BranchAssigningOnly(ifStatement, variable);
+                if (branch == null)
+                {
+                    continue;
+                }
+                HashSet<IStatement> inside = new(ReferenceEqualityComparer.Instance);
+                new StatementVisitor(branch).Visit(statement => inside.Add(statement));
+                new StatementVisitor(_statements).Visit(statement =>
+                {
+                    if (inside.Contains(statement))
+                    {
+                        return;
+                    }
+                    foreach (IDictionary<RegisterComponentKey, HlslTreeNode> map in new[] { statement.Outputs, statement.Inputs })
+                    {
+                        if (map.TryGetValue(output.Key, out HlslTreeNode held) && ReferenceEquals(held, variable))
+                        {
+                            if (entry != null)
+                            {
+                                map[output.Key] = entry;
+                            }
+                            else
+                            {
+                                map.Remove(output.Key);
+                            }
+                        }
+                    }
+                });
+                // The first assignment in the branch is the declaration now.
+                TempAssignmentNode first = null;
+                new StatementVisitor(branch).Visit(statement =>
+                {
+                    first ??= statement.Outputs.Values.OfType<TempAssignmentNode>()
+                        .FirstOrDefault(assignment => ReferenceEquals(assignment.TempVariable, variable)
+                            && VariableLiveness.Writes(statement).Contains(variable));
+                });
+                if (first != null)
+                {
+                    first.IsReassignment = false;
+                }
+            }
+        }
+    }
+
+    // The branch of the if every assignment to the variable is in, or null where
+    // they are in both, or anywhere outside it.
+    private IList<IStatement> BranchAssigningOnly(IfStatement ifStatement, TempVariableNode variable)
+    {
+        List<IStatement> assigning = [];
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (VariableLiveness.Writes(statement).Contains(variable))
+            {
+                assigning.Add(statement);
+            }
+        });
+        if (assigning.Count == 0)
+        {
+            return null;
+        }
+        foreach (IList<IStatement> branch in new[] { ifStatement.TrueBody, ifStatement.FalseBody })
+        {
+            if (branch == null)
+            {
+                continue;
+            }
+            HashSet<IStatement> inside = new(ReferenceEqualityComparer.Instance);
+            new StatementVisitor(branch).Visit(statement => inside.Add(statement));
+            if (assigning.All(inside.Contains))
+            {
+                return branch;
+            }
+        }
+        return null;
     }
 
     /// <summary>

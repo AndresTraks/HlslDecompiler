@@ -19,7 +19,7 @@ void main(uint sv_groupindex : SV_GroupIndex)
 					t0 = t0 + int2(0, 1);
 					continue;
 				}
-				t0.x = t0.y + t0.x;
+				t0.x = t0.x + t0.y;
 				bins[t0.x] = t0.x;
 				t0.y = t0.y + 1;
 			}

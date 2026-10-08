@@ -30,7 +30,7 @@ float4 main(PS_IN i) : SV_Target
 	float3 t3 = normalize(i.texcoord);
 	float t4 = saturate(dot(t2, t3));
 	float2 t5 = brdfLut.Sample(trilinear, float2(t4, i.texcoord1)).xy;
-	float t6 = t5.y + t5.x;
+	float t6 = t5.x + t5.y;
 	float3 t7 = environment.SampleLevel(trilinear, t2, 6).xyz;
 	float3 t8 = environment.SampleLevel(trilinear, reflect(-t3, t2), 6 * i.texcoord1).xyz;
 	float3 t9 = mul(float4(i.position, 1), (float4x3)lightViewProjection[t0]) / t1;

@@ -1,6 +1,6 @@
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {
-	float t0 = texcoord.y + texcoord.x;
+	float t0 = texcoord.x + texcoord.y;
 	float t1 = t0 * t0 + t0;
 	float t2 = t1 * t1 + t1;
 	float t3 = t2 * t2 + t2;

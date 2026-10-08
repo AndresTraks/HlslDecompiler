@@ -6,5 +6,5 @@ cbuffer ObjectId : register(b0)
 
 int4 main(nointerpolation int2 texcoord : TEXCOORD) : SV_Target
 {
-	return int4((texcoord.y * 4) + objectIndex, objectIndex - texcoord.x, texcoord.y ^ materialId, texcoord.y & texcoord.x);
+	return int4((texcoord.y * 4) + objectIndex, objectIndex - texcoord.x, texcoord.y ^ materialId, texcoord.x & texcoord.y);
 }

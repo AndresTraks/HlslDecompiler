@@ -30,5 +30,5 @@ float4 main(PS_IN i) : SV_Target
 		t2 = t2 - t0.x;
 	}
 	float t5 = (t1.z - t2) / max(t1.z - t2 - (t1.w - (t0.x + t2)), 0.00000999999975);
-	return albedo.Sample(samp, lerp(t0.yz * t0.x + t1.xy, t1.xy, t5));
+	return albedo.Sample(samp, lerp(t0.x * t0.yz + t1.xy, t1.xy, t5));
 }

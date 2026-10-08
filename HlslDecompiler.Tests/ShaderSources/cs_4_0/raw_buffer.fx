@@ -9,6 +9,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	int2 t0;
 	if (sv_dispatchthreadid.x < count) {
 		t0 = input.Load2(sv_dispatchthreadid.x * 8);
-		output.Store(sv_dispatchthreadid.x * 4, t0.y + t0.x);
+		output.Store(sv_dispatchthreadid.x * 4, t0.x + t0.y);
 	}
 }

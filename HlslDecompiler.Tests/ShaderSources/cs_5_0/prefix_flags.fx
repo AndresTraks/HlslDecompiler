@@ -61,7 +61,7 @@ void main(CS_IN i)
 		t6 = g0[i.sv_groupindex - 64];
 		output.Store2(t0, uint2(asuint(asfloat(t2) * scale), (i.sv_groupindex >= 64 ? t6 : 0) + t3));
 		if ((t1 & 2) != 0) {
-			output.InterlockedAdd(stride * elementCount, 1);
+			output.InterlockedAdd(elementCount * stride, 1);
 		}
 	}
 }

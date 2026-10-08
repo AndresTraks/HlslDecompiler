@@ -25,7 +25,7 @@ float4 main(PS_IN i) : SV_Target
 {
 	float t0 = 0.800000012 * saturate(dot(normalize(i.normal), -sunDir)) + 0.200000003;
 	float3 t1 = blendMap.Sample(samp, i.texcoord).xyz;
-	float t2 = max(t1.y + t1.x + t1.z, 0.0000999999975);
+	float t2 = max(t1.x + t1.y + t1.z, 0.0000999999975);
 	float3 t3 = t1 / t2;
 	float3 t4 = layer1.Sample(samp, i.texcoord * scale.yy).xyz;
 	float3 t5 = layer0.Sample(samp, i.texcoord * scale.xx).xyz;

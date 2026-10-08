@@ -18,5 +18,5 @@ cbuffer Params : register(b0)
 
 float4 main(float3 texcoord : TEXCOORD) : SV_Target
 {
-	return float4((g_Lighting.lights[0].direction * g_Lighting.lights[0].intensity + g_Lighting.lights[1].intensity * g_Lighting.lights[1].direction) * texcoord + g_Lighting.ambient.xyz, g_Lighting.falloff[0].x + g_Lighting.falloff[1].y);
+	return float4((g_Lighting.lights[0].direction * g_Lighting.lights[0].intensity + g_Lighting.lights[1].direction * g_Lighting.lights[1].intensity) * texcoord + g_Lighting.ambient.xyz, g_Lighting.falloff[0].x + g_Lighting.falloff[1].y);
 }

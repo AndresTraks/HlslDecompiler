@@ -25,9 +25,8 @@ void main(uint sv_groupindex : SV_GroupIndex)
 		}
 		int t1;
 		InterlockedAdd(g0[0], 1, t1);
-		uint t2 = t1;
-		if (t2 < 64) {
-			g1[t2] = t0;
+		if ((uint)t1 < 64) {
+			g1[t1] = t0;
 		}
 		t0 = t0 + 64;
 	}

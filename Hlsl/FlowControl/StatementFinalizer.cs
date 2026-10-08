@@ -328,6 +328,17 @@ public class StatementFinalizer
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
                 TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
+                // A register whose value is a variable already - the old value an
+                // interlocked operation hands back through its out parameter - is that
+                // variable, read where it is. Given one of its own it was copied the
+                // moment the call returned: `int t1 = t0;`, and t1 read from then on.
+                // Not where the register was assigned before, or feeds a phi: there
+                // the copy is the assignment that carries the value on.
+                if (tempValue is TempVariableNode && tempInputAssignment == null && tempInputVariable == null
+                    && !tempValue.Outputs.Any(usage => usage is PhiNode))
+                {
+                    continue;
+                }
                 if (doesOutputExitStatement || tempInputAssignment != null)
                 {
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();

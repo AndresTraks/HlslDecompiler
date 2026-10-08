@@ -521,6 +521,12 @@ public class HlslAstWriter : HlslWriter
                     {
                         return false;
                     }
+                    // A variable the register merely holds - an interlocked
+                    // operation's old value, written by the call - has nothing to assign.
+                    if (o.Value is TempVariableNode)
+                    {
+                        return false;
+                    }
                     return true;
                 })
                 .ToDictionary();

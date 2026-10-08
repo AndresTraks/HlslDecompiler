@@ -8,7 +8,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	InterlockedAdd(histogram[t0.xw], 1);
 	int t1;
 	InterlockedMax(histogram[t0.xw], sv_dispatchthreadid.x, t1);
-	int t2 = t1;
-	bins[sv_dispatchthreadid.x] = t2;
-	histogram[t0.xy] = t2;
+	bins[sv_dispatchthreadid.x] = t1;
+	histogram[t0.xy] = t1;
 }

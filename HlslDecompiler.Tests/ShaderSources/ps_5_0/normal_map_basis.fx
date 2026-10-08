@@ -20,7 +20,6 @@ float4 main(PS_IN i) : SV_Target
 	float3 t4 = normalMap.Sample(samp, i.texcoord).xyz;
 	float3 t5 = 2 * t4 - 1;
 	float3 t6 = t3.zxy * t5.x + (cross(t0, t3.zxy)) * i.tangent.w * t5.y + t0 * t5.z;
-	float3 t7 = t6;
-	float3 t8 = normalize(t7);
-	return float4(0.5 * t8 + 0.5, saturate(lightDirection.x * t8.x + lightDirection.y * t8.y + lightDirection.z * t8.z));
+	float3 t7 = normalize(t6);
+	return float4(0.5 * t7 + 0.5, saturate(lightDirection.x * t7.x + lightDirection.y * t7.y + lightDirection.z * t7.z));
 }

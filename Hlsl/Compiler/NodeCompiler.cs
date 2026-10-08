@@ -365,6 +365,9 @@ public sealed class NodeCompiler
         var outerGroupMatches = GroupMatches;
         var outerNumbering = _measuredNumbering;
         int outerCounter = _tempAssignmentindexCounter;
+        // A measurement compiles statements of its own, from the top.
+        int outerDepth = _compileDepth;
+        _compileDepth = 0;
         var numbering = new List<(TempVariableNode, int, int?)>();
         Recording = measurement.Recording;
         // Null while the numbering is being kept, so the lazy path records nothing
@@ -386,6 +389,7 @@ public sealed class NodeCompiler
             Grouped = outerGrouped;
             GroupMatches = outerGroupMatches;
             _measuredNumbering = outerNumbering;
+            _compileDepth = outerDepth;
             // Backwards: one variable can be numbered, rolled back and numbered
             // again within a measurement, and the first entry is the one that says
             // what it looked like to begin with.
@@ -404,11 +408,32 @@ public sealed class NodeCompiler
         return measurement;
     }
 
+    /// <summary>
+    /// How many compiles deep this one is: one for what a statement writes, more
+    /// for what is written inside it. A rewrite that writes an operator where the
+    /// node is one call - a vector of dots written as the sum they are - has to
+    /// bracket it inside an expression, which brackets by the node and not by the
+    /// text, and need not at the top.
+    /// </summary>
+    private int _compileDepth;
+
+    // The depth a value is written at the top of: one for a statement's own
+    // compile, one more for the value of an assignment, which its group compiles.
+    private int _topDepth = 1;
+
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
     {
-        string compiled = CompileUnrecorded(components, promoteToVectorSize);
-        Recording?.Add(([.. components], compiled));
-        return compiled;
+        _compileDepth++;
+        try
+        {
+            string compiled = CompileUnrecorded(components, promoteToVectorSize);
+            Recording?.Add(([.. components], compiled));
+            return compiled;
+        }
+        finally
+        {
+            _compileDepth--;
+        }
     }
 
     private string CompileUnrecorded(List<HlslTreeNode> components, int promoteToVectorSize)
@@ -1096,7 +1121,10 @@ public sealed class NodeCompiler
                 {
                     continue;
                 }
-                return Compile(sums);
+                // Inside another expression, bracketed: the node is a dot product,
+                // which the expression around it does not bracket, and this is a sum.
+                string weighted = Compile(sums);
+                return _compileDepth > _topDepth ? $"({weighted})" : weighted;
             }
             finally
             {
@@ -1109,6 +1137,15 @@ public sealed class NodeCompiler
                         input.Outputs.Remove(node);
                     }
                 }
+                // And left in what the compile recorded, they are text the naming
+                // passes find twice - once as these sums and once as the dots the
+                // caller records them as - and name: a normal map's basis came out
+                // as `float3 t6 = <sum>; float3 t7 = t6;`.
+                HashSet<HlslTreeNode> temporary = HlslTreeNode.NewNodeSet();
+                temporary.UnionWith(built);
+                Recording?.RemoveAll(record => record.Nodes.Any(temporary.Contains));
+                GroupMatches?.RemoveAll(match => match.Any(temporary.Contains));
+                Grouped?.ExceptWith(temporary);
             }
         }
         return null;
@@ -2695,6 +2732,8 @@ public sealed class NodeCompiler
             _assigningToInteger = tempAssignment.TempVariable.IsInteger;
             _assigningToUnsigned = tempAssignment.TempVariable.IsUnsigned;
             _assignedDirectlyToInteger = tempAssignment.TempVariable.IsInteger;
+            int wasTopDepth = _topDepth;
+            _topDepth = _compileDepth + 1;
             string compiled;
             try
             {
@@ -2705,6 +2744,7 @@ public sealed class NodeCompiler
                 _assigningToInteger = wasAssigningToInteger;
                 _assigningToUnsigned = wasAssigningToUnsigned;
                 _assignedDirectlyToInteger = wasAssignedDirectly;
+                _topDepth = wasTopDepth;
             }
             // A variable its readers type as an integer, holding a value that is a
             // float: the integer they read is its bits, so the assignment

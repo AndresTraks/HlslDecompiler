@@ -21,10 +21,10 @@ void main(lineadj GS_IN i[4], inout LineStream<GS_OUT> stream)
 	o.sv_viewportarrayindex = 0;
 	stream.Append(o);
 	stream.RestartStrip();
-	o.sv_position = 0.5 * (i[1].sv_position + i[0].sv_position);
+	o.sv_position = 0.5 * (i[0].sv_position + i[1].sv_position);
 	o.sv_viewportarrayindex = 1;
 	stream.Append(o);
-	o.sv_position = 0.5 * (i[3].sv_position + i[2].sv_position);
+	o.sv_position = 0.5 * (i[2].sv_position + i[3].sv_position);
 	o.sv_viewportarrayindex = 1;
 	stream.Append(o);
 }

@@ -25,7 +25,7 @@ HS_CONST constants(InputPatch<HS_IN, 2> patch, uint sv_primitiveid : SV_Primitiv
 {
 	HS_CONST o;
 
-	o.edges[0] = (patch[1].texcoord + patch[0].texcoord) * detail.x;
+	o.edges[0] = (patch[0].texcoord + patch[1].texcoord) * detail.x;
 	o.edges[1] = (float)sv_primitiveid + detail.y;
 
 	return o;

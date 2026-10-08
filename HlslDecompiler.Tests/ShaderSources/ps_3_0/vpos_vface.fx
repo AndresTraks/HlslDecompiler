@@ -9,5 +9,5 @@ struct PS_IN
 
 float4 main(PS_IN i) : COLOR
 {
-	return -(i.vface >= 0 ? 1 : -1) >= 0 ? b * i.vpos.yyyy : a * i.vpos.xxxx;
+	return i.vface >= 0 ? a * i.vpos.xxxx : b * i.vpos.yyyy;
 }

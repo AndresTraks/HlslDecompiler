@@ -26,7 +26,7 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch)
 {
 	HS_CONST o;
 
-	float t0 = tessScale / length(0.333333343 * (patch[1].position + patch[0].position + patch[2].position) - cameraPosition);
+	float t0 = tessScale / length(0.333333343 * (patch[0].position + patch[1].position + patch[2].position) - cameraPosition);
 	float t1 = clamp(t0, 1, 16);
 	o.edges[0] = t1;
 	o.edges[1] = t1;

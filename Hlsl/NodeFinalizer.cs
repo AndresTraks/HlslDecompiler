@@ -1,4 +1,5 @@
-﻿using HlslDecompiler.Hlsl.FlowControl;
+﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl.FlowControl;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -88,15 +89,26 @@ public class NodeFinalizer
         {
             return null;
         }
+        if (a is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D10RegisterKey { GSVertex: int vertex1 } key1 }
+            && b is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D10RegisterKey { GSVertex: int vertex2 } key2 }
+            && vertex1 != vertex2
+            && first.ComponentIndex == second.ComponentIndex
+            && key1.OperandType == key2.OperandType && key1.Number == key2.Number)
+        {
+            // The same attribute of two control points, or of two vertices of a
+            // primitive: patch[0].position + patch[1].position, the lower first.
+            return (vertex1, vertex2);
+        }
         bool oneValue = (a, b) switch
         {
             (RegisterInputNode x, RegisterInputNode y) =>
                 x.RegisterComponentKey.RegisterKey.Equals(y.RegisterComponentKey.RegisterKey),
             (TempVariableNode x, TempVariableNode y) =>
                 x.DeclarationIndex != null && x.DeclarationIndex == y.DeclarationIndex,
-            (TextureLoadOutputNode or ResourceLoadNode, TextureLoadOutputNode or ResourceLoadNode) =>
-                a.GetType() == b.GetType() && HlslTreeNode.IsSameInstruction(a, b),
-            _ => false,
+            (RegisterInputNode, _) or (_, RegisterInputNode) or (TempVariableNode, _) or (_, TempVariableNode) => false,
+            // Anything else read a component at a time - a load, a GetDimensions,
+            // an indexed temporary - is one value where one instruction made it.
+            _ => a.GetType() == b.GetType() && HlslTreeNode.IsSameInstruction(a, b),
         };
         return oneValue ? (first.ComponentIndex, second.ComponentIndex) : null;
     }

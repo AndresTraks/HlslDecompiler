@@ -27,7 +27,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 {
 	HS_CONST o;
 
-	float3 t0 = patch[1].position + patch[0].position + patch[2].position + patch[3].position;
+	float3 t0 = patch[0].position + patch[1].position + patch[2].position + patch[3].position;
 	float t1 = detail / max(length(0.25 * t0 - eye), 0.00100000005);
 	float t2 = clamp(t1, 1, 64);
 	float t3 = clamp(0.5 * t1, 1, 64);

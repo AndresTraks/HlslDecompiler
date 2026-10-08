@@ -1,13 +1,57 @@
 ﻿using HlslDecompiler.Hlsl.FlowControl;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 public class TemplateMatcher
 {
-    private List<INodeTemplate> _templates;
-    private List<IGroupTemplate> _groupTemplates;
+    /// <summary>
+    /// The templates, in the order they are tried at a node: every template of a
+    /// stage before any of the next, and within a stage in the order listed. The
+    /// first that matches rewrites the node, and the rewrite is reduced again from
+    /// the first stage - so the order is a priority at one node and nothing more,
+    /// and it is the priority each stage's comment gives the reason for.
+    /// </summary>
+    private readonly IReadOnlyList<Stage> _stages;
+
+    /// <summary>A named run of templates, tried together.</summary>
+    private sealed record Stage(string Name, IReadOnlyList<IStageTemplate> Templates);
+
+    /// <summary>
+    /// A template as a stage tries it: the node rewritten, or null where it does not
+    /// match. A node template answers about the node; a group template about the
+    /// node and what it found it grouped with.
+    /// </summary>
+    private interface IStageTemplate
+    {
+        string Name { get; }
+        HlslTreeNode TryReduce(HlslTreeNode node);
+    }
+
+    private sealed class NodeStageTemplate(INodeTemplate template) : IStageTemplate
+    {
+        public string Name => template.GetType().Name;
+
+        public HlslTreeNode TryReduce(HlslTreeNode node) =>
+            template.Match(node) ? template.Reduce(node) : null;
+    }
+
+    private sealed class GroupStageTemplate(IGroupTemplate template) : IStageTemplate
+    {
+        public string Name => template.GetType().Name;
+
+        public HlslTreeNode TryReduce(HlslTreeNode node) =>
+            template.Match(node) is IGroupContext context ? template.Reduce(node, context) : null;
+    }
+
+    private static Stage NodeStage(string name, params INodeTemplate[] templates) =>
+        new(name, [.. templates.Select(t => (IStageTemplate)new NodeStageTemplate(t))]);
+
+    private static Stage GroupStage(string name, params IGroupTemplate[] templates) =>
+        new(name, [.. templates.Select(t => (IStageTemplate)new GroupStageTemplate(t))]);
+
     private NodeGrouper _nodeGrouper;
 
     /// <summary>
@@ -20,63 +64,86 @@ public class TemplateMatcher
 
     public TemplateMatcher(NodeGrouper nodeGrouper)
     {
-        _templates = new List<INodeTemplate>
-        {
-            new AddConstantsTemplate(),
-            new AddNegateTemplate(),
-            new AddNegativeTemplate(),
-            new AddSelfTemplate(),
-            new AddZeroTemplate(),
-            new MoveTemplate(),
-            new MultiplyAddTemplate(),
-            new MultiplyConstantsTemplate(),
-            new MultiplyConstantTemplate(),
-            new MultiplyNegativeOneTemplate(),
-            new MultiplyNegatedTemplate(),
-            new MultiplyOneTemplate(),
-            new MultiplyReciprocalDivisionTemplate(),
-            new MultiplyZeroTemplate(),
-            new NegateConstantTemplate(),
-            new NegateNegateTemplate(),
-            new ReciprocalReciprocalSquareRootTemplate(),
-            new ReciprocalSquareRootTemplate(),
-            new SubtractNegateTemplate(),
-            new SubtractZeroTemplate(),
-            //new NegateSubtractTemplate(),
-            new CompareConstantTemplate(),
-            new CompareNegativeWithZeroTemplate(),
-            new CompareAbsoluteWithZeroTemplate(),
-            new CompareSelectedConstantTemplate(),
-            new ConvertSelectedConstantTemplate(),
-            new ComparePositiveAndNegativeTemplate(),
-            new CompareCompareTemplate(),
-            new MaxOfPositiveAndNegativeTemplate(),
-            new TrigonometricRangeReductionTemplate(),
-            new SignedDivideTemplate(),
-            new SignTemplate(),
-            new FloorTemplate(),
-            new TruncateTemplate(),
-            new GuardedReciprocalTemplate(),
-            new PowerTemplate(),
-            new NaturalExponentialTemplate(),
-            new NaturalLogarithmTemplate(),
-            new LinearInterpolateTemplate(),
-            new FloatingModuloTemplate(this),
-            new IsNotANumberTemplate(),
-            new FloatClassTemplate(),
-            new SmoothStepTemplate(),
-            new StepTemplate(),
-            new FirstBitHighTemplate(),
-            new ClampTemplate(),
-            new IntegerVectorComponentTemplate()
-        };
-        _groupTemplates = new List<IGroupTemplate>
-        {
-            new DotProduct2Template(this),
-            new DotProduct3Template(this),
-            new DotProduct4Template(this),
-            new LengthTemplate()
-        };
+        _stages =
+        [
+            // Arithmetic identities: constants folded, negations moved onto what they
+            // negate, moves and mads opened up, a reciprocal turned into the division
+            // or the rsqrt it was. First, so that everything after sees one spelling
+            // of a value - a constant on the side it is put on, no move in the way.
+            NodeStage("Arithmetic identities",
+                new AddConstantsTemplate(),
+                new AddNegateTemplate(),
+                new AddNegativeTemplate(),
+                new AddSelfTemplate(),
+                new AddZeroTemplate(),
+                new MoveTemplate(),
+                new MultiplyAddTemplate(),
+                new MultiplyConstantsTemplate(),
+                new MultiplyConstantTemplate(),
+                new MultiplyNegativeOneTemplate(),
+                new MultiplyNegatedTemplate(),
+                new MultiplyOneTemplate(),
+                new MultiplyReciprocalDivisionTemplate(),
+                new MultiplyZeroTemplate(),
+                new NegateConstantTemplate(),
+                new NegateNegateTemplate(),
+                new ReciprocalReciprocalSquareRootTemplate(),
+                new ReciprocalSquareRootTemplate(),
+                new SubtractNegateTemplate(),
+                new SubtractZeroTemplate()),
+            // NegateSubtractTemplate, `-(a - b)` as `b - a`, is not in it, and has
+            // not been since 7873807 left it out without saying why.
+
+            // Comparisons and selects: a cmp or a comparison put the way round the
+            // source wrote it, and a select of constants folded into the test it
+            // repeats. Before the intrinsics, which recognise sign, step and the
+            // rest by the comparisons they are built of, in this form.
+            NodeStage("Comparisons and selects",
+                new CompareConstantTemplate(),
+                new CompareNegativeWithZeroTemplate(),
+                new CompareAbsoluteWithZeroTemplate(),
+                new CompareSelectedConstantTemplate(),
+                new ConvertSelectedConstantTemplate(),
+                new ComparePositiveAndNegativeTemplate(),
+                new CompareCompareTemplate()),
+
+            // Intrinsics and idioms: the call or the expression a run of
+            // instructions was compiled from - abs, sign, floor, pow, lerp,
+            // smoothstep, clamp, an integer vector read at a computed component.
+            // Each matches one value, and none claims another value's components.
+            NodeStage("Intrinsics and idioms",
+                new MaxOfPositiveAndNegativeTemplate(),
+                new TrigonometricRangeReductionTemplate(),
+                new SignedDivideTemplate(),
+                new SignTemplate(),
+                new FloorTemplate(),
+                new TruncateTemplate(),
+                new GuardedReciprocalTemplate(),
+                new PowerTemplate(),
+                new NaturalExponentialTemplate(),
+                new NaturalLogarithmTemplate(),
+                new LinearInterpolateTemplate(),
+                new FloatingModuloTemplate(this),
+                new IsNotANumberTemplate(),
+                new FloatClassTemplate(),
+                new SmoothStepTemplate(),
+                new StepTemplate(),
+                new FirstBitHighTemplate(),
+                new ClampTemplate(),
+                new IntegerVectorComponentTemplate()),
+
+            // Vector idioms: a dot product, and a length over one. Last, because they
+            // claim the components of a vector across the values that make it - a
+            // dot over a cross product's components takes them from the cross
+            // product grouper, which runs later and cannot be asked (see
+            // DotProduct2Template). Everything a single value can be is settled
+            // before one of these takes it.
+            GroupStage("Vector idioms",
+                new DotProduct2Template(this),
+                new DotProduct3Template(this),
+                new DotProduct4Template(this),
+                new LengthTemplate()),
+        ];
         _nodeGrouper = nodeGrouper;
     }
 
@@ -165,26 +232,15 @@ public class TemplateMatcher
                 HlslTreeNode input = node.Inputs[i];
                 node.Inputs[i] = ReduceDepthFirst(input, onPath, reduced);
             }
-            foreach (INodeTemplate template in _templates)
+            foreach (Stage stage in _stages)
             {
-                if (template.Match(node))
+                foreach (IStageTemplate template in stage.Templates)
                 {
-                    CountReduction(template.GetType().Name);
-                    var replacement = template.Reduce(node);
-                    CarryValueType(node, replacement);
-                    Replace(node, replacement);
-                    HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
-                    reduced[node] = result;
-                    return result;
-                }
-            }
-            foreach (IGroupTemplate template in _groupTemplates)
-            {
-                IGroupContext groupContext = template.Match(node);
-                if (groupContext != null)
-                {
-                    CountReduction(template.GetType().Name);
-                    var replacement = template.Reduce(node, groupContext);
+                    if (template.TryReduce(node) is not HlslTreeNode replacement)
+                    {
+                        continue;
+                    }
+                    CountReduction(stage, template);
                     CarryValueType(node, replacement);
                     Replace(node, replacement);
                     HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
@@ -224,7 +280,7 @@ public class TemplateMatcher
         }
     }
 
-    private void CountReduction(string templateName)
+    private void CountReduction(Stage stage, IStageTemplate template)
     {
         if (--_reductionsLeft >= 0)
         {
@@ -232,7 +288,7 @@ public class TemplateMatcher
         }
         throw new InvalidOperationException(
             $"Reducing one expression took more than {ReductionLimit} steps, last by "
-            + $"{templateName}. Two templates that undo each other look like this.");
+            + $"{template.Name} in {stage.Name}. Two templates that undo each other look like this.");
     }
 
     private static bool IsRegister(HlslTreeNode node)

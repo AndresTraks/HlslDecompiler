@@ -62,5 +62,6 @@ mad oC0.yzw, v0.xxx, c0.xyy, c0.yxz
 | `-o`, `--output <file>` | Write to `<file>` instead of standard output
 | `--asm` | Write the disassembly instead of HLSL |
 | `--instructions` | Write HLSL one statement per instruction |
+| `--flow-attributes` | Mark every `if` `[branch]` and every loop `[loop]` |
 | `--verbose` | Print the stack trace when decompiling fails |
 | `-h`, `--help` | Show the options |

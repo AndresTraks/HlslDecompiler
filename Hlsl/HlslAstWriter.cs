@@ -910,7 +910,7 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
-        if (NeedsLoopAttribute(loop))
+        if (WritesFlowAttributes || NeedsLoopAttribute(loop))
         {
             WriteLine("[loop]");
         }
@@ -1152,6 +1152,10 @@ public class HlslAstWriter : HlslWriter
             && tested.All(c => NodeGrouper.AreNodesEquivalent(c, tested[0])))
         {
             tested = [tested[0]];
+        }
+        if (WritesFlowAttributes)
+        {
+            WriteLine("[branch]");
         }
         WriteLine($"if ({_compiler.Compile(tested)}) {{");
         indent += "\t";

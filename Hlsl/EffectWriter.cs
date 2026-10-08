@@ -24,6 +24,7 @@ public sealed class EffectWriter
 {
     private readonly Effect _effect;
     private readonly bool _doAstAnalysis;
+    private readonly bool _writesFlowAttributes;
 
     private readonly Dictionary<EffectShader, string> _functionNames = [];
     private readonly Dictionary<string, string> _functionBodies = [];
@@ -34,8 +35,9 @@ public sealed class EffectWriter
     private TextWriter _writer;
     private string _indent = "";
 
-    public EffectWriter(Effect effect, bool doAstAnalysis)
+    public EffectWriter(Effect effect, bool doAstAnalysis, bool writesFlowAttributes = false)
     {
+        _writesFlowAttributes = writesFlowAttributes;
         _effect = effect;
         _doAstAnalysis = doAstAnalysis;
     }
@@ -124,8 +126,8 @@ public sealed class EffectWriter
         }
 
         HlslWriter writer = _doAstAnalysis
-            ? new HlslAstWriter(model) { FunctionName = name }
-            : new HlslSimpleWriter(model) { FunctionName = name };
+            ? new HlslAstWriter(model) { FunctionName = name, WritesFlowAttributes = _writesFlowAttributes }
+            : new HlslSimpleWriter(model) { FunctionName = name, WritesFlowAttributes = _writesFlowAttributes };
         var body = new StringWriter();
         writer.Write(body);
         foreach ((string texture, string typeName) in writer.ResourceTypeNames)

@@ -41,6 +41,17 @@ public abstract class HlslWriter
     /// </summary>
     protected ShaderModel _phaseShader;
 
+    /// <summary>
+    /// Whether every if the bytecode branches at is written [branch], and every loop
+    /// it loops at [loop]. Off, an attribute is written only where fxc will not
+    /// compile the shader without it, which reads better and leaves fxc free to
+    /// flatten an if and unroll a loop it can count - so the shader it compiles
+    /// computes the same and need not branch or loop where the original did. On,
+    /// it does: ps_3_0/loop_counter_reuse recompiles to its own 26 instructions
+    /// rather than 53 unrolled.
+    /// </summary>
+    public bool WritesFlowAttributes { get; init; }
+
     public HlslWriter(ShaderModel shader)
     {
         // A ps_1_x shader is written as the ps_2_0 one that computes the same:

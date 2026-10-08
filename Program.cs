@@ -131,7 +131,7 @@ class Program
             return Disassemble(shader);
         }
         var hlsl = new StringWriter();
-        CreateHlslWriter(shader, options.DoAstAnalysis).Write(hlsl);
+        CreateHlslWriter(shader, options).Write(hlsl);
         return hlsl.ToString();
     }
 
@@ -162,11 +162,11 @@ class Program
         var hlsl = new StringWriter();
         if (isD3D9)
         {
-            new D3D9EffectWriter(input.ReadD3D9Effect(), options.DoAstAnalysis).Write(hlsl);
+            new D3D9EffectWriter(input.ReadD3D9Effect(), options.DoAstAnalysis, options.WritesFlowAttributes).Write(hlsl);
         }
         else
         {
-            new EffectWriter(input.ReadEffect(), options.DoAstAnalysis).Write(hlsl);
+            new EffectWriter(input.ReadEffect(), options.DoAstAnalysis, options.WritesFlowAttributes).Write(hlsl);
         }
         return hlsl.ToString();
     }
@@ -233,13 +233,13 @@ class Program
         }
     }
 
-    private static HlslWriter CreateHlslWriter(ShaderModel shader, bool doAstAnalysis)
+    private static HlslWriter CreateHlslWriter(ShaderModel shader, CommandLineOptions options)
     {
-        if (doAstAnalysis)
+        if (options.DoAstAnalysis)
         {
-            return new HlslAstWriter(shader);
+            return new HlslAstWriter(shader) { WritesFlowAttributes = options.WritesFlowAttributes };
         }
-        return new HlslSimpleWriter(shader);
+        return new HlslSimpleWriter(shader) { WritesFlowAttributes = options.WritesFlowAttributes };
     }
 
     // What went wrong, in a line. The decompiler says what it has no reading of by

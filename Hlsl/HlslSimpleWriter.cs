@@ -293,6 +293,14 @@ public class HlslSimpleWriter : HlslWriter
     /// reads before writing them - named as main names them, which is how they reach
     /// the body under its own parameter names.
     /// </summary>
+    private void WriteBranchAttribute()
+    {
+        if (WritesFlowAttributes)
+        {
+            WriteLine("[branch]");
+        }
+    }
+
     private void WriteInterfaceCall(D3D10Instruction instruction)
     {
         int function = (int)instruction.OperandTokens.Tokens[0];
@@ -1683,10 +1691,12 @@ public class HlslSimpleWriter : HlslWriter
                     $"frac({GetSourceName(instruction, 1)})");
                 break;
             case Opcode.If:
+                WriteBranchAttribute();
                 WriteLine("if ({0}) {{", GetSourceName(instruction, 0));
                 indent += "\t";
                 break;
             case Opcode.IfC:
+                WriteBranchAttribute();
                 WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 indent += "\t";
                 break;
@@ -1707,7 +1717,7 @@ public class HlslSimpleWriter : HlslWriter
                 int loopRegisterNumber = instruction.GetParamRegisterNumber(1);
                 ConstantIntRegister intRegister = _registers.FindConstantIntRegister(loopRegisterNumber);
                 _loopVariableIndex++;
-                if (intRegister == null && LoopSamplesWithGradients(instruction))
+                if (WritesFlowAttributes || (intRegister == null && LoopSamplesWithGradients(instruction)))
                 {
                     WriteLine("[loop]");
                 }
@@ -1806,7 +1816,7 @@ public class HlslSimpleWriter : HlslWriter
                     ? loopRegister[0]
                     : _registers.GetRegisterName(
                         new D3D9RegisterKey(RegisterType.ConstInt, repRegisterNumber));
-                if (loopRegister == null && LoopSamplesWithGradients(instruction))
+                if (WritesFlowAttributes || (loopRegister == null && LoopSamplesWithGradients(instruction)))
                 {
                     WriteLine("[loop]");
                 }
@@ -2603,6 +2613,7 @@ public class HlslSimpleWriter : HlslWriter
             // Control flow was skipped entirely, so a DXBC loop with a guarded break
             // printed as `while (true)` with nothing to end it.
             case D3D10Opcode.If:
+                WriteBranchAttribute();
                 WriteLine("if ({0}) {{", ZeroTest(instruction, 0));
                 indent += "\t";
                 break;
@@ -2883,7 +2894,7 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.Loop:
-                if (LoopSamplesWithGradients(instruction))
+                if (WritesFlowAttributes || LoopSamplesWithGradients(instruction))
                 {
                     WriteLine("[loop]");
                 }

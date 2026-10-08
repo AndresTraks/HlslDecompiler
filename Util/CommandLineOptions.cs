@@ -19,6 +19,8 @@ public class CommandLineOptions
         + "  --asm                Write the disassembly instead of HLSL\r\n"
         + "  --instructions       Write HLSL one statement per instruction instead\r\n"
         + "                       of the simplified expression tree\r\n"
+        + "  --flow-attributes    Mark every if [branch] and every loop [loop], so that\r\n"
+        + "                       the shader branches and loops where the original did\r\n"
         + "  --verbose            Print the stack trace when decompiling fails\r\n"
         + "  -h, --help           Show this help\r\n";
 
@@ -26,6 +28,7 @@ public class CommandLineOptions
     public string OutputFilename { get; private set; }
     public bool Disassemble { get; private set; }
     public bool DoAstAnalysis { get; private set; } = true;
+    public bool WritesFlowAttributes { get; private set; }
     public bool Verbose { get; private set; }
     public bool ShowHelp { get; private set; }
     public string Error { get; private set; }
@@ -87,6 +90,9 @@ public class CommandLineOptions
                     break;
                 case "--instructions":
                     DoAstAnalysis = false;
+                    break;
+                case "--flow-attributes":
+                    WritesFlowAttributes = true;
                     break;
                 case "--verbose":
                     Verbose = true;

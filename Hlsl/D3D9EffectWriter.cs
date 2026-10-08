@@ -22,6 +22,7 @@ public sealed class D3D9EffectWriter
 {
     private readonly D3D9Effect _effect;
     private readonly bool _doAstAnalysis;
+    private readonly bool _writesFlowAttributes;
 
     private readonly Dictionary<string, string> _functionsByBytecode = [];
     private readonly Dictionary<string, string> _functionBodies = [];
@@ -34,8 +35,9 @@ public sealed class D3D9EffectWriter
     private bool _separate;
     private bool _anythingWritten;
 
-    public D3D9EffectWriter(D3D9Effect effect, bool doAstAnalysis)
+    public D3D9EffectWriter(D3D9Effect effect, bool doAstAnalysis, bool writesFlowAttributes = false)
     {
+        _writesFlowAttributes = writesFlowAttributes;
         _effect = effect;
         _doAstAnalysis = doAstAnalysis;
     }
@@ -123,8 +125,8 @@ public sealed class D3D9EffectWriter
             name += "_";
         }
         HlslWriter writer = _doAstAnalysis
-            ? new HlslAstWriter(model) { FunctionName = name }
-            : new HlslSimpleWriter(model) { FunctionName = name };
+            ? new HlslAstWriter(model) { FunctionName = name, WritesFlowAttributes = _writesFlowAttributes }
+            : new HlslSimpleWriter(model) { FunctionName = name, WritesFlowAttributes = _writesFlowAttributes };
         var body = new StringWriter();
         writer.Write(body);
         foreach ((string constant, ShaderTypeInfo type) in writer.ConstantTypes)

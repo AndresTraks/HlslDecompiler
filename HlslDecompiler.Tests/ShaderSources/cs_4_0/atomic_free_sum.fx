@@ -19,12 +19,10 @@ void main(CS_IN i)
 	g0[i.sv_groupindex] = t1 ^ input[i.sv_dispatchthreadid.x];
 	GroupMemoryBarrierWithGroupSync();
 	uint t2 = 0;
-	t1 = 0;
-	while (t1 < 8) {
-		uint t3 = g0[t1 + i.sv_groupindex & 63];
-		t2 = (t3 & 255) + t2;
-		t1 = t1 + 1;
+	for (uint t3 = 0; t3 < 8; t3 = t3 + 1) {
+		uint t4 = g0[t3 + i.sv_groupindex & 63];
+		t2 = (t4 & 255) + t2;
 	}
-	float t4 = (float)count;
-	output[i.sv_dispatchthreadid.x] = (float)t2 / t4;
+	float t5 = (float)count;
+	output[i.sv_dispatchthreadid.x] = (float)t2 / t5;
 }

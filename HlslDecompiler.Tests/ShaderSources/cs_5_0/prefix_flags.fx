@@ -31,35 +31,35 @@ void main(CS_IN i)
 	t3 = t3 + t4.x;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	t4.x = t4.y ? g0[t5.x] : 0;
+	int t6 = t4.y ? g0[t5.x] : 0;
 	GroupMemoryBarrierWithGroupSync();
-	t3 = t3 + t4.x;
+	t3 = t3 + t6;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	t4.x = t4.z ? g0[t5.y] : 0;
+	int t7 = t4.z ? g0[t5.y] : 0;
 	GroupMemoryBarrierWithGroupSync();
-	t3 = t3 + t4.x;
+	t3 = t3 + t7;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	t4.x = t4.w ? g0[t5.z] : 0;
+	int t8 = t4.w ? g0[t5.z] : 0;
 	GroupMemoryBarrierWithGroupSync();
-	t3 = t3 + t4.x;
+	t3 = t3 + t8;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	t4.xyw = int3(i.sv_groupindex >= 16 ? g0[i.sv_groupindex - 16] : 0, i.sv_groupindex >= 32, i.sv_groupindex - 32);
+	int3 t9 = int3(i.sv_groupindex >= 16 ? g0[i.sv_groupindex - 16] : 0, i.sv_groupindex >= 32, i.sv_groupindex - 32);
 	GroupMemoryBarrierWithGroupSync();
-	t3 = t3 + t4.x;
+	t3 = t3 + t9.x;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	t4.x = t4.y ? g0[t4.w] : 0;
+	int t10 = t9.y ? g0[t9.z] : 0;
 	GroupMemoryBarrierWithGroupSync();
-	t3 = t3 + t4.x;
+	t3 = t3 + t10;
 	g0[i.sv_groupindex] = t3;
 	GroupMemoryBarrierWithGroupSync();
-	int t6;
+	int t11;
 	if (i.sv_dispatchthreadid.x < elementCount) {
-		t6 = g0[i.sv_groupindex - 64];
-		output.Store2(t0, uint2(asuint(asfloat(t2) * scale), (i.sv_groupindex >= 64 ? t6 : 0) + t3));
+		t11 = g0[i.sv_groupindex - 64];
+		output.Store2(t0, uint2(asuint(asfloat(t2) * scale), (i.sv_groupindex >= 64 ? t11 : 0) + t3));
 		if ((t1 & 2) != 0) {
 			output.InterlockedAdd(elementCount * stride, 1);
 		}

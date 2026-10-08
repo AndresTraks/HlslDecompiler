@@ -34,13 +34,12 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	stream.Append(o);
 	float3 t4 = right * size + i[0].position;
 	float3 t5 = -up * size + t4;
-	float t3 = up.x * size + t4.x;
-	t0.yz = up.yz * size + t4.yz;
+	float3 t3 = up * size + t4;
 	o.sv_position = mul(float4(t5, 1), viewProj);
 	o.texcoord = 1;
 	o.color = i[0].color;
 	stream.Append(o);
-	o.sv_position = mul(float4(t3, t0.yz, 1), viewProj);
+	o.sv_position = mul(float4(t3, 1), viewProj);
 	o.texcoord = float2(1, 0);
 	o.color = i[0].color;
 	stream.Append(o);

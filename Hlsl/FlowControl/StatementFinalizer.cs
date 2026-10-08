@@ -384,8 +384,22 @@ public class StatementFinalizer
                     // value feeds a phi over the variable, which is what makes it
                     // that variable in the first place.
                     TempVariableNode existing = tempInputAssignment?.TempVariable ?? tempInputVariable;
-                    if (existing != null && isIntegerValue != null && existing.IsInteger != isIntegerValue
-                        && !tempUsages.Any(u => u is PhiNode))
+                    // And a value that has nothing to do with the one before it gets a
+                    // variable of its own too. The register had the other value in
+                    // it, which is fxc's allocation and not the shader's: a decal's
+                    // position and the colour it blends were one float3 because they
+                    // took turns in r1, and the position's third row, overwritten
+                    // within the statement, could then be no part of it. Where the
+                    // new value reads the old one - `t = t + x` - it is the same
+                    // variable going on, and where it feeds a phi over the variable
+                    // it has to be - not a phi over values of its own, which is two
+                    // branches agreeing with each other and nothing to do with what
+                    // the register held before the if.
+                    if (existing != null
+                        && ((isIntegerValue != null && existing.IsInteger != isIntegerValue
+                                && !tempUsages.Any(u => u is PhiNode))
+                            || (!Reads(tempValue, existing)
+                                && !tempUsages.Any(u => u is PhiNode phi && Merges(phi, existing)))))
                     {
                         existing = null;
                         tempInputAssignment = null;
@@ -1166,6 +1180,70 @@ public class StatementFinalizer
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Whether a phi merges the variable with what else reaches it: one of its
+    /// inputs is the variable, or the assignment to it, or a branch join that does -
+    /// a loop's pre-loop value, or the register an if leaves alone on one side.
+    /// </summary>
+    private static bool Merges(PhiNode phi, TempVariableNode variable)
+    {
+        return Merges(phi, variable, HlslTreeNode.NewNodeSet());
+    }
+
+    private static bool Merges(PhiNode phi, TempVariableNode variable, HashSet<HlslTreeNode> seen)
+    {
+        if (!seen.Add(phi))
+        {
+            return false;
+        }
+        foreach (HlslTreeNode input in phi.Inputs)
+        {
+            if (ReferenceEquals(input, variable)
+                || (input is TempAssignmentNode assignment && ReferenceEquals(assignment.TempVariable, variable))
+                || (input is PhiNode inner && Merges(inner, variable, seen)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a value reads a variable, directly or through the arithmetic that
+    /// makes it - not through another variable, which is a value of its own, and not
+    /// through a load: a blended colour that samples at the decal's position reads
+    /// the position for the coordinate, which makes the colour no more the position
+    /// going on than any other value computed from it.
+    /// </summary>
+    private static bool Reads(HlslTreeNode value, TempVariableNode variable)
+    {
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(value);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            if (ReferenceEquals(node, variable))
+            {
+                return true;
+            }
+            if (node is TempVariableNode || node is PhiNode
+                || (node is not Operation && node is not GroupNode && node is not ComparisonNode))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        return false;
     }
 
     /// <summary>

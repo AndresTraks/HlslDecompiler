@@ -18,12 +18,11 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	float t1 = input[t0.z];
 	x0[3].x = input[t0.y];
 	x0[4].x = t1;
-	uint t2 = sv_dispatchthreadid.x + 6;
-	t0.y = sv_dispatchthreadid.x + 7;
+	uint2 t2 = sv_dispatchthreadid.x + uint2(6, 7);
 	x0[5].x = input[sv_dispatchthreadid.x + 5];
-	float t3 = input[t0.y];
-	x0[6].x = input[t2];
+	float t3 = input[t2.y];
+	x0[6].x = input[t2.x];
 	x0[7].x = t3;
-	t3 = x0[(offset & 5) + 2].x + x0[(offset & 5) + 1].x;
-	output[sv_dispatchthreadid.x] = 0.25 * t3 + 0.5 * x0[offset & 5].x;
+	float t4 = x0[(offset & 5) + 2].x + x0[(offset & 5) + 1].x;
+	output[sv_dispatchthreadid.x] = 0.25 * t4 + 0.5 * x0[offset & 5].x;
 }

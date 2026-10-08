@@ -5,6 +5,8 @@
 # their own: the fixed point test compiles the goldens, and has to see the new
 # ones. A golden that stops being a fixed point is not blessed - it still fails,
 # and is reported below. Review the result with git diff before committing it.
+# A test that blesses a golden passes with a warning, which dotnet test counts
+# among the skipped.
 #
 #   powershell -File HlslDecompiler.Tests\Bless.ps1
 

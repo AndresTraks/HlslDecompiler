@@ -172,6 +172,8 @@ public class InstructionParser
             }
         }
 
+        ParsedIdioms.Recover(_registerState,
+            [_statements, .. (linkageBodies ?? []).Select(body => body.Item2)]);
         ResolvePolymorphicImmediates();
         return new HlslAst(_statements, _registerState, _doubleValues)
         {
@@ -3714,12 +3716,6 @@ public class InstructionParser
         var vector2 = GetInputComponents(instruction, 2, 2);
         var add = GetInputComponents(instruction, 3, 1)[0];
 
-        if (ConstantMatcher.IsZero(add)
-            && TryTakeSelectedComponent([vector1, vector2]) is HlslTreeNode selected)
-        {
-            return selected;
-        }
-
         var dp2 = ReadingFloats(new AddOperation(
             ReadingFloats(new MultiplyOperation(vector1[0], vector2[0])),
             ReadingFloats(new MultiplyOperation(vector1[1], vector2[1]))));
@@ -3731,12 +3727,6 @@ public class InstructionParser
     {
         var addends = new List<HlslTreeNode>();
         int numComponents = instruction.Opcode == Opcode.Dp3 ? 3 : 4;
-        if (TryTakeSelectedComponent([
-                GetInputComponents(instruction, 1, numComponents),
-                GetInputComponents(instruction, 2, numComponents)]) is HlslTreeNode selected)
-        {
-            return selected;
-        }
         for (int component = 0; component < numComponents; component++)
         {
             IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
@@ -3808,164 +3798,10 @@ public class InstructionParser
             operands[component] = GetInputs(instruction, component);
         }
 
-        if (TryTakeVectorComponent(operands) is HlslTreeNode vectorComponent)
-        {
-            return vectorComponent;
-        }
-
         return operands
             .Select(componentInput => (HlslTreeNode)ReadingFloats(
                 new MultiplyOperation(componentInput[0], componentInput[1])))
             .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
-    }
-
-    /// <summary>
-    /// The subscript a dot product stands for where one of its operands is a vector of
-    /// tests of an integer against each component's number, which is how a shader
-    /// model 3 shader reads a vector at a component it has to work out, having no
-    /// immediate constant buffer to hold an identity in: `v[i]` is
-    /// `cmp r0, -abs(i - (0, 1, 2, 3)), 1, 0` dotted with v. Read back as that, it
-    /// came out as a vector of `i == 0 ? 1.0 : 0.0` and a sum of products.
-    ///
-    /// Only for an index declared an integer. A float index between two whole numbers
-    /// matches none of the tests and dots to zero, where the subscript would truncate
-    /// it and read a component.
-    /// </summary>
-    private HlslTreeNode TryTakeSelectedComponent(HlslTreeNode[][] operands)
-    {
-        for (int selector = 0; selector < 2; selector++)
-        {
-            HlslTreeNode[] tests = operands[selector];
-            HlslTreeNode[] vector = operands[1 - selector];
-            HlslTreeNode index = null;
-            for (int component = 0; component < tests.Length; component++)
-            {
-                HlslTreeNode tested = TestedForComponent(tests[component], component);
-                if (tested == null || (index != null && !IsSameRead(tested, index)))
-                {
-                    index = null;
-                    break;
-                }
-                index = tested;
-            }
-            if (index is RegisterInputNode read
-                && _registerState.FindConstant(read)?.TypeInfo.ParameterType == ParameterType.Int
-                && vector.All(component => component is RegisterInputNode))
-            {
-                return ReadingFloats(new VectorComponentNode(new GroupNode(vector), index));
-            }
-        }
-        return null;
-    }
-
-    // What `cmp dst, -abs(i - c), 1, 0` tests for being c: i, where the value is
-    // that, and null otherwise. fxc adds -c rather than subtracting, and adds the
-    // -0 of the first component as well.
-    private static HlslTreeNode TestedForComponent(HlslTreeNode test, int component)
-    {
-        if (test is not CompareOperation
-            {
-                Value: NegateOperation { Value: AbsoluteOperation { Value: HlslTreeNode difference } }
-            } compare
-            || !ConstantMatcher.IsOne(compare.GreaterEqualValue)
-            || !ConstantMatcher.IsZero(compare.LessValue))
-        {
-            return null;
-        }
-        if (difference is AddOperation add)
-        {
-            if (Moved(add.Addend1) is ConstantNode offset1 && offset1.Value == -component)
-            {
-                return add.Addend2;
-            }
-            if (Moved(add.Addend2) is ConstantNode offset2 && offset2.Value == -component)
-            {
-                return add.Addend1;
-            }
-            return null;
-        }
-        return component == 0 ? difference : null;
-    }
-
-    // The offsets are moved into the register before the index is added to them.
-    private static HlslTreeNode Moved(HlslTreeNode node)
-    {
-        return node is MoveOperation move ? move.Inputs[0] : node;
-    }
-
-    private static bool IsSameRead(HlslTreeNode a, HlslTreeNode b)
-    {
-        return ReferenceEquals(a, b)
-            || (a is RegisterInputNode readA && b is RegisterInputNode readB
-                && readA.RegisterComponentKey.Equals(readB.RegisterComponentKey));
-    }
-
-    /// <summary>
-    /// The subscript a dot product stands for where one of its operands is a row of
-    /// an identity matrix in the immediate constant buffer, which is how fxc reads a
-    /// vector at a component it has to work out - `v[i]` is `dp4 dst, v, icb[i]`.
-    /// Null for an ordinary dot product. The operands have been built by here, so the
-    /// reads of the identity are taken back out of the graph and off the buffer's
-    /// tally: an array nothing reads any more is not declared at all.
-    /// </summary>
-    private HlslTreeNode TryTakeVectorComponent(HlslTreeNode[][] operands)
-    {
-        int width = operands.Length;
-        for (int selector = 0; selector < 2; selector++)
-        {
-            RelativeAddressNode[] rows = [.. operands.Select(
-                componentInput => componentInput[selector] as RelativeAddressNode)];
-            if (rows[0]?.RegisterComponentKey.RegisterKey
-                is not D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer } icb
-                // Row c of the identity holds the one in component c, so the operand's
-                // swizzle has to be in order for the dot to pick the index's component:
-                // `icb[i].yxzw` would answer v[i] for two of the four indices only.
-                || rows.Where((row, component) => row == null
-                    || !icb.Equals(row.RegisterComponentKey.RegisterKey)
-                    || row.ComponentIndex != component
-                    || !ReferenceEquals(row.Index, rows[0].Index)).Any()
-                || !_registerState.IsImmediateConstantBufferIdentity(icb.Number, width))
-            {
-                continue;
-            }
-            // A subscript has to be written on something that can carry one, and the
-            // operand is only ever a register read here - a swizzle of one takes a
-            // subscript, `float4(a, b, c, d)[i]` is not something fxc will compile,
-            // and a temp the writer inlines an expression into could be either.
-            HlslTreeNode[] vector = [.. operands.Select(
-                componentInput => componentInput[1 - selector])];
-            if (!vector.All(IsNamedVectorRead))
-            {
-                continue;
-            }
-            HlslTreeNode index = rows[0].Index;
-            foreach (RelativeAddressNode row in rows)
-            {
-                row.Remove();
-                _registerState.UndeclareImmediateConstantBufferRead(icb.Number);
-            }
-            return ReadingFloats(new VectorComponentNode(new GroupNode(vector), index));
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Whether the value is read straight out of a constant buffer or an input
-    /// register, which is what comes out of the writer as a name with a swizzle on
-    /// it rather than as an expression.
-    /// </summary>
-    private static bool IsNamedVectorRead(HlslTreeNode node)
-    {
-        RegisterKey registerKey = node switch
-        {
-            RegisterInputNode read => read.RegisterComponentKey.RegisterKey,
-            RelativeAddressNode read => read.RegisterComponentKey.RegisterKey,
-            _ => null,
-        };
-        return registerKey is D3D10RegisterKey
-        {
-            OperandType: OperandType.ConstantBuffer or OperandType.Input
-        };
     }
 
     // `lit src` reads n.l from x, n.h from y and the specular power from w, whatever
@@ -4053,42 +3889,9 @@ public class InstructionParser
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         var componentKey = new RegisterComponentKey(registerKey, swizzle[componentIndex]);
 
-        // An index into an array of matrices counts registers, so fxc multiplies
-        // the element by the rows first - `ishl r0.x, v1.x, l(2)`, or an imul by 4.
-        // Reading through that here, rather than dividing it back at the write,
-        // keeps the product from being a value: named where four rows read it,
-        // it came out as `int4 t2 = t1 * 4` and `bones[t2.x / 4]` four times over.
-        ConstantDeclaration array = _registerState.FindConstant(registerKey, swizzle[componentIndex]);
-        int stride = array?.RegistersPerElement ?? 1;
-        if (stride > 1 && TryStripElementStride(index, stride, out HlslTreeNode element))
-        {
-            return new RelativeAddressNode(componentKey, element) { IndexCountsElements = true };
-        }
+        // Indexed by registers, as the bytecode does; where that is the element times
+        // the rows of a matrix, ParsedIdioms takes the multiplication off.
         return new RelativeAddressNode(componentKey, index);
-    }
-
-    private static bool TryStripElementStride(HlslTreeNode index, int stride, out HlslTreeNode element)
-    {
-        if (index is ShiftLeftOperation shift
-            && shift.Inputs[1] is ConstantNode amount
-            && stride == 1 << (int)amount.Value)
-        {
-            element = shift.Inputs[0];
-            return true;
-        }
-        if (index is MultiplyOperation multiply)
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                if (multiply.Inputs[i] is ConstantNode constant && constant.Value == stride)
-                {
-                    element = multiply.Inputs[1 - i];
-                    return true;
-                }
-            }
-        }
-        element = null;
-        return false;
     }
 
     // v[r0.x][0] reads a vertex of a geometry shader input chosen at run time. The
@@ -4165,32 +3968,8 @@ public class InstructionParser
             instruction.GetRelativeParamComponent(parameterIndex));
         HlslTreeNode address = GetActiveOutput(addressKey);
 
-        // The same as the DXBC read: an index into an array of matrices counts
-        // registers, and the mova is given the element times the rows. Taken off
-        // here so that the product is never a value - named, it was `float4 t0 =
-        // 4 * i.blendindices` and `bones[t0.x / 4]` four times over.
-        ConstantDeclaration array = _registerState.FindConstant(inputKey.RegisterKey);
-        int stride = array?.RegistersPerElement ?? 1;
-        HlslTreeNode moved = address is MoveOperation move ? move.Inputs[0] : address;
-        if (stride > 1 && TryStripElementStride(moved, stride, out HlslTreeNode element))
-        {
-            // An input that goes straight into the address register, scaled and
-            // nothing else, is an integer: a source that declared it float would
-            // carry a floor on the way, and this one has none. Declared float
-            // instead, fxc put the floor back - a frc and an add - and
-            // matrix_palette cost two instructions for it.
-            if (element is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D9RegisterKey { Type: RegisterType.Input } } input)
-            {
-                const int SInt32ComponentType = 2;
-                RegisterDeclaration declaration = _registerState.MethodInputRegisters
-                    .FirstOrDefault(d => d.RegisterKey.Equals(input.RegisterComponentKey.RegisterKey));
-                if (declaration != null)
-                {
-                    declaration.ComponentType = SInt32ComponentType;
-                }
-            }
-            return new RelativeAddressNode(inputKey, element) { IndexCountsElements = true };
-        }
+        // Indexed by registers, as the DXBC read is; ParsedIdioms takes off the
+        // element's stride where the mova was handed the element times the rows.
         return new RelativeAddressNode(inputKey, address);
     }
 

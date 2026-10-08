@@ -42,7 +42,7 @@ try {
     Write-Host ""
     Write-Host "Goldens changed or added:"
     git --no-pager diff --stat -- $paths
-    git status --short --untracked-files=all -- $paths | Where-Object { $_ -like "`?`?*" }
+    git status --short --untracked-files=all -- $paths | Where-Object { $_ -like '`?`?*' }
     Write-Host ""
     Write-Host "Now fixed points, taken off KnownNonFixedPoints.txt:"
     $knownAfter = Get-Content $known

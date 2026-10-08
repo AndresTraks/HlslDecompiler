@@ -489,24 +489,6 @@ public class HlslSimpleWriter : HlslWriter
 
     // Which halves of a register ever hold a double: bit 0 for the pair at .xy and
     // bit 1 for the pair at .zw.
-    /// <summary>
-    /// The member of a groupshared element a byte offset reaches, or null where the
-    /// register is not groupshared memory or its element fits in one register, which is
-    /// every one that is named without a member.
-    /// </summary>
-    private (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
-        RegisterKey resourceKey, int byteOffset)
-    {
-        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
-            || !_registers.ThreadGroupSharedMemory.TryGetValue(resourceKey.Number,
-                out (int Stride, int Elements) shared)
-            || shared.Stride <= 16)
-        {
-            return null;
-        }
-        return RegisterState.ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
-    }
-
     private int GetDoublePairMask(RegisterKey registerKey)
     {
         int pairs = 0;
@@ -1081,10 +1063,7 @@ public class HlslSimpleWriter : HlslWriter
         // `(int)idx` over an int said otherwise.
         if (instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer)
         {
-            byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
-            ConstantDeclaration constant = _registers.FindConstant(
-                (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex), component);
-            return constant?.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint or ParameterType.Bool
+            return IsIntegerConstant(instruction, operandIndex)
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
@@ -2039,14 +2018,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
-        ConstantDeclaration constant = _registers.FindConstant(registerKey);
-        if (constant != null)
-        {
-            return constant.TypeInfo.ParameterType == ParameterType.Uint;
-        }
-        return _registers.RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration declaration)
-            && declaration.TypeName.Contains("uint");
+        return DeclaredTypeOf(instruction, operandIndex) == DeclaredType.Uint;
     }
 
     // and, or and xor work on the bits, whatever the register holding them is
@@ -2793,7 +2765,7 @@ public class HlslSimpleWriter : HlslWriter
                     // and the byte offset picks which. Named as the element itself, a
                     // read of one member was a whole struct assigned to a register and
                     // a swizzle taken off a struct besides.
-                    if (ThreadGroupSharedMember(buffer, offset)
+                    if (_registers.ThreadGroupSharedMember(buffer, offset)
                         is var (sharedName, sharedComponents, sharedBase))
                     {
                         string sharedSwizzle = sharedComponents == 1
@@ -3341,7 +3313,7 @@ public class HlslSimpleWriter : HlslWriter
                         // And the same for a store: written as the element, a store of
                         // one member assigned the whole of it, and the second member's
                         // store overwrote the first's.
-                        string storedMember = ThreadGroupSharedMember(
+                        string storedMember = _registers.ThreadGroupSharedMember(
                                 buffer, instruction.GetParamInt(2, 0))
                             is var (storeName, _, _)
                             ? $".{storeName}"
@@ -4667,17 +4639,19 @@ public class HlslSimpleWriter : HlslWriter
         return $"{name} {test} 0";
     }
 
+    // What the component an operand reads first is declared to hold.
+    private DeclaredType DeclaredTypeOf(D3D10Instruction instruction, int operandIndex)
+    {
+        return _registers.GetDeclaredType(new RegisterComponentKey(
+            instruction.GetParamRegisterKey(operandIndex),
+            instruction.GetSourceSwizzleComponents(operandIndex)[0]));
+    }
+
     // A constant declared bool, int or uint holds its integer as one.
     private bool IsIntegerConstant(D3D10Instruction instruction, int operandIndex)
     {
-        if (instruction.GetOperandType(operandIndex) != OperandType.ConstantBuffer)
-        {
-            return false;
-        }
-        ConstantDeclaration constant = _registers.FindConstant(
-            (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex),
-            instruction.GetSourceSwizzleComponents(operandIndex)[0]);
-        return constant?.TypeInfo.ParameterType is ParameterType.Bool or ParameterType.Int or ParameterType.Uint;
+        return instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer
+            && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Bool or DeclaredType.Int or DeclaredType.Uint;
     }
 
     // Not a bool, which fxc reads into float arithmetic through a select of 1.0.
@@ -4692,19 +4666,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        return instruction.GetOperandType(operandIndex) switch
-        {
-            // By the component read: a register packs several variables, and
-            // without it `offset` beside a uint was taken for the uint.
-            OperandType.ConstantBuffer => _registers.FindConstant(
-                    (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex),
-                    instruction.GetSourceSwizzleComponents(operandIndex)[0])
-                ?.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint,
-            OperandType.Input => _registers.RegisterDeclarations.TryGetValue(
-                    instruction.GetParamRegisterKey(operandIndex), out RegisterDeclaration declaration)
-                && declaration.IsInteger,
-            _ => false,
-        };
+        return instruction.GetOperandType(operandIndex) is OperandType.ConstantBuffer or OperandType.Input
+            && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Int or DeclaredType.Uint;
     }
 
     /// <summary>
@@ -4722,12 +4685,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return GetSourceStorage(instruction, operandIndex) == ComponentStorage.Integer;
         }
-        if (IsIntegerConstant(instruction, operandIndex))
-        {
-            return true;
-        }
-        return _registers.RegisterDeclarations.TryGetValue(key, out RegisterDeclaration declaration)
-            && declaration.IsInteger;
+        return DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Bool or DeclaredType.Int or DeclaredType.Uint;
     }
 
     // The resource operand carries a swizzle saying which channel of the texture

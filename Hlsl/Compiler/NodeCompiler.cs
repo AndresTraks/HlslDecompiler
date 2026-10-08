@@ -61,24 +61,6 @@ public sealed class NodeCompiler
     /// was made to stand for one - so it answers from its own declared type, which
     /// was settled from the record when the variable was created.
     /// </summary>
-    /// <summary>
-    /// The member of a groupshared element a byte offset reaches, or null where the
-    /// register is not groupshared memory or its element fits in one register - which
-    /// is every one that has a name of its own already.
-    /// </summary>
-    private (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
-        RegisterKey resourceKey, int byteOffset)
-    {
-        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
-            || !_registers.ThreadGroupSharedMemory.TryGetValue(resourceKey.Number,
-                out (int Stride, int Elements) shared)
-            || shared.Stride <= 16)
-        {
-            return null;
-        }
-        return RegisterState.ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
-    }
-
     private bool IsDoubleValued(HlslTreeNode node)
     {
         return node switch
@@ -886,15 +868,7 @@ public sealed class NodeCompiler
     /// </summary>
     private bool IsFloatRegister(RegisterInputNode register)
     {
-        RegisterComponentKey key = register.RegisterComponentKey;
-        ConstantDeclaration constant = FindConstantOfComponent(register);
-        if (constant != null)
-        {
-            return constant.TypeInfo.ParameterType is not (ParameterType.Int
-                or ParameterType.Uint or ParameterType.Bool);
-        }
-        return _registers.RegisterDeclarations.TryGetValue(key.RegisterKey, out RegisterDeclaration declaration)
-            && !declaration.IsInteger;
+        return _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Float;
     }
 
     /// <summary>
@@ -920,13 +894,8 @@ public sealed class NodeCompiler
         {
             return false;
         }
-        ConstantDeclaration constant = FindConstantOfComponent(register);
-        bool declaredInteger = constant != null
-            ? constant.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint
-            : _registers.RegisterDeclarations.TryGetValue(
-                    register.RegisterComponentKey.RegisterKey, out RegisterDeclaration declaration)
-                && declaration.IsInteger;
-        return declaredInteger && ValueTypes.ReadAsInteger(register) == false;
+        return _registers.GetDeclaredType(register.RegisterComponentKey) is DeclaredType.Int or DeclaredType.Uint
+            && ValueTypes.ReadAsInteger(register) == false;
     }
 
     // An operand a bitwise operator or a shift reads. Where the value is a float -
@@ -1757,7 +1726,7 @@ public sealed class NodeCompiler
                     // struct of them, and the byte offset picks which. There is no
                     // reflection entry to name the members from, so they are named for
                     // where they start and the offset is counted in them.
-                    if (ThreadGroupSharedMember(resourceKey, load.ElementByteOffset)
+                    if (_registers.ThreadGroupSharedMember(resourceKey, load.ElementByteOffset)
                         is var (memberName, memberComponents, memberBase))
                     {
                         return $"{element}.{memberName}" + GetAstSourceSwizzleName(
@@ -2974,7 +2943,7 @@ public sealed class NodeCompiler
             && first.Comparison is IfComparison.NE or IfComparison.EQ
             && first.Right is ConstantNode { Value: 0 }
             && first.Left is RegisterInputNode register
-            && _registers.FindConstant(register)?.TypeInfo.ParameterType == ParameterType.Bool)
+            && _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Bool)
         {
             string flag = Compile(first.Left);
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
@@ -3083,29 +3052,9 @@ public sealed class NodeCompiler
     /// declared uint, an input whose signature types it one, or a thread id, which
     /// is a uint without being declared anything.
     /// </summary>
-    // The variable this component of the register is, not the first variable in the
-    // register: `uint a; int b;` pack into one, and asking by register alone made b
-    // a uint.
-    private ConstantDeclaration FindConstantOfComponent(RegisterInputNode register)
-    {
-        RegisterComponentKey key = register.RegisterComponentKey;
-        // A read through a register index has no offset to ask by, so the register
-        // answers for it as before.
-        return (key.RegisterKey is D3D10RegisterKey d3D10Key
-            ? _registers.FindConstant(d3D10Key, key.ComponentIndex)
-            : null) ?? _registers.FindConstant(key.RegisterKey);
-    }
-
     private bool IsUnsignedRegister(RegisterInputNode register)
     {
-        RegisterComponentKey key = register.RegisterComponentKey;
-        ConstantDeclaration constant = FindConstantOfComponent(register);
-        if (constant != null)
-        {
-            return constant.TypeInfo.ParameterType == ParameterType.Uint;
-        }
-        return _registers.RegisterDeclarations.TryGetValue(key.RegisterKey, out RegisterDeclaration declaration)
-            && declaration.TypeName.Contains("uint");
+        return _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Uint;
     }
 
     /// <param name="componentBase">

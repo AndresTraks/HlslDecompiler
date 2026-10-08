@@ -1928,6 +1928,75 @@ public sealed class RegisterState
         return FindConstant(register.RegisterComponentKey.RegisterKey);
     }
 
+    /// <summary>
+    /// The variable a component of a register is, by its byte offset where several
+    /// variables share the register, and by the register otherwise - a shader
+    /// model 3 constant, or a read through a register index, which has no offset to
+    /// ask by. Asked by register alone, a uint packed after a float3 was taken for
+    /// the float, and `uint a; int b;` in one register made b a uint; both writers
+    /// had a copy of that mistake.
+    /// </summary>
+    public ConstantDeclaration FindConstantOfComponent(RegisterComponentKey registerComponent)
+    {
+        return (registerComponent.RegisterKey is D3D10RegisterKey d3D10Key
+            ? FindConstant(d3D10Key, registerComponent.ComponentIndex)
+            : null) ?? FindConstant(registerComponent.RegisterKey);
+    }
+
+    /// <summary>
+    /// What a register component is declared to hold, where something declares it:
+    /// a constant buffer variable by its own type, a signature register by the
+    /// component type the signature gives, and a thread or group id, which is a
+    /// uint without being declared anything. Unknown for a temp, whose type is the
+    /// writer's to decide, and for anything else nothing declares.
+    /// </summary>
+    public DeclaredType GetDeclaredType(RegisterComponentKey registerComponent)
+    {
+        if (registerComponent.RegisterKey is D3D10RegisterKey d3D10Key
+            && D3D10Instruction.IsThreadRegister(d3D10Key.OperandType))
+        {
+            return DeclaredType.Uint;
+        }
+        if (FindConstantOfComponent(registerComponent) is ConstantDeclaration constant)
+        {
+            return constant.TypeInfo.ParameterType switch
+            {
+                ParameterType.Int => DeclaredType.Int,
+                ParameterType.Uint => DeclaredType.Uint,
+                ParameterType.Bool => DeclaredType.Bool,
+                _ => DeclaredType.Float,
+            };
+        }
+        if (RegisterDeclarations.TryGetValue(registerComponent.RegisterKey, out RegisterDeclaration declaration))
+        {
+            return declaration.ComponentType switch
+            {
+                1 => DeclaredType.Uint,
+                2 => DeclaredType.Int,
+                _ => declaration.IsInteger ? DeclaredType.Uint : DeclaredType.Float,
+            };
+        }
+        return DeclaredType.Unknown;
+    }
+
+    /// <summary>
+    /// The member of a groupshared element a byte offset reaches, or null where the
+    /// register is not groupshared memory or its element fits in one register,
+    /// which is every one that is named without a member.
+    /// </summary>
+    public (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
+        RegisterKey resourceKey, int byteOffset)
+    {
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || !ThreadGroupSharedMemory.TryGetValue(resourceKey.Number,
+                out (int Stride, int Elements) shared)
+            || shared.Stride <= 16)
+        {
+            return null;
+        }
+        return ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
+    }
+
     public ConstantDeclaration FindConstant(RegisterSet set, int index)
     {
         return ConstantDeclarations.FirstOrDefault(c =>

@@ -32,7 +32,7 @@ float4 main(PS_IN i) : SV_Target
 	r1.zw = float2(1, 1);
 	r2.x = 0;
 	while (true) {
-		r2.y = ((uint)r2.x >= (uint)stepCount) ? -1 : 0;
+		r2.y = ((uint)r2.x >= stepCount) ? -1 : 0;
 		if (r2.y != 0) break;
 		r2.y = asint(heightMap.SampleLevel(samp, r1.xy, 0).x);
 		r2.z = (asfloat(r2.y) >= r0.w) ? -1 : 0;

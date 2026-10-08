@@ -50,6 +50,140 @@ public class StatementFinalizer
         LowerResolvedPhis();
         LoopRecovery.Recover(_statements);
         SetReturnStatement(_statements);
+        CoalesceCopies();
+    }
+
+    /// <summary>
+    /// Copies of one variable into another that never needs to differ from it, made
+    /// one variable. An inner loop works on a copy of the outer loop's accumulator,
+    /// because fxc gave it a register of its own, and copies it back when it is
+    /// done: `float4 t1 = t0; for (...) { t1 = t1 + colour; } t0 = t1;`. Where the
+    /// two are never both wanted holding different values - the outer one is not
+    /// read again until the copy back, and the copy is not read after the outer one
+    /// is assigned anything else - they are one variable, and the loop works on t0.
+    ///
+    /// That is the interference question, asked of VariableLiveness: neither
+    /// variable may be live where the other is assigned, except at the copies
+    /// between them. A copy is all of a statement's lanes or none of them, so that
+    /// a vector is never left half one variable and half the other.
+    /// </summary>
+    private void CoalesceCopies()
+    {
+        bool merged = true;
+        while (merged)
+        {
+            merged = false;
+            VariableLiveness liveness = VariableLiveness.Analyze(_statements);
+            List<IStatement> statements = [];
+            new StatementVisitor(_statements).Visit(statements.Add);
+            foreach (IStatement statement in statements.OfType<AssignmentStatement>())
+            {
+                List<(TempVariableNode Copy, TempVariableNode Source)> copies = [.. statement.Outputs
+                    .Where(output => !statement.Inputs.TryGetValue(output.Key, out HlslTreeNode input)
+                        || !ReferenceEquals(input, output.Value))
+                    .Select(output => output.Value)
+                    .OfType<TempAssignmentNode>()
+                    .Where(assignment => Unmoved(assignment.Value) is TempVariableNode source
+                        && !ReferenceEquals(source, assignment.TempVariable))
+                    .Select(assignment => (assignment.TempVariable, (TempVariableNode)Unmoved(assignment.Value)))];
+                if (copies.Count == 0
+                    || !copies.All(copy => CanCoalesce(copy.Copy, copy.Source, statement, statements, liveness)))
+                {
+                    continue;
+                }
+                foreach ((TempVariableNode copy, TempVariableNode source) in copies)
+                {
+                    ReplaceTempVariable(copy, source);
+                    RemoveSelfCopies(source);
+                }
+                merged = true;
+                break;
+            }
+        }
+    }
+
+    private static HlslTreeNode Unmoved(HlslTreeNode node)
+    {
+        while (node is MoveOperation move)
+        {
+            node = move.Inputs[0];
+        }
+        return node;
+    }
+
+    private bool CanCoalesce(TempVariableNode copy, TempVariableNode source, IStatement copyStatement,
+        List<IStatement> statements, VariableLiveness liveness)
+    {
+        if (copy.IsInteger != source.IsInteger || copy.IsUnsigned != source.IsUnsigned
+            || copy.IsBits != source.IsBits || copy.IsDouble != source.IsDouble
+            || copy.IsBool != source.IsBool || copy.IsHalf != source.IsHalf
+            || IsLoopClauseVariable(copy) || IsLoopClauseVariable(source))
+        {
+            return false;
+        }
+        foreach (IStatement statement in statements)
+        {
+            HashSet<TempVariableNode> writes = VariableLiveness.Writes(statement);
+            // Where the copy is assigned anything but the source, the source must not
+            // be wanted afterwards, or the one variable would hold the copy's value
+            // where the source's was still to be read.
+            if (writes.Contains(copy) && !ReferenceEquals(statement, copyStatement)
+                && liveness.MayBeLiveAfter(source, statement))
+            {
+                return false;
+            }
+            // And the other way about, except where the source is assigned the copy
+            // back - the same value either way.
+            if (writes.Contains(source) && !CopiesBack(statement, source, copy)
+                && liveness.MayBeLiveAfter(copy, statement))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Whether the statement assigns the variable nothing but the other one.
+    private static bool CopiesBack(IStatement statement, TempVariableNode variable, TempVariableNode from)
+    {
+        return statement.Outputs.Values.OfType<TempAssignmentNode>()
+            .Where(assignment => ReferenceEquals(assignment.TempVariable, variable))
+            .All(assignment => ReferenceEquals(Unmoved(assignment.Value), from));
+    }
+
+    private bool IsLoopClauseVariable(TempVariableNode variable)
+    {
+        bool found = false;
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is LoopStatement loop
+                && (ReferenceEquals(loop.Initializer?.TempVariable, variable)
+                    || ReferenceEquals(loop.Increment?.TempVariable, variable)))
+            {
+                found = true;
+            }
+        });
+        return found;
+    }
+
+    // What coalescing leaves behind: the copy and the copy back are the variable
+    // assigned itself. The register holds the variable as it is, which the writer
+    // writes nothing for.
+    private void RemoveSelfCopies(TempVariableNode variable)
+    {
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var output in statement.Outputs.ToList())
+            {
+                if (output.Value is TempAssignmentNode assignment
+                    && ReferenceEquals(assignment.TempVariable, variable)
+                    && ReferenceEquals(Unmoved(assignment.Value), variable))
+                {
+                    assignment.Replace(variable);
+                    ReplaceAnyAssignment(output.Key, assignment, variable);
+                }
+            }
+        });
     }
 
     /// <summary>

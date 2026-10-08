@@ -7,23 +7,20 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float3 t0 = 0;
 	for (int t1 = 0; t1 < 4; t1 = t1 + 1) {
-		float3 t2 = t0;
-		float t3 = (float)t1;
-		for (int t4 = 0; t4 < 4; t4 = t4 + 1) {
-			float2 t5 = float2((float)t4, t3) * search.zw + texcoord;
-			float t6 = field.SampleLevel(samp, t5, 0).x;
-			float t7 = max(t2.x, t6);
-			if (search.x < t6) {
-				t2 = float3(t7, t5);
+		float t2 = (float)t1;
+		for (int t3 = 0; t3 < 4; t3 = t3 + 1) {
+			float2 t4 = float2((float)t3, t2) * search.zw + texcoord;
+			float t5 = field.SampleLevel(samp, t4, 0).x;
+			float t6 = max(t0.x, t5);
+			if (search.x < t5) {
+				t0 = float3(t6, t4);
 				break;
 			}
-			t2 = float3(t7, t5);
+			t0 = float3(t6, t4);
 		}
-		if (search.y < t2.x) {
-			t0 = t2;
+		if (search.y < t0.x) {
 			break;
 		}
-		t0 = t2;
 	}
 	return float4(t0.yzx, 1);
 }

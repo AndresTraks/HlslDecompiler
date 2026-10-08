@@ -45,7 +45,6 @@ reworded ds_5_0/terrain_quad
 reworded hs_5_0/carried_constants
 reworded hs_5_0/looped_control_points
 reworded hs_5_0/split_control_points
-reworded ps_3_0/continue_nested
 reworded ps_3_0/guarded_average
 reworded ps_3_0/if_else_in_loop
 reworded ps_3_0/if_nested

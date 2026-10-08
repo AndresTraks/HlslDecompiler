@@ -6,13 +6,11 @@ float4 main() : COLOR
 	float4 t0 = 0;
 	for (int i = 0; i < n; i++) {
 		if (t0.w <= 5) {
-			float4 t1 = t0.wxyz;
 			for (int j = 0; j < n; j++) {
-				float t2 = 3 - t1.y;
-				t1.xzw = t2 >= 0 ? t1.xzw + colour.xzw : t1.xzw;
-				t1.y = t2 >= 0 ? t1.y + colour.y : t1.y;
+				float t1 = 3 - t0.x;
+				t0.wyz = t1 >= 0 ? t0.wyz + colour.xzw : t0.wyz;
+				t0.x = t1 >= 0 ? t0.x + colour.y : t0.x;
 			}
-			t0 = t1.yzwx;
 		}
 	}
 	return t0.wxyz;

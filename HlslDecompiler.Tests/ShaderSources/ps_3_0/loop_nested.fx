@@ -10,17 +10,15 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 		if (t2 >= count) {
 			break;
 		}
-		float4 t3 = t1;
-		float t4 = 5;
+		float t3 = 5;
 		for (int j = 0; j < 255; j++) {
-			if (t4 >= count2) {
+			if (t3 >= count2) {
 				break;
 			}
-			t3 = t3 + texcoord;
-			t4 = t4 + 1;
+			t1 = t1 + texcoord;
+			t3 = t3 + 1;
 		}
 		t0 = t0 + texcoord;
-		t1 = t3;
 		t2 = t2 + 1;
 	}
 	return t0 + t1;

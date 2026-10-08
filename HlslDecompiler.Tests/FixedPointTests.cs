@@ -55,7 +55,7 @@ public class FixedPointTests
         "cs_5_0/local_array_window", "cs_5_0/prefix_flags",
         "cs_5_0/switch_stored_index", "cs_5_0/tile_depth_bounds", "cs_5_0/tile_luminance",
         "ds_5_0/isoline_curve", "ds_5_0/quad_patch", "ds_5_0/terrain_quad",
-        "gs_4_0/primitive_id", "hs_5_0/carried_constants",
+        "hs_5_0/carried_constants",
         "hs_5_0/looped_control_points",
         "hs_5_0/split_control_points",
         "ps_3_0/continue_nested", "ps_3_0/dynamic_index", "ps_3_0/guarded_average",
@@ -79,8 +79,8 @@ public class FixedPointTests
         "ps_5_0/transposed_basis", "ps_5_0/typed_view_load", "vs_2_0/distance_falloff",
         "vs_3_0/loop_nested_uniform", "vs_3_0/loop_repeat_count", "vs_3_0/nested_select",
         "vs_4_0/bitwise", "vs_4_0/integer_inputs", "vs_4_0/normal_transform",
-        "vs_4_0/packed_bits_uniform", "vs_4_0/packed_colour", "vs_4_0/particle_draw",
-        "vs_4_0/skin_buffer", "vs_5_0/packed_matrix_members", "vs_5_0/skinned_instances",
+        "vs_4_0/packed_bits_uniform", "vs_4_0/packed_colour",
+        "vs_4_0/skin_buffer", "vs_5_0/packed_matrix_members",
     ];
 
     /// <summary>

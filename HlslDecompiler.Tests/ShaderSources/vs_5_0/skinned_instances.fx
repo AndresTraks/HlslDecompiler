@@ -53,7 +53,7 @@ VS_OUT main(VS_IN i)
 	o.sv_position = mul(float4(t12.x, t13, t12.yz), viewProjection);
 	o.normal = normalize(mul(float3(t10, t7, t4), (float3x3)world));
 	o.texcoord = float2(0.00999999978 * time + i.texcoord.x, i.texcoord.y);
-	o.fog = max(0.00999999978 * -length(float3(t12.x, t13, t12.y) - cameraPosition) + 1, 0);
+	o.fog = max(-0.00999999978 * length(float3(t12.x, t13, t12.y) - cameraPosition) + 1, 0);
 	o.color = t0 * tint;
 
 	return o;

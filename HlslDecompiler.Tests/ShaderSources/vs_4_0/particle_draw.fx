@@ -22,7 +22,7 @@ VS_OUT main(uint sv_vertexid : SV_VertexID)
 	VS_OUT o;
 
 	uint t0 = sv_vertexid >> 2;
-	float2 t1 = (float2)(sv_vertexid & int2(1, 2) ? 1 : -1);
+	float2 t1 = sv_vertexid & int2(1, 2) ? 1.0 : -1.0;
 	float t2 = particles[t0].size;
 	float2 t3 = t1 * t2 + particles[t0].position.xy;
 	float t4 = particles[t0].position.z;

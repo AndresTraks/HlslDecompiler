@@ -36,5 +36,5 @@ float4 main(PS_IN i) : SV_Target
 		float t13 = depthMap.Sample(pointSampler, 0.5 * (mul(float4(t11, 1), (float4x2)projection) / t12) + 0.5).x;
 		t8 = t8 + step(t11.z + bias, t13);
 	}
-	return 0.125 * -t8 + 1;
+	return -0.125 * t8 + 1;
 }

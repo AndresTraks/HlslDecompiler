@@ -29,7 +29,7 @@ float4 main(PS_IN i) : SV_Target
 	float t5 = t4 * t4 * t3;
 	float t6 = roughnessMap.Sample(linearSampler, i.texcoord1).x;
 	float t7 = max(t6 * t6, 0.00200000009);
-	float t8 = 0.5 * -t7 + 1;
+	float t8 = -0.5 * t7 + 1;
 	float t9 = 0.5 * t7;
 	float3 t10 = normalize(i.normal);
 	float t11 = saturate(dot(t10, t2));

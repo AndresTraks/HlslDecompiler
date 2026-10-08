@@ -28,5 +28,5 @@ float4 main(PS_IN i) : SV_Target
 		float t10 = t9 * occlusion.y;
 		t4 = t4 + (t10 >= t7.z + occlusion.z ? saturate(occlusion.x / abs(i.texcoord1.z * t0 - t10)) : 0);
 	}
-	return 0.0833333358 * -t4 + 1;
+	return -0.0833333358 * t4 + 1;
 }

@@ -1782,7 +1782,12 @@ public class HlslAstWriter : HlslWriter
             }
             candidates.Add(node);
         }
-        resourceInfo.AddRange(NameCandidates(candidates));
+        HashSet<HlslTreeNode> reachable = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in order)
+        {
+            reachable.Add(node);
+        }
+        resourceInfo.AddRange(NameCandidates(candidates, reachable, roots));
         resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
         if (MergeVectorReads(resourceInfo, _lastRecording))
         {
@@ -2113,6 +2118,10 @@ public class HlslAstWriter : HlslWriter
         {
             return candidate;
         }
+        if (WithSiblingRows(candidate, readers, roots) is HlslTreeNode[] rows)
+        {
+            return rows;
+        }
         if (candidate[0] is Operation)
         {
             return WithSiblingOperations(candidate, readers, roots);
@@ -2157,6 +2166,70 @@ public class HlslAstWriter : HlslWriter
     /// component their input reads, so the variable's components come out in the
     /// order a swizzle of it wants them.
     /// </summary>
+    /// <summary>
+    /// The other rows of a matrix multiply, where the candidate is some of them. A
+    /// decal's position is three rows of one transform, and only the first two were
+    /// read twice - as the coordinate it samples with, and by the box test - so the
+    /// two were named as `mul(t2, (float4x2)decalMatrix)` and the third written on
+    /// its own as `dot(transpose(decalMatrix)[2], t2)`: the multiply taken apart,
+    /// two instructions dearer. Named with the rows beside it the statement reads,
+    /// the multiply is one again. Only a run of rows with no gap, so that what is
+    /// named is a multiply the grouper writes whole.
+    /// </summary>
+    private HlslTreeNode[] WithSiblingRows(
+        HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
+    {
+        MatrixMultiplicationGrouper matrices = _grouper.MatrixMultiplicationGrouper;
+        // Not one row on its own: a projection's w is named as the divisor, and
+        // widened into the whole multiply its divide came apart into one per use -
+        // `t2.xy / t2.w` and `t2.z / t2.w` - an instruction dearer apiece.
+        if (candidate.Length < 2
+            || !candidate.All(node => node is DotProductOperation dot && matrices.MatrixRowRegister(dot) != null)
+            || !candidate.Skip(1).All(node =>
+                matrices.AreRowsOfOneMatrix((DotProductOperation)candidate[0], (DotProductOperation)node)))
+        {
+            return null;
+        }
+        var byRow = new SortedDictionary<int, HlslTreeNode>();
+        foreach (DotProductOperation dot in candidate.Cast<DotProductOperation>())
+        {
+            if (!byRow.TryAdd(matrices.MatrixRowRegister(dot).Value, dot))
+            {
+                return null;
+            }
+        }
+        int first = byRow.Keys.First();
+        int last = byRow.Keys.Last();
+        if (last - first + 1 != byRow.Count)
+        {
+            return null;
+        }
+        foreach (HlslTreeNode node in readers)
+        {
+            if (node is not DotProductOperation sibling
+                || roots.Contains(sibling)
+                || candidate.Contains(sibling, ReferenceEqualityComparer.Instance)
+                || matrices.MatrixRowRegister(sibling) is not int row
+                || byRow.ContainsKey(row)
+                || !matrices.AreRowsOfOneMatrix((DotProductOperation)candidate[0], sibling))
+            {
+                continue;
+            }
+            byRow[row] = sibling;
+        }
+        // The run the candidate is in, and nothing past a gap on either side.
+        var run = new List<HlslTreeNode>();
+        for (int row = first; byRow.ContainsKey(row - 1); row--)
+        {
+            first = row - 1;
+        }
+        for (int row = first; byRow.TryGetValue(row, out HlslTreeNode dot); row++)
+        {
+            run.Add(dot);
+        }
+        return run.Count > candidate.Length ? [.. run] : null;
+    }
+
     private HlslTreeNode[] WithSiblingOperations(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
     {
@@ -2915,7 +2988,8 @@ public class HlslAstWriter : HlslWriter
     /// own happens before that and defeats it: four scalars that were one mad, and
     /// nothing downstream can tell they belong together any more.
     /// </summary>
-    private List<HlslTreeNode[]> NameCandidates(List<HlslTreeNode> candidates)
+    private List<HlslTreeNode[]> NameCandidates(List<HlslTreeNode> candidates,
+        HashSet<HlslTreeNode> reachable, HashSet<HlslTreeNode> roots)
     {
         var nodeGrouper = new NodeGrouper(_registers);
         var assignments = new List<HlslTreeNode[]>();
@@ -2955,6 +3029,17 @@ public class HlslAstWriter : HlslWriter
             // last component back, and a variable named backwards is read by every
             // swizzle reversed.
             group = [.. InWrittenOrder([[.. group]])[0]];
+            // Rows of a matrix multiply take the multiply's other rows with them, as
+            // the text pass's candidates do - see WithSiblingRows.
+            if (WithSiblingRows([.. group], reachable, roots) is HlslTreeNode[] rows
+                && rows.All(row => !named.Contains(row) || group.Contains(row, ReferenceEqualityComparer.Instance)))
+            {
+                group = [.. rows];
+                foreach (HlslTreeNode row in rows)
+                {
+                    named.Add(row);
+                }
+            }
             TempVariableNode[] variables = CreateTempVariables(group);
             assignments.Add([.. group.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
         }

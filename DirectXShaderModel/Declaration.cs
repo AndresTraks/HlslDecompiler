@@ -147,6 +147,15 @@ public class RegisterDeclaration
 
     public string Name => NameOverride ?? Semantic.ToLower();
 
+    /// <summary>
+    /// Whether the register holds integers: a thread id, or what the signature says.
+    /// Asked of the type name, `nointerpolation float4` contains "int".
+    /// </summary>
+    public bool IsInteger =>
+        (RegisterKey is D3D10RegisterKey d3D10RegisterKey
+            && D3D10Instruction.IsThreadRegister(d3D10RegisterKey.OperandType))
+        || ComponentType is 1 or 2;
+
     public string TypeName
     {
         get

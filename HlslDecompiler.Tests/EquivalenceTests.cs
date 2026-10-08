@@ -40,31 +40,6 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
-        ["vs_4_0/packed_bits_uniform"] = [("ast",
-            "A weight and a scale handed in as bits: a uint vertex attribute and a "
-            + "uint cbuffer variable, both read straight into float arithmetic with "
-            + "no conversion in the bytecode, so the bits are a float's. Both are "
-            + "read as the numbers they spell instead - `i.position * i.blendweight "
-            + "* packedScale` converts at each - which is a wrong value rather than "
-            + "an ugly one, and the round trip pays two utof for it.\n\n"
-            + "Unfixed because the evidence does not reach. Reinterpreting an "
-            + "integer register that a float operation reads looks like the rule, "
-            + "and tried, it put asfloat around `mip` where a GetDimensions wants "
-            + "the mip level and around `address` where a comparison wants an index "
-            + "- numbers, both of them, in registers a float instruction reads "
-            + "because that is all shader model 3 has. Which of the two a declared "
-            + "integer holds is the same question both writers now answer at a "
-            + "memory boundary and neither answers at a uniform: a load has an "
-            + "element type to ask and a conversion instruction that would have been "
-            + "there if the number were meant, and a uniform read has neither. "
-            + "Nothing says whether `packedScale` is a count or a float's bits "
-            + "except what the shader goes on to do with it, and what it goes on to "
-            + "do is the same either way."),
-            ("instruction",
-            "The same, from the same cause: `i.position.xyz * i.blendweight` and "
-            + "`r0.xyz * packedScale` read both as numbers. Neither writer has the "
-            + "evidence, so neither is singled out."),
-        ],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

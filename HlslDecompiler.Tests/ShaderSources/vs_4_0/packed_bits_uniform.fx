@@ -12,5 +12,5 @@ struct VS_IN
 
 float4 main(VS_IN i) : SV_Position
 {
-	return float4(i.position * i.blendweight * packedScale + offset, 1);
+	return float4(i.position * asfloat(i.blendweight) * asfloat(packedScale) + offset, 1);
 }

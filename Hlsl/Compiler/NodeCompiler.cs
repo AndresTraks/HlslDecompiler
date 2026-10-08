@@ -441,7 +441,7 @@ public sealed class NodeCompiler
         // make - a packed pair of half floats came back as three thousand million.
         // Every component, so that a constructor whose components are not all bits
         // is left to reinterpret them one at a time.
-        if (_readingAsFloat && components.All(ValueTypes.IsReinterpretedAsFloat))
+        if (_readingAsFloat && components.All(c => ValueTypes.IsReinterpretedAsFloat(c) || IsIntegerRegisterReadAsFloat(c)))
         {
             _readingAsFloat = false;
             try
@@ -894,7 +894,39 @@ public sealed class NodeCompiler
                 or ParameterType.Uint or ParameterType.Bool);
         }
         return _registers.RegisterDeclarations.TryGetValue(key.RegisterKey, out RegisterDeclaration declaration)
-            && !declaration.TypeName.Contains("int");
+            && !declaration.IsInteger;
+    }
+
+    /// <summary>
+    /// A uniform or an attribute declared an integer and read by float arithmetic
+    /// with nothing converting it between: in shader model 4 every instruction says
+    /// what it reads, and fxc writes a utof or an itof wherever the source meant the
+    /// number, so a float instruction reading the register as it stands is reading
+    /// a float's bits. `i.position * i.blendweight * packedScale` over a uint weight
+    /// and a uint scale handed in as bits converted both instead - a wrong value,
+    /// and two utof in the recompile.
+    ///
+    /// Not in shader model 3, where every register is a float's and an integer
+    /// uniform is read as one because nothing else can read it: `address` there is
+    /// a number. And only where every reader that says what it reads says float -
+    /// a GetDimensions reading a mip level says nothing, an integer add says
+    /// integer, and either leaves the value the number it is.
+    /// </summary>
+    private bool IsIntegerRegisterReadAsFloat(HlslTreeNode value)
+    {
+        if (value is not RegisterInputNode register
+            || register.RegisterComponentKey.RegisterKey is not D3D10RegisterKey
+                { OperandType: OperandType.ConstantBuffer or OperandType.Input })
+        {
+            return false;
+        }
+        ConstantDeclaration constant = FindConstantOfComponent(register);
+        bool declaredInteger = constant != null
+            ? constant.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint
+            : _registers.RegisterDeclarations.TryGetValue(
+                    register.RegisterComponentKey.RegisterKey, out RegisterDeclaration declaration)
+                && declaration.IsInteger;
+        return declaredInteger && InstructionParser.GetConsumedType(register) == false;
     }
 
     // An operand a bitwise operator or a shift reads. Where the value is a float -

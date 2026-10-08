@@ -4489,8 +4489,12 @@ public class HlslSimpleWriter : HlslWriter
             // wants is the float those bits are, and not the number they make. A
             // register of loop counters is declared int too and is the other way
             // about, which is why the two are told apart component by component.
+            // And a uniform or an attribute declared an integer: fxc writes a utof or
+            // an itof wherever the source meant the number, so a float instruction
+            // reading one as it stands is reading a float's bits.
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Float
-                && HoldsFloatBits(instruction, operandIndex))
+                && (HoldsFloatBits(instruction, operandIndex)
+                    || IsIntegerUniformOrInput(instruction, operandIndex)))
             {
                 return ApplyModifier(modifier,
                     $"asfloat({string.Format("{0}{1}", registerName, writeMaskName)})");
@@ -4674,6 +4678,33 @@ public class HlslSimpleWriter : HlslWriter
         return constant?.TypeInfo.ParameterType is ParameterType.Bool or ParameterType.Int or ParameterType.Uint;
     }
 
+    // Not a bool, which fxc reads into float arithmetic through a select of 1.0.
+    // And only in arithmetic: a gather's offset and GetSamplePosition's index count
+    // as float operands to GetConsumedKind, and are the integers they are declared.
+    private bool IsIntegerUniformOrInput(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.Opcode is not (D3D10Opcode.Add or D3D10Opcode.Mul or D3D10Opcode.Mad
+            or D3D10Opcode.Div or D3D10Opcode.Min or D3D10Opcode.Max
+            or D3D10Opcode.Dp2 or D3D10Opcode.Dp3 or D3D10Opcode.Dp4
+            or D3D10Opcode.LT or D3D10Opcode.GE or D3D10Opcode.Eq or D3D10Opcode.Ne))
+        {
+            return false;
+        }
+        return instruction.GetOperandType(operandIndex) switch
+        {
+            // By the component read: a register packs several variables, and
+            // without it `offset` beside a uint was taken for the uint.
+            OperandType.ConstantBuffer => _registers.FindConstant(
+                    (D3D10RegisterKey)instruction.GetParamRegisterKey(operandIndex),
+                    instruction.GetSourceSwizzleComponents(operandIndex)[0])
+                ?.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Uint,
+            OperandType.Input => _registers.RegisterDeclarations.TryGetValue(
+                    instruction.GetParamRegisterKey(operandIndex), out RegisterDeclaration declaration)
+                && declaration.IsInteger,
+            _ => false,
+        };
+    }
+
     /// <summary>
     /// Whether an operand holds an integer rather than a float. A temp by its
     /// register's declaration, which the register rule decides; anything else by
@@ -4694,7 +4725,7 @@ public class HlslSimpleWriter : HlslWriter
             return true;
         }
         return _registers.RegisterDeclarations.TryGetValue(key, out RegisterDeclaration declaration)
-            && declaration.TypeName.Contains("int");
+            && declaration.IsInteger;
     }
 
     // The resource operand carries a swizzle saying which channel of the texture

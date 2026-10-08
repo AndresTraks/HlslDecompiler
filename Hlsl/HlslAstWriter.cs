@@ -1396,7 +1396,7 @@ public class HlslAstWriter : HlslWriter
             nodes = nodes.Select(node =>
                 node is ConvertOperation { TargetType: "half" } cast ? cast.Value : node);
         }
-        return declaration.TypeName.Contains("int")
+        return declaration.IsInteger
             ? _compiler.CompileAsInteger(nodes)
             : _compiler.CompileAsFloat(nodes);
     }

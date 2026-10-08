@@ -67,7 +67,8 @@ public class TemplateMatcher
             new SmoothStepTemplate(),
             new StepTemplate(),
             new FirstBitHighTemplate(),
-            new ClampTemplate()
+            new ClampTemplate(),
+            new IntegerVectorComponentTemplate()
         };
         _groupTemplates = new List<IGroupTemplate>
         {

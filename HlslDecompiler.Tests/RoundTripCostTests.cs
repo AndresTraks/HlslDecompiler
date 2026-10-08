@@ -165,19 +165,6 @@ public class RoundTripCostTests
             + "naming them. The struct shaped temporary that would cost 10 - one "
             + "under the original - wants a struct typed variable and a declaration "
             + "of a kind the writer has not got."),
-        ["vs_4_0/skin_buffer"] = (37,
-            "One instruction, and the shape of the source rather than its "
-            + "arithmetic. `i.indices[b]` over a loop counter compiles to a chain of "
-            + "comparisons selecting one of four components, and the decompiled "
-            + "source says that chain rather than the subscript it came from - fxc "
-            + "has no subscript to put back and compiles the chain it is given. "
-            + "Written back by hand as `i.blendindices[t1]` it is one cheaper, so "
-            + "the claim holds and recovering the subscript is the whole of it - but "
-            + "the chain is a bespoke encoding with a differently shaped mask per "
-            + "component (`i < 1 ? -1 : 0`, `i < 2 ? -i : 0`, `i < 2 ? 0 : i - 3`), "
-            + "and a template for it would be fragile for one instruction. The line "
-            + "it would replace is unreadable, which is the better reason to want "
-            + "it. Was 39 while the loop's exit test was an if around a break."),
         ["ps_3_0/continue_nested"] = (16,
             "The four components of one cmp all read r1 as it was before it, and they "
             + "are written as two statements. Naming the condition first keeps it the "

@@ -80,7 +80,7 @@ public class FixedPointTests
         "vs_3_0/loop_nested_uniform", "vs_3_0/loop_repeat_count", "vs_3_0/nested_select",
         "vs_4_0/bitwise", "vs_4_0/integer_inputs", "vs_4_0/normal_transform",
         "vs_4_0/packed_bits_uniform", "vs_4_0/packed_colour",
-        "vs_4_0/skin_buffer", "vs_5_0/packed_matrix_members",
+        "vs_5_0/packed_matrix_members",
     ];
 
     /// <summary>

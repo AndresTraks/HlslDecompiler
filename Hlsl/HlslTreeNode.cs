@@ -36,6 +36,13 @@ public class HlslTreeNode
     public int SourceComponent { get; set; }
 
     /// <summary>
+    /// What this value is, worked out once while every reader of it was still
+    /// there to ask - see <see cref="ValueTypes.Record"/>. Null for a value made
+    /// after that and not handed facts by what made it, which is then asked live.
+    /// </summary>
+    internal TypeFacts Types { get; set; }
+
+    /// <summary>
     /// Whether two values were made by one instruction, which is what makes them
     /// components of one thing rather than two that share a register.
     /// </summary>

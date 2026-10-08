@@ -995,6 +995,13 @@ public sealed class NodeCompiler
     /// </summary>
     private bool _assigningToInteger;
 
+    /// <summary>
+    /// Set while the value an integer variable is assigned is compiled, and only
+    /// until an operation is entered: what the variable is handed directly, as
+    /// opposed to what some float arithmetic inside it reads.
+    /// </summary>
+    private bool _assignedDirectlyToInteger;
+
     // What the multiply was of, or the whole node where the one was folded away.
     private static HlslTreeNode FactoredOfFoldedMultiply(HlslTreeNode node)
     {
@@ -1097,15 +1104,27 @@ public sealed class NodeCompiler
         // A vector of doubles is a double vector, whatever the assignment wants:
         // `float2(a, b)` over two doubles rounds both of them on the way into a
         // buffer that holds neither.
+        string integerType = _assigningToUnsigned ? "uint" : "int";
+        // Some of each, handed straight to an integer variable: the variable holds
+        // bits, and the float components are the bits they are. Built as a float
+        // vector, the integers among them were converted to floats on the way in
+        // and the floats converted back - `int2 t2 = float2(t1.x, x * s)` over a
+        // t1 that was bits already, which is neither value.
+        bool reinterpretFloats = _assignedDirectlyToInteger
+            && components.Any(IsFloatValued) && !components.All(IsFloatValued);
         string type = components.All(IsDoubleValued)
             ? "double"
-            : _assigningToInteger && !components.Any(IsFloatValued)
-                ? (_assigningToUnsigned ? "uint" : "int")
+            : reinterpretFloats || (_assigningToInteger && !components.Any(IsFloatValued))
+                ? integerType
                 : "float";
         var parts = new List<string>();
         foreach (IList<HlslTreeNode> group in componentGroups)
         {
             string compiled = Compile(group, group.Count);
+            if (reinterpretFloats && IsFloatValued(group[0]))
+            {
+                compiled = $"as{integerType}({compiled})";
+            }
             // A broadcast of a register fills its group with a swizzle, so its
             // text is already as wide as the components it covers. A broadcast
             // whose text stays a scalar - an expression with nothing in it that
@@ -1263,12 +1282,14 @@ public sealed class NodeCompiler
     private string CompileOperation(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
     {
         bool wasReadingAsFloat = _readingAsFloat;
-        // From what the operation makes rather than from the flag it was built
-        // with: a template that rebuilds an add or a multiply makes a node with no
-        // flag on it, and an operation that makes an integer reads integers. The
-        // operators that read bits, and the moves that carry them, are named
-        // separately because they make an integer out of whatever they are given.
+        // From what the operation computes in, and where that is not known - a
+        // template that rebuilds an add or a multiply makes a node with no flag on
+        // it - from the value it makes. The operators that read bits, and the moves
+        // that carry them, are named separately because they make an integer out of
+        // whatever they are given.
         bool wasReadingAsBits = _readingAsBits;
+        bool wasAssignedDirectly = _assignedDirectlyToInteger;
+        _assignedDirectlyToInteger = false;
         _readingAsBits = operation is BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
             or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
             or BitFieldExtractOperation or BitFieldInsertOperation;
@@ -1278,7 +1299,7 @@ public sealed class NodeCompiler
                 or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
                 or BitFieldExtractOperation or BitFieldInsertOperation
                 or MoveOperation or MoveConditionalOperation => false,
-            _ => ValueTypes.IsIntegerValue(operation) != true,
+            _ => (ValueTypes.ComputesInIntegers(operation) ?? ValueTypes.IsIntegerValue(operation)) != true,
         };
         try
         {
@@ -1288,6 +1309,7 @@ public sealed class NodeCompiler
         {
             _readingAsFloat = wasReadingAsFloat;
             _readingAsBits = wasReadingAsBits;
+            _assignedDirectlyToInteger = wasAssignedDirectly;
         }
     }
 
@@ -2581,8 +2603,10 @@ public sealed class NodeCompiler
             }
             bool wasAssigningToInteger = _assigningToInteger;
             bool wasAssigningToUnsigned = _assigningToUnsigned;
+            bool wasAssignedDirectly = _assignedDirectlyToInteger;
             _assigningToInteger = tempAssignment.TempVariable.IsInteger;
             _assigningToUnsigned = tempAssignment.TempVariable.IsUnsigned;
+            _assignedDirectlyToInteger = tempAssignment.TempVariable.IsInteger;
             string compiled;
             try
             {
@@ -2592,12 +2616,16 @@ public sealed class NodeCompiler
             {
                 _assigningToInteger = wasAssigningToInteger;
                 _assigningToUnsigned = wasAssigningToUnsigned;
+                _assignedDirectlyToInteger = wasAssignedDirectly;
             }
             // A variable its readers type as an integer, holding a value that is a
             // float: the integer they read is its bits, so the assignment
             // reinterprets rather than converts. Converting rounded a bit pattern
-            // to the number nearest it, which is not the same bits at all.
-            if (tempAssignment.TempVariable.IsInteger && IsFloatValued(tempAssignment.Value))
+            // to the number nearest it, which is not the same bits at all. Every
+            // component, not the first: a vector of some of each reinterprets its
+            // floats one by one, in the constructor.
+            if (tempAssignment.TempVariable.IsInteger
+                && components.All(a => IsFloatValued(((TempAssignmentNode)a).Value)))
             {
                 compiled = $"asint({compiled})";
             }

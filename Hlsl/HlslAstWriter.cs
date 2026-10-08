@@ -114,6 +114,15 @@ public class HlslAstWriter : HlslWriter
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
+        // Before the finalizer, which takes readers away - see ValueTypes.Record.
+        var values = new List<HlslTreeNode>();
+        new StatementVisitor(statements).Visit(statement =>
+        {
+            values.AddRange(statement.Outputs.Values);
+            values.AddRange(statement.Inputs.Values);
+            values.AddRange(statement.HeldNodes);
+        });
+        ValueTypes.Record(values);
         StatementFinalizer.Finalize(statements, hasReturnValue, hasOutputStruct,
             CreateIntegerOperandAnalysis(), _doubleValues,
             liveOut: returnRegister == null ? null : [returnRegister]);

@@ -129,6 +129,7 @@ public class TemplateMatcher
     /// </summary>
     private static void CarryValueType(HlslTreeNode node, HlslTreeNode replacement)
     {
+        ValueTypes.Inherit(node, replacement);
         if (replacement is Operation && replacement.ConsumesInteger == null)
         {
             replacement.ConsumesInteger = node.ConsumesInteger;

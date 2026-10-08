@@ -21,7 +21,7 @@ void main(CS_IN i)
 	uint t2 = 0;
 	t1 = 0;
 	while (t1 < 8) {
-		int t3 = g0[t1 + i.sv_groupindex & 63];
+		uint t3 = g0[t1 + i.sv_groupindex & 63];
 		t2 = (t3 & 255) + t2;
 		t1 = t1 + 1;
 	}

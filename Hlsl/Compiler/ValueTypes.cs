@@ -6,6 +6,16 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
+/// The evidence about a value's type, kept apart because the questions asked of
+/// it want different parts: what made it, which decides how it computes and
+/// whether reading it as the other type reinterprets it, and what reads it, which
+/// decides what a variable holding it is declared.
+/// </summary>
+internal sealed record TypeFacts(
+    bool? Made, bool? Consumed, bool Bits,
+    bool? MadeUnsigned, bool? ConsumedUnsigned, bool? IndexesABuffer);
+
+/// <summary>
 /// What a value is, asked of the value rather than of the register it sits in.
 ///
 /// fxc reuses a register freely, so the register says nothing: a float4 of texture
@@ -22,6 +32,85 @@ namespace HlslDecompiler.Hlsl;
 /// </summary>
 internal static class ValueTypes
 {
+    /// <summary>
+    /// Works out the facts for every value the statements reach, before anything
+    /// takes the graph apart. The questions below are answered from the readers a
+    /// value has, and the passes after the parse take readers away: the statement
+    /// finalizer moves them onto the variables it makes, and templates replace
+    /// them. Asked afterwards, a value's readers were gone and it no longer knew
+    /// what it was - across the corpus, a few hundred of the answers the writers
+    /// got had become "nothing says" where the parse had known.
+    /// </summary>
+    internal static void Record(IEnumerable<HlslTreeNode> roots)
+    {
+        var values = new List<HlslTreeNode>();
+        var seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(roots);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (node == null || !seen.Add(node))
+            {
+                continue;
+            }
+            values.Add(node);
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        // Worked out for all of them before any is stored: the answers for one
+        // value ask about others, and must see the graph as it is, not half
+        // answered already.
+        var facts = values.Select(value => new TypeFacts(
+            MadeType(value), InstructionParser.GetConsumedType(value),
+            IsBitsValue(value, HlslTreeNode.NewNodeSet()),
+            MadeUnsigned(value), ConsumedAsUnsigned(value), IndexesABuffer(value))).ToList();
+        for (int i = 0; i < values.Count; i++)
+        {
+            values[i].Types = facts[i];
+        }
+    }
+
+    /// <summary>
+    /// Hands what a template replaced on to what it built in its place. A template
+    /// rewrites a value as another of the same type - `a * b + c` as an add of a
+    /// multiply - so the nodes it makes are what the node was, and asked live they
+    /// had readers that said nothing yet. Not the nodes that say what they are
+    /// themselves: a comparison makes a mask, a conversion its target, a constant
+    /// is settled when it is made, and a variable says so on its declaration.
+    /// </summary>
+    internal static void Inherit(HlslTreeNode replaced, HlslTreeNode replacement)
+    {
+        if (replaced.Types is not TypeFacts facts)
+        {
+            return;
+        }
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(replacement);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode built = pending.Pop();
+            if (built.Types != null
+                || built is ComparisonNode or ConvertOperation or ConstantNode
+                    or TempVariableNode or TempAssignmentNode or RegisterInputNode)
+            {
+                continue;
+            }
+            built.Types = facts;
+            foreach (HlslTreeNode input in built.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+    }
+
+    private static bool? Made(HlslTreeNode value) =>
+        value.Types is TypeFacts facts ? facts.Made : MadeType(value);
+
+    private static bool? Consumed(HlslTreeNode value) =>
+        value.Types is TypeFacts facts ? facts.Consumed : InstructionParser.GetConsumedType(value);
+
     /// <summary>
     /// Whether a value is an integer, from the value rather than the register it
     /// was in: fxc reuses a register, and a float4 of texture offsets was declared
@@ -45,8 +134,8 @@ internal static class ValueTypes
         {
             return true;
         }
-        bool? consumedType = InstructionParser.GetConsumedType(value);
-        bool? madeType = MadeType(value);
+        bool? consumedType = Consumed(value);
+        bool? madeType = Made(value);
         if (consumedType != null || madeType != null)
         {
             return consumedType ?? madeType;
@@ -74,6 +163,10 @@ internal static class ValueTypes
     /// </summary>
     internal static bool? IsUnsignedValue(HlslTreeNode value)
     {
+        if (value.Types is TypeFacts facts)
+        {
+            return facts.ConsumedUnsigned ?? facts.MadeUnsigned ?? facts.IndexesABuffer;
+        }
         return ConsumedAsUnsigned(value) ?? MadeUnsigned(value) ?? IndexesABuffer(value);
     }
 
@@ -230,6 +323,18 @@ internal static class ValueTypes
     }
 
     /// <summary>
+    /// Whether an operation computes in integers, which is what decides how it reads
+    /// its operands - asked of the operation, not of what reads its result. A float
+    /// multiply whose result only ushr and and go on to read is still a float
+    /// multiply: asked of its readers, it was taken for an integer one, and the bits
+    /// it was handed lost the asint that made them bits.
+    /// </summary>
+    internal static bool? ComputesInIntegers(HlslTreeNode operation)
+    {
+        return MadeType(operation);
+    }
+
+    /// <summary>
     /// What the operation that made a value makes, from that operation alone. Null
     /// where it does not say - a move, a phi, an immediate - which is where the
     /// readers are the only thing that knows.
@@ -303,6 +408,10 @@ internal static class ValueTypes
     /// </summary>
     internal static bool IsBitsValue(HlslTreeNode value)
     {
+        if (value.Types is TypeFacts facts)
+        {
+            return facts.Bits;
+        }
         return IsBitsValue(value, HlslTreeNode.NewNodeSet());
     }
 
@@ -415,6 +524,6 @@ internal static class ValueTypes
     /// </summary>
     private static bool IsIntegerMadeReadAsFloat(HlslTreeNode value)
     {
-        return MadeType(value) == true && InstructionParser.GetConsumedType(value) == false;
+        return Made(value) == true && Consumed(value) == false;
     }
 }

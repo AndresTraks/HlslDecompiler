@@ -2907,7 +2907,7 @@ public class InstructionParser
                 }
                 bool? consumed = reader is ComparisonNode comparison
                     ? (comparison.IsBitsTest ? null : comparison.IsInteger)
-                    : reader.ConsumesInteger;
+                    : reader.ReadsIntegers;
                 if (consumed == null)
                 {
                     continue;

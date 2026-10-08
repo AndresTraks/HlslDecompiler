@@ -130,10 +130,6 @@ public class TemplateMatcher
     private static void CarryValueType(HlslTreeNode node, HlslTreeNode replacement)
     {
         ValueTypes.Inherit(node, replacement);
-        if (replacement is Operation && replacement.ConsumesInteger == null)
-        {
-            replacement.ConsumesInteger = node.ConsumesInteger;
-        }
         // And which instruction made it: a template rewrites the value, not where
         // it came from, and a hoisted subexpression that has forgotten its
         // instruction cannot be told from one beside it that shares a register.

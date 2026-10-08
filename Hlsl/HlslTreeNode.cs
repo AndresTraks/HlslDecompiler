@@ -43,6 +43,15 @@ public class HlslTreeNode
     internal TypeFacts Types { get; set; }
 
     /// <summary>
+    /// What this node reads its operands as: the recorded answer where there is
+    /// one, which a template hands on to what it builds, and the parse's
+    /// <see cref="ConsumesInteger"/> otherwise. Asked instead of the flag by
+    /// everything after the parse - a node a template built has no flag of its
+    /// own, and a variable it read was then typed as if nothing read it.
+    /// </summary>
+    internal bool? ReadsIntegers => Types != null ? Types.Reads : ConsumesInteger;
+
+    /// <summary>
     /// Whether two values were made by one instruction, which is what makes them
     /// components of one thing rather than two that share a register.
     /// </summary>

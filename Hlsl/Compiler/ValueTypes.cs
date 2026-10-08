@@ -12,7 +12,7 @@ namespace HlslDecompiler.Hlsl;
 /// decides what a variable holding it is declared.
 /// </summary>
 internal sealed record TypeFacts(
-    bool? Made, bool? Consumed, bool Bits,
+    bool? Reads, bool? Made, bool? Consumed, bool Bits,
     bool? MadeUnsigned, bool? ConsumedUnsigned, bool? IndexesABuffer);
 
 /// <summary>
@@ -63,7 +63,7 @@ internal static class ValueTypes
         // value ask about others, and must see the graph as it is, not half
         // answered already.
         var facts = values.Select(value => new TypeFacts(
-            MadeType(value), InstructionParser.GetConsumedType(value),
+            value.ConsumesInteger, MadeType(value), InstructionParser.GetConsumedType(value),
             IsBitsValue(value, HlslTreeNode.NewNodeSet()),
             MadeUnsigned(value), ConsumedAsUnsigned(value), IndexesABuffer(value))).ToList();
         for (int i = 0; i < values.Count; i++)
@@ -249,8 +249,7 @@ internal static class ValueTypes
                 return maximum.IsUnsigned;
             // udiv is the only integer divide there is - there is no signed opcode
             // for it - so an integer quotient or remainder is unsigned.
-            case DivisionOperation { ConsumesInteger: true }:
-            case ModuloOperation { ConsumesInteger: true }:
+            case DivisionOperation or ModuloOperation when reader.ReadsIntegers == true:
                 return true;
             // ineg, which is meaningless on an unsigned value.
             case NegateOperation when IsIntegerValue(reader) == true:
@@ -305,8 +304,7 @@ internal static class ValueTypes
             MaximumOperation maximum => maximum.IsUnsigned,
             // ubfe fills the top of the field with zeroes and ibfe with its sign.
             BitFieldExtractOperation extract => extract.IsUnsigned,
-            DivisionOperation { ConsumesInteger: true } => true,
-            ModuloOperation { ConsumesInteger: true } => true,
+            DivisionOperation or ModuloOperation when value.ReadsIntegers == true => true,
             NegateOperation => false,
             // What the buffer holds. Asked of the maker because an atomic reads its
             // value through a statement, which the node graph does not carry, so a
@@ -399,7 +397,7 @@ internal static class ValueTypes
             BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
                 or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
                 or BitFieldExtractOperation or BitFieldInsertOperation => true,
-            Operation operation => operation.ConsumesInteger,
+            Operation operation => operation.ReadsIntegers,
             _ => null,
         };
     }

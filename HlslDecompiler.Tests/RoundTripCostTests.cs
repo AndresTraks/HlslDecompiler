@@ -257,9 +257,6 @@ public class RoundTripCostTests
             + "far better, and the int2 the loads address with becomes one vector "
             + "add where the original added a scalar 1 to the x alone. Paid for "
             + "what the same pass takes off partial_overwrite and particle_update."),
-        ["ps_3_0/dynamic_index"] = (6,
-            "The original selects with cmp over def'd constants; the decompiled "
-            + "comparison compiles to abs and a compare."),
         ["gs_4_1/circle"] = (20,
             "One instruction, and it is the position's components not grouping. "
             + "The original writes `mad r2.xyzw, r0.xyzw, l(0.5, 0.5, 0, 0), "

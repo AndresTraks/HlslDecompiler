@@ -58,7 +58,7 @@ public class FixedPointTests
         "hs_5_0/carried_constants",
         "hs_5_0/looped_control_points",
         "hs_5_0/split_control_points",
-        "ps_3_0/continue_nested", "ps_3_0/dynamic_index", "ps_3_0/guarded_average",
+        "ps_3_0/continue_nested", "ps_3_0/guarded_average",
         "ps_3_0/if_else_in_loop", "ps_3_0/if_nested", "ps_3_0/loop_counter_reuse",
         "ps_3_0/partial_precision", "ps_3_0/point_lights",
         "ps_3_0/temp_assignment", "ps_3_0/tex1d",

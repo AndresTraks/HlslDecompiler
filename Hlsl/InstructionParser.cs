@@ -1,5 +1,6 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
 using HlslDecompiler.Hlsl.FlowControl;
+using HlslDecompiler.Hlsl.TemplateMatch;
 using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
@@ -3713,6 +3714,12 @@ public class InstructionParser
         var vector2 = GetInputComponents(instruction, 2, 2);
         var add = GetInputComponents(instruction, 3, 1)[0];
 
+        if (ConstantMatcher.IsZero(add)
+            && TryTakeSelectedComponent([vector1, vector2]) is HlslTreeNode selected)
+        {
+            return selected;
+        }
+
         var dp2 = ReadingFloats(new AddOperation(
             ReadingFloats(new MultiplyOperation(vector1[0], vector2[0])),
             ReadingFloats(new MultiplyOperation(vector1[1], vector2[1]))));
@@ -3724,6 +3731,12 @@ public class InstructionParser
     {
         var addends = new List<HlslTreeNode>();
         int numComponents = instruction.Opcode == Opcode.Dp3 ? 3 : 4;
+        if (TryTakeSelectedComponent([
+                GetInputComponents(instruction, 1, numComponents),
+                GetInputComponents(instruction, 2, numComponents)]) is HlslTreeNode selected)
+        {
+            return selected;
+        }
         for (int component = 0; component < numComponents; component++)
         {
             IList<HlslTreeNode> componentInput = GetInputs(instruction, component);
@@ -3804,6 +3817,87 @@ public class InstructionParser
             .Select(componentInput => (HlslTreeNode)ReadingFloats(
                 new MultiplyOperation(componentInput[0], componentInput[1])))
             .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    /// <summary>
+    /// The subscript a dot product stands for where one of its operands is a vector of
+    /// tests of an integer against each component's number, which is how a shader
+    /// model 3 shader reads a vector at a component it has to work out, having no
+    /// immediate constant buffer to hold an identity in: `v[i]` is
+    /// `cmp r0, -abs(i - (0, 1, 2, 3)), 1, 0` dotted with v. Read back as that, it
+    /// came out as a vector of `i == 0 ? 1.0 : 0.0` and a sum of products.
+    ///
+    /// Only for an index declared an integer. A float index between two whole numbers
+    /// matches none of the tests and dots to zero, where the subscript would truncate
+    /// it and read a component.
+    /// </summary>
+    private HlslTreeNode TryTakeSelectedComponent(HlslTreeNode[][] operands)
+    {
+        for (int selector = 0; selector < 2; selector++)
+        {
+            HlslTreeNode[] tests = operands[selector];
+            HlslTreeNode[] vector = operands[1 - selector];
+            HlslTreeNode index = null;
+            for (int component = 0; component < tests.Length; component++)
+            {
+                HlslTreeNode tested = TestedForComponent(tests[component], component);
+                if (tested == null || (index != null && !IsSameRead(tested, index)))
+                {
+                    index = null;
+                    break;
+                }
+                index = tested;
+            }
+            if (index is RegisterInputNode read
+                && _registerState.FindConstant(read)?.TypeInfo.ParameterType == ParameterType.Int
+                && vector.All(component => component is RegisterInputNode))
+            {
+                return ReadingFloats(new VectorComponentNode(new GroupNode(vector), index));
+            }
+        }
+        return null;
+    }
+
+    // What `cmp dst, -abs(i - c), 1, 0` tests for being c: i, where the value is
+    // that, and null otherwise. fxc adds -c rather than subtracting, and adds the
+    // -0 of the first component as well.
+    private static HlslTreeNode TestedForComponent(HlslTreeNode test, int component)
+    {
+        if (test is not CompareOperation
+            {
+                Value: NegateOperation { Value: AbsoluteOperation { Value: HlslTreeNode difference } }
+            } compare
+            || !ConstantMatcher.IsOne(compare.GreaterEqualValue)
+            || !ConstantMatcher.IsZero(compare.LessValue))
+        {
+            return null;
+        }
+        if (difference is AddOperation add)
+        {
+            if (Moved(add.Addend1) is ConstantNode offset1 && offset1.Value == -component)
+            {
+                return add.Addend2;
+            }
+            if (Moved(add.Addend2) is ConstantNode offset2 && offset2.Value == -component)
+            {
+                return add.Addend1;
+            }
+            return null;
+        }
+        return component == 0 ? difference : null;
+    }
+
+    // The offsets are moved into the register before the index is added to them.
+    private static HlslTreeNode Moved(HlslTreeNode node)
+    {
+        return node is MoveOperation move ? move.Inputs[0] : node;
+    }
+
+    private static bool IsSameRead(HlslTreeNode a, HlslTreeNode b)
+    {
+        return ReferenceEquals(a, b)
+            || (a is RegisterInputNode readA && b is RegisterInputNode readB
+                && readA.RegisterComponentKey.Equals(readB.RegisterComponentKey));
     }
 
     /// <summary>

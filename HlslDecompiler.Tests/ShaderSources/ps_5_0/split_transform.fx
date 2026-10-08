@@ -24,5 +24,6 @@ float4 main(PS_IN i) : SV_Target
 	float3 t3 = mul(t2, (float4x3)decalMatrix);
 	float2 t4 = t3.xy + 0.5;
 	float4 t5 = decalMap.Sample(linearSampler, t4);
-	return float4(t5.xyz * decalTint.xyz, step(abs(t3.z), 0.5) * step(abs(t3.y), 0.5) * step(abs(t3.x), 0.5) * t5.w * fade);
+	float3 t6 = step(abs(t3), 0.5);
+	return float4(t5.xyz * decalTint.xyz, t6.z * t6.y * t6.x * t5.w * fade);
 }

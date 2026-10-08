@@ -17,8 +17,9 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
+	float2 t0 = (i.color.xy < 0) ? 1 : 0;
 	o.position = mul(i.position, wvp);
-	o.color = float4(lerp(k.z, lerp(k.y, k.x, (i.color.y < 0) ? 1 : 0), (i.color.x < 0) ? 1 : 0), clamp(k.y, i.color.y, max(k.x, i.color.x)), lerp(k.x, k.y, i.color.w) * step(k.z, i.color.z), (k.w - i.color.z) * -(i.color.x - i.color.y));
+	o.color = float4(lerp(k.z, lerp(k.y, k.x, t0.y), t0.x), clamp(k.y, i.color.y, max(k.x, i.color.x)), lerp(k.x, k.y, i.color.w) * step(k.z, i.color.z), (k.w - i.color.z) * -(i.color.x - i.color.y));
 
 	return o;
 }

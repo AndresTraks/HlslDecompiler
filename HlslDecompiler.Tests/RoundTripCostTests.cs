@@ -71,26 +71,6 @@ public class RoundTripCostTests
             + "naming the centre and nothing else brings this back to the 31 it was "
             + "read from."),
         // The decompiler's doing.
-        ["ps_5_0/split_transform"] = (23,
-            "Two instructions, and they are the box test taken a component at a "
-            + "time. The decal's local position is one multiply, and the original "
-            + "tests all three of its components against the box at once - one ge "
-            + "and one and over .xyz - before multiplying the three answers together. "
-            + "The decompiled source says step(abs(t3.x), 0.5) * step(abs(t3.y), 0.5) "
-            + "* step(abs(t3.z), 0.5), three scalars, and fxc compiles those as a pair "
-            + "and a single. Writing the vector step and multiplying its components is "
-            + "the idiom left to recover.\n\n"
-            + "It used to be the multiply as well. The position's x and y are read "
-            + "twice, by the sample and by the box test, so they were named as "
-            + "mul(t2, (float4x2)decalMatrix) and the z row written on its own as a "
-            + "dot - the multiply taken apart. Declining to name a group that is part "
-            + "of a grouper's match was tried three ways and each moved other "
-            + "fixtures for the worse; what fixed it was widening instead - a named "
-            + "run of matrix rows takes the multiply's other rows with it "
-            + "(WithSiblingRows) - which names the multiply whole and costs nothing. "
-            + "Not for one row alone: a projection's w named as the divisor, widened, "
-            + "split its divide into one per use and cost cascaded_shadows and "
-            + "environment_lighting an instruction each."),
         ["cs_4_0/particle_update"] = (12,
             "One instruction, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "
@@ -238,12 +218,13 @@ public class RoundTripCostTests
             + "modifier: the _bx2 on the offset map is a mad, the _dw that "
             + "projects the third read is a reciprocal and a mul, the _x2 on its "
             + "alpha is an add, and the cnd is a subtraction before its cmp."),
-        ["ps_1_4/projected_depth"] = (19,
-            "Ten instructions. Each of the two projected coordinates is a "
-            + "reciprocal and a mul, and the one texdepth reads is a mul more: "
-            + "its x and y go on to be scaled and offset differently, the AST "
-            + "writer builds that float2 a component at a time, and fxc divides "
-            + "each apart. texdepth, which divides r5.r by r5.g and takes 1 where "
+        ["ps_1_4/projected_depth"] = (18,
+            "Nine instructions. Each of the two projected coordinates is a "
+            + "reciprocal and a mul. The one texdepth reads was a mul more while "
+            + "its x and y, which go on to be scaled and offset differently, were "
+            + "divided a component at a time; named together as the one division "
+            + "they were (ScatteredInstruction) they are divided once. texdepth, "
+            + "which divides r5.r by r5.g and takes 1 where "
             + "r5.g is 0, is a reciprocal, a mul, a square to test for zero and a "
             + "cmp; and fxc pads the clip() of a float3 with two movs to fill the "
             + "w its texkill reads."),

@@ -15,15 +15,16 @@ struct CS_IN
 [numthreads(8, 8, 1)]
 void main(CS_IN i)
 {
-	uint t0 = (i.sv_groupid.x * 8) + i.sv_groupthreadid.x + ((i.sv_groupid.y * 8) + i.sv_groupthreadid.y) * width;
-	float4 t1 = input[t0];
-	g0[i.sv_groupindex] = t1;
+	int2 t1 = (i.sv_groupid.xy * 8) + i.sv_groupthreadid.xy;
+	uint t0 = t1.y * width + t1.x;
+	float4 t2 = input[t0];
+	g0[i.sv_groupindex] = t2;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupthreadid.x != 0) {
-		t1 = t1 + g0[i.sv_groupindex - 1];
+		t2 = t2 + g0[i.sv_groupindex - 1];
 	}
 	if (i.sv_groupthreadid.x < 7) {
-		t1 = t1 + g0[i.sv_groupindex + 1];
+		t2 = t2 + g0[i.sv_groupindex + 1];
 	}
-	output[t0] = 0.333333343 * t1;
+	output[t0] = 0.333333343 * t2;
 }

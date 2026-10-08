@@ -2027,7 +2027,8 @@ public class HlslAstWriter : HlslWriter
                     ?? RootOfSeveralRegisters(registerGroups, recording)
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
-                    ?? SharedInstruction(readers, recording, roots);
+                    ?? SharedInstruction(readers, recording, roots)
+                    ?? ScatteredInstruction(readers, recording, roots);
             if (occurrences == null)
             {
                 _lastRecording = recording;
@@ -2462,6 +2463,80 @@ public class HlslAstWriter : HlslWriter
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// One instruction's components computed apart. A decal's box test compares all
+    /// three components of the position at once - one ge and one and over .xyz -
+    /// and multiplies the three answers together, and read back a component at a
+    /// time it said step(abs(t3.x), 0.5) * step(abs(t3.y), 0.5) * step(abs(t3.z), 0.5):
+    /// three computations, which fxc compiled as a pair and a single, two
+    /// instructions dearer. Named as the vector the instruction made - float3 t6 =
+    /// step(abs(t3), 0.5) - it is the one instruction again, and the product reads
+    /// t6.x, t6.y and t6.z.
+    ///
+    /// Only where each component is a computation and is written on its own, never
+    /// with the others - SharedInstruction is the rule for components something
+    /// reads together - and where the components written together are one vector
+    /// expression rather than a constructor of them, which would be the same work
+    /// three times with a declaration besides. Asked by measuring, which leaves
+    /// nothing behind.
+    /// </summary>
+    private List<HlslTreeNode[]> ScatteredInstruction(
+        HashSet<HlslTreeNode> readers,
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        HashSet<HlslTreeNode> roots)
+    {
+        foreach (IGrouping<int, HlslTreeNode> instruction in readers
+            .Where(node => node.SourceInstruction != 0 && node is Operation
+                && IsNameable(node) && !roots.Contains(node))
+            .GroupBy(node => node.SourceInstruction)
+            .Where(group => group.Count() > 1)
+            .OrderByDescending(group => group.Count()))
+        {
+            HlslTreeNode[] group = [.. instruction.OrderBy(node => node.SourceComponent)];
+            if (group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode))
+                || group.Select(node => node.SourceComponent).Distinct().Count() != group.Length)
+            {
+                continue;
+            }
+            List<(HlslTreeNode[] Nodes, string Text)> written = [.. recording
+                .Where(r => r.Nodes.Any(group.Contains))];
+            if (written.Count < group.Length || written.Any(r => r.Nodes.Length > 1))
+            {
+                continue;
+            }
+            string together = _compiler.Measure([group]).Recording[^1].Text;
+            if (System.Text.RegularExpressions.Regex.IsMatch(together, @"\b(float|int|uint|half|double|bool)[234]\(")
+                || !ReadsWholeVectors(together))
+            {
+                continue;
+            }
+            return [group];
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Whether every operand the text reads is a vector from its start - a name on
+    /// its own, or .xy, .xyz, a single component broadcast - rather than components
+    /// picked out of order. fxc packs unrelated scalar arithmetic into one
+    /// instruction where the lanes are free, and gathered into a vector those come
+    /// back as `texcoord.xz * texcoord.yw` and `abs(a.xw) + 1`: one instruction, as
+    /// the bytecode had, but values the shader never had, in place of the two
+    /// readable ones it did.
+    /// </summary>
+    private static bool ReadsWholeVectors(string text)
+    {
+        foreach (System.Text.RegularExpressions.Match swizzle in
+            System.Text.RegularExpressions.Regex.Matches(text, @"\.([xyzw]{2,4})\b"))
+        {
+            if (swizzle.Groups[1].Value is not ("xy" or "xyz" or "xyzw"))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>

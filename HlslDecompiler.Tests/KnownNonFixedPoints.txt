@@ -81,7 +81,6 @@ reworded ps_4_1/cascade_shadow
 reworded ps_4_1/decal_blend
 reworded ps_5_0/depth_aware_blur
 reworded ps_5_0/double_compare
-reworded ps_5_0/double_immediate
 reworded ps_5_0/environment_lighting
 reworded ps_5_0/gbuffer_write
 reworded ps_5_0/integer_texture_load

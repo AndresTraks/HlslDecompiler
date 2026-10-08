@@ -53,7 +53,6 @@ public class DisassemblyOnlyTests
         FileUtil.MakeFolder(output);
         new AsmWriter(shader).Write(output);
 
-        Assert.That(File.ReadAllText(output), Is.EqualTo(File.ReadAllText(expected)),
-            "Assembly not equal at " + output);
+        Goldens.AssertMatches(output, expected, "Assembly not equal at " + output);
     }
 }

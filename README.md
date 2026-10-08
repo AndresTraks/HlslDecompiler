@@ -65,3 +65,21 @@ mad oC0.yzw, v0.xxx, c0.xyy, c0.yxz
 | `--flow-attributes` | Mark every `if` `[branch]` and every loop `[loop]` |
 | `--verbose` | Print the stack trace when decompiling fails |
 | `-h`, `--help` | Show the options |
+
+## Testing
+`dotnet test` decompiles every shader in `HlslDecompiler.Tests/CompiledShaders`
+and compares the output with the goldens beside it: the disassembly in
+`ShaderAssembly`, and the HLSL of both writers in `ShaderSources`. The tiers
+that recompile need `fxc.exe` from the Windows SDK.
+
+When a change to the decompiler changes its output, bless the goldens instead
+of editing them by hand:
+```
+powershell -File HlslDecompiler.Tests\Bless.ps1
+```
+It rewrites every golden that differs, measures which goldens are now fixed
+points (they decompile from their own compilation to themselves), takes those
+off `KnownNonFixedPoints.txt`, and lists what changed. Review it with
+`git diff`. A golden that stops being a fixed point is not blessed; it fails.
+Setting `HLSL_BLESS=1` blesses whatever a `dotnet test` run covers; the script
+runs the fixed points after the goldens, so that they compile the new ones.

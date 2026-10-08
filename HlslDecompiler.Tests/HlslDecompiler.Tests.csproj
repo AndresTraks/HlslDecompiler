@@ -17,18 +17,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The test corpus: bytecode in, the writers' expected output beside it.
-         These were listed a file at a time, 1127 of them, which drifted - three
-         entries named ShaderSources files that had been removed, and every new
-         fixture wanted four more lines. A pattern apiece copies exactly what is
-         there. -->
+    <!-- The test corpus: bytecode in. These were listed a file at a time, 1127 of
+         them, which drifted - three entries named files that had been removed, and
+         every new fixture wanted four more lines. A pattern apiece copies exactly
+         what is there.
+
+         The expected outputs - ShaderSources, ShaderAssembly, the DisassemblyOnly
+         listings - are not copied: Goldens reads them in the working tree, where
+         blessing rewrites them. A copy made by the last build was compared against
+         instead, and a golden changed since was reported as a failure. -->
     <None Update="CompiledShaders\**\*.fxc">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="ShaderAssembly\**\*.asm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="ShaderSources\**\*.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Effects, kept apart because each holds several shaders. -->
@@ -38,12 +36,8 @@
     <None Update="EffectSources\**\*.fx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- Bytecode the disassembler reads and the HLSL writers do not yet, with the
-         listing it is expected to produce. -->
+    <!-- Bytecode the disassembler reads and the HLSL writers do not yet. -->
     <None Update="DisassemblyOnly\**\*.fxc">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="DisassemblyOnly\**\*.asm">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Bytecode in a shape an idiom has to be recovered from, kept apart from the

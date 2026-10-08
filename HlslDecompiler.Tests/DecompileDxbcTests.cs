@@ -409,17 +409,11 @@ public class DecompileDxbcTests
         FileUtil.MakeFolder(hlslOutputFilename);
         hlslWriter.Write(hlslOutputFilename);
 
-        Assert.That(
-            File.ReadAllText(asmOutputFilename),
-            Is.EqualTo(File.ReadAllText(asmExpectedFilename)),
+        Goldens.AssertMatches(asmOutputFilename, asmExpectedFilename,
             "Assembly not equal at " + asmOutputFilename);
-        Assert.That(
-            File.ReadAllText(hlslInstructionOutputFilename),
-            Is.EqualTo(File.ReadAllText(hlslInstructionExpectedFilename)),
+        Goldens.AssertMatches(hlslInstructionOutputFilename, hlslInstructionExpectedFilename,
             "HLSL not equal at " + hlslInstructionOutputFilename);
-        Assert.That(
-            File.ReadAllText(hlslOutputFilename),
-            Is.EqualTo(File.ReadAllText(hlslExpectedFilename)),
+        Goldens.AssertMatches(hlslOutputFilename, hlslExpectedFilename,
             "AST HLSL not equal at " + hlslOutputFilename);
     }
 }

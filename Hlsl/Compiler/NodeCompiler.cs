@@ -926,7 +926,7 @@ public sealed class NodeCompiler
             : _registers.RegisterDeclarations.TryGetValue(
                     register.RegisterComponentKey.RegisterKey, out RegisterDeclaration declaration)
                 && declaration.IsInteger;
-        return declaredInteger && InstructionParser.GetConsumedType(register) == false;
+        return declaredInteger && ValueTypes.ReadAsInteger(register) == false;
     }
 
     // An operand a bitwise operator or a shift reads. Where the value is a float -
@@ -983,7 +983,10 @@ public sealed class NodeCompiler
             // to it: ConsumesInteger answers about what goes in.
             BitsToDoubleOperation => true,
             ComparisonNode => false,
-            Operation operation => operation.ConsumesInteger == false,
+            // What the operation computes in, which a template that rebuilt it has
+            // handed on - the flag the parse put on the instruction is not on the
+            // nodes a template builds, and they came out as not floats at all.
+            Operation operation => ValueTypes.ComputesInIntegers(operation) == false,
             _ => false,
         };
     }
@@ -2328,7 +2331,7 @@ public sealed class NodeCompiler
             // into such a texture beside a normal, and converting the depth would
             // give whatever number its bits happen to be.
             if (resourceDefinition.IsIntegerReturnType && !_readingAsBits && !_assigningToInteger
-                && components.All(c => InstructionParser.GetConsumedType(c) != true))
+                && components.All(c => ValueTypes.ReadAsInteger(c) != true))
             {
                 loaded = $"asfloat({loaded})";
             }

@@ -331,7 +331,16 @@ internal static class ValueTypes
     /// </summary>
     internal static bool? ComputesInIntegers(HlslTreeNode operation)
     {
-        return MadeType(operation);
+        return Made(operation);
+    }
+
+    /// <summary>
+    /// Whether what reads a value reads it as an integer, where the readers agree -
+    /// as they were before anything took them away.
+    /// </summary>
+    internal static bool? ReadAsInteger(HlslTreeNode value)
+    {
+        return Consumed(value);
     }
 
     /// <summary>
@@ -498,16 +507,6 @@ internal static class ValueTypes
         return isInteger
             && (IsBitsValue(value) || IsFloatMade(value) || IsIntegerMadeReadAsFloat(value));
     }
-
-    /// <summary>
-    /// Integer arithmetic whose result a float operation reads without converting
-    /// it. Those bits are a float's: a shader that wanted the number they make
-    /// would have put an itof or a utof between, and this one did not. bit_field
-    /// assembles a float from a mantissa and an exponent with an iadd and
-    /// multiplies what comes out.
-    ///
-    /// The two questions IsIntegerValue asks disagree here - the maker says
-    /// integer and the readers say float - and taking the readers
 
     /// <summary>
     /// Integer arithmetic whose result a float operation reads without converting

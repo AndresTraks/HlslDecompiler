@@ -1603,6 +1603,20 @@ public class HlslAstWriter : HlslWriter
             _compiler.Compile(registerNodes);
             List<HlslTreeNode[]> componentGroups =
                 [.. nodeGrouper.GroupComponents(registerNodes).Select(g => g.ToArray())];
+            // The dependency order is for statements. Lanes one instruction wrote
+            // and one statement writes are in no order but the register's:
+            // continue_nested's cmp tests the x it overwrites, which sorted the x
+            // last, and the statement wrote `t0.wyzx = ...` for `t0.wxyz`.
+            for (int i = 0; i < componentGroups.Count; i++)
+            {
+                HlslTreeNode[] lanes = componentGroups[i];
+                if (lanes.Length > 1
+                    && lanes.All(lane => lane is TempAssignmentNode assignment
+                        && HlslTreeNode.IsSameInstruction(assignment.Value, ((TempAssignmentNode)lanes[0]).Value)))
+                {
+                    componentGroups[i] = [.. lanes.OrderBy(lane => Array.IndexOf(registerGroup, lane))];
+                }
+            }
             // Before the groups themselves, and before anything overwrites what they
             // read.
             groups.AddRange(HoistStaleReads(componentGroups));

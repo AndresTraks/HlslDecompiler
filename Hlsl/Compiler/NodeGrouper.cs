@@ -190,7 +190,13 @@ public class NodeGrouper
 
         if (node1 is TempAssignmentNode assignment1 && node2 is TempAssignmentNode assignment2)
         {
-            if (assignment1.TempVariable.IsInputOf(assignment2.Value) || assignment2.TempVariable.IsInputOf(assignment1.Value))
+            // One reading what the other writes is two statements in order - unless
+            // one instruction wrote both, which read every operand before writing
+            // any lane, and so does one statement: continue_nested's `cmp r1, r2.x,
+            // r3, r1` tests the x it is about to overwrite, and split in two it was
+            // a named condition and two selects, two instructions dearer.
+            if ((assignment1.TempVariable.IsInputOf(assignment2.Value) || assignment2.TempVariable.IsInputOf(assignment1.Value))
+                && !HlslTreeNode.IsSameInstruction(assignment1.Value, assignment2.Value))
             {
                 return false;
             }

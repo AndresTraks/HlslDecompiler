@@ -62,15 +62,6 @@ public class RoundTripCostTests
             + "naming them. The struct shaped temporary that would cost 10 - one "
             + "under the original - wants a struct typed variable and a declaration "
             + "of a kind the writer has not got."),
-        ["ps_3_0/continue_nested"] = (16,
-            "The four components of one cmp all read r1 as it was before it, and they "
-            + "are written as two statements. Naming the condition first keeps it the "
-            + "value the instruction saw - it used to be recomputed in the second "
-            + "statement, from a r1.y the first had already overwritten, which was "
-            + "wrong as well as an instruction dearer. What is left is the naming "
-            + "itself: fxc has no reason to keep a variable the shader never asked "
-            + "for, and the two statements do not fold back into one cmp. Was 17 "
-            + "while the if side was empty and the body sat in the else."),
         ["cs_5_0/tile_luminance"] = (47,
             "The exit test of a for loop. `for (uint stride = 32; stride > 0; "
             + "stride >>= 1)` is what the source said and what is written back, "

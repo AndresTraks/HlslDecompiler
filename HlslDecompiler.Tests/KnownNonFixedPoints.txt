@@ -65,7 +65,6 @@ reworded ps_4_0/int_float_mix
 reworded ps_4_0/integer_hash
 reworded ps_4_0/integer_vector
 reworded ps_4_0/logical_and
-reworded ps_4_0/mixed_register
 reworded ps_4_0/packed_cbuffer
 reworded ps_4_0/packed_interpolator
 reworded ps_4_0/precedence_mix

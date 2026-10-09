@@ -103,6 +103,7 @@ public class TemplateMatcher
                 new CompareConstantTemplate(),
                 new CompareNegativeWithZeroTemplate(),
                 new CompareAbsoluteWithZeroTemplate(),
+                new AddMaskTemplate(),
                 new CompareSelectedConstantTemplate(),
                 new ConvertSelectedConstantTemplate(),
                 new ComparePositiveAndNegativeTemplate(),

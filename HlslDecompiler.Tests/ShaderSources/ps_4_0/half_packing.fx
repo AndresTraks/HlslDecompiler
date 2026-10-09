@@ -16,7 +16,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	int t8 = (uint)t6.y >> 8;
 	uint t9 = t8 ? t8 : t6.y;
 	uint t10 = t9 >> 4;
-	int2 t11 = int2(t10 ? t10 : t9, t10 ? t8 ? 12 : 4 : t8 ? 8 : 0);
+	int2 t11 = t10 ? int2(t10, t8 ? 12 : 4) : int2(t9, t8 ? 8 : 0);
 	uint t12 = (uint)t11.x >> 2;
 	int t13 = t12 ? t11.y + 2 : t11.y;
 	int t14 = t6.y ? 10 - ((t12 ? t12 : t11.x) >> 1 ? t13 + 1 : t13) : 11;

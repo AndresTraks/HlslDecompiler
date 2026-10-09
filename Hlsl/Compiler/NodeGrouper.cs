@@ -331,6 +331,18 @@ public class NodeGrouper
                 && call1.FunctionIndex == call2.FunctionIndex;
         }
 
+        // Two lanes of one movc on one condition are one select between two vectors,
+        // whatever each vector is made of: `front ? float4(uv, 0, 1) : float4(0, uv,
+        // 1)` is a movc over two shuffled registers, and asked operand by operand -
+        // uv.x beside 0, 1 beside 1 - it came back as four selects, a lane each.
+        if (node1 is MoveConditionalOperation movc1 && node2 is MoveConditionalOperation movc2
+            && HlslTreeNode.IsSameInstruction(node1, node2)
+            && (ReferenceEquals(movc1.Condition, movc2.Condition)
+                || AreNodesEquivalent(movc1.Condition, movc2.Condition)))
+        {
+            return true;
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)

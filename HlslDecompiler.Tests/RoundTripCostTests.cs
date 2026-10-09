@@ -59,6 +59,22 @@ public class RoundTripCostTests
             + "probe that found it showed: `t1 | 1` came back as `t1 | 0.000000`, the "
             + "immediate read as a float, and the instruction writer loaded the float "
             + "members into an int register as numbers rather than bits."),
+        ["cs_5_0/fog_volume"] = (44,
+            "One instruction, and it is the constructor that packs a register. "
+            + "fxc put the scattered light in r2.x, r2.z and r2.w and the "
+            + "transmittance in r2.y between them, so one mad writes the three "
+            + "lanes of the scattering and an unrelated value sits in the middle "
+            + "of the register. GroupComponents merges consecutive runs, so x, z "
+            + "and w cannot be one group across the y, and the four components "
+            + "come back as one float4(...) that interleaves them - after which "
+            + "fxc cannot see the three lanes as one instruction and splits the "
+            + "mad into a mad over .y and a mad over .zw. The instruction writer "
+            + "pays nothing, writing `r2.xzw = ...` and `r2.y = ...` as the two "
+            + "statements they are. Fixing it means a register whose components "
+            + "are not one vector expression being written as a declaration and "
+            + "one assignment per instruction, by swizzle, which is a form the "
+            + "ast writer has not got - the same shape the particle_update entry "
+            + "above wants a struct typed variable for."),
         ["cs_4_0/particle_update"] = (12,
             "One instruction, and the price of naming the members. The original "
             + "loads the whole particle in two sixteen byte loads, writes it back in "

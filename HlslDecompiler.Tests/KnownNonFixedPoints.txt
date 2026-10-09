@@ -16,6 +16,7 @@ reordered ps_5_0/reflected_hit
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
 reworded cs_4_1/groupshared_reduce
+reworded cs_5_0/fog_volume
 reworded cs_5_0/group_reduce
 reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack

@@ -225,12 +225,42 @@ public static class IdiomRecovery
     ///
     /// The grouper has this condition without having to ask for it: it is handed the
     /// components of a write and answers about those, so it only ever matches where
-    /// the write is the multiply. Taking that away is ruinous, and vs_3_0/skinned_terrain
-    /// says why. Four bone transforms are interleaved there, so the register a
-    /// component lands in holds components of several multiplications - and once
-    /// every dot is a component of its own multiply, every register has to be put
-    /// back together from them: thirteen lines of `float4(mul(...).x, t.yzw)`, and
-    /// fifty-four instructions became sixty-nine.
+    /// the write is the multiply.
+    ///
+    /// Taking it away was once ruinous for vs_3_0/skinned_terrain - four bone
+    /// transforms interleaved there, every register put back together from
+    /// components of several multiplies, thirteen lines of `float4(mul(...).x,
+    /// t.yzw)` and fifty-four instructions become sixty-nine. **That is no longer
+    /// what happens**: measured 2026-10-09, skinned_terrain is 55 instructions with
+    /// the condition and 55 without, and reads as four named `mul`s summed by their
+    /// weights. The naming the shared-subexpression hoist now does catches what used
+    /// to come back component by component. The condition is still right, but not
+    /// for that reason, so the reason is worth recording properly:
+    ///
+    /// - It keeps a vectorized **consumer** together. ps_5_0/cascaded_shadows
+    ///   divides each component by the w dot in one `div r.xyz, r.xyz, r.wwww`;
+    ///   recovered, the multiply is named a float4 and the register reads `t.xy /
+    ///   t.w` and `t.z / t.w` - two divisions, one instruction more.
+    ///   ps_5_0/split_transform pays two the same way, its `step` coming apart.
+    /// - It keeps the **nested product** idiom. vs_4_0/matrix_array is `mul(mul(i.position,
+    ///   instances[id]), viewProj)` because the compiler sees the rows of the inner
+    ///   product as the vector of the outer. Recovered row by row first, the product
+    ///   is gone: fx_2_0/preshader came back as four `mul(float4(world[3][0], ...),
+    ///   viewProjection)` and a weighted sum of them.
+    /// - Where it declines something the fold would improve, the win is small and
+    ///   rare. Relaxing it moves nine goldens; one, ps_4_1/cascade_shadow, is a real
+    ///   improvement - its four columns are spent on four unrelated expressions, so
+    ///   `mul(float4(i.texcoord, 1), cascadeTransform[t2])` read by `.xy / .w` and
+    ///   `.z / .w` replaces the vector written out three times, at the same 39
+    ///   instructions. The rest are neutral renumbering or worse. Three stacked
+    ///   heuristics to gate it for one shader was not a trade worth making; the
+    ///   unified fix is one pass owning this idiom instead of two paths splitting
+    ///   it, which is a bigger change than the gain justifies today.
+    ///
+    /// Note the cost argument against folding is not that the full `mul` computes a
+    /// column the bytecode did not: it does not. fxc eliminates an unread column
+    /// (ps_4_0/ambient_occlusion reads {0,1,3} and compiles to three dp4s either way)
+    /// and sinks one past a break. The cost is only ever in the consumers.
     ///
     /// So the condition stays and only the timing moves. Recovered here the idiom is
     /// a node before anything is named, which is what ps_5_0/split_transform needs -

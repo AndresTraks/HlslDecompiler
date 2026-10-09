@@ -38,6 +38,14 @@ public class ShaderModel
     /// </summary>
     public ShaderInterfaces Interfaces { get; init; }
 
+    /// <summary>
+    /// The points a hull shader's control point phase writes, for its patch
+    /// constant phase: that phase's outputs are the patch constants, and the
+    /// control points it reads back are described nowhere else. Null on anything
+    /// else.
+    /// </summary>
+    public IList<RegisterSignature> ControlPointSignatures { get; init; }
+
     public ShaderModel(int majorVersion,
         int minorVersion,
         ShaderType type,

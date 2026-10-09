@@ -2648,7 +2648,7 @@ public sealed class NodeCompiler
             // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
             string arrayName = _registers.GetRegisterName(arrayKey);
             if (arrayKey.RegisterKey is D3D10RegisterKey vertexKey
-                && vertexKey.OperandType == OperandType.Input
+                && vertexKey.OperandType is OperandType.Input or OperandType.OutputControlPoint
                 && vertexKey.GSVertex.HasValue
                 && _registers.FindInputDeclaration(vertexKey, arrayKey.ComponentIndex)
                     is RegisterDeclaration vertex)
@@ -2664,7 +2664,10 @@ public sealed class NodeCompiler
                     _registers.GetRegisterMaskedLength(arrayKey),
                     promoteToVectorSize,
                     _registers.GetInputComponentBase(arrayKey));
-                return $"{_registers.InputArrayName}[{index}].{vertex.Name}{memberSwizzle}";
+                string vertexArray = vertexKey.OperandType == OperandType.OutputControlPoint
+                    ? RegisterState.OutputPatchName
+                    : _registers.InputArrayName;
+                return $"{vertexArray}[{index}].{vertex.Name}{memberSwizzle}";
             }
             // A run of input registers declared as one array by dcl_indexrange. Here
             // the semantic is the array and the index its subscript, the way round a

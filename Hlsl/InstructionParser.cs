@@ -2557,7 +2557,7 @@ public class InstructionParser
                     {
                         if ((mask & (1 << component)) == 0) continue;
 
-                        RegisterKey vertexKey = D3D10RegisterKey.CreateGSInput(registerKey.Number, vertex);
+                        RegisterKey vertexKey = d3D10RegisterKey.WithVertex(vertex);
                         yield return new RegisterComponentKey(vertexKey, component);
                     }
                 }
@@ -3968,8 +3968,12 @@ public class InstructionParser
             index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate));
         }
 
-        // Any vertex will do to find the declaration; they share one.
-        var registerKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
+        // Any vertex will do to find the declaration; they share one. A point the
+        // control point phase wrote is keyed apart from one of the patch it read.
+        int register = (int)operandIndices[1].Immediate;
+        var registerKey = instruction.GetOperandType(operandIndex) == OperandType.OutputControlPoint
+            ? D3D10RegisterKey.CreateControlPointOutput(register, 0)
+            : D3D10RegisterKey.CreateGSInput(register, 0);
         return new RelativeAddressNode(
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }
@@ -4115,7 +4119,7 @@ public class InstructionParser
                     // register of it - so a hull shader that loops over its control
                     // points rather than being unrolled reaches here, and used to
                     // stop the parse outright.
-                    OperandType.Input or OperandType.InputControlPoint
+                    OperandType.Input or OperandType.InputControlPoint or OperandType.OutputControlPoint
                         => GetDynamicVertexInput(
                             instruction, inputParameterIndex, componentIndex, operandIndices),
                     _ => throw new NotImplementedException(

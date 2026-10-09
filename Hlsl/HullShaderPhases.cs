@@ -89,7 +89,8 @@ public static class HullShaderPhases
             patchConstant == null
                 ? null
                 : Phase(shader, declarations, patchConstant,
-                    [.. shader.PatchConstantSignatures.Select(s => s.AsOutput())]));
+                    [.. shader.PatchConstantSignatures.Select(s => s.AsOutput())],
+                    shader.OutputSignatures));
     }
 
     /// <summary>
@@ -195,7 +196,8 @@ public static class HullShaderPhases
         ShaderModel shader,
         IList<Instruction> declarations,
         IList<Instruction> body,
-        IList<RegisterSignature> outputSignatures)
+        IList<RegisterSignature> outputSignatures,
+        IList<RegisterSignature> controlPointSignatures = null)
     {
         return new ShaderModel(
             shader.MajorVersion,
@@ -206,6 +208,9 @@ public static class HullShaderPhases
             shader.PatchConstantSignatures,
             shader.ConstantDeclarations,
             shader.ResourceDefinitions,
-            [.. declarations, .. body]);
+            [.. declarations, .. body])
+        {
+            ControlPointSignatures = controlPointSignatures,
+        };
     }
 }

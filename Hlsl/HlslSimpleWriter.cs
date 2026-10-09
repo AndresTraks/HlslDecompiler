@@ -3902,7 +3902,8 @@ public class HlslSimpleWriter : HlslWriter
         // was named off whatever declaration sat at that register: a hull shader
         // looping over its control points asked for `dot(f[r0.y].xyz, f[r0.y].xyz)`,
         // where f is the cbuffer float beside it, which does not compile.
-        if (operandType is OperandType.Input or OperandType.InputControlPoint)
+        if (operandType is OperandType.Input or OperandType.InputControlPoint
+            or OperandType.OutputControlPoint)
         {
             // A run of input registers declared as one array by dcl_indexrange has
             // one index, and the immediate beside it is the first register of the
@@ -3918,12 +3919,16 @@ public class HlslSimpleWriter : HlslWriter
             // Which member of the vertex is a question about the component read, not
             // about the register: two semantics can share one, and naming the
             // register's own declaration read the first of them whichever was meant.
-            var vertexKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
+            bool isOutputPatch = operandType == OperandType.OutputControlPoint;
+            var vertexKey = isOutputPatch
+                ? D3D10RegisterKey.CreateControlPointOutput((int)operandIndices[1].Immediate, 0)
+                : D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
             byte vertexComponent = instruction.GetSourceSwizzleComponents(operandIndex)[0];
             RegisterDeclaration vertexDeclaration =
                 _registers.FindInputDeclaration(vertexKey, vertexComponent)
                 ?? _registers.RegisterDeclarations[vertexKey];
-            return $"{_registers.InputArrayName}[{index}].{vertexDeclaration.Name}";
+            string vertexArray = isOutputPatch ? RegisterState.OutputPatchName : _registers.InputArrayName;
+            return $"{vertexArray}[{index}].{vertexDeclaration.Name}";
         }
 
         var registerKey = new D3D10RegisterKey(
@@ -4306,6 +4311,7 @@ public class HlslSimpleWriter : HlslWriter
             // names is as wide as its own declaration, and a member one component
             // wide has no swizzle to pick from.
             if (registerKey.OperandType is OperandType.Input or OperandType.InputControlPoint
+                    or OperandType.OutputControlPoint
                 && operandIndices.Length > 1
                 && !operandIndices[1].IsRelative)
             {
@@ -4318,7 +4324,10 @@ public class HlslSimpleWriter : HlslWriter
                 // loops over its vertices rather than being unrolled is that shape,
                 // and it stopped the instruction writer outright.
                 var vertexRegister = new D3D10RegisterKey(
-                    OperandType.Input, (int)operandIndices[1].Immediate);
+                    registerKey.OperandType == OperandType.OutputControlPoint
+                        ? OperandType.OutputControlPoint
+                        : OperandType.Input,
+                    (int)operandIndices[1].Immediate);
                 isPackedScalar = _registers.GetRegisterMaskedLength(new RegisterComponentKey(
                     vertexRegister, instruction.GetSourceSwizzleComponents(operandIndex)[0])) == 1;
             }
@@ -4342,7 +4351,9 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier, packed);
             }
         }
-        else if (registerKey.OperandType == OperandType.Input)
+        // A control point read back from the control point phase is packed the
+        // way that phase's outputs were.
+        else if (registerKey.OperandType is OperandType.Input or OperandType.OutputControlPoint)
         {
             // fxc can pack two differently named inputs into one register - TEXCOORD0
             // at v2.xy and TEXCOORD1 at v2.z - so which is meant depends on which
@@ -5014,7 +5025,7 @@ public class HlslSimpleWriter : HlslWriter
         return registerKey.OperandType switch
         {
             OperandType.ConstantBuffer => _registers.GetConstantComponentBase(key),
-            OperandType.Input => _registers.GetInputComponentBase(key),
+            OperandType.Input or OperandType.OutputControlPoint => _registers.GetInputComponentBase(key),
             _ => 0,
         };
     }
@@ -5126,7 +5137,7 @@ public class HlslSimpleWriter : HlslWriter
         return instruction.GetOperandType(operandIndex) switch
         {
             OperandType.ConstantBuffer => _registers.GetConstantComponentBase(registerComponentKey),
-            OperandType.Input or OperandType.InputPatchConstant =>
+            OperandType.Input or OperandType.InputPatchConstant or OperandType.OutputControlPoint =>
                 _registers.GetInputComponentBase(registerComponentKey),
             _ => 0,
         };

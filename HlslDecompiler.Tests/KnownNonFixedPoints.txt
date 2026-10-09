@@ -5,6 +5,7 @@
 # FixedPointTests explains both. Blessing (HLSL_BLESS=1) removes the shaders
 # that have become fixed points; it never adds one that has stopped being one.
 
+reordered hs_5_0/output_patch_loop
 reordered ps_4_1/sample_offsets
 reordered ps_5_0/gather_channels
 reordered ps_5_0/gather_cmp_variants

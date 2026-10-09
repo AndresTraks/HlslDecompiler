@@ -1385,6 +1385,14 @@ public abstract class HlslWriter
             {
                 $"InputPatch<{GetInputStructureName()}, {_registers.InputControlPointCount}> patch",
             };
+            // The patch constant function can read back the points the control
+            // point phase wrote as well, through a patch of its own - of the
+            // struct main returns, which is not this function's output struct.
+            if (_registers.ControlPointOutputRegisters.Count != 0)
+            {
+                parameters.Add($"OutputPatch<{Named("HS_OUT")}, "
+                    + $"{_registers.OutputControlPointCount}> {RegisterState.OutputPatchName}");
+            }
             if (_registers.PrimitiveIdDeclaration != null)
             {
                 parameters.Add(CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration));

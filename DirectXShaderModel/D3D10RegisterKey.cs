@@ -54,6 +54,23 @@ public class D3D10RegisterKey : RegisterKey
     }
 
     /// <summary>
+    /// A register of one of the control points a hull shader's control point phase
+    /// wrote, read back by its patch constant phase: `vocp[2][0]` is point 2's o0.
+    /// Shaped like a vertex input, and kept apart from one by its operand type,
+    /// since the patch constant phase can read the patch it was handed too.
+    /// </summary>
+    public static D3D10RegisterKey CreateControlPointOutput(int attribute, int point)
+    {
+        return new D3D10RegisterKey(OperandType.OutputControlPoint, attribute) { GSVertex = point };
+    }
+
+    /// <summary>The same register of another vertex or control point.</summary>
+    public D3D10RegisterKey WithVertex(int vertex)
+    {
+        return new D3D10RegisterKey(OperandType, Number) { GSVertex = vertex };
+    }
+
+    /// <summary>
     /// An attribute of one vertex or control point of the ones a shader is handed,
     /// keyed the way another register of the same shader already is: a geometry
     /// shader's as an input, a hull shader phase's as a control point.

@@ -678,6 +678,21 @@ public sealed class RegisterState
     /// </summary>
     public string InputArrayName =>
         _shaderModel.Type is ShaderType.Domain or ShaderType.Hull ? "patch" : "i";
+
+    /// <summary>
+    /// The control points a hull shader's patch constant phase reads back from what
+    /// its control point phase wrote - `vocp[1][0].w` - declared a register apiece
+    /// the way the patch's are, and read through an OutputPatch parameter of its own.
+    /// </summary>
+    public IList<RegisterDeclaration> ControlPointOutputRegisters { get; } = [];
+
+    public const string OutputPatchName = "opatch";
+
+    // Which list a declaration of an input of this kind goes in.
+    private IList<RegisterDeclaration> InputListOf(D3D10RegisterKey registerKey) =>
+        registerKey.OperandType == OperandType.OutputControlPoint
+            ? ControlPointOutputRegisters
+            : MethodInputRegisters;
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
 
     /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
@@ -823,7 +838,7 @@ public sealed class RegisterState
             // An input register can be packed the same way a constant buffer is, so
             // its width is that of the declaration actually covering this component,
             // not of the register's merged, wider mask.
-            if (d3d10RegisterKey.OperandType == OperandType.Input)
+            if (d3d10RegisterKey.OperandType is OperandType.Input or OperandType.OutputControlPoint)
             {
                 RegisterDeclaration inputDeclaration = FindInputDeclaration(
                     d3d10RegisterKey, registerComponentKey.ComponentIndex);
@@ -852,7 +867,7 @@ public sealed class RegisterState
         // A geometry shader's declarations are keyed by the register alone, and a
         // read names the vertex as well; the vertices share the declaration.
         D3D10RegisterKey baseKey = registerKey.GetGSBaseKey();
-        return MethodInputRegisters.FirstOrDefault(d =>
+        return InputListOf(registerKey).FirstOrDefault(d =>
             d.RegisterKey.Equals(baseKey) && (d.WriteMask & (1 << componentIndex)) != 0);
     }
 
@@ -941,7 +956,7 @@ public sealed class RegisterState
     {
         if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
             || registerKey.OperandType is not OperandType.Input
-                and not OperandType.InputPatchConstant)
+                and not OperandType.InputPatchConstant and not OperandType.OutputControlPoint)
         {
             return 0;
         }
@@ -1684,12 +1699,16 @@ public sealed class RegisterState
             }
         }
         if (registerComponentKey.RegisterKey is D3D10RegisterKey inputRegisterKey
-            && inputRegisterKey.OperandType == OperandType.Input)
+            && inputRegisterKey.OperandType is OperandType.Input or OperandType.OutputControlPoint)
         {
             RegisterDeclaration inputDeclaration = FindInputDeclaration(
                 inputRegisterKey, registerComponentKey.ComponentIndex);
             if (inputDeclaration != null)
             {
+                if (inputRegisterKey.OperandType == OperandType.OutputControlPoint)
+                {
+                    return $"{OutputPatchName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
+                }
                 if (inputRegisterKey.GSVertex.HasValue)
                 {
                     return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
@@ -2621,7 +2640,7 @@ public sealed class RegisterState
             {
                 for (int vertex = 0; vertex < registerKey.GSVertex.Value; vertex++)
                 {
-                    var vertexKey = D3D10RegisterKey.CreateGSInput(registerKey.Number, vertex);
+                    var vertexKey = registerKey.WithVertex(vertex);
 
                     if (RegisterDeclarations.TryGetValue(vertexKey, out var existingDeclaration))
                     {
@@ -2635,7 +2654,7 @@ public sealed class RegisterState
                             candidate.MaskedLengthOverride = CountSetBits(candidate.WriteMask);
                             existingDeclaration.MaskedLengthOverride =
                                 CountSetBits(existingDeclaration.WriteMask);
-                            MethodInputRegisters.Add(candidate);
+                            InputListOf(vertexKey).Add(candidate);
                         }
                         else
                         {
@@ -2646,7 +2665,7 @@ public sealed class RegisterState
                     {
                         var registerDeclaration = CreateRegisterDeclarationFromD3D10Dcl(instruction, vertexKey);
                         RegisterDeclarations.Add(vertexKey, registerDeclaration);
-                        MethodInputRegisters.Add(registerDeclaration);
+                        InputListOf(vertexKey).Add(registerDeclaration);
                     }
                 }
             }
@@ -2900,7 +2919,12 @@ public sealed class RegisterState
     /// </summary>
     private static bool MatchesSignature(RegisterSignature signature, D3D10RegisterKey registerKey)
     {
-        return signature.RegisterKey.OperandType == registerKey.OperandType
+        // A control point a patch constant phase reads back is one the control
+        // point phase wrote, so it is in the output signature.
+        bool sameType = registerKey.OperandType == OperandType.OutputControlPoint
+            ? signature.RegisterKey.OperandType == OperandType.Output && !signature.IsPatchConstant
+            : signature.RegisterKey.OperandType == registerKey.OperandType;
+        return sameType
             && signature.RegisterKey.Number == registerKey.Number
             && signature.Stream == (registerKey.Stream ?? 0);
     }
@@ -2915,7 +2939,8 @@ public sealed class RegisterState
         int declaredMask = instruction.GetDestinationWriteMask();
         IEnumerable<RegisterSignature> signatures = _shaderModel.InputSignatures
             .Concat(_shaderModel.OutputSignatures)
-            .Concat(_shaderModel.PatchConstantSignatures);
+            .Concat(_shaderModel.PatchConstantSignatures)
+            .Concat(_shaderModel.ControlPointSignatures ?? []);
         RegisterSignature signature =
             signatures.FirstOrDefault(i => MatchesSignature(i, registerKey) && (i.Mask & declaredMask) != 0)
             ?? signatures.FirstOrDefault(i => MatchesSignature(i, registerKey));

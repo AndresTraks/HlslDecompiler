@@ -1786,6 +1786,17 @@ public class D3D10Machine
                     int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
                     return VertexInput(point, (int)indices[1].Immediate);
                 }
+            case OperandType.OutputControlPoint:
+                {
+                    // A point the control point phase wrote, read back by a patch
+                    // constant phase. The phases run as programs of their own here,
+                    // so the point is a made up value, named by the point and the
+                    // register: both programs read the same one and agree on it.
+                    var indices = instruction.OperandTokens.GetOperandIndices(index);
+                    int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
+                    int register = (int)indices[1].Immediate;
+                    return [.. Named($"OUTPUTPOINT{register}[{point}]").Select(BitConverter.SingleToUInt32Bits)];
+                }
             case OperandType.InputPatchConstant:
                 // A hull shader is reading back what it wrote: a join phase's vpc0 is
                 // what a fork phase put in o0 a few lines up, and the phases run in

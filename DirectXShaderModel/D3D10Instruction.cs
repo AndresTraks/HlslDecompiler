@@ -1099,6 +1099,12 @@ public class D3D10Instruction : Instruction
                 (int)GetParamIndexImmediate32(index, 2),
                 (int)GetParamIndexImmediate32(index, 1));
         }
+        if (operandType == OperandType.OutputControlPoint)
+        {
+            return D3D10RegisterKey.CreateControlPointOutput(
+                (int)GetParamIndexImmediate32(index, 2),
+                (int)GetParamIndexImmediate32(index, 1));
+        }
         return new D3D10RegisterKey(
             operandType,
             GetParamRegisterNumber(index),

@@ -2822,6 +2822,14 @@ public class InstructionParser
         }
     }
 
+    // Bits whose exponent is all zeroes and are not zero, or all ones: as a float
+    // a denormal or an infinity or NaN, none of which a shader writes as a literal.
+    private static bool IsDenormalOrNaN(uint bits)
+    {
+        uint exponent = (bits >> 23) & 0xFF;
+        return (exponent == 0 && (bits & 0x7FFFFFFF) != 0) || exponent == 0xFF;
+    }
+
     private void ResolvePolymorphicImmediates()
     {
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
@@ -4107,8 +4115,16 @@ public class InstructionParser
                 // An immediate's 32 bits are typed by the instruction consuming them.
                 // A mov consumes nothing - the register it writes is the best guess
                 // for now, and what reads the value decides once the graph is whole.
-                var constant = _integerOperandAnalysis.IsIntegerOperand(instruction)
-                    ? new ConstantNode((int)instruction.GetParamInt(inputParameterIndex, componentIndex))
+                // And the bits a bitwise operation takes that no float literal
+                // spells - a denormal or a NaN - are the integer they are, whatever
+                // the other operand was taken for: `or r0.y, r1.x, l(1)` over a
+                // member of a mixed structured load wrote `t1 | 0.000000`, the 1
+                // read as the denormal its bits make.
+                uint immediateBits = (uint)instruction.GetParamInt(inputParameterIndex, componentIndex);
+                bool notAFloat = instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
+                    && IsDenormalOrNaN(immediateBits);
+                var constant = _integerOperandAnalysis.IsIntegerOperand(instruction) || notAFloat
+                    ? new ConstantNode((int)immediateBits)
                     : new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));
                 if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC)
                 {

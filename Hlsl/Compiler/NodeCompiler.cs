@@ -455,7 +455,9 @@ public sealed class NodeCompiler
         // make - a packed pair of half floats came back as three thousand million.
         // Every component, so that a constructor whose components are not all bits
         // is left to reinterpret them one at a time.
-        if (_readingAsFloat && components.All(c => ValueTypes.IsReinterpretedAsFloat(c) || IsIntegerRegisterReadAsFloat(c)))
+        if (_readingAsFloat && components.All(c => ValueTypes.IsReinterpretedAsFloat(c)
+            || IsIntegerRegisterReadAsFloat(c)
+            || (_compileDepth == _floatArithmeticOperandDepth && IsIntegerVariableReadAsFloat(c))))
         {
             _readingAsFloat = false;
             try
@@ -1161,6 +1163,22 @@ public sealed class NodeCompiler
     /// a GetDimensions reading a mip level says nothing, an integer add says
     /// integer, and either leaves the value the number it is.
     /// </summary>
+    // The depth the operands of the float arithmetic being compiled are at, or -1.
+    // Only those: a conversion's operand is read as the integer it is, and so is
+    // an array's index, however deep in a float expression either sits.
+    private int _floatArithmeticOperandDepth = -1;
+
+    // A variable declared an integer, an operand of float arithmetic with no
+    // conversion between. A register has no type, and a float instruction reading
+    // one reads its bits: where fxc kept a comparison's mask and then a float sum in
+    // one register, the variable is declared for the mask, the sum is stored into
+    // it as asint(...), and the float that reads it back wants it as asfloat(...) -
+    // read as it stood, the sum was converted from the integer its bits make.
+    private static bool IsIntegerVariableReadAsFloat(HlslTreeNode value)
+    {
+        return value is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false, IsDouble: false };
+    }
+
     private bool IsIntegerRegisterReadAsFloat(HlslTreeNode value)
     {
         if (value is not RegisterInputNode register
@@ -1677,6 +1695,7 @@ public sealed class NodeCompiler
         // whatever they are given.
         bool wasReadingAsBits = _readingAsBits;
         bool wasAssignedDirectly = _assignedDirectlyToInteger;
+        int wasFloatArithmeticOperandDepth = _floatArithmeticOperandDepth;
         _assignedDirectlyToInteger = false;
         _readingAsBits = operation is BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
             or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
@@ -1689,6 +1708,11 @@ public sealed class NodeCompiler
                 or MoveOperation or MoveConditionalOperation => false,
             _ => (ValueTypes.ComputesInIntegers(operation) ?? ValueTypes.IsIntegerValue(operation)) != true,
         };
+        _floatArithmeticOperandDepth = _readingAsFloat
+            && operation is AddOperation or SubtractOperation or MultiplyOperation
+                or DivisionOperation or MultiplyAddOperation
+            ? _compileDepth + 1
+            : -1;
         try
         {
             return CompileOperationOperands(operation, components, promoteToVectorSize);
@@ -1698,6 +1722,7 @@ public sealed class NodeCompiler
             _readingAsFloat = wasReadingAsFloat;
             _readingAsBits = wasReadingAsBits;
             _assignedDirectlyToInteger = wasAssignedDirectly;
+            _floatArithmeticOperandDepth = wasFloatArithmeticOperandDepth;
         }
     }
 

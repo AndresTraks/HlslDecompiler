@@ -730,7 +730,14 @@ public class HlslAstWriter : HlslWriter
     {
         if (values.All(v => ValueTypes.IsIntegerValue(v) == true))
         {
-            return _compiler.CompileAsInteger(values);
+            // Into floats, a variable declared an integer goes in as the bits it
+            // holds: the store writes a register's bits, and a float sum fxc kept in
+            // a register it had used for a mask came back `g0[i] = t2.x`, the sum
+            // converted from the integer its bits make.
+            return destinationHoldsIntegers == false
+                && values.All(v => v is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false })
+                ? $"asfloat({_compiler.CompileAsInteger(values)})"
+                : _compiler.CompileAsInteger(values);
         }
         // Only where the graph says a value is a float. One it says nothing about is
         // left as it was: it is already being written as whatever it is, and asuint
@@ -808,8 +815,12 @@ public class HlslAstWriter : HlslWriter
         RegisterKey bufferKey = ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
         // The element the store reaches says whether a float goes in as its bits,
         // the same question the raw store above answers from the buffer itself.
-        compiledValue = CompileStoredValue(storedValues,
-            _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset));
+        // Groupshared memory has no reflection to ask, and holds what its
+        // declaration says, which the same analysis decided.
+        bool? holdsIntegers = bufferKey is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            ? CreateIntegerOperandAnalysis().IsIntegerThreadGroupSharedMemory(bufferKey.Number)
+            : _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset);
+        compiledValue = CompileStoredValue(storedValues, holdsIntegers);
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
             bufferKey, $"{compiledDestination}[{compiledAddress}]",
             storeStructured.ElementByteOffset, storeStructured.Components);

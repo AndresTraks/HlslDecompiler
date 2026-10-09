@@ -4281,7 +4281,7 @@ public class HlslSimpleWriter : HlslWriter
             // uses them for nothing itself, so its immediate is typed by whatever
             // reads the register afterwards: -1.0f moved into a register that is a
             // loop counter elsewhere is still -1.0f.
-            bool isInteger = IsIntegerImmediate(instruction);
+            bool isInteger = IsIntegerImmediate(instruction) || instruction.IsAddressOperand(operandIndex);
             // A float immediate moved into an int register is stored as its bits,
             // which is how that register holds floats - but the asint goes on in
             // Moved or WriteResult, so nothing is needed here.

@@ -4239,8 +4239,9 @@ public class InstructionParser
                 // member of a mixed structured load wrote `t1 | 0.000000`, the 1
                 // read as the denormal its bits make.
                 uint immediateBits = (uint)instruction.GetParamInt(inputParameterIndex, componentIndex);
-                bool notAFloat = instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
-                    && IsDenormalOrNaN(immediateBits);
+                bool notAFloat = (instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
+                        && IsDenormalOrNaN(immediateBits))
+                    || instruction.IsAddressOperand(inputParameterIndex);
                 var constant = _integerOperandAnalysis.IsIntegerOperand(instruction) || notAFloat
                     ? new ConstantNode((int)immediateBits)
                     : new ConstantNode(instruction.GetParamSingle(inputParameterIndex, componentIndex));

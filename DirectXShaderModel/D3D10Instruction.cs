@@ -883,6 +883,23 @@ public class D3D10Instruction : Instruction
         };
     }
 
+    /// <summary>
+    /// Whether an operand says where in a buffer this reads or writes: an element
+    /// index, a byte offset, an address. Integers whatever the data is - a load of a
+    /// float from groupshared memory at l(1) read the 1 as the denormal its bits
+    /// make, and wrote `g0[0.000000]`.
+    /// </summary>
+    public bool IsAddressOperand(int index)
+    {
+        return Opcode switch
+        {
+            D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured => index is 1 or 2,
+            D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw
+                or D3D10Opcode.LdUAVTyped or D3D10Opcode.StoreUAVTyped => index == 1,
+            _ => false,
+        };
+    }
+
     public override string GetDeclSemantic()
     {
         int destIndex = GetDestinationParamIndex().Value;

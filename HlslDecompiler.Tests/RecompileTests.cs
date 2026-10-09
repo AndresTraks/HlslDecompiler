@@ -193,6 +193,29 @@ public class RecompileTests
     }
 
     /// <summary>
+    /// A path as fxc has to be given it. Wine translates the program name in argv
+    /// and nothing else, so an absolute unix path reaches fxc as a token starting
+    /// with `/`, which it reads as an option; it then exits 1 having printed
+    /// nothing at all, so the failure reads as a broken wine install rather than a
+    /// bad argument. Mapped through Z:, which is the unix root in a wine prefix.
+    ///
+    /// Every tier that compiles a file under the test assembly passes a relative
+    /// path and so never met this. The two golden tiers read the goldens where they
+    /// are kept in the working tree, which is absolute, and all 1060 of their cases
+    /// failed on Linux the day that landed - each of them reporting that a golden
+    /// which compiles perfectly well by hand does not compile. Anything handing fxc
+    /// a path comes through here, so a new tier cannot rediscover it.
+    /// </summary>
+    public static string AsFxcPath(string path)
+    {
+        if (OperatingSystem.IsWindows() || !Path.IsPathRooted(path))
+        {
+            return path;
+        }
+        return "Z:" + Path.GetFullPath(path).Replace('/', '\\');
+    }
+
+    /// <summary>
     /// The profile a decompilation is compiled for. fxc answers X3539 for ps_1_x,
     /// and a ps_1_x shader decompiles to the ps_2_0 one that computes the same, so
     /// that is what its HLSL is compiled as.
@@ -208,9 +231,9 @@ public class RecompileTests
         startInfo.ArgumentList.Add(CompileProfile(profile));
         startInfo.ArgumentList.Add("/E");
         startInfo.ArgumentList.Add("main");
-        startInfo.ArgumentList.Add(hlslOutputFilename);
+        startInfo.ArgumentList.Add(AsFxcPath(hlslOutputFilename));
         startInfo.ArgumentList.Add("/Fo");
-        startInfo.ArgumentList.Add(objectFilename);
+        startInfo.ArgumentList.Add(AsFxcPath(objectFilename));
 
         using var process = Process.Start(startInfo);
         string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();

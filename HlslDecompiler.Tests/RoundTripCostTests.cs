@@ -286,7 +286,7 @@ public class RoundTripCostTests
         var startInfo = RecompileTests.CreateFxcProcessStartInfo();
         startInfo.ArgumentList.Add("/nologo");
         startInfo.ArgumentList.Add("/dumpbin");
-        startInfo.ArgumentList.Add(binaryFilename);
+        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(binaryFilename));
 
         using var process = Process.Start(startInfo);
         string output = process.StandardOutput.ReadToEnd();

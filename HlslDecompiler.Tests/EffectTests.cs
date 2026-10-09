@@ -291,9 +291,9 @@ public class EffectTests
         {
             startInfo.ArgumentList.Add(option);
         }
-        startInfo.ArgumentList.Add(sourceFilename);
+        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(sourceFilename));
         startInfo.ArgumentList.Add("/Fo");
-        startInfo.ArgumentList.Add(objectFilename);
+        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(objectFilename));
 
         using var process = System.Diagnostics.Process.Start(startInfo);
         string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();

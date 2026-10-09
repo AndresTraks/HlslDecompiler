@@ -1140,6 +1140,20 @@ public sealed class IntegerOperandAnalysis
         return anyInteger;
     }
 
+    /// <summary>
+    /// The operand types that are an unsigned integer by definition - the ids a
+    /// compute or geometry shader is given and the coverage masks - whatever
+    /// register they are movd into.
+    /// </summary>
+    private static bool IsIntegerSystemValue(OperandType type)
+    {
+        return type is OperandType.InputThreadID or OperandType.InputThreadGroupID
+            or OperandType.InputThreadIDInGroup
+            or OperandType.InputThreadIDInGroupFlattened
+            or OperandType.InputCoverageMask or OperandType.InputInnerCoverage
+            or OperandType.InputGSInstanceID;
+    }
+
     private enum StoredType { Unknown, Integer, Float }
 
     // What the operand of the instruction at index holds, by the instruction that
@@ -1156,6 +1170,19 @@ public sealed class IntegerOperandAnalysis
         }
         if (type != OperandType.Temp)
         {
+            // A thread id, a group id, a coverage mask: these are uints by what they
+            // are, and no instruction converts them, so nothing downstream says so
+            // either. A tiled light list movs the flattened group index into a
+            // register and stores it into groupshared memory as the light's index;
+            // read as Unknown the array was declared float, the store went in as
+            // asfloat of the index and the load back out *converted* those bits to a
+            // uint rather than reinterpreting them - every light index came back 0.
+            // The loop's own `iadd` would have said integer, but it sits after the
+            // store in the listing and this walk only goes backwards.
+            if (IsIntegerSystemValue(type))
+            {
+                return StoredType.Integer;
+            }
             // An input or a constant, typed by its own declaration; not worth
             // chasing for this.
             return _integerRegisters != null && IsIntegerRegister(

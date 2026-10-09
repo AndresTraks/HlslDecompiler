@@ -707,10 +707,36 @@ public sealed class NodeCompiler
     /// </summary>
     private string CompileCondition(List<HlslTreeNode> components)
     {
+        // A select between masks tested as a condition is a select between bools:
+        // fxc flattens `if (count) t = count <= 1; else t = -1;` into a movc, and
+        // read back the test was `(count ? count <= 1 : -1)`, a bool beside an int.
+        // The -1 is the mask of true, and said so it is `count ? count <= 1 : true`.
+        if (components.Count == 1
+            && components[0].Inputs[0] is MoveConditionalOperation masks
+            && IsMask(masks.Inputs[1]) && IsMask(masks.Inputs[2])
+            && (masks.Inputs[1] is ComparisonNode || masks.Inputs[2] is ComparisonNode))
+        {
+            return $"({CompileCondition([masks])} ? {CompileMask(masks.Inputs[1])} : {CompileMask(masks.Inputs[2])})";
+        }
         string condition = Compile(components.Select(g => g.Inputs[0]));
         return components.Any(g => g.Inputs[0] is CompareOperation or MoveConditionalOperation)
             ? $"({condition})"
             : condition;
+    }
+
+    // A comparison, or a constant all ones or all zeroes.
+    private static bool IsMask(HlslTreeNode node)
+    {
+        return node is ComparisonNode
+            || node is ConstantNode { IntegerValue: -1 or 0 }
+            || node is ConstantNode { IntegerValue: null, Value: 0 };
+    }
+
+    private string CompileMask(HlslTreeNode mask)
+    {
+        return mask is ConstantNode constant
+            ? (constant.Value == 0 && constant.IntegerValue is null or 0 ? "false" : "true")
+            : Compile(mask);
     }
 
     // An operation whose every result component depends on that component of its

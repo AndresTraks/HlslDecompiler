@@ -201,7 +201,7 @@ public class TempDeclarationOrderTests
                 	float t5 = i.normal.x * t1.x - t1.y * i.normal.y;
                 	float3 t2 = float3(lerp(i.position.x, t5, t0), lerp(i.position.y, dot(t1, i.normal.yx), t0), t0 * -i.position.z + i.position.z);
                 	float t3 = 0;
-                	o.position.xyz = float3(i.position.x * abs(-1) + t4 * t5, i.position.y * abs(-1) + t4 * dot(t1, i.normal.yx), i.position.z * abs(0));
+                	o.position.xyz = float3(i.position.x + t4 * t5, i.position.y + t4 * dot(t1, i.normal.yx), 0);
                 	for (int i_ = 0; i_ < 9; i_++) {
                 		t3 = t3 - 1;
                 	}

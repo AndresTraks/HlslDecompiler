@@ -85,6 +85,7 @@ public class TemplateMatcher
                 new MultiplyOneTemplate(),
                 new MultiplyReciprocalDivisionTemplate(),
                 new MultiplyZeroTemplate(),
+                new AbsoluteConstantTemplate(),
                 new NegateConstantTemplate(),
                 new NegateNegateTemplate(),
                 new ReciprocalReciprocalSquareRootTemplate(),

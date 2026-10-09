@@ -3960,6 +3960,14 @@ public class InstructionParser
                 index);
         }
 
+        // The vertex is the index register plus the immediate beside it: an instanced
+        // fork phase reads `vicp[r0.x + 1]` with r0.x = -vForkInstanceID, and without
+        // the 1 its two runs read patch[0] and patch[-1] for patch[1] and patch[0].
+        if (operandIndices[VertexIndex].Immediate != 0)
+        {
+            index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate));
+        }
+
         // Any vertex will do to find the declaration; they share one.
         var registerKey = D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
         return new RelativeAddressNode(

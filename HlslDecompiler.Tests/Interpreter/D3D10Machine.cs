@@ -1777,8 +1777,14 @@ public class D3D10Machine
                     // vicp[point][register] is shaped like a geometry shader's
                     // v[vertex][register] and named the same way, so a control point
                     // of the patch gets the value that vertex of the primitive would.
+                    // The point plus whatever its index register holds, as a geometry
+                    // shader's vertex is: `vicp[r0.x + 1]` in a fork phase run once per
+                    // edge read point 1 for every edge, and an original and its
+                    // decompilation that indexed the patch differently disagreed for
+                    // a reason neither of them had.
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
-                    return VertexInput((int)indices[0].Immediate, (int)indices[1].Immediate);
+                    int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
+                    return VertexInput(point, (int)indices[1].Immediate);
                 }
             case OperandType.InputPatchConstant:
                 // A hull shader is reading back what it wrote: a join phase's vpc0 is

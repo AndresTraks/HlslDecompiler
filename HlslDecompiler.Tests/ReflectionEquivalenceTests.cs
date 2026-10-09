@@ -57,6 +57,17 @@ public class ReflectionEquivalenceTests
             + "use of the texture coordinate partial, declares the coordinate partial "
             + "too. What the shader computes is the same; the interpolator is hinted a "
             + "lower precision. The instruction writer keeps the halves apart.")],
+        ["hs_5_0/patch_semantic_index"] = [("ast",
+            "Two fork phases where the original had six. The patch constants b210 and "
+            + "b120 are a weighted sum of two control points each, written as one "
+            + "vector expression apiece, and fxc compiles the pair as one phase run "
+            + "twice - dcl_hs_fork_phase_instance_count 2, the second point indexed by "
+            + "the instance - where the original had a phase per component. The "
+            + "equivalence tier shows the same values come out."),
+            ("instruction",
+            "The same merge of the b210 and b120 phases, from the instruction writer's "
+            + "phase-by-phase copy of them: fxc finds the six alike and runs one "
+            + "phase per component twice.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

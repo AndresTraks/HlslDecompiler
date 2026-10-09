@@ -24,6 +24,7 @@ reworded cs_5_0/tile_depth_bounds
 reworded cs_5_0/tile_luminance
 reworded ds_5_0/isoline_curve
 reworded hs_5_0/carried_constants
+reworded hs_5_0/patch_semantic_index
 reworded hs_5_0/split_control_points
 reworded ps_3_0/guarded_average
 reworded ps_3_0/if_else_in_loop
@@ -66,6 +67,7 @@ reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count
 reworded vs_3_0/nested_select
+reworded vs_4_0/dual_quaternion_skin
 reworded vs_4_0/integer_inputs
 reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members

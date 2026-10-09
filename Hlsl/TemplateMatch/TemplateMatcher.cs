@@ -72,6 +72,7 @@ public class TemplateMatcher
             // of a value - a constant on the side it is put on, no move in the way.
             NodeStage("Arithmetic identities",
                 new AddConstantsTemplate(),
+                new ModuloConstantsTemplate(),
                 new AddNegateTemplate(),
                 new AddNegativeTemplate(),
                 new AddSelfTemplate(),

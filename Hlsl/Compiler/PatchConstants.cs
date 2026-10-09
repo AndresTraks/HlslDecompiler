@@ -83,7 +83,12 @@ public static class PatchConstants
             RegisterSignature first = field.First();
             int count = field.Count();
             string subscript = count > 1 ? $"[{count}]" : "";
-            yield return $"{TypeName(first)} {field.Key}{subscript} : {first.Name};";
+            // The index is part of the semantic where the field is one element:
+            // `float3 b210 : B210` is semantic B with index 210, and written `: B` two
+            // such fields were one semantic twice. An array's elements take theirs from
+            // their place in it.
+            string semantic = count == 1 && first.Index != 0 ? first.Name + first.Index : first.Name;
+            yield return $"{TypeName(first)} {field.Key}{subscript} : {semantic};";
         }
     }
 

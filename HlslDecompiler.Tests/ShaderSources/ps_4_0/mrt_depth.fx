@@ -19,8 +19,8 @@ PS_OUT main(PS_IN i)
 	PS_OUT o;
 
 	o.sv_target = float4(i.texcoord * tint.xy, 0, tint.w);
-	o.sv_depth = 0.5 * i.sv_position.z;
 	o.sv_target1 = float4(0.5 * normalize(i.normal) + 0.5, 1);
+	o.sv_depth = 0.5 * i.sv_position.z;
 
 	return o;
 }

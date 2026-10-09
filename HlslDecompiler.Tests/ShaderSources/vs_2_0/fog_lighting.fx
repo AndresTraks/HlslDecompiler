@@ -26,9 +26,9 @@ VS_OUT main(VS_IN i)
 	float t1 = saturate(dot(t0, -lightDirection.xyz));
 	float4 t2 = mul(i.position, worldViewProjection);
 	float t3 = (fog.y - t2.w) / (fog.y - fog.x);
-	o.position = t2;
 	o.color = lightColour * t1 + lightColour.w;
 	o.fog = saturate(t3);
+	o.position = t2;
 	o.psize = fog.z / t2.w;
 
 	return o;

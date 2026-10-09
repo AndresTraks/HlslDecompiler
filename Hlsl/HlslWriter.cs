@@ -1252,22 +1252,26 @@ public abstract class HlslWriter
         WriteLine($"struct {outputStructType}");
         WriteLine("{");
         indent = "\t";
-        IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
-        // Shader model 3 declares its outputs, so the order they were found in is the
-        // order the shader wrote them down. Before that the output registers are fixed
-        // ones - oPos, oT0, oFog - and are never declared, so a field's place in the
-        // struct would otherwise be whichever of them fxc happened to write to first.
-        if (_shader.MajorVersion <= 2)
-        {
-            outputs = outputs.OrderBy(o => o.Semantic).ToList();
-        }
-        foreach (var output in outputs)
+        foreach (var output in OutputsInStructOrder())
         {
             WriteLine(CompileRegisterDeclaration(output) + ';');
         }
         indent = "";
         WriteLine("};");
         WriteLine();
+    }
+
+    /// <summary>
+    /// The outputs in the order the output struct declares them. Shader model 3
+    /// declares its outputs, so the order they were found in is the order the shader
+    /// wrote them down. Before that the output registers are fixed ones - oPos, oT0,
+    /// oFog - and are never declared, so a field's place in the struct would
+    /// otherwise be whichever of them fxc happened to write to first.
+    /// </summary>
+    protected IList<RegisterDeclaration> OutputsInStructOrder()
+    {
+        IList<RegisterDeclaration> outputs = _registers.MethodOutputRegisters;
+        return _shader.MajorVersion <= 2 ? [.. outputs.OrderBy(o => o.Semantic)] : outputs;
     }
 
     private void WriteStreamStructureDeclaration(int stream)

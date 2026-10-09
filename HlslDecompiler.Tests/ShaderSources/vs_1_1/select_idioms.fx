@@ -19,8 +19,8 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.position = mul(i.position, wvp);
 	o.color = step(threshold, i.color) * i.color * scales[trunc(i.texcoord.x)] + ((i.color < threshold) ? 1 : 0) * frac(i.color) + exp2(i.color.x) + log2(i.color.y);
+	o.position = mul(i.position, wvp);
 
 	return o;
 }

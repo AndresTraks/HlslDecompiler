@@ -14,8 +14,8 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 	PS_OUT o;
 
 	o.color = a * texcoord;
-	o.depth = c.x;
 	o.color1 = texcoord + b;
+	o.depth = c.x;
 
 	return o;
 }

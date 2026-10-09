@@ -17,8 +17,8 @@ PS_OUT main(PS_IN i)
 	PS_OUT o;
 
 	o.sv_target = i.sv_isfrontface ? float4(i.texcoord, 0, 1) : float4(0, i.texcoord, 1);
-	o.sv_depth = saturate(0.00999999978 * i.texcoord.x + i.sv_position.z);
 	o.sv_coverage = i.texcoord.y > 0.5 ? 15 : 3;
+	o.sv_depth = saturate(0.00999999978 * i.texcoord.x + i.sv_position.z);
 
 	return o;
 }

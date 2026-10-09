@@ -13,8 +13,8 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 	for (uint t2 = 0; t2 < t0; t2 = t2 + 1) {
 		t1 = t1 | (1 << t2);
 	}
-	o.sv_coverage = t1;
 	o.sv_target = float4(texcoord.xyz, 1);
+	o.sv_coverage = t1;
 
 	return o;
 }

@@ -627,7 +627,7 @@ public class HlslAstWriter : HlslWriter
         {
             writes.Add((group, [], () => WriteLine(CompileAssignment(group))));
         }
-        foreach (var rootGroup in outputs.OrderBy(o => o.Key.RegisterKey.Number).ThenBy(o => o.Key.ComponentIndex))
+        foreach (var rootGroup in outputs.OrderBy(o => OutputOrder(o.Key)).ThenBy(o => o.Key.ComponentIndex))
         {
             RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
             HlslTreeNode[] nodes = rootGroup.Value;
@@ -1543,7 +1543,7 @@ public class HlslAstWriter : HlslWriter
         else
         {
             foreach (var rootGroup in TempAssignmentOrder.Sort(
-                outputs.OrderBy(o => o.Key.RegisterKey.Number).ThenBy(o => o.Key.ComponentIndex),
+                outputs.OrderBy(o => OutputOrder(o.Key)).ThenBy(o => o.Key.ComponentIndex),
                 o => o.Value))
             {
                 RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
@@ -2425,6 +2425,17 @@ public class HlslAstWriter : HlslWriter
             }
             registerGroups[g] = [.. widened];
         }
+    }
+
+    // Where an output goes among the writes: the place the output struct declares
+    // it, and the register number where it declares none of them. By number
+    // alone, D3D9's position, first texture coordinate and first colour are all
+    // register 0, and they were written in whatever order fxc had - which changed
+    // from one round to the next.
+    private int OutputOrder(RegisterComponentKey key)
+    {
+        int place = OutputsInStructOrder().ToList().FindIndex(d => d.RegisterKey.Equals(key.RegisterKey));
+        return place >= 0 ? place : 1000 + key.RegisterKey.Number;
     }
 
     // Where a statement sits: the body holding it, and its place in that body.

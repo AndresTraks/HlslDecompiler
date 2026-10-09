@@ -20,8 +20,8 @@ VS_OUT main(VS_IN i)
 
 	float3 t0 = light.xyz - i.position.xyz;
 	float t1 = rcp(dot(attenuation, float3(length(t0) * length(t0) * length(t0), length(t0) * length(t0), length(t0))));
-	o.position = mul(i.position, worldViewProj);
 	o.color = float4(sign(dot(normalize(t0), i.normal.xyz)) * t1, pow(saturate(t1), light.w), length(t0), 1);
+	o.position = mul(i.position, worldViewProj);
 
 	return o;
 }

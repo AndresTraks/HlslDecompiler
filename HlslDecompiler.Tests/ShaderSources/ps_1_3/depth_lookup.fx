@@ -22,8 +22,8 @@ PS_OUT main(PS_IN i)
 	float4 t0 = tex2D(s0, i.texcoord);
 	float t1 = dot(i.texcoord2, t0.xyz);
 	float t2 = dot(i.texcoord3, t0.xyz);
-	o.depth = t1 == 0 ? 1 : dot(i.texcoord1, t0.xyz) / t1;
 	o.color = t0 * tex2D(s3, float2(t2, 0));
+	o.depth = t1 == 0 ? 1 : dot(i.texcoord1, t0.xyz) / t1;
 
 	return o;
 }

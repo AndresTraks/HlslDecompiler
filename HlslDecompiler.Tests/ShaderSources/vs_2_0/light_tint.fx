@@ -23,9 +23,9 @@ VS_OUT main(VS_IN i)
 
 	float t0 = (fogParams.y - length(mul(i.position, (float4x3)w) - eye)) * fogParams.z;
 	float3 t1 = normalize(mul(i.normal.xyz, (float3x3)w));
-	o.position = mul(i.position, wvp);
 	o.color = saturate(dot(t1, -lightDir)) * float4(1, 0.899999976, 0.800000012, 1);
 	o.fog = saturate(t0);
+	o.position = mul(i.position, wvp);
 
 	return o;
 }

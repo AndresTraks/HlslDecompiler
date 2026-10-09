@@ -3149,9 +3149,9 @@ public class HlslAstWriter : HlslWriter
     /// The outermost repeat is named first, and the ones inside it after, so the
     /// order they were made in is the reverse of the order they are read in.
     /// </summary>
-    private static List<HlslTreeNode[]> Renumber(List<HlslTreeNode[]> assignments)
+    private List<HlslTreeNode[]> Renumber(List<HlslTreeNode[]> assignments)
     {
-        List<HlslTreeNode[]> sorted = TempAssignmentOrder.Sort(assignments);
+        List<HlslTreeNode[]> sorted = TempAssignmentOrder.Sort(InReadOrder(assignments));
         List<int> indices = [.. sorted
             .Select(group => ((TempAssignmentNode)group[0]).TempVariable.DeclarationIndex.Value)
             .OrderBy(index => index)];
@@ -3163,6 +3163,38 @@ public class HlslAstWriter : HlslWriter
             }
         }
         return sorted;
+    }
+
+    /// <summary>
+    /// The reads of textures and buffers among the named values in an order of
+    /// their own - by their text - in the places the reads had between them, and
+    /// everything else where it was. Which of two independent samples fxc issues
+    /// first is its scheduling, and they came back the other way round from one
+    /// round to the next: tex3Dproj then tex3Dlod, then tex3Dlod then tex3Dproj.
+    /// The dependency sort after this keeps any read that needs another after it.
+    /// </summary>
+    private List<HlslTreeNode[]> InReadOrder(List<HlslTreeNode[]> assignments)
+    {
+        List<int> places = [.. Enumerable.Range(0, assignments.Count).Where(i => IsResourceRead(assignments[i]))];
+        if (places.Count < 2)
+        {
+            return assignments;
+        }
+        List<HlslTreeNode[]> reads = [.. places
+            .Select(i => assignments[i])
+            .OrderBy(group => _compiler.Measure([group.Select(a => ((TempAssignmentNode)a).Value)]).Recording[^1].Text,
+                StringComparer.Ordinal)];
+        List<HlslTreeNode[]> ordered = [.. assignments];
+        for (int k = 0; k < places.Count; k++)
+        {
+            ordered[places[k]] = reads[k];
+        }
+        return ordered;
+    }
+
+    private static bool IsResourceRead(HlslTreeNode[] group)
+    {
+        return group.All(a => a is TempAssignmentNode { Value: TextureLoadOutputNode or ResourceLoadNode or LoadStructuredNode });
     }
 
     // One node read as every component of an operand - a scalar divisor under a

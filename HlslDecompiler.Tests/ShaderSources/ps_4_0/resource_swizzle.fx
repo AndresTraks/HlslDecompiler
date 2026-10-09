@@ -17,8 +17,8 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	float t1 = dot(transpose(invViewProj)[3], t0);
 	float3 t2 = lightPos - mul(t0, (float4x3)invViewProj) / t1;
 	float t3 = saturate(1 - length(t2) / lightRange);
-	float3 t4 = normalTex.Sample(samp, texcoord).xyz;
-	float t5 = saturate(dot(2 * t4 - 1, normalize(t2)));
-	float4 t6 = albedoTex.Sample(samp, texcoord);
-	return t3 * t5 * t6 * lightColour;
+	float4 t4 = albedoTex.Sample(samp, texcoord);
+	float3 t5 = normalTex.Sample(samp, texcoord).xyz;
+	float t6 = saturate(dot(2 * t5 - 1, normalize(t2)));
+	return t3 * t6 * t4 * lightColour;
 }

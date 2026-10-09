@@ -25,8 +25,8 @@ void main(CS_IN i)
 	float4 t1 = g0[i.sv_groupindex + 1 & 31].m0;
 	uint t2 = i.sv_groupindex + 1 & 31;
 	float t3 = g0[t2].m4.w;
-	float t4 = g0[t2].m4.z;
+	float t4 = g0[t2].m4.x;
 	float t5 = g0[t2].m4.y;
-	float t6 = g0[t2].m4.x;
-	output[i.sv_dispatchthreadid.x] = t1 / float4(t6, t5, t4, t3);
+	float t6 = g0[t2].m4.z;
+	output[i.sv_dispatchthreadid.x] = t1 / float4(t4, t5, t6, t3);
 }

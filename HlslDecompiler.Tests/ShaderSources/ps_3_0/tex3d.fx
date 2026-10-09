@@ -12,12 +12,12 @@ PS_OUT main(float4 texcoord : TEXCOORD)
 {
 	PS_OUT o;
 
-	float4 t0 = tex3Dproj(sampler0, texcoord.xyyw);
-	float4 t1 = tex3Dlod(sampler0, texcoord);
+	float4 t0 = tex3Dlod(sampler0, texcoord);
+	float4 t1 = tex3Dproj(sampler0, texcoord.xyyw);
 	o.color = tex3D(sampler0, texcoord.xyz);
 	o.color1 = tex3Dgrad(sampler0, texcoord.xyz, texcoord.xyz, texcoord.yxz);
 	o.color2 = tex3Dgrad(sampler0, float3(1, 2, 3), texcoord.xyz, texcoord.xyz);
-	o.color3 = t1 + t0;
+	o.color3 = t0 + t1;
 
 	return o;
 }

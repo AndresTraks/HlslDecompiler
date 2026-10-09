@@ -31,9 +31,9 @@ float4 main(PS_IN i) : SV_Target
 	float t4 = saturate(dot(t2, t3));
 	float2 t5 = brdfLut.Sample(trilinear, float2(t4, i.texcoord1)).xy;
 	float t6 = t5.x + t5.y;
-	float3 t7 = environment.SampleLevel(trilinear, t2, 6).xyz;
-	float3 t8 = environment.SampleLevel(trilinear, reflect(-t3, t2), 6 * i.texcoord1).xyz;
+	float3 t7 = environment.SampleLevel(trilinear, reflect(-t3, t2), 6 * i.texcoord1).xyz;
+	float3 t8 = environment.SampleLevel(trilinear, t2, 6).xyz;
 	float3 t9 = mul(float4(i.position, 1), (float4x3)lightViewProjection[t0]) / t1;
 	float t10 = shadowMaps.SampleCmpLevelZero(shadowSampler, float3(float2(0.5, -0.5) * t9.xy + 0.5, (float)t0), t9.z - shadowBias).x;
-	return float4(pow(1 - exp(-t10 * (t8 * t6 + t7) * lightColor * exposure), 0.454545468), 1);
+	return float4(pow(1 - exp(-t10 * (t7 * t6 + t8) * lightColor * exposure), 0.454545468), 1);
 }

@@ -19,7 +19,7 @@ float4 main(PS_IN i) : COLOR
 	float3 t0 = tex2D(s0, i.texcoord).xyz;
 	float t1 = saturate(t0.z * bumpEnvLum2.x + bumpEnvLum2.y);
 	float2 t2 = mul(t0.xy, bumpEnvMat2) + i.texcoord2;
-	float4 t3 = tex2D(s2, t2);
-	float4 t4 = tex2D(s1, mul(t0.xy, bumpEnvMat1) + i.texcoord1);
-	return tex2D(s3, t0.yz) * i.color + t4 * float4(t3.xyz * t1, t3.w);
+	float4 t3 = tex2D(s1, mul(t0.xy, bumpEnvMat1) + i.texcoord1);
+	float4 t4 = tex2D(s2, t2);
+	return tex2D(s3, t0.yz) * i.color + t3 * float4(t4.xyz * t1, t4.w);
 }

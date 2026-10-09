@@ -32,7 +32,7 @@ float4 main(PS_IN i) : SV_Target
 	float t8 = 1 - saturate(dot(t2, float3(t7.x, t6.y, t7.y)));
 	float t9 = t8 * t8;
 	float t10 = 0.899999976 * t9 * t9 * t8 + 0.100000001;
-	float3 t11 = refraction.Sample(samp, -0.0199999996 * t7 + t0).xyz;
-	float3 t12 = reflection.Sample(samp, 0.0299999993 * t7 + t0).xyz;
-	return float4(lerp(t11, t12, t10) * tint.xyz, 1);
+	float3 t11 = reflection.Sample(samp, 0.0299999993 * t7 + t0).xyz;
+	float3 t12 = refraction.Sample(samp, -0.0199999996 * t7 + t0).xyz;
+	return float4(lerp(t12, t11, t10) * tint.xyz, 1);
 }

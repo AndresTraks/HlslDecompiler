@@ -15,9 +15,9 @@ float4 main(PS_IN i) : SV_Target
 {
 	float4 t0;
 	if (useDetail) {
-		float4 t1 = detail.Sample(samp, 8 * i.texcoord);
-		float4 t2 = albedo.Sample(samp, i.texcoord);
-		t0 = t2 * t1;
+		float4 t1 = albedo.Sample(samp, i.texcoord);
+		float4 t2 = detail.Sample(samp, 8 * i.texcoord);
+		t0 = t1 * t2;
 	} else {
 		t0 = albedo.Sample(samp, i.texcoord);
 	}

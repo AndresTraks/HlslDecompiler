@@ -23,12 +23,12 @@ float4 main(PS_IN i) : COLOR
 	float t1 = dot(i.texcoord2, t0);
 	float3 t2 = t0 * -t1 + i.texcoord2;
 	float3 t3 = normalize(t2);
-	float3 t4 = tex2D(normalMap, uvScale * i.texcoord3).xyz;
-	float3 t5 = 2 * t4 - 1;
-	float4 t6 = tex2D(diffuseMap, uvScale * i.texcoord3);
+	float4 t4 = tex2D(diffuseMap, uvScale * i.texcoord3);
+	float3 t5 = tex2D(normalMap, uvScale * i.texcoord3).xyz;
+	float3 t6 = 2 * t5 - 1;
 	float4 t7 = float4(0.100000001, 0.100000001, 0.100000001, 0);
-	float4 t8 = t6 * i.color;
-	float3 t9 = normalize(t5.x * t3 + cross(t0, t3) * t5.y + t5.z * t0);
+	float4 t8 = t4 * i.color;
+	float3 t9 = normalize(t6.x * t3 + cross(t0, t3) * t6.y + t6.z * t0);
 	float3 t10 = normalize(cameraPosition - i.texcoord);
 	for (int i_ = 0; i_ < lightCount; i_++) {
 		float3 t11 = t7.w - float3(1, 2, 3);

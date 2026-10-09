@@ -11,7 +11,7 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_TARGET
 {
-	float4 t0 = shadowMap.GatherCmp(shadowSampler, i.texcoord.xy, i.texcoord.z, i.offset);
-	float4 t1 = albedo.Gather(samp, i.texcoord.xy, i.offset);
-	return t1 + t0;
+	float4 t0 = albedo.Gather(samp, i.texcoord.xy, i.offset);
+	float4 t1 = shadowMap.GatherCmp(shadowSampler, i.texcoord.xy, i.texcoord.z, i.offset);
+	return t0 + t1;
 }

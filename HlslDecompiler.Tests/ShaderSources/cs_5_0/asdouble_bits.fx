@@ -4,10 +4,9 @@ RWStructuredBuffer<uint2> output : register(u0);
 [numthreads(32, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	uint t0 = source[sv_dispatchthreadid.x].x;
-	uint t1 = source[sv_dispatchthreadid.x].y;
-	double t2 = asdouble(t0, t1) * 2;
-	uint2 t3;
-	asuint(t2, t3.x, t3.y);
-	output[sv_dispatchthreadid.x] = t3;
+	uint2 t0 = source[sv_dispatchthreadid.x];
+	double t1 = asdouble(t0.x, t0.y) * 2;
+	uint2 t2;
+	asuint(t1, t2.x, t2.y);
+	output[sv_dispatchthreadid.x] = t2;
 }

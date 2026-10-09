@@ -10,7 +10,6 @@ RWStructuredBuffer<uint4> output : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	uint t0 = words[sv_dispatchthreadid.x].x;
-	uint t1 = words[sv_dispatchthreadid.x].y;
-	output[sv_dispatchthreadid.x] = msad4(reference, uint2(t0, t1), accum);
+	uint2 t0 = words[sv_dispatchthreadid.x];
+	output[sv_dispatchthreadid.x] = msad4(reference, uint2(t0.x, t0.y), accum);
 }

@@ -2564,7 +2564,7 @@ public class HlslAstWriter : HlslWriter
     private HlslTreeNode[] WithSiblingOperations(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
     {
-        if (candidate.Length != 1 || ComponentOrder(candidate[0]) is not int order)
+        if (candidate.Length != 1 || SiblingOrder(candidate[0], candidate[0]) is not int order)
         {
             return candidate;
         }
@@ -2574,7 +2574,7 @@ public class HlslAstWriter : HlslWriter
             if (ReferenceEquals(sibling, candidate[0])
                 || roots.Contains(sibling)
                 || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false)
-                || ComponentOrder(sibling) is not int siblingOrder
+                || SiblingOrder(sibling, candidate[0]) is not int siblingOrder
                 || byOrder.ContainsKey(siblingOrder))
             {
                 continue;
@@ -2664,6 +2664,17 @@ public class HlslAstWriter : HlslWriter
             return row;
         }
         return node.SourceInstruction != 0 ? node.SourceComponent : ComponentOrder(node);
+    }
+
+    // Where a sibling goes beside the candidate: the lane one instruction wrote it
+    // to, where one wrote both - three components of a structured load all read
+    // the same index, so the component they read answered the same for each and
+    // only one of them was taken; otherwise the component the expression reads.
+    private static int? SiblingOrder(HlslTreeNode node, HlslTreeNode candidate)
+    {
+        return HlslTreeNode.IsSameInstruction(node, candidate) && node is LoadStructuredNode
+            ? node.SourceComponent
+            : ComponentOrder(node);
     }
 
     /// <summary>

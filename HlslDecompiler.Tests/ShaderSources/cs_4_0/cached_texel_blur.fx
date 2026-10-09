@@ -23,12 +23,8 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	float4 t1 = 0;
 	for (uint t2 = 0; t2 < 4; t2 = t2 + 1) {
-		uint t3 = min(t2 + i.sv_groupindex, 63);
-		float t4 = g0[t3].w;
-		float t5 = g0[t3].x;
-		float t6 = g0[t3].y;
-		float t7 = g0[t3].z;
-		t1 = t1 + float4(t5, t6, t7, t4) * weights[t2];
+		float4 t3 = g0[min(t2 + i.sv_groupindex, 63)];
+		t1 = t1 + t3 * weights[t2];
 	}
 	output[t0] = t1 / (float4)width;
 }

@@ -373,6 +373,26 @@ public class NodeGrouper
             return true;
         }
 
+        // Dot products scaled by the components of one vector are one multiply of the
+        // vector the dots make: texm3x3's three dots times the diffuse came back a
+        // component at a time, `float4(dot(a, n) * c.x, dot(b, n) * c.y, ...)`, three
+        // muls where `float3(dot(a, n), ...) * c.xyz` is one - the dots land in the
+        // lanes of one register whatever they are written as.
+        if (node1 is MultiplyOperation product1 && node2 is MultiplyOperation product2)
+        {
+            for (int dotSide = 0; dotSide < 2; dotSide++)
+            {
+                if (product1.Inputs[dotSide] is DotProductOperation
+                    && product2.Inputs[dotSide] is DotProductOperation
+                    && !ReferenceEquals(product1.Inputs[dotSide], product2.Inputs[dotSide])
+                    && product1.Inputs[1 - dotSide] is not DotProductOperation
+                    && CanGroupComponents(product1.Inputs[1 - dotSide], product2.Inputs[1 - dotSide]))
+                {
+                    return true;
+                }
+            }
+        }
+
         if (node1 is IHasComponentIndex ||
             node1 is GroupNode ||
             node1 is Operation)

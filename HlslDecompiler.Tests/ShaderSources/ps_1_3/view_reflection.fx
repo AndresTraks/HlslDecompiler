@@ -16,6 +16,5 @@ float4 main(PS_IN i) : COLOR
 	float t2 = dot(i.texcoord2.xyz, 2 * t0 - 1);
 	float t3 = dot(i.texcoord3.xyz, 2 * t0 - 1);
 	float t4 = 2 * ((t1 * i.texcoord1.w + t2 * i.texcoord2.w + t3 * i.texcoord3.w) / dot(float3(t1, t2, t3), float3(t1, t2, t3)));
-	float2 t5 = float2(t1 * t4 - i.texcoord1.w, t2 * t4 - i.texcoord2.w);
-	return tex2D(s3, t5);
+	return tex2D(s3, float2(t1 * t4 - i.texcoord1.w, t2 * t4 - i.texcoord2.w));
 }

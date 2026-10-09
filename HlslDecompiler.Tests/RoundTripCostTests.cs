@@ -180,10 +180,12 @@ public class RoundTripCostTests
             "Five instructions. texreg2ar and texreg2gb read another texel's (a, r) "
             + "and (g, b) as coordinates, which ps_2_0's texld cannot take swizzled, "
             + "so each is a mov before its texld."),
-        ["ps_1_2/matrix_colour"] = (9,
-            "Five instructions. texm3x3 is three dot products made a colour with an "
-            + "alpha of 1, and the AST writer multiplies that colour by the diffuse "
-            + "a component at a time, since the vector is built from three scalars."),
+        ["ps_1_2/matrix_colour"] = (7,
+            "Three instructions. texm3x3 is three dot products made a colour with an "
+            + "alpha of 1, which ps_2_0 writes as three dp3s and a mov where ps_1_2 has "
+            + "the one texm3x3. It was five while the colour was multiplied by the "
+            + "diffuse a component at a time; the dots scaled by one vector's "
+            + "components now group into one multiply."),
         ["ps_1_3/view_reflection"] = (16,
             "Five instructions. texm3x3vspec is texm3x3spec with the eye taken from "
             + "the fourth components of the three coordinates: three dot products, "

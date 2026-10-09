@@ -923,8 +923,10 @@ public abstract class HlslWriter
             // none the wiser.
             int nextTexture = 0;
             int nextSampler = 0;
-            foreach (var resource in _registers.ResourceDefinitions)
+            var definitions = _registers.ResourceDefinitions.ToList();
+            for (int r = 0; r < definitions.Count; r++)
             {
+                var resource = definitions[r];
                 string typeName = ResourceTypeName(resource);
                 // A texture buffer is declared by its block, with the constants,
                 // and not as a resource of its own.
@@ -932,24 +934,45 @@ public abstract class HlslWriter
                 {
                     continue;
                 }
+                // An array of resources is listed an element at a time - layers[0],
+                // layers[1], layers[2] - and declared as those it was three
+                // declarations of a name with a subscript in it, which is not HLSL.
+                // The elements in a run, the same kind in consecutive slots, are the
+                // one array, and the reads already name them by subscript.
+                string name = resource.Name;
+                int count = 1;
+                var element = System.Text.RegularExpressions.Regex.Match(name, @"^(\w+)\[0\]$");
+                if (element.Success)
+                {
+                    while (r + count < definitions.Count
+                        && definitions[r + count].Name == $"{element.Groups[1].Value}[{count}]"
+                        && definitions[r + count].ShaderInputType == resource.ShaderInputType
+                        && definitions[r + count].BindPoint == resource.BindPoint + count
+                        && ResourceTypeName(definitions[r + count]) == typeName)
+                    {
+                        count++;
+                    }
+                    name = $"{element.Groups[1].Value}[{count}]";
+                }
                 string slot;
                 if (resource.ShaderInputType == D3DShaderInputType.Texture)
                 {
                     slot = resource.BindPoint == nextTexture ? "" : $" : register(t{resource.BindPoint})";
-                    nextTexture = resource.BindPoint + 1;
+                    nextTexture = resource.BindPoint + count;
                 }
                 else if (resource.ShaderInputType == D3DShaderInputType.Sampler)
                 {
                     slot = resource.BindPoint == nextSampler ? "" : $" : register(s{resource.BindPoint})";
-                    nextSampler = resource.BindPoint + 1;
+                    nextSampler = resource.BindPoint + count;
                 }
                 else
                 {
                     bool isView = resource.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress;
                     slot = $" : register({(isView ? 't' : 'u')}{resource.BindPoint})";
                 }
-                WriteLine($"{typeName} {resource.Name}{slot};");
+                WriteLine($"{typeName} {name}{slot};");
                 declared++;
+                r += count - 1;
             }
             if (declared != 0)
             {

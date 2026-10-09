@@ -21,6 +21,13 @@ public class StatementFinalizer
     // The dead-value pass below would otherwise take it out as computing nothing.
     private readonly HashSet<RegisterKey> _liveOut;
 
+    // Per break and continue, the register components its loop carries out to a
+    // reader - the keys whose parting value the jump makes observable. Worked out
+    // once, before anything is lowered, because the evidence for it does not
+    // survive: see FindCarriedByJump.
+    private readonly Dictionary<IStatement, HashSet<RegisterComponentKey>> _carriedByJump =
+        new(ReferenceEqualityComparer.Instance);
+
     private StatementFinalizer(IList<IStatement> statements, bool hasReturnValue,
         bool hasOutputStruct, IntegerOperandAnalysis integerOperandAnalysis,
         ISet<HlslTreeNode> doubleValues, IEnumerable<RegisterKey> liveOut)
@@ -45,6 +52,7 @@ public class StatementFinalizer
     private void FinalizeStatements()
     {
         RemoveUnusedAssignmentInputOutput();
+        FindCarriedByJump();
         RemoveUnusedAssignments(_statements);
         InsertTempVariableAssignments(_statements);
         LowerResolvedPhis();
@@ -430,8 +438,13 @@ public class StatementFinalizer
                 // wherever it is read - a literal in a loop body is a literal, and an
                 // input is an input. Unless a phi reads it: then it is the value a
                 // loop counter or accumulator starts from, and the variable is the
-                // point.
-                if (IsFreeToRead(assignmentNode) && assignmentNode.Outputs.All(v => v is not PhiNode))
+                // point. Or unless a break or a continue carries it out of the loop,
+                // which is the same kind of reader seen from the other side - the
+                // `1` a reflection sets its hit flag to before breaking is read by
+                // nothing and is the whole answer, and dropped as a literal the
+                // shader reported every pixel as a miss.
+                if (IsFreeToRead(assignmentNode) && assignmentNode.Outputs.All(v => v is not PhiNode)
+                    && FindHoldingStatements(assignmentNode).Length == 0)
                 {
                     RemoveAnyAssignment(assignmentNode);
                     continue;
@@ -1437,25 +1450,96 @@ public class StatementFinalizer
 
     /// <summary>
     /// Whether a value read by nothing is one a break or a continue carries out of
-    /// the loop rather than one that is simply dead. A copy is the usual shape, and
-    /// so is the step of a counter fxc worked out in the branch - `iadd r0.z, r0.w,
-    /// l(1)` before a continue, and again at the end of the body. Both are read by
-    /// nothing where they stand, because the phi that closes the loop reads the one
-    /// at the end; dropping the one before the jump stops the loop advancing on
-    /// that path. Anything else a jump happens to be live across - the comparison a
-    /// clip beside it tests - is dead where it looks dead, and holding it writes an
-    /// assignment that nothing declared. An add of a constant and nothing looser:
-    /// the row a matrix multiply is read through is `t0 * 4`, dead once the
-    /// multiply is recognised, and a multiply by a constant held that too.
+    /// the loop rather than one that is simply dead. A jump is the one statement
+    /// whose reader is not a node: the value a register holds when the jump is
+    /// taken is what the loop leaves behind on that path, and the phi closing the
+    /// loop reads the value at the end of the body instead, so nothing in the value
+    /// graph points at this one. fxc copies a loop carried value into its register
+    /// before a break and again at the end of the body; dropping the first stops
+    /// the loop advancing on that path, and a ray march lost its last step that way.
+    ///
+    /// What settles it is the register, not the node: the value is carried exactly
+    /// when the loop hands that register's component on to a reader, because that
+    /// is what makes the jump's parting value observable. Anything else a jump
+    /// happens to be live across - the comparison a clip beside it tests, the `or`
+    /// of two bounds checks - writes a register the loop carries nowhere, and is
+    /// dead where it looks dead; holding it writes an assignment that nothing
+    /// declared.
+    ///
+    /// Asking the node's shape instead - a move, or an add of a constant, which is
+    /// what a copy and a counter step look like - is the same answer for those two
+    /// and wrong for everything else a branch computes before it jumps. A screen
+    /// space reflection samples the scene colour inside the branch that found a hit
+    /// and breaks with it, and the sample is neither shape: all four components of
+    /// the hit went out as dead, and the shader returned black for every pixel.
     /// </summary>
-    private static bool IsCarriedByJump(HlslTreeNode node)
+    private bool IsCarriedByJump(IStatement jump, HlslTreeNode node)
     {
-        if (node.Outputs.Count != 0)
+        if (node.Outputs.Count != 0
+            || !_carriedByJump.TryGetValue(jump, out HashSet<RegisterComponentKey> carried))
         {
             return false;
         }
-        return node is MoveOperation
-            || (node is AddOperation && node.Inputs.Any(input => input is ConstantNode));
+        return jump.Outputs
+            .Any(parting => ReferenceEquals(parting.Value, node) && carried.Contains(parting.Key));
+    }
+
+    /// <summary>
+    /// Which register components each break and continue parts with observably: the
+    /// ones the loop it leaves hands on to a reader.
+    ///
+    /// Worked out here, once, rather than where it is asked, because the evidence
+    /// is gone by the second asking. The loop carries a register out through the
+    /// phi that closes it, and the proof that anything reads the register is that
+    /// phi's own readers - which <see cref="InsertTempVariableAssignments"/> clears
+    /// as it lowers the phi onto a variable. So the removal pass, running first,
+    /// saw a phi with readers and kept the jump's parting value, and the insertion
+    /// pass saw the same phi with none, judged the value unheld and gave it no
+    /// variable: the scene colour of a reflection came out as a bare
+    /// `sceneColour.SampleLevel(...)` on a line of its own, an expression
+    /// statement assigning nothing. One answer, taken before either pass runs, is
+    /// what keeps the two from disagreeing.
+    ///
+    /// Walked with the enclosing loop in hand, which <see cref="StatementVisitor"/>
+    /// does not carry. A switch's body keeps the loop: a break there leaves the
+    /// switch and not the loop, so the register goes on to the rest of the body -
+    /// still observable, which is the side to err on.
+    /// </summary>
+    private void FindCarriedByJump()
+    {
+        FindCarriedByJump(_statements, null);
+    }
+
+    private void FindCarriedByJump(IList<IStatement> statements, LoopStatement loop)
+    {
+        foreach (IStatement statement in statements)
+        {
+            if (statement is BreakStatement or ContinueStatement && loop != null)
+            {
+                _carriedByJump[statement] = [.. loop.Outputs
+                    .Where(carried => carried.Value.Outputs.Count != 0)
+                    .Select(carried => carried.Key)];
+            }
+            if (statement is IfStatement ifStatement)
+            {
+                FindCarriedByJump(ifStatement.TrueBody, loop);
+                if (ifStatement.FalseBody != null)
+                {
+                    FindCarriedByJump(ifStatement.FalseBody, loop);
+                }
+            }
+            else if (statement is LoopStatement inner)
+            {
+                FindCarriedByJump(inner.Body, inner);
+            }
+            else if (statement is SwitchStatement switchStatement)
+            {
+                foreach (SwitchCase switchCase in switchStatement.Cases)
+                {
+                    FindCarriedByJump(switchCase.Body, loop);
+                }
+            }
+        }
     }
 
     private IStatement[] FindHoldingStatements(HlslTreeNode node)
@@ -1468,16 +1552,8 @@ public class StatementFinalizer
             {
                 holders.Add(statement);
             }
-            // A break or a continue carries the values of the moment out of the
-            // loop, and holds them the same way a store does: nothing in the value
-            // graph reads them, because the reader is the loop's exit rather than a
-            // node. fxc copies a loop carried value into its register before a break
-            // and again at the end of the body; the second is read by the phi that
-            // closes the loop and the first by nothing, so the first was removed as
-            // dead and a ray march lost its last step.
             else if (statement is BreakStatement or ContinueStatement
-                && IsCarriedByJump(node)
-                && statement.Outputs.Values.Contains(node))
+                && IsCarriedByJump(statement, node))
             {
                 holders.Add(statement);
             }

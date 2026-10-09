@@ -12,6 +12,7 @@ reordered ps_5_0/gather_cmp_variants
 reordered ps_5_0/half_unpack
 reordered ps_5_0/light_list
 reordered ps_5_0/packed_input_cross
+reordered ps_5_0/reflected_hit
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
 reworded cs_4_1/groupshared_reduce

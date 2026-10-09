@@ -62,14 +62,6 @@ public class RoundTripCostTests
             + "naming them. The struct shaped temporary that would cost 10 - one "
             + "under the original - wants a struct typed variable and a declaration "
             + "of a kind the writer has not got."),
-        ["cs_5_0/tile_luminance"] = (47,
-            "The exit test of a for loop. `for (uint stride = 32; stride > 0; "
-            + "stride >>= 1)` is what the source said and what is written back, "
-            + "and fxc compiles its condition as a compare, an if and a break where "
-            + "the original had one breakc_nz - the same shape conditional_return "
-            + "has for retc. The rest of the shader comes back instruction for "
-            + "instruction. Was 48 while the if over two conditions was written "
-            + "`!= 0`."),
 
         // fxc's doing: the output is right and it compiles it differently.
         ["ps_3_0/loop_counter_reuse"] = (53,

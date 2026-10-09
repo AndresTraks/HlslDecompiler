@@ -35,17 +35,17 @@ void main(CS_IN i)
 			uint t6 = t4 + i.sv_groupindex;
 			t0 = g1[i.sv_groupindex];
 			g1[i.sv_groupindex] = g1[t6] + t0;
-			t1 = g0[i.sv_groupindex];
-			t6 = g0[t6] + t1;
+			int t7 = g0[i.sv_groupindex];
+			t6 = g0[t6] + t7;
 			g0[i.sv_groupindex] = t6;
 		}
 		GroupMemoryBarrierWithGroupSync();
 	}
 	if (i.sv_groupindex == 0) {
-		float t7 = g1[0];
-		luminance[i.sv_groupid.xy] = 0.015625 * t7;
-		uint t8 = g0[0];
-		InterlockedAdd(histogram[min(t8, 63)], 1);
+		float t8 = g1[0];
+		luminance[i.sv_groupid.xy] = 0.015625 * t8;
+		uint t9 = g0[0];
+		InterlockedAdd(histogram[min(t9, 63)], 1);
 	}
 	if (all(t2 < size) && step == 0) {
 		luminance[t2] = t3;

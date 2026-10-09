@@ -50,6 +50,7 @@ public class StatementFinalizer
         LowerResolvedPhis();
         LoopRecovery.Recover(_statements);
         SetReturnStatement(_statements);
+        SplitUncarriedLoopValues();
         CoalesceCopies();
         LocalizeDeadJoins();
     }
@@ -72,7 +73,7 @@ public class StatementFinalizer
     /// </summary>
     private void LocalizeDeadJoins()
     {
-        VariableLiveness liveness = VariableLiveness.Analyze(_statements);
+        VariableLiveness liveness = VariableLiveness.Analyze(_statements, exact: true);
         List<IfStatement> ifStatements = [];
         new StatementVisitor(_statements).Visit(statement =>
         {
@@ -1095,13 +1096,13 @@ public class StatementFinalizer
                     // Not just the property: whatever the body already rewired to read
                     // the old variable goes on reading it, and comes out as a name
                     // nothing ever assigns.
-                    ReplaceTempVariable(bodyAssignment.TempVariable, loopVariable);
+                    ReplaceLoopVariable(bodyAssignment.TempVariable, loopVariable, loopStatement, preLoopStatement);
                 }
                 else if (bodyOutput.Value is TempVariableNode joinVariable)
                 {
                     // The value came from a branch join rather than a plain assignment.
                     // The join allocated its own variable; it is the loop-carried one.
-                    ReplaceTempVariable(joinVariable, loopVariable);
+                    ReplaceLoopVariable(joinVariable, loopVariable, loopStatement, preLoopStatement);
                 }
                 else if (bodyOutput.Value is PhiNode joinPhi && !joinPhi.IsLoopHeader)
                 {
@@ -1115,6 +1116,135 @@ public class StatementFinalizer
                 }
             }
         });
+    }
+
+    // The body's variables given the loop's where the two disagree about type,
+    // for SplitUncarriedLoopValues to look at once liveness can be asked.
+    private readonly List<(LoopStatement Loop, IStatement PreLoop, TempVariableNode Carried,
+        TempVariableNode Own, List<TempAssignmentNode> Assignments)> _typeChangingCarries = [];
+
+    private void ReplaceLoopVariable(TempVariableNode from, TempVariableNode to,
+        LoopStatement loop, IStatement preLoop)
+    {
+        if (!ReferenceEquals(from, to)
+            && (from.IsInteger != to.IsInteger || from.IsDouble != to.IsDouble))
+        {
+            List<TempAssignmentNode> assignments = [];
+            new StatementVisitor(loop.Body).Visit(statement =>
+            {
+                assignments.AddRange(statement.Outputs.Values.OfType<TempAssignmentNode>()
+                    .Where(a => ReferenceEquals(a.TempVariable, from) && !assignments.Contains(a)));
+            });
+            _typeChangingCarries.Add((loop, preLoop, to, from, assignments));
+        }
+        ReplaceTempVariable(from, to);
+    }
+
+    /// <summary>
+    /// A register a loop's body assigns a value of another type to, given back the
+    /// variable of its own type where the loop carries nothing in it.
+    ///
+    /// UseLoopVariablesInBody gives every register the body assigns the variable it
+    /// had before the loop, on the reading that the loop carries it round. Which is
+    /// so where something reads it at the head of the loop or after it, and not
+    /// where fxc has only reused the register: tile_luminance loads an int from
+    /// groupshared memory into the register a float sample had held before the
+    /// loop, the load was declared in the float's variable, and the sum it went
+    /// into was added as floats - exact for the counts it holds, and not for an int
+    /// past 2^24. Where liveness says the variable is wanted neither at the head of
+    /// the loop nor after it, every value of it inside the loop is one the body
+    /// assigned, and those go back to the variable they were lowered with.
+    /// </summary>
+    private void SplitUncarriedLoopValues()
+    {
+        foreach (var carry in _typeChangingCarries)
+        {
+            VariableLiveness liveness = VariableLiveness.Analyze(_statements, exact: true);
+            if (liveness.MayBeReadAfter(carry.Carried, carry.PreLoop)
+                || liveness.MayBeLiveAfter(carry.Carried, carry.Loop))
+            {
+                continue;
+            }
+            // Every assignment of the variable in the loop has to be one that came
+            // with the other type; a value of the loop variable's own type assigned
+            // there as well would be renamed with them.
+            List<TempAssignmentNode> inLoop = [];
+            new StatementVisitor(carry.Loop.Body).Visit(statement =>
+            {
+                inLoop.AddRange(statement.Outputs.Values.OfType<TempAssignmentNode>()
+                    .Where(a => ReferenceEquals(a.TempVariable, carry.Carried) && !inLoop.Contains(a)));
+            });
+            if (inLoop.Count == 0 || !inLoop.All(carry.Assignments.Contains))
+            {
+                continue;
+            }
+            TempVariableNode own = carry.Own;
+            own.Outputs.Clear();
+            HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+            var pending = new Stack<HlslTreeNode>();
+            // From what each statement in the loop computes - not every value its
+            // map holds, which includes registers carried through from before the
+            // loop - and not on past another assignment, which is a value computed
+            // elsewhere and read by name.
+            new StatementVisitor(carry.Loop.Body).Visit(statement =>
+            {
+                foreach (var output in statement.Outputs.ToList())
+                {
+                    if (ReferenceEquals(output.Value, carry.Carried))
+                    {
+                        statement.Outputs[output.Key] = own;
+                    }
+                    else if (statement is not (IfStatement or LoopStatement or SwitchStatement)
+                        && !(statement.Inputs.TryGetValue(output.Key, out HlslTreeNode input)
+                            && ReferenceEquals(input, output.Value)))
+                    {
+                        pending.Push(output.Value);
+                    }
+                }
+                foreach (HlslTreeNode held in statement.HeldNodes)
+                {
+                    pending.Push(held);
+                }
+                statement.ReplaceHeldNode(carry.Carried, own);
+            });
+            HashSet<HlslTreeNode> roots = HlslTreeNode.NewNodeSet();
+            foreach (HlslTreeNode root in pending)
+            {
+                roots.Add(root);
+            }
+            while (pending.Count != 0)
+            {
+                HlslTreeNode node = pending.Pop();
+                if (node == null || node is TempVariableNode || !seen.Add(node))
+                {
+                    continue;
+                }
+                if (node is TempAssignmentNode assignment)
+                {
+                    if (!roots.Contains(node))
+                    {
+                        continue;
+                    }
+                    if (ReferenceEquals(assignment.TempVariable, carry.Carried))
+                    {
+                        assignment.TempVariable = own;
+                    }
+                }
+                for (int i = 0; i < node.Inputs.Count; i++)
+                {
+                    if (ReferenceEquals(node.Inputs[i], carry.Carried))
+                    {
+                        node.Inputs[i] = own;
+                        carry.Carried.Outputs.Remove(node);
+                        own.Outputs.Add(node);
+                    }
+                    else
+                    {
+                        pending.Push(node.Inputs[i]);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

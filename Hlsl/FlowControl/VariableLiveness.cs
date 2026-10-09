@@ -23,13 +23,25 @@ internal sealed class VariableLiveness
         new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<IStatement> _unknown = new(ReferenceEqualityComparer.Instance);
 
-    private VariableLiveness()
+    // Whether a statement reading a value it assigns itself reads the variable.
+    // By default it does, which errs towards live; exact, it reads the new value
+    // and not the variable's old one.
+    private readonly bool _exact;
+
+    private VariableLiveness(bool exact)
     {
+        _exact = exact;
     }
 
-    public static VariableLiveness Analyze(IList<IStatement> statements)
+    /// <param name="exact">
+    /// Leave out of a statement's reads the assignments it performs itself: `t1 =
+    /// g0[i]; t6 = g0[t6] + t1;` as one statement reads the t1 it has just written,
+    /// not what t1 held before. For asking whether a value is carried in from
+    /// before - not for merging two variables, which wants the default.
+    /// </param>
+    public static VariableLiveness Analyze(IList<IStatement> statements, bool exact = false)
     {
-        var liveness = new VariableLiveness();
+        var liveness = new VariableLiveness(exact);
         liveness.Body(statements, [], [], []);
         return liveness;
     }
@@ -44,6 +56,18 @@ internal sealed class VariableLiveness
             || !_liveAfter.TryGetValue(statement, out HashSet<TempVariableNode> live)
             || live.Contains(variable)
             || Reads(statement).Contains(variable);
+    }
+
+    /// <summary>
+    /// Whether the variable may be read by a statement after this one, leaving out
+    /// the statement's own reads - which is what is live on entry to the statement
+    /// that follows it.
+    /// </summary>
+    public bool MayBeReadAfter(TempVariableNode variable, IStatement statement)
+    {
+        return _unknown.Contains(statement)
+            || !_liveAfter.TryGetValue(statement, out HashSet<TempVariableNode> live)
+            || live.Contains(variable);
     }
 
     private HashSet<TempVariableNode> Body(IList<IStatement> body, HashSet<TempVariableNode> liveOut,
@@ -135,7 +159,7 @@ internal sealed class VariableLiveness
                 {
                     HashSet<TempVariableNode> live = NewSet(liveOut);
                     live.ExceptWith(Writes(statement));
-                    live.UnionWith(Reads(statement));
+                    live.UnionWith(_exact ? ReadsBeforeWrites(statement) : Reads(statement));
                     return live;
                 }
         }
@@ -193,6 +217,38 @@ internal sealed class VariableLiveness
         return Variables(roots);
     }
 
+    // The variables a statement reads the earlier value of: its reads, but not
+    // through an assignment it performs itself.
+    private static HashSet<TempVariableNode> ReadsBeforeWrites(IStatement statement)
+    {
+        HashSet<HlslTreeNode> own = HlslTreeNode.NewNodeSet();
+        foreach (TempAssignmentNode assignment in Performed(statement).OfType<TempAssignmentNode>())
+        {
+            own.Add(assignment);
+        }
+        HashSet<TempVariableNode> reads = Variables(statement.HeldNodes, own);
+        foreach (HlslTreeNode value in Performed(statement))
+        {
+            if (value is not TempAssignmentNode assignment)
+            {
+                reads.UnionWith(Variables([value], own));
+                continue;
+            }
+            // Read by name, a variable is the new value where the assignment says
+            // it wants that - an assignment this statement performs first.
+            HashSet<TempVariableNode> read = Variables([assignment.Value], own);
+            foreach (TempAssignmentNode earlier in assignment.DependsOnNewValueOf)
+            {
+                if (own.Contains(earlier))
+                {
+                    read.Remove(earlier.TempVariable);
+                }
+            }
+            reads.UnionWith(read);
+        }
+        return reads;
+    }
+
     // The outputs a statement computes rather than carries.
     private static IEnumerable<HlslTreeNode> Performed(IStatement statement)
     {
@@ -204,7 +260,8 @@ internal sealed class VariableLiveness
 
     // The variables an expression reads: the variables in it, and the variable of
     // an assignment it reads the value of.
-    private static HashSet<TempVariableNode> Variables(IEnumerable<HlslTreeNode> roots)
+    private static HashSet<TempVariableNode> Variables(IEnumerable<HlslTreeNode> roots,
+        HashSet<HlslTreeNode> own = null)
     {
         HashSet<TempVariableNode> variables = NewSet();
         HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
@@ -222,7 +279,10 @@ internal sealed class VariableLiveness
                     variables.Add(variable);
                     continue;
                 case TempAssignmentNode assignment:
-                    variables.Add(assignment.TempVariable);
+                    if (own == null || !own.Contains(assignment))
+                    {
+                        variables.Add(assignment.TempVariable);
+                    }
                     continue;
             }
             foreach (HlslTreeNode input in node.Inputs)

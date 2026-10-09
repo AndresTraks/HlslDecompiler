@@ -2118,6 +2118,7 @@ public class HlslAstWriter : HlslWriter
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
                     ?? RootOfSeveralRegisters(registerGroups, recording)
+                    ?? RootReadAgain(registerGroups, recording)
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
@@ -2601,6 +2602,51 @@ public class HlslAstWriter : HlslWriter
                 .DefaultIfEmpty(0)
                 .Max();
             if ((written.Count() - 1) * text >= SharedRootBudget)
+            {
+                return [group];
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A computed value a register is written from that the statement also writes
+    /// inside another expression. quad_tess_factors writes the patch's centre,
+    /// `0.25 * (p0 + p1 + p2 + p3)`, to an output and measures the eye's distance
+    /// from it, and the join phase that measures it read the fork phases' output
+    /// back; written out twice, fxc computes it twice, three instructions with the
+    /// scheduling around it. Short enough that no text budget catches it, which is
+    /// why it is its own rule: what a second write of a root costs is an
+    /// instruction, not text. carried_constants, the same shape over three
+    /// control points, comes back to the instructions it was read from as well.
+    ///
+    /// Hull shaders only, since the cost is the phases': fxc splits the patch
+    /// constant function into fork and join phases and computes a value again in
+    /// each that writes it out. Elsewhere it is one function and fxc reuses what
+    /// it computed - particle_draw's `t1 * t2` written to the texcoord and again
+    /// in a mad costs nothing, and named, the mad it folds back into is the same
+    /// text again one round on. And not a vector of one value read twice, which
+    /// is a broadcast rather than a value the register holds.
+    /// </summary>
+    private List<HlslTreeNode[]> RootReadAgain(
+        IList<HlslTreeNode[]> registerGroups,
+        List<(HlslTreeNode[] Nodes, string Text)> recording)
+    {
+        if (_shader.Type != ShaderType.Hull)
+        {
+            return null;
+        }
+        foreach (HlslTreeNode[] group in registerGroups)
+        {
+            if (!group.All(node => node is Operation && IsNameable(node))
+                || group.Distinct(ReferenceEqualityComparer.Instance).Count() != group.Length
+                || group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode)))
+            {
+                continue;
+            }
+            int written = recording.Count(r => r.Nodes.Length == group.Length
+                && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second)));
+            if (written > 1)
             {
                 return [group];
             }

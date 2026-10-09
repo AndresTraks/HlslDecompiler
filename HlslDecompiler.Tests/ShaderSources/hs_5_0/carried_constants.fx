@@ -29,16 +29,18 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch)
 	HS_CONST o;
 
 	float3 t0 = patch[0].position + patch[1].position + patch[2].position;
-	float t1 = max(length(0.333333343 * t0 - eye), 1);
-	float3 t2 = 0.333333343 * t0 - patch[0].position;
-	float t3 = length(t2) * detail;
-	float t4 = t3 / t1;
-	o.edges[0] = t4;
-	o.centre = 0.333333343 * t0;
-	o.edges[1] = t4;
-	o.radius = length(t2);
-	o.edges[2] = t4;
-	o.inside = 0.5 * t4;
+	float3 t1 = 0.333333343 * t0;
+	float t2 = max(length(t1 - eye), 1);
+	float3 t3 = t1 - patch[0].position;
+	float t4 = length(t3);
+	float t5 = t4 * detail;
+	float t6 = t5 / t2;
+	o.edges[0] = t6;
+	o.centre = t1;
+	o.edges[1] = t6;
+	o.radius = t4;
+	o.edges[2] = t6;
+	o.inside = 0.5 * t6;
 
 	return o;
 }

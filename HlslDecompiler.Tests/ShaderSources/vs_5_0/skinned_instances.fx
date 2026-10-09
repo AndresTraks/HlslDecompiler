@@ -38,22 +38,19 @@ VS_OUT main(VS_IN i)
 
 	float t0 = 0.5 * frac(0.617999971 * (float)i.sv_instanceid) + 0.5;
 	int4 t1 = i.blendindices + boneOffset;
-	float4 t2 = transpose(bones[t1.x])[2] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[2] + transpose(bones[t1.z])[2] * i.blendweight.z;
-	float3 t3 = transpose(bones[t1.w])[2].xyz * i.blendweight.w + t2.xyz;
-	float t4 = dot(i.normal, t3);
-	float4 t5 = transpose(bones[t1.x])[1] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[1] + transpose(bones[t1.z])[1] * i.blendweight.z;
-	float3 t6 = transpose(bones[t1.w])[1].xyz * i.blendweight.w + t5.xyz;
-	float t7 = dot(i.normal, t6);
-	float4 t8 = transpose(bones[t1.x])[0] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[0] + transpose(bones[t1.z])[0] * i.blendweight.z;
-	float3 t9 = transpose(bones[t1.w])[0].xyz * i.blendweight.w + t8.xyz;
-	float t10 = dot(i.normal, t9);
-	float4 t11 = float4(dot(float4(i.position, 1), float4(t9, bones[t1.w][3][0] * i.blendweight.w + t8.w)), dot(float4(i.position, 1), float4(t6, bones[t1.w][3][1] * i.blendweight.w + t5.w)), dot(float4(i.position, 1), float4(t3, bones[t1.w][3][2] * i.blendweight.w + t2.w)), dot(float4(i.position, 1), transpose(bones[t1.x])[3] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[3] + transpose(bones[t1.z])[3] * i.blendweight.z + transpose(bones[t1.w])[3] * i.blendweight.w));
-	float3 t12 = float3(dot(transpose(world)[0], t11), dot(transpose(world)[2], t11), dot(transpose(world)[3], t11));
-	float t13 = 0.100000001 * sin(0.5 * (float)i.sv_instanceid + time) + dot(transpose(world)[1], t11);
-	o.sv_position = mul(float4(t12.x, t13, t12.yz), viewProjection);
-	o.normal = normalize(mul(float3(t10, t7, t4), (float3x3)world));
+	float4 t2 = transpose(bones[t1.x])[0] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[0] + transpose(bones[t1.z])[0] * i.blendweight.z + transpose(bones[t1.w])[0] * i.blendweight.w;
+	float t3 = dot(i.normal, t2.xyz);
+	float4 t4 = transpose(bones[t1.x])[1] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[1] + transpose(bones[t1.z])[1] * i.blendweight.z + transpose(bones[t1.w])[1] * i.blendweight.w;
+	float t5 = dot(i.normal, t4.xyz);
+	float4 t6 = transpose(bones[t1.x])[2] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[2] + transpose(bones[t1.z])[2] * i.blendweight.z + transpose(bones[t1.w])[2] * i.blendweight.w;
+	float t7 = dot(i.normal, t6.xyz);
+	float4 t8 = float4(dot(float4(i.position, 1), t2), dot(float4(i.position, 1), t4), dot(float4(i.position, 1), t6), dot(float4(i.position, 1), transpose(bones[t1.x])[3] * i.blendweight.x + i.blendweight.y * transpose(bones[t1.y])[3] + transpose(bones[t1.z])[3] * i.blendweight.z + transpose(bones[t1.w])[3] * i.blendweight.w));
+	float3 t9 = float3(dot(transpose(world)[0], t8), dot(transpose(world)[2], t8), dot(transpose(world)[3], t8));
+	float t10 = 0.100000001 * sin(0.5 * (float)i.sv_instanceid + time) + dot(transpose(world)[1], t8);
+	o.sv_position = mul(float4(t9.x, t10, t9.yz), viewProjection);
+	o.normal = normalize(mul(float3(t3, t5, t7), (float3x3)world));
 	o.texcoord = float2(0.00999999978 * time + i.texcoord.x, i.texcoord.y);
-	o.fog = max(-0.00999999978 * length(float3(t12.x, t13, t12.y) - cameraPosition) + 1, 0);
+	o.fog = max(-0.00999999978 * length(float3(t9.x, t10, t9.y) - cameraPosition) + 1, 0);
 	o.color = t0 * tint;
 
 	return o;

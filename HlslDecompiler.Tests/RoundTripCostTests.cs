@@ -112,15 +112,6 @@ public class RoundTripCostTests
             + "components rotated - to save a swizzle on the cross product after - "
             + "and spells the normalize out as a dp3, an rsq and a mul. The other "
             + "two normalizes in the shader come back as nrm."),
-        ["vs_3_0/skinned_terrain"] = (54,
-            "One instruction, and it is the fourth bone's blend split by the "
-            + "height. The last mad blends all four components of the skinned "
-            + "position at once, and the y of it then takes the height map's "
-            + "offset in a mad of its own; the y is written inside that second "
-            + "expression and the xzw as a vector of their own, so fxc blends "
-            + "twice. The components one instruction wrote are named together "
-            + "where the text writes them apart, but not where one of them is "
-            + "folded into a longer expression."),
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),

@@ -33,16 +33,14 @@ DS_OUT main(DS_CONST constants, float2 sv_domainlocation : SV_DomainLocation, co
 {
 	DS_OUT o;
 
-	float2 t0 = lerp(patch[3].texcoord, patch[2].texcoord, sv_domainlocation.x);
-	float2 t1 = lerp(patch[0].texcoord, patch[1].texcoord, sv_domainlocation.x);
-	float t2 = heights.SampleLevel(linearSampler, lerp(t1, t0, sv_domainlocation.y), 0).x;
-	float3 t3 = lerp(patch[0].position, patch[1].position, sv_domainlocation.x);
-	float3 t4 = lerp(patch[3].position, patch[2].position, sv_domainlocation.x);
-	float2 t5 = lerp(t3.xz, t4.xz, sv_domainlocation.y);
-	float t6 = t2 * amplitude + lerp(t3.y, t4.y, sv_domainlocation.y);
-	o.sv_position = mul(float4(t5.x, t6, t5.y, 1), viewProjection);
-	o.texcoord = lerp(t1, t0, sv_domainlocation.y);
-	o.texcoord1 = saturate(length(float3(t5.x, t6, t5.y) - eye) / fogRange);
+	float3 t0 = lerp(lerp(patch[0].position, patch[1].position, sv_domainlocation.x), lerp(patch[3].position, patch[2].position, sv_domainlocation.x), sv_domainlocation.y);
+	float2 t1 = lerp(patch[3].texcoord, patch[2].texcoord, sv_domainlocation.x);
+	float2 t2 = lerp(patch[0].texcoord, patch[1].texcoord, sv_domainlocation.x);
+	float t3 = heights.SampleLevel(linearSampler, lerp(t2, t1, sv_domainlocation.y), 0).x;
+	float t4 = t3 * amplitude + t0.y;
+	o.sv_position = mul(float4(t0.x, t4, t0.z, 1), viewProjection);
+	o.texcoord = lerp(t2, t1, sv_domainlocation.y);
+	o.texcoord1 = saturate(length(float3(t0.x, t4, t0.z) - eye) / fogRange);
 
 	return o;
 }

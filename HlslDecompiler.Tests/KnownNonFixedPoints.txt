@@ -40,8 +40,6 @@ reworded cs_5_0/switch_stored_index
 reworded cs_5_0/tile_depth_bounds
 reworded cs_5_0/tile_luminance
 reworded ds_5_0/isoline_curve
-reworded ds_5_0/quad_patch
-reworded ds_5_0/terrain_quad
 reworded hs_5_0/carried_constants
 reworded hs_5_0/looped_control_points
 reworded hs_5_0/split_control_points

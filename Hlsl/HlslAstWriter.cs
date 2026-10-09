@@ -3384,6 +3384,48 @@ public class HlslAstWriter : HlslWriter
                 }
             }
 
+            // And the instruction's components that are not candidates themselves.
+            // skinned_terrain blends the fourth bone into all four components of
+            // the position with one mad, and the height is added to its y: x, z
+            // and w were read twice and named, the y once, inside the height's
+            // expression, so it was blended there again and fxc blended twice.
+            // A lane of the same variable, the height reads t2.y. Only where the
+            // components are one vector expression, as ScatteredInstruction asks:
+            // fxc packs unrelated scalars into the free lanes of one instruction,
+            // and gathered, microfacet_lighting's `8 * t6` and `0.5 * t7` were
+            // `float2(8, 0.5) * float2(t6, t7)`.
+            if (group.All(node => node is Operation && HlslTreeNode.IsSameInstruction(node, candidate))
+                && group.Select(node => node.SourceComponent).Distinct().Count() == group.Count)
+            {
+                List<HlslTreeNode> widened = [.. group];
+                foreach (HlslTreeNode other in reachable)
+                {
+                    if (widened.Count < 4
+                        && other is Operation
+                        && HlslTreeNode.IsSameInstruction(other, candidate)
+                        && !named.Contains(other)
+                        && !roots.Contains(other)
+                        && !widened.Any(node => node.SourceComponent == other.SourceComponent))
+                    {
+                        widened.Add(other);
+                    }
+                }
+                if (widened.Count > group.Count)
+                {
+                    HlslTreeNode[] ordered = [.. widened.OrderBy(node => node.SourceComponent)];
+                    string together = _compiler.Measure([ordered]).Recording[^1].Text;
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(together, @"\b(float|int|uint|half|double|bool)[234]\(")
+                        && ReadsWholeVectors(together))
+                    {
+                        foreach (HlslTreeNode other in widened.Skip(group.Count))
+                        {
+                            named.Add(other);
+                        }
+                        group = widened;
+                    }
+                }
+            }
+
             // In the order the value has them, not the order they were found in:
             // the candidates are collected from the graph, which is walked from the
             // last component back, and a variable named backwards is read by every

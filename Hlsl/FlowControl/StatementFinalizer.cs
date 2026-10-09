@@ -1033,7 +1033,8 @@ public class StatementFinalizer
             // - it falls through the endif to a single ret. Pushed into each branch
             // instead it cost an instruction apiece, since fxc then writes a ret in
             // each of them.
-            if (ifStatement.FalseBody != null && !_hasOutputStruct)
+            if (ifStatement.FalseBody != null && !_hasOutputStruct
+                && !ReturnOnceAfter(statements, ifStatement))
             {
                 SetReturnStatement(ifStatement.TrueBody);
                 SetReturnStatement(ifStatement.FalseBody);
@@ -1068,6 +1069,64 @@ public class StatementFinalizer
             return;
         }
         throw new NotImplementedException(lastStatement.GetType().Name);
+    }
+
+    /// <summary>
+    /// An if/else whose two branches each end by writing the output, returned once
+    /// after it through a variable both branches assign - the shape the bytecode
+    /// has, a write of o0 in each branch and one ret after the endif. Returned from
+    /// each branch instead, fxc writes a ret in each, an instruction apiece. With
+    /// an output struct the branches fill the struct and this is already so; a
+    /// single output has no variable of its own, so the components are given one.
+    /// Only where each branch ends in an assignment that writes every component of
+    /// the output itself, and nothing else in the branches does.
+    /// </summary>
+    private bool ReturnOnceAfter(IList<IStatement> statements, IfStatement ifStatement)
+    {
+        if (ifStatement.TrueBody.Count == 0 || ifStatement.FalseBody.Count == 0
+            || ifStatement.TrueBody[^1] is not AssignmentStatement trueEnd
+            || ifStatement.FalseBody[^1] is not AssignmentStatement falseEnd)
+        {
+            return false;
+        }
+        List<RegisterComponentKey> outputs = [.. trueEnd.Outputs.Keys
+            .Where(key => key.RegisterKey.IsOutput)
+            .OrderBy(key => key.ComponentIndex)];
+        // Shader model 4 and later, where a ret is an instruction: a ps_3_0 return
+        // in each branch costs nothing, and reads as plainly as the variable.
+        if (outputs.Count == 0
+            || outputs[0].RegisterKey is not D3D10RegisterKey
+            || outputs.Select(key => key.RegisterKey).Distinct().Count() != 1
+            || !outputs.All(key => falseEnd.Outputs.ContainsKey(key))
+            || falseEnd.Outputs.Keys.Count(key => key.RegisterKey.IsOutput) != outputs.Count
+            // Written there, not carried in from before the if.
+            || outputs.Any(key => IsCarried(trueEnd, key) || IsCarried(falseEnd, key)))
+        {
+            return false;
+        }
+        TempVariableNode[] variables = [.. outputs.Select(key => new TempVariableNode
+        {
+            IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(key) == true,
+        })];
+        for (int i = 0; i < outputs.Count; i++)
+        {
+            foreach (AssignmentStatement end in new[] { trueEnd, falseEnd })
+            {
+                end.Outputs[outputs[i]] = new TempAssignmentNode(variables[i], end.Outputs[outputs[i]])
+                {
+                    IsReassignment = true,
+                };
+            }
+            ifStatement.Outputs[outputs[i]] = variables[i];
+        }
+        // The return itself is the caller's, after the if.
+        return true;
+    }
+
+    private static bool IsCarried(IStatement statement, RegisterComponentKey key)
+    {
+        return statement.Inputs.TryGetValue(key, out HlslTreeNode input)
+            && ReferenceEquals(input, statement.Outputs[key]);
     }
 
     /// <summary>

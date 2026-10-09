@@ -537,7 +537,10 @@ public class HlslAstWriter : HlslWriter
     {
         IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = statement.Outputs
                 .Where(o => {
-                    if (!o.Key.RegisterKey.IsTempRegister)
+                    // And an output the finalizer gave a variable, so that the
+                    // branches of an if can assign it and one return follow them.
+                    if (!o.Key.RegisterKey.IsTempRegister
+                        && !(o.Key.RegisterKey.IsOutput && o.Value is TempAssignmentNode))
                     {
                         return false;
                     }

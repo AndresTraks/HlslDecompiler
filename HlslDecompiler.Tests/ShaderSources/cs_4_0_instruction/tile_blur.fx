@@ -25,7 +25,7 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r1;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupthreadid.x != 0) {
-		r0.y = i.sv_groupindex.x + -1;
+		r0.y = (int)i.sv_groupindex.x + -1;
 		r2 = g0[r0.y];
 		r1 = r1 + r2;
 	}

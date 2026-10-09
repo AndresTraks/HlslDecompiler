@@ -381,6 +381,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "bit_scans")]
     [TestCase("vs_4_0", "fullscreen_triangle")]
     [TestCase("cs_5_0", "group_reduce")]
+    [TestCase("cs_5_0", "row_blur_clamp")]
     [TestCase("vs_4_0", "dual_quaternion_skin")]
     [TestCase("cs_5_0", "struct_flags")]
     [TestCase("gs_5_0", "looped_vertices")]

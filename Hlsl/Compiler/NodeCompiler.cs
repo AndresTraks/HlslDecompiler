@@ -2100,6 +2100,24 @@ public sealed class NodeCompiler
                         string size = components.Count > 1 ? components.Count.ToString() : "";
                         value1 = $"(uint{size}){CompileOperand(components.Select(g => g.Inputs[0]))}";
                     }
+                    // And imin and imax the other way: an unsigned operand makes the
+                    // call unsigned, so each one is made signed. blur_row clamps
+                    // `(int)id.x - 4` at zero, and over the uint thread id the max was
+                    // an unsigned one, which fxc folds away - every value is at
+                    // least zero - and the first threads read far off the edge.
+                    else if (!isUnsigned && operation is MinimumOperation or MaximumOperation
+                        && ValueTypes.ComputesInIntegers(operation) == true)
+                    {
+                        string size = components.Count > 1 ? components.Count.ToString() : "";
+                        if (IsUnsignedAlready(operation.Inputs[0]))
+                        {
+                            value1 = $"(int{size}){CompileOperand(components.Select(g => g.Inputs[0]))}";
+                        }
+                        if (IsUnsignedAlready(operation.Inputs[1]))
+                        {
+                            value2 = $"(int{size}){CompileOperand(components.Select(g => g.Inputs[1]))}";
+                        }
+                    }
 
                     var name = operation.HlslFunction;
 

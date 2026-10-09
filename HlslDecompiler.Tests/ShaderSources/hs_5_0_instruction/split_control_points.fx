@@ -71,7 +71,7 @@ HS_OUT main(InputPatch<HS_IN, 3> patch, uint sv_outputcontrolpointid : SV_Output
 		o.position = patch[r0.x].position.xyz;
 		o.normal = patch[r0.x].normal.xyz;
 	} else {
-		r0.xy = sv_outputcontrolpointid + int2(-3, -2);
+		r0.xy = (int2)sv_outputcontrolpointid + int2(-3, -2);
 		r0.y = (uint)r0.y % 3;
 		r1 = patch[r0.y].position.xyz + patch[r0.x].position.xyz;
 		o.position = r1.xyz * float3(0.5, 0.5, 0.5);

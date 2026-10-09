@@ -2053,6 +2053,30 @@ public class HlslSimpleWriter : HlslWriter
     /// constant buffer variable, an input the signature types one, a thread id. A
     /// temp is never one: the writer declares them all int.
     /// </summary>
+    // An addend of an iadd, as an int where it is an unsigned register and the
+    // other addend a negative immediate. HLSL adds a uint and an int as uints, so
+    // `id.x + -4` wrapped to four thousand million, and the register the number
+    // went into - a float, holding it as a number - held that where the shader
+    // had -4: blur_row's clamp at zero let it through.
+    private string SignedAddend(D3D10Instruction instruction, int operandIndex, int otherIndex)
+    {
+        string name = GetOperandName(instruction, operandIndex);
+        if (!IsUnsignedOperand(instruction, operandIndex)
+            || instruction.GetOperandType(otherIndex) != OperandType.Immediate32)
+        {
+            return name;
+        }
+        int[] components = GetSourceComponents(instruction, otherIndex,
+            instruction.GetSourceSwizzleComponents(otherIndex));
+        if (!components.Any(c => instruction.GetParamInt(otherIndex, c) < 0))
+        {
+            return name;
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        return $"(int{size}){name}";
+    }
+
     private bool IsUnsignedOperand(D3D10Instruction instruction, int operandIndex)
     {
         if (instruction.GetOperandType(operandIndex) is OperandType.Immediate32
@@ -2564,7 +2588,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             case D3D10Opcode.Add:
             case D3D10Opcode.IAdd:
-                WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0),
+                    SignedAddend(instruction, 1, 2), SignedAddend(instruction, 2, 1));
                 break;
             case D3D10Opcode.IShl:
                 WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));

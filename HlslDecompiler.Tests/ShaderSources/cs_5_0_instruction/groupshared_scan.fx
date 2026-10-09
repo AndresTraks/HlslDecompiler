@@ -19,7 +19,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	r1 = (i.sv_groupindex.x >= uint4(1, 2, 4, 8)) ? -1 : 0;
 	if (r1.x != 0) {
-		r0.y = i.sv_groupindex.x + -1;
+		r0.y = (int)i.sv_groupindex.x + -1;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}
@@ -27,7 +27,7 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
 	if (r1.y != 0) {
-		r0.y = i.sv_groupindex.x + -2;
+		r0.y = (int)i.sv_groupindex.x + -2;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}
@@ -35,7 +35,7 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
 	if (r1.z != 0) {
-		r0.y = i.sv_groupindex.x + -4;
+		r0.y = (int)i.sv_groupindex.x + -4;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}
@@ -43,7 +43,7 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
 	if (r1.w != 0) {
-		r0.y = i.sv_groupindex.x + -8;
+		r0.y = (int)i.sv_groupindex.x + -8;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}
@@ -52,7 +52,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	r0.yz = (i.sv_groupindex.xx >= uint2(16, 32)) ? -1 : 0;
 	if (r0.y != 0) {
-		r0.y = i.sv_groupindex.x + -16;
+		r0.y = (int)i.sv_groupindex.x + -16;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}
@@ -60,7 +60,7 @@ void main(CS_IN i)
 	g0[i.sv_groupindex.x] = r0.x;
 	GroupMemoryBarrierWithGroupSync();
 	if (r0.z != 0) {
-		r0.y = i.sv_groupindex.x + -32;
+		r0.y = (int)i.sv_groupindex.x + -32;
 		r0.y = g0[r0.y];
 		r0.x = r0.y + r0.x;
 	}

@@ -565,10 +565,13 @@ public static class IdiomRecovery
         // normalize(d) next to length(d) the one square root became a reciprocal
         // square root and a square root, an instruction more. Left as divisions by
         // the length, the length is computed once and read by both.
-        // A division by the length is not that - the reciprocal the rsq form leaves
-        // behind is one, and so is a component divided twice.
+        // A division that computes a component is the normalize, and the reciprocal
+        // the rsq form leaves behind, one divided by the length, is not a use of it
+        // either. Anything else divided by it is: dual quaternion skinning divides
+        // the real part and the dual part by the real part's length.
         if (length.Outputs.Distinct(ReferenceEqualityComparer.Instance)
-            .Any(reader => !(reader is DivisionOperation division && ReferenceEquals(division.Divisor, length))))
+            .Any(reader => !(reader is DivisionOperation division && ReferenceEquals(division.Divisor, length)
+                && (component.ContainsKey(division) || division.Dividend is ConstantNode { Value: 1 }))))
         {
             return;
         }

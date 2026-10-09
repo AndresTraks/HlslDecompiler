@@ -515,12 +515,15 @@ public class InstructionParser
                         var registerKey = instruction.GetParamRegisterKey(0);
                         // Raw shared memory declares a size in bytes and nothing
                         // else - no stride, no count - because fxc gives this shape
-                        // to a groupshared scalar rather than an array. HLSL has no
-                        // way to say that but an array, so it is as many four byte
-                        // elements as the size holds.
+                        // to a groupshared variable that is not an array. HLSL says
+                        // that by declaring the variable without a subscript, so it
+                        // is recorded as raw and RegisterState.IsGroupSharedScalar
+                        // decides whether it can be written that way; where it
+                        // cannot - a raw variable wider than one register - it stays
+                        // as many four byte elements as the size holds.
                         uint bytes = instruction.GetParamIndexImmediate32(1, 0);
                         _registerState.DeclareThreadGroupSharedMemory(registerKey,
-                            sizeof(uint), bytes / sizeof(uint));
+                            sizeof(uint), bytes / sizeof(uint), isRaw: true);
                         // One access can name up to four dwords, and the operand
                         // carries a component per dword whatever the element is a
                         // single one. Seeding by the declared stride left anything

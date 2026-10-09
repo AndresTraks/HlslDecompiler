@@ -1,8 +1,8 @@
 Texture2D<float> depth;
 RWStructuredBuffer<float> bounds : register(u0);
 
-groupshared uint g0[1];
-groupshared uint g1[1];
+groupshared uint g0;
+groupshared uint g1;
 
 struct CS_IN
 {
@@ -14,14 +14,14 @@ struct CS_IN
 void main(CS_IN i)
 {
 	if (i.sv_groupindex == 0) {
-		g0[0] = 2139095039;
-		g1[0] = 0;
+		g0 = 2139095039;
+		g1 = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	float t0 = depth.Load(int3(i.sv_groupthreadid.xy, 0)).x;
-	InterlockedMin(g0[0], asuint(t0));
-	InterlockedMax(g1[0], asuint(t0));
+	InterlockedMin(g0, asuint(t0));
+	InterlockedMax(g1, asuint(t0));
 	GroupMemoryBarrierWithGroupSync();
-	int t1 = g0[0];
-	bounds[i.sv_groupindex] = asfloat(g1[0]) - asfloat(t1);
+	int t1 = g0;
+	bounds[i.sv_groupindex] = asfloat(g1) - asfloat(t1);
 }

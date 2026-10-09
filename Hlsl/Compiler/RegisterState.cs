@@ -791,6 +791,12 @@ public sealed class RegisterState
     public IDictionary<int, (int Stride, int Elements)> ThreadGroupSharedMemory { get; } =
         new Dictionary<int, (int Stride, int Elements)>();
 
+    // The groupshared registers fxc gave raw storage. It gives raw storage to a
+    // variable that is not an array and structured storage to one that is, so this
+    // is how the two are told apart: `dcl_tgsm_structured g0, 4, 1` and
+    // `dcl_tgsm_raw g0, 4` are the same four bytes and only the first is an array.
+    public ISet<int> RawThreadGroupSharedMemory { get; } = new HashSet<int>();
+
     /// <summary>
     /// The interfaces, their tables and their bodies, when the shader calls through
     /// one: read off the declarations the parser is walking, and written back as
@@ -2490,10 +2496,54 @@ public sealed class RegisterState
         return $"G{register}Element";
     }
 
-    public void DeclareThreadGroupSharedMemory(D3D10RegisterKey registerKey, uint stride, uint elements)
+    public void DeclareThreadGroupSharedMemory(D3D10RegisterKey registerKey, uint stride, uint elements,
+        bool isRaw = false)
     {
         DeclareStructuredStride(registerKey, stride);
         ThreadGroupSharedMemory[registerKey.Number] = ((int)stride, (int)elements);
+        if (isRaw)
+        {
+            RawThreadGroupSharedMemory.Add(registerKey.Number);
+        }
+    }
+
+    /// <summary>
+    /// Whether this groupshared register is one variable rather than an array, which
+    /// is what fxc's raw storage means and how HLSL says it: a groupshared variable
+    /// that is not an array is declared raw, and one that is, structured - measured
+    /// 2026-10-09 over a scalar, a vector, a matrix, a struct and arrays of one and
+    /// four elements. So raw groupshared memory is not undeclarable, which is what
+    /// the parser and two KnownDifferences entries used to say; it is declared by
+    /// leaving the subscript off.
+    ///
+    /// Only where the whole of it is one register component's worth. A wider raw
+    /// variable is a vector, a matrix or a struct, and the array of four byte
+    /// elements is still how this writes those - every raw declaration in the corpus
+    /// is four bytes, a counter or a bound being the thing a shader keeps this way.
+    /// </summary>
+    public bool IsGroupSharedScalar(int register)
+    {
+        return RawThreadGroupSharedMemory.Contains(register)
+            && ThreadGroupSharedMemory.TryGetValue(register, out (int Stride, int Elements) shared)
+            && shared.Stride == sizeof(uint) && shared.Elements == 1;
+    }
+
+    public bool IsGroupSharedScalar(RegisterKey registerKey)
+    {
+        return registerKey is D3D10RegisterKey
+            {
+                OperandType: OperandType.ThreadGroupSharedMemory
+            } key
+            && IsGroupSharedScalar(key.Number);
+    }
+
+    /// <summary>
+    /// What a groupshared access names: the element of the array, or the variable
+    /// itself where it was not declared as one.
+    /// </summary>
+    public string GroupSharedElementReference(RegisterKey registerKey, string name, string index)
+    {
+        return IsGroupSharedScalar(registerKey) ? name : $"{name}[{index}]";
     }
 
     public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey, uint stride)

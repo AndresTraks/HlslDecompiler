@@ -7,7 +7,7 @@ cbuffer Compaction : register(b0)
 StructuredBuffer<float> scores : register(t0);
 RWStructuredBuffer<uint> survivors : register(u0);
 
-groupshared int g0[1];
+groupshared int g0;
 groupshared uint g1[64];
 
 [numthreads(64, 1, 1)]
@@ -16,7 +16,7 @@ void main(uint sv_groupindex : SV_GroupIndex)
 	float2 r0;
 	int r1;
 	if (sv_groupindex.x == 0) {
-		g0[0] = 0;
+		g0 = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	r0.x = (float)sv_groupindex.x;
@@ -30,7 +30,7 @@ void main(uint sv_groupindex : SV_GroupIndex)
 			r0.x = r0.y;
 			continue;
 		}
-		InterlockedAdd(g0[0], 1, r1);
+		InterlockedAdd(g0, 1, r1);
 		r0.y = ((uint)r1.x < 64) ? -1 : 0;
 		if (asint(r0.y) != 0) {
 			g1[r1.x] = r0.x;

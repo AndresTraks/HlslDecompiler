@@ -1039,7 +1039,14 @@ public abstract class HlslWriter
                 continue;
             }
             string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
-            WriteLine($"groupshared {type}{size} {_registers.GroupSharedName(register)}[{elements}];");
+            // Without a subscript where fxc declared it raw, which is what it does
+            // for a groupshared variable that is not an array. Declared as an array
+            // of one it comes back structured, which is a different declaration of
+            // the same four bytes.
+            string bounds = _registers.IsGroupSharedScalar(register)
+                ? ""
+                : $"[{elements}]";
+            WriteLine($"groupshared {type}{size} {_registers.GroupSharedName(register)}{bounds};");
         }
         WriteLine();
     }

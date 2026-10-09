@@ -28,18 +28,6 @@ namespace HlslDecompiler.Tests;
 [Parallelizable(ParallelScope.All)]
 public class ReflectionEquivalenceTests
 {
-    // fxc gives a groupshared variable that is not an array raw storage, and HLSL
-    // has no way to declare raw groupshared memory: the decompilation declares an
-    // array of four-byte elements, which fxc gives structured storage of the same
-    // size. The same memory, read and written at the same addresses. Declared
-    // before the table that uses it: static fields are initialised in order, and
-    // after it this was still null when the table took it.
-    private static readonly (string Writer, string Reason)[] RawGroupShared =
-    [
-        ("ast", "dcl_tgsm_raw comes back as dcl_tgsm_structured of the same size: HLSL cannot declare raw groupshared memory."),
-        ("instruction", "dcl_tgsm_raw comes back as dcl_tgsm_structured of the same size: HLSL cannot declare raw groupshared memory."),
-    ];
-
     /// <summary>
     /// Shaders whose decompilation declares something else, by writer, and why. A
     /// listed writer that starts declaring the same fails the test so that its entry
@@ -47,9 +35,6 @@ public class ReflectionEquivalenceTests
     /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-        ["cs_5_0/group_shared_counter"] = RawGroupShared,
-        ["cs_5_0/stored_loop_counter"] = RawGroupShared,
-        ["cs_5_0/tile_depth_bounds"] = RawGroupShared,
         ["ps_3_0/partial_precision"] = [("ast",
             "The input is declared dcl_texcoord_pp where the original's was not. The "
             + "original writes its colour's xy at partial precision and its zw at full; "

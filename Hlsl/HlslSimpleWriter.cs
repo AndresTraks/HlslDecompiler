@@ -2947,8 +2947,11 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     byte[] sharedSwizzle = instruction.GetSourceSwizzleComponents(2);
                     int dword = sharedSwizzle[BitOperations.TrailingZeroCount((uint)readMask)];
-                    WriteResult(instruction, "{0} = {1}[{2}];", GetOperandName(instruction, 0),
-                        GetOperandName(instruction, 2), GroupSharedElement(instruction, 1, dword));
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                        _registers.GroupSharedElementReference(
+                            instruction.GetParamRegisterKey(2),
+                            GetOperandName(instruction, 2),
+                            GroupSharedElement(instruction, 1, dword)));
                     break;
                 }
             case D3D10Opcode.LdRaw:
@@ -3528,7 +3531,8 @@ public class HlslSimpleWriter : HlslWriter
                         WriteLine("{0}.{1}({2}, {3});", resource, method, address, arguments);
                         break;
                     }
-                    string target = $"{resource}[{address}]";
+                    string target = _registers.GroupSharedElementReference(
+                        instruction.GetParamRegisterKey(first), resource, address);
                     // An element that is a struct takes the operation on one of its
                     // members, and which one is the byte offset beside the element
                     // index in the address. Read off it where that address is an
@@ -3565,9 +3569,12 @@ public class HlslSimpleWriter : HlslWriter
                         throw new NotImplementedException(
                             "a raw groupshared store of more than one dword");
                     }
-                    WriteLine("{0}[{1}] = {2};", GetOperandName(instruction, 0),
-                        GroupSharedElement(instruction, 1,
-                            BitOperations.TrailingZeroCount((uint)storeMask)),
+                    WriteLine("{0} = {1};",
+                        _registers.GroupSharedElementReference(
+                            instruction.GetParamRegisterKey(0),
+                            GetOperandName(instruction, 0),
+                            GroupSharedElement(instruction, 1,
+                                BitOperations.TrailingZeroCount((uint)storeMask))),
                         GetOperandName(instruction, 2));
                     break;
                 }

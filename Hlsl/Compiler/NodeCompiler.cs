@@ -2245,9 +2245,11 @@ public sealed class NodeCompiler
                     if (load.IsGroupShared)
                     {
                         // Raw groupshared memory: the element, not a Load, because
-                        // the declaration is an array. One load reads one element,
-                        // so there is no width or swizzle to take off it.
-                        return $"{_registers.GetRegisterName(resourceKey)}[{address}]";
+                        // the declaration is an array - or the variable itself where
+                        // it is not one. One load reads one element, so there is no
+                        // width or swizzle to take off it.
+                        return _registers.GroupSharedElementReference(
+                            resourceKey, _registers.GetRegisterName(resourceKey), address);
                     }
                     if (load.IsRaw)
                     {

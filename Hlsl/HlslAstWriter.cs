@@ -768,8 +768,9 @@ public class HlslAstWriter : HlslWriter
     {
         // The buffer is named without a swizzle - the subscript selects the element,
         // and any component selection belongs after it, not on the buffer.
-        string compiledDestination = _registers.GetRegisterName(
-            ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey);
+        RegisterKey destinationKey =
+            ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
+        string compiledDestination = _registers.GetRegisterName(destinationKey);
         HlslTreeNode address = Reduce(storeStructured.Address);
         HlslTreeNode[] storedValues = [.. storeStructured.Values.Select(Reduce)];
         // A store computes its value from here rather than through
@@ -792,7 +793,7 @@ public class HlslAstWriter : HlslWriter
             {
                 compiledValue = CompileRawStoredValue(storedValues);
             }
-            WriteLine($"{compiledDestination}[{compiledAddress}] = {compiledValue};");
+            WriteLine($"{_registers.GroupSharedElementReference(destinationKey, compiledDestination, compiledAddress)} = {compiledValue};");
             return;
         }
         if (storeStructured.IsRaw)
@@ -940,7 +941,7 @@ public class HlslAstWriter : HlslWriter
             return;
         }
 
-        string element = $"{resource}[{address}]";
+        string element = _registers.GroupSharedElementReference(resourceKey, resource, address);
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
             resourceKey, element, GetElementByteOffset(atomic), [0]);
         if (runs != null && runs.Count == 1)

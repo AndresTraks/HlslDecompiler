@@ -18,7 +18,7 @@ struct CS_IN
 [numthreads(64, 1, 1)]
 void main(CS_IN i)
 {
-	int t0 = (i.sv_groupid.x * 64) + i.sv_groupindex;
+	int t0 = i.sv_groupid.x * 64 + i.sv_groupindex;
 	g0[i.sv_groupindex] = source.Load(int3(t0, i.sv_groupid.y, 0));
 	GroupMemoryBarrierWithGroupSync();
 	float4 t1 = 0;

@@ -755,6 +755,22 @@ public sealed class NodeCompiler
         return order;
     }
 
+    // Whether a shift left is written as the multiply it is: by one constant
+    // amount, small enough that the power of two is an int.
+    private static bool IsWrittenAsMultiply(List<HlslTreeNode> components)
+    {
+        if (components.Count == 0 || components[0] is not ShiftLeftOperation)
+        {
+            return false;
+        }
+        var amount = components.Select(g => g.Inputs[1]).ToList();
+        return components.All(c => c is ShiftLeftOperation)
+            && amount[0] is ConstantNode shift
+            && amount.All(a => a is ConstantNode c && c.Value == shift.Value)
+            && shift.Value >= 0 && shift.Value < 31
+            && shift.Value == (int)shift.Value;
+    }
+
     // A comparison, or a constant all ones or all zeroes.
     private static bool IsMask(HlslTreeNode node)
     {
@@ -1593,10 +1609,7 @@ public sealed class NodeCompiler
                     // for a multiplication by a power of two, so write it back as
                     // one: exact, and it types itself.
                     var amount = components.Select(g => g.Inputs[1]).ToList();
-                    if (amount[0] is ConstantNode shift
-                        && amount.All(a => a is ConstantNode c && c.Value == shift.Value)
-                        && shift.Value >= 0 && shift.Value < 31
-                        && shift.Value == (int)shift.Value)
+                    if (IsWrittenAsMultiply(components) && amount[0] is ConstantNode shift)
                     {
                         // Parenthesised where a multiplication would not bind the
                         // whole of it: `(a + b) << 16` written as `a + b * 65536`
@@ -1689,8 +1702,12 @@ public sealed class NodeCompiler
                         (addend1, addend2) = (addend2, addend1);
                     }
                     string right = CompileOperand(addend2);
+                    // A shift written as a multiply binds as one: `x * 2 + y`.
+                    string leftText = IsWrittenAsMultiply(addend1.ToList())
+                        ? Compile(addend1)
+                        : CompileOperand(addend1);
                     return string.Format("{0} + {1}",
-                        CompileOperand(addend1),
+                        leftText,
                         IsSum(addend2.First()) ? $"({right})" : right);
                 }
 

@@ -15,7 +15,7 @@ struct CS_IN
 [numthreads(8, 8, 1)]
 void main(CS_IN i)
 {
-	int2 t1 = (i.sv_groupid.xy * 8) + i.sv_groupthreadid.xy;
+	int2 t1 = i.sv_groupid.xy * 8 + i.sv_groupthreadid.xy;
 	uint t0 = t1.y * width + t1.x;
 	float4 t2 = input[t0];
 	g0[i.sv_groupindex] = t2;

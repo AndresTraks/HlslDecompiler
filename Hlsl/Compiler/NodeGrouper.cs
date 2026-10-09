@@ -77,7 +77,15 @@ public class NodeGrouper
         {
             HlslTreeNode node1 = nodes[groupStart];
             HlslTreeNode node2 = nodes[nodeIndex];
-            if (CanGroupComponents(node1, node2) == false)
+            // Against the first for whether they are one expression, and against
+            // every assignment already in the group for whether one reads what
+            // another writes: as one statement every lane reads the old values.
+            // A parallax march's step went `t1.xzwy = float4(t0.z + t1.x, t1.zw -
+            // t0.xy, Sample(t1.zw))` - the sample at the coordinate before the step,
+            // because the sample was asked only against the x lane, which it does
+            // not read, and not against the zw it does.
+            if (CanGroupComponents(node1, node2) == false
+                || ReadsWithinGroup(nodes, groupStart, nodeIndex))
             {
                 groups.Add(nodes.GetRange(groupStart, nodeIndex - groupStart));
                 groupStart = nodeIndex;
@@ -85,6 +93,28 @@ public class NodeGrouper
         }
         groups.Add(nodes.GetRange(groupStart, nodeIndex - groupStart));
         return groups;
+    }
+
+    // Whether the assignment at nodeIndex and one already in the group from
+    // groupStart want each other's new value - which two statements in order give
+    // and one does not, its lanes all reading the values from before it. A lane
+    // reading another's old value is what one statement gives, and is left be:
+    // `t1.xywz = float4(t1.xyz, t4)` moves z into w as it writes z.
+    private static bool ReadsWithinGroup(List<HlslTreeNode> nodes, int groupStart, int nodeIndex)
+    {
+        if (nodes[nodeIndex] is not TempAssignmentNode added)
+        {
+            return false;
+        }
+        for (int i = groupStart + 1; i < nodeIndex; i++)
+        {
+            if (nodes[i] is TempAssignmentNode member
+                && (added.DependsOnNewValueOf.Contains(member) || member.DependsOnNewValueOf.Contains(added)))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Returns true if children differ at most by component index, meaning they can be combined, for example:

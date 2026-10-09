@@ -2881,7 +2881,13 @@ public class HlslAstWriter : HlslWriter
                 continue;
             }
             int saved = written.Sum(r => r.Text.Length) - written.Max(r => r.Text.Length);
-            if (saved >= RepeatedTextBudget)
+            // Or where one place writes the whole of it and another a part, however
+            // short: fxc does not see `f16tof32(v.x)` as a component of
+            // `f16tof32(v)`, and computes the part again beside the whole.
+            bool wholeAndPart = written.Any(r => r.Nodes.Length == group.Length)
+                && written.Any(r => r.Nodes.Length < group.Length)
+                && group.All(node => node is Operation);
+            if (saved >= RepeatedTextBudget || wholeAndPart)
             {
                 return [group];
             }

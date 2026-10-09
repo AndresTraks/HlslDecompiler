@@ -291,7 +291,7 @@ public static class IdiomRecovery
         return true;
     }
 
-    /// <summary>
+    /// <summary>
     /// `i - 2 * dot(i, n) * n`, which is what fxc writes for reflect(i, n): the dot,
     /// an add of it to itself or a multiply by two, and a mad per component with the
     /// scale negated.
@@ -446,7 +446,7 @@ public static class IdiomRecovery
         return ReferenceEquals(add.Addend1, addend) ? add.Addend2 : add.Addend1;
     }
 
-    /// <summary>
+    /// <summary>
     /// The divisions by one length, where they divide the whole of what the length
     /// was taken over: that is a normalize, one component at a time.
     ///
@@ -556,6 +556,19 @@ public static class IdiomRecovery
         // rather than of the components one write happens to cover - so a shader
         // that reads them apart keeps its normalize and swizzles out of it.
         if (ordered.Any(dividend => dividend == null))
+        {
+            return;
+        }
+
+        // Nor where the length is wanted for itself as well: a light's direction is
+        // `d / dist` beside an attenuation of `dist / radius`, and recovered as
+        // normalize(d) next to length(d) the one square root became a reciprocal
+        // square root and a square root, an instruction more. Left as divisions by
+        // the length, the length is computed once and read by both.
+        // A division by the length is not that - the reciprocal the rsq form leaves
+        // behind is one, and so is a component divided twice.
+        if (length.Outputs.Distinct(ReferenceEqualityComparer.Instance)
+            .Any(reader => !(reader is DivisionOperation division && ReferenceEquals(division.Divisor, length))))
         {
             return;
         }

@@ -373,6 +373,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "front_face_select")]
     [TestCase("ps_5_0", "branch_single_return")]
     [TestCase("ps_5_0", "parallax_march")]
+    [TestCase("ps_5_0", "light_list")]
     [TestCase("cs_5_0", "struct_flags")]
     [TestCase("gs_5_0", "looped_vertices")]
     [TestCase("hs_5_0", "looped_control_points")]

@@ -5,14 +5,11 @@
 # FixedPointTests explains both. Blessing (HLSL_BLESS=1) removes the shaders
 # that have become fixed points; it never adds one that has stopped being one.
 
-reordered cs_4_1/compute_loop
 reordered ps_3_0/if_reassign
 reordered ps_3_0/tex2dlod
 reordered ps_3_0/tex3d
 reordered ps_3_0/texcube
 reordered ps_4_0/branch_sample
-reordered ps_4_0/derivatives
-reordered ps_4_0/int_minmax
 reordered ps_4_0/texture_1d_array
 reordered ps_4_1/sample_offsets
 reordered ps_5_0/cascaded_shadows
@@ -22,14 +19,9 @@ reordered ps_5_0/gather_compare
 reordered ps_5_0/gather_offset
 reordered ps_5_0/packed_input_cross
 reordered vs_1_1/constant_struct
-reworded cs_4_0/atomic_free_sum
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
-reworded cs_4_1/compute_hash
 reworded cs_4_1/groupshared_reduce
-reworded cs_4_1/integer_multiply
-reworded cs_4_1/shared_float_int_index
-reworded cs_5_0/double_select
 reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack
 reworded cs_5_0/local_array_window
@@ -57,21 +49,15 @@ reworded ps_4_0/float_modulo_complement
 reworded ps_4_0/half_packing
 reworded ps_4_0/index_and_scale
 reworded ps_4_0/int_divide
-reworded ps_4_0/int_float_mix
-reworded ps_4_0/integer_hash
-reworded ps_4_0/integer_vector
 reworded ps_4_0/logical_and
 reworded ps_4_0/packed_cbuffer
 reworded ps_4_0/packed_interpolator
 reworded ps_4_0/precedence_mix
 reworded ps_4_0/resource_swizzle
 reworded ps_4_0/shadow_pcf
-reworded ps_4_0/uint_convert
 reworded ps_4_0/vector_subscript
-reworded ps_4_1/alpha_to_coverage
 reworded ps_4_1/cascade_shadow
 reworded ps_5_0/depth_aware_blur
-reworded ps_5_0/double_compare
 reworded ps_5_0/environment_lighting
 reworded ps_5_0/gbuffer_write
 reworded ps_5_0/integer_texture_load
@@ -86,7 +72,6 @@ reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count
 reworded vs_3_0/nested_select
-reworded vs_4_0/bitwise
 reworded vs_4_0/integer_inputs
 reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members

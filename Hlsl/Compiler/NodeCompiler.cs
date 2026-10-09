@@ -975,6 +975,111 @@ public sealed class NodeCompiler
         return true;
     }
 
+    // Whether swapping two operands leaves fxc nothing to decide differently:
+    // plain arithmetic over registers, constants and variables. The order a
+    // shader reads a resource or calls an interface in is the order fxc binds
+    // them, and which side of an add a product is on is which one it fuses into
+    // a mad - screen_position cost one more with its sample moved.
+    private static bool CanReorder(IEnumerable<HlslTreeNode> first, IEnumerable<HlslTreeNode> second, bool products)
+    {
+        if (!products && first.Concat(second).Any(node => node is MultiplyOperation or MultiplyAddOperation
+            or DotProductOperation or ShiftLeftOperation or NegateOperation { Value: MultiplyOperation }))
+        {
+            return false;
+        }
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(first.Concat(second));
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            switch (node)
+            {
+                case ConstantNode or RegisterInputNode or TempVariableNode:
+                    continue;
+                case GroupNode or Operation:
+                    foreach (HlslTreeNode input in node.Inputs)
+                    {
+                        pending.Push(input);
+                    }
+                    continue;
+                default:
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    // Whether two operands of a commutative operator go the other way round. By
+    // what they are - a temporary first, `t0 + stride`, as the value being worked
+    // on; then an input, a value computed, a constant buffer's, and a constant
+    // last, `x + 1` - and then by their text, numbers by their value, so that
+    // t4 comes before t15. Both are the same whichever order fxc scheduled them.
+    private static bool SortsAfter(HlslTreeNode firstNode, string first, HlslTreeNode secondNode, string second)
+    {
+        int firstRank = OperandRank(firstNode, first);
+        int secondRank = OperandRank(secondNode, second);
+        if (firstRank != secondRank)
+        {
+            return firstRank > secondRank;
+        }
+        return CompareNatural(first, second) > 0;
+    }
+
+    private static int OperandRank(HlslTreeNode node, string text)
+    {
+        if (node is ConstantNode || IsConstantText(text))
+        {
+            return 4;
+        }
+        return node switch
+        {
+            TempVariableNode or TempAssignmentNode => 0,
+            RegisterInputNode register => register.RegisterComponentKey.RegisterKey switch
+            {
+                D3D10RegisterKey { OperandType: OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer } => 3,
+                D3D9RegisterKey { Type: RegisterType.Const or RegisterType.ConstInt or RegisterType.ConstBool } => 3,
+                _ => 1,
+            },
+            _ => 2,
+        };
+    }
+
+    // Text order with each run of digits compared as the number it is.
+    private static int CompareNatural(string a, string b)
+    {
+        int i = 0, j = 0;
+        while (i < a.Length && j < b.Length)
+        {
+            if (char.IsDigit(a[i]) && char.IsDigit(b[j]))
+            {
+                int si = i, sj = j;
+                while (i < a.Length && char.IsDigit(a[i])) i++;
+                while (j < b.Length && char.IsDigit(b[j])) j++;
+                string na = a[si..i].TrimStart('0'), nb = b[sj..j].TrimStart('0');
+                int byLength = na.Length.CompareTo(nb.Length);
+                if (byLength != 0) return byLength;
+                int byDigits = string.CompareOrdinal(na, nb);
+                if (byDigits != 0) return byDigits;
+                continue;
+            }
+            int byChar = a[i].CompareTo(b[j]);
+            if (byChar != 0) return byChar;
+            i++;
+            j++;
+        }
+        return (a.Length - i).CompareTo(b.Length - j);
+    }
+
+    private static bool IsConstantText(string text)
+    {
+        return System.Text.RegularExpressions.Regex.IsMatch(text,
+            @"^(-?[0-9][0-9.e+-]*|(float|int|uint|bool)[234]?\([-0-9.e+, ]*\)|true|false)$");
+    }
+
     // Whether the text is in one pair of brackets from end to end.
     private static bool IsBracketed(string text)
     {
@@ -1713,15 +1818,33 @@ public sealed class NodeCompiler
                         BitwiseOrOperation _ => "|",
                         _ => "^",
                     };
-                    return string.Format("{0} " + bitwise + " {1}",
-                        CompileIntegerOperand(components.Select(g => g.Inputs[0])),
-                        CompileIntegerOperand(components.Select(g => g.Inputs[1])));
+                    var operand1 = components.Select(g => g.Inputs[0]);
+                    var operand2 = components.Select(g => g.Inputs[1]);
+                    string text1 = CompileIntegerOperand(operand1);
+                    string text2 = CompileIntegerOperand(operand2);
+                    // The variable an accumulation assigns first, `t1 = t1 | bit`, and
+                    // two other operands in an order of their own: fxc's schedule
+                    // puts them either way round.
+                    bool accumulates = _compileDepth == _topDepth && _assignedVariables != null;
+                    if (accumulates && operand2.All(_assignedVariables.Contains)
+                        && !operand1.Any(_assignedVariables.Contains))
+                    {
+                        (text1, text2) = (text2, text1);
+                    }
+                    else if (!(accumulates && operand1.Concat(operand2).Any(_assignedVariables.Contains))
+                        && CanReorder(operand1, operand2, products: true)
+                        && SortsAfter(operand1.First(), text1, operand2.First(), text2))
+                    {
+                        (text1, text2) = (text2, text1);
+                    }
+                    return $"{text1} {bitwise} {text2}";
                 }
 
             case AddOperation _:
                 {
                     var addend1 = components.Select(g => g.Inputs[0]);
                     var addend2 = components.Select(g => g.Inputs[1]);
+                    bool decided = true;
                     // `a + (b + c)` written without the brackets is `(a + b) + c`,
                     // which sums in another order - a different rounding, and a mad
                     // chain fxc no longer sees. Addition commutes, so the sum goes
@@ -1748,11 +1871,37 @@ public sealed class NodeCompiler
                     {
                         (addend1, addend2) = (addend2, addend1);
                     }
+                    else
+                    {
+                        decided = IsSum(addend1.First()) || IsSum(addend2.First())
+                            || (_assignedVariables != null
+                                && addend1.Concat(addend2).Any(_assignedVariables.Contains)
+                                && _compileDepth == _topDepth);
+                    }
                     string right = CompileOperand(addend2);
-                    // A shift written as a multiply binds as one: `x * 2 + y`.
-                    string leftText = IsWrittenAsMultiply(addend1.ToList())
-                        ? Compile(addend1)
-                        : CompileOperand(addend1);
+                    string leftText = CompileOperand(addend1);
+                    // Otherwise in an order of their own: which side of the add fxc
+                    // put each is its scheduling, and comes back the other way
+                    // round from one round to the next.
+                    // Integer adds only: a float add's order decides more of what fxc
+                    // writes than it should - `t13 + t10` the other way round cost
+                    // point_lights its nrm, three instructions.
+                    if (!decided && !IsFloatValued(addend1.First()) && !IsFloatValued(addend2.First())
+                        && CanReorder(addend1, addend2, products: false)
+                        && SortsAfter(addend1.First(), leftText, addend2.First(), right))
+                    {
+                        (addend1, addend2) = (addend2, addend1);
+                        (leftText, right) = (right, leftText);
+                    }
+                    // A shift written as a multiply binds as one: `x * 2 + y`, `y + x * 2`.
+                    if (IsWrittenAsMultiply(addend1.ToList()) && IsBracketed(leftText))
+                    {
+                        leftText = leftText[1..^1];
+                    }
+                    if (IsWrittenAsMultiply(addend2.ToList()) && IsBracketed(right))
+                    {
+                        right = right[1..^1];
+                    }
                     // A negated product added is one subtracted: `0.5 - 0.5 * y`, not
                     // `0.5 + -0.5 * y`. Negating is exact, so the value is the same.
                     if (!IsSum(addend2.First()) && IsNegatedProduct(right))
@@ -3395,6 +3544,14 @@ public sealed class NodeCompiler
             {
                 right = $"(uint{size}){right}";
             }
+        }
+        // Equality either way round is the same test, and fxc's schedule puts
+        // its operands either way round.
+        if (first.Comparison is IfComparison.EQ or IfComparison.NE
+            && CanReorder(components.Select(c => c.Inputs[0]), components.Select(c => c.Inputs[1]), products: true)
+            && SortsAfter(first.Left, left, first.Right, right))
+        {
+            (left, right) = (right, left);
         }
         return $"{left} {first.Comparison.ToHlslString()} {right}";
     }

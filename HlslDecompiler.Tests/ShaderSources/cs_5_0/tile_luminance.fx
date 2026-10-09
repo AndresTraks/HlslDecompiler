@@ -36,7 +36,7 @@ void main(CS_IN i)
 			t0 = g1[i.sv_groupindex];
 			g1[i.sv_groupindex] = g1[t6] + t0;
 			int t7 = g0[i.sv_groupindex];
-			t6 = g0[t6] + t7;
+			t6 = t7 + g0[t6];
 			g0[i.sv_groupindex] = t6;
 		}
 		GroupMemoryBarrierWithGroupSync();

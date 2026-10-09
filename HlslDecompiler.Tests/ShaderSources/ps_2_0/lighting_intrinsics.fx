@@ -13,7 +13,7 @@ float4 main(PS_IN i) : COLOR
 	float3 t0 = normalize(i.texcoord);
 	float3 t1 = cross(t0, i.texcoord1);
 	float t2 = dot(eyeDir, t0);
-	float t3 = (t2 >= 0 ? 0 : -1) + (-t2 >= 0 ? 0 : 1);
+	float t3 = (-t2 >= 0 ? 0 : 1) + (t2 >= 0 ? 0 : -1);
 	float t4 = dot(lightDir, t0);
 	float t5 = -t4 >= 0 ? 0 : 1;
 	float3 t6 = normalize(lightDir + eyeDir);

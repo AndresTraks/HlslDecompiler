@@ -47,7 +47,7 @@ void main(triangle GS_IN i[3], inout PointStream<GS_OUT0> stream0, inout PointSt
 	stream1.Append(o1);
 	if (cutoff < i[2].color.z) {
 		o2.sv_position = i[2].sv_position;
-		o2.texcoord = 1 + tag;
+		o2.texcoord = tag + 1;
 		stream2.Append(o2);
 	}
 }

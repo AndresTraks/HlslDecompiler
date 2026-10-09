@@ -6,5 +6,5 @@ cbuffer cb : register(b0)
 
 float4 main(float4 position : POSITION) : SV_Position
 {
-	return mul(mul(position, m[idx]), m[((1 + idx) & 7)]);
+	return mul(mul(position, m[idx]), m[((idx + 1) & 7)]);
 }

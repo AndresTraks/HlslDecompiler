@@ -7,5 +7,5 @@ cbuffer cb : register(b0)
 
 float4 main() : SV_Target
 {
-	return float4((float)((a >> 2) | (a * 8)), (float)((b >> 1) & 15), (float2)(v.xw / 3 + v.xw % 7));
+	return float4((float)((a * 8) | (a >> 2)), (float)((b >> 1) & 15), (float2)(v.xw % 7 + v.xw / 3));
 }

@@ -16,5 +16,5 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 		}
 		t1 = t1 + t3 * (float4)(t2 + 1);
 	}
-	return t1 / (float4)(1 + steps);
+	return t1 / (float4)(steps + 1);
 }

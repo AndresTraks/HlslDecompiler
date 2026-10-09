@@ -27,7 +27,7 @@ void main(uint sv_groupindex : SV_GroupIndex)
 		case 1:
 			t0 = int2(sv_groupindex, 0);
 			while (t0.y < binCount) {
-				t0.x = t0.y + (t0.x * 2);
+				t0.x = t0.y + t0.x * 2;
 				bins[t0.y] = t0.x;
 				t0.y = t0.y + 1;
 			}

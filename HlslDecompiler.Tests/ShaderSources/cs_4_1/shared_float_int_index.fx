@@ -19,7 +19,7 @@ void main(CS_IN i)
 	int t0 = (i.sv_groupindex >> 2) ^ i.sv_groupindex * seed;
 	float t1 = 0;
 	for (uint t2 = 0; t2 < 4; t2 = t2 + 1) {
-		t1 = t1 + g0[t2 + t0 & 63];
+		t1 = t1 + g0[t0 + t2 & 63];
 	}
 	output[i.sv_dispatchthreadid.x] = 0.25 * t1;
 }

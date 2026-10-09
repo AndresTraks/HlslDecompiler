@@ -101,9 +101,12 @@ public class HlslSimpleWriter : HlslWriter
                         d9d10Instruction.GetParamRegisterKey(1), out D3D10Instruction alloc)
                     && IsAppendPair(alloc, d9d10Instruction))
                 {
-                    WriteLine("{0}.Append({1});", GetOperandName(alloc, 1),
-                        StoredBits(d9d10Instruction, 3)
-                            ?? GetOperandName(d9d10Instruction, 3));
+                    if (!WriteStructAppend(alloc, d9d10Instruction))
+                    {
+                        WriteLine("{0}.Append({1});", GetOperandName(alloc, 1),
+                            StoredBits(d9d10Instruction, 3)
+                                ?? GetOperandName(d9d10Instruction, 3));
+                    }
                     _allocatedSlots.Remove(d9d10Instruction.GetParamRegisterKey(1));
                     continue;
                 }
@@ -300,6 +303,45 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine("[branch]");
         }
     }
+
+    /// <summary>
+    /// An append of a struct element: the struct put together a member at a time
+    /// from the register's components, and appended. The register itself is a
+    /// float4 and not the struct, which fxc refused (X3017). False where the
+    /// element is not a struct, or the store does not write it whole from offset 0.
+    /// </summary>
+    private bool WriteStructAppend(D3D10Instruction alloc, D3D10Instruction store)
+    {
+        RegisterKey buffer = alloc.GetParamRegisterKey(1);
+        ResourceDefinition definition = _registers.FindStructuredBuffer(buffer);
+        if (definition?.ElementType?.MemberInfo is not { Count: > 0 }
+            || store.GetOperandType(2) != OperandType.Immediate32
+            || store.GetParamInt(2, 0) != 0)
+        {
+            return false;
+        }
+        int writeMask = store.GetWriteMask(0);
+        List<int> components = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
+        string element = $"appended{_appendCount++}";
+        IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(buffer, element, 0, components);
+        if (runs == null)
+        {
+            return false;
+        }
+        string value = GetOperandName(store, 3);
+        byte[] swizzle = store.GetSourceSwizzleComponents(3);
+        string register = value.Contains('.') ? value[..value.IndexOf('.')] : value;
+        WriteLine($"{GetStructuredElementType(definition)} {element};");
+        foreach ((string name, int[] values) in runs)
+        {
+            string picked = string.Concat(values.Select(v => "xyzw"[swizzle[components[v]]]));
+            WriteLine($"{name} = {register}.{picked};");
+        }
+        WriteLine($"{GetOperandName(alloc, 1)}.Append({element});");
+        return true;
+    }
+
+    private int _appendCount;
 
     private void WriteInterfaceCall(D3D10Instruction instruction)
     {
@@ -2730,10 +2772,13 @@ public class HlslSimpleWriter : HlslWriter
                     && IsConsumeResource(instruction.GetParamRegisterKey(3)):
                 {
                     // A component of the element that call read, picked by the byte
-                    // offset the load asks for.
+                    // offset the load asks for - and by the member it sits in, where
+                    // the element is a struct: `consumed0.x` off an Item is X3018.
                     int component = instruction.GetParamInt(2, 0) / 4;
-                    WriteResult(instruction, "{0} = {1}.{2};", GetOperandName(instruction, 0),
-                        consumedElement, "xyzw"[component]);
+                    string member = _registers.NameStructuredMembers(
+                        instruction.GetParamRegisterKey(3), consumedElement, 0, [component]);
+                    WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                        member ?? $"{consumedElement}.{"xyzw"[component]}");
                     break;
                 }
             case D3D10Opcode.LdStructured:

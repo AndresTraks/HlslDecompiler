@@ -53,6 +53,9 @@ public sealed class NodeCompiler
 
     public const int PromoteToAnyVectorSize = -1;
 
+    /// <summary>The name the writer gives a structured buffer's struct element.</summary>
+    public System.Func<ResourceDefinition, string> StructuredElementTypeName { get; set; }
+
     // The values the parser recorded as doubles; see HlslAst.DoubleValues.
     private readonly ISet<HlslTreeNode> _doubleValues;
 
@@ -3208,8 +3211,15 @@ public sealed class NodeCompiler
             // broadcasts a scalar the width of whatever reads it. Writing
             // `t1.xxx * color.xyz` where `t1 * color.xyz` said the same thing
             // asks the reader to count swizzle letters.
+            string variableName = $"{_registers.TemporaryPrefix}{tempVariable.DeclarationIndex}";
+            if (tempVariable.StructuredElementOf != null
+                && _registers.NameStructuredMembers(tempVariable.StructuredElementOf, variableName, 0,
+                    [.. componentsWithIndices.Select(c => c.ComponentIndex)]) is string members)
+            {
+                return members;
+            }
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, (int)tempVariable.VariableSize);
-            return $"{_registers.TemporaryPrefix}{tempVariable.DeclarationIndex}{swizzle}";
+            return $"{variableName}{swizzle}";
         }
 
         if (first is ConsumeNode consume)
@@ -3350,6 +3360,11 @@ public sealed class NodeCompiler
         // and converted back coming out, which above 2^24 is a different number, and
         // the shift that doubled it written as an add of floats. An element with
         // members of its own is a struct this does not name, and stays as it was.
+        // A struct element is declared as the struct, and its members read off it.
+        if (variable.StructuredElementOf != null && StructuredElementTypeName?.Invoke(buffer) is string structName)
+        {
+            return $"{structName} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
+        }
         string scalar = buffer.ElementType is { MemberInfo: null or { Count: 0 } }
             ? buffer.ElementType.ParameterType.ToString().ToLowerInvariant()
             : "float";

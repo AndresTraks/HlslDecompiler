@@ -112,7 +112,12 @@ public class HlslAstWriter : HlslWriter
         _consumeVariables.Clear();
         _doubleBitsVariables.Clear();
         _loopDepth = 0;
-        _compiler = new NodeCompiler(_registers, _doubleValues);
+        _compiler = new NodeCompiler(_registers, _doubleValues)
+        {
+            StructuredElementTypeName = resource => resource.ElementType?.MemberInfo is { Count: > 0 }
+                ? GetStructuredElementTypeName(resource)
+                : null,
+        };
         _grouper = new NodeGrouper(_registers);
         _templateMatcher = new TemplateMatcher(_grouper);
 
@@ -656,6 +661,31 @@ public class HlslAstWriter : HlslWriter
         // whether what goes in is an integer.
         RegisterKey appendKey = ((RegisterInputNode)append.Destination)
             .RegisterComponentKey.RegisterKey;
+        // A struct element is put together member by member in a struct of its own
+        // and that is appended: a float4 of a struct's members is not the struct,
+        // and fxc refused it (X3017).
+        ResourceDefinition appended = _registers.ResourceDefinitions?.FirstOrDefault(d =>
+            d.ShaderInputType == D3DShaderInputType.UavAppendStructured && d.BindPoint == appendKey.Number);
+        if (appended?.ElementType?.MemberInfo is { Count: > 0 })
+        {
+            TempVariableNode element = _compiler.CreateTempVariables(1)[0];
+            string elementName = $"{_registers.TemporaryPrefix}{element.DeclarationIndex}";
+            IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
+                appendKey, elementName, 0, [.. Enumerable.Range(0, values.Length)]);
+            if (runs != null)
+            {
+                WriteLine($"{GetStructuredElementTypeName(appended)} {elementName};");
+                foreach ((string name, int[] members) in runs)
+                {
+                    string memberValue = CompileStoredValue(
+                        [.. members.Select(i => values[i])],
+                        _registers.IsIntegerStructuredMember(appendKey, members[0]));
+                    WriteLine($"{name} = {memberValue};");
+                }
+                WriteLine($"{destination}.Append({elementName});");
+                return;
+            }
+        }
         string value = CompileStoredValue(
             values, _registers.IsIntegerStructuredMember(appendKey, 0));
         WriteLine($"{destination}.Append({value});");
@@ -3456,6 +3486,15 @@ public class HlslAstWriter : HlslWriter
                 // said neither - and every float reader of it converted the bits into
                 // the number they spell instead of reinterpreting them.
                 ApplyValueTypes(variables, [.. call]);
+                // A struct element is read by member, off the struct the call returns.
+                RegisterKey consumedKey = consume.Buffer.RegisterComponentKey.RegisterKey;
+                if (_registers.FindStructuredMemberRuns(consumedKey, "t", 0, [0]) != null)
+                {
+                    foreach (TempVariableNode variable in variables)
+                    {
+                        variable.StructuredElementOf = consumedKey;
+                    }
+                }
                 _consumeVariables[consume.Slot] = variables;
                 // Only the statement that names it first writes the call.
                 assignments.Add([.. call.Select(component =>

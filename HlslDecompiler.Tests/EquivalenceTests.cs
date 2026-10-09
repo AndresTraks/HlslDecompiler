@@ -40,6 +40,13 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
+        ["cs_5_0/item_queue"] = [("instruction",
+            "The id appended. The instruction writer keeps an integer in a register "
+            + "declared float as the number it is, by convention, and r1 holds an "
+            + "item's float position beside its uint id plus 1000; the struct it "
+            + "appends takes the id back off r1.w by conversion. Exact up to 2^24, "
+            + "and the trials hand the id random bits well past that. The AST "
+            + "writer, which types the id as the uint it is, computes the same.")],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

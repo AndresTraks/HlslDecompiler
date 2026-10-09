@@ -369,6 +369,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "matrix_column_blend")]
     [TestCase("ps_5_0", "any_not_all")]
     [TestCase("ps_5_0", "half_unpack")]
+    [TestCase("cs_5_0", "item_queue")]
     [TestCase("cs_5_0", "struct_flags")]
     [TestCase("gs_5_0", "looped_vertices")]
     [TestCase("hs_5_0", "looped_control_points")]

@@ -156,14 +156,22 @@ public sealed class RegisterState
         // memory is g0 and a structured buffer t0, both number zero, so a load
         // from the first was finding the element type of the second and naming
         // members of a float4 array.
-        D3DShaderInputType inputType = (resourceKey as D3D10RegisterKey)?.OperandType switch
+        // A view slot holds one buffer whatever kind of structured buffer it is: an
+        // append or a consume buffer's element is a struct as much as a read-write
+        // one's, and asked for the read-write kind alone it had no members to name.
+        D3DShaderInputType[] inputTypes = (resourceKey as D3D10RegisterKey)?.OperandType switch
         {
-            OperandType.Resource => D3DShaderInputType.Structured,
-            OperandType.UnorderedAccessView => D3DShaderInputType.UavRWStructured,
-            _ => (D3DShaderInputType)(-1),
+            OperandType.Resource => [D3DShaderInputType.Structured],
+            OperandType.UnorderedAccessView =>
+            [
+                D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavAppendStructured,
+                D3DShaderInputType.UavConsumeStructured,
+            ],
+            _ => [],
         };
         return ResourceDefinitions.FirstOrDefault(r =>
-            r.ShaderInputType == inputType && r.BindPoint == resourceKey.Number);
+            inputTypes.Contains(r.ShaderInputType) && r.BindPoint == resourceKey.Number);
     }
 
     /// <summary>

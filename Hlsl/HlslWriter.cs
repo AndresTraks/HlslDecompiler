@@ -1047,7 +1047,7 @@ public abstract class HlslWriter
     /// where shader model 5's reflection data has it, and otherwise one made from
     /// the buffer's. Not a name the writer's own structs could have, and not one
     /// another buffer's different struct already has.</summary>
-    private string GetStructuredElementTypeName(ResourceDefinition resource)
+    protected string GetStructuredElementTypeName(ResourceDefinition resource)
     {
         string own = resource.ElementType?.Name;
         if (!string.IsNullOrEmpty(own)

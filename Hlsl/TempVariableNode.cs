@@ -44,6 +44,11 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // made of decides the casts around it, and only the declaration changes here.
     public bool IsBool { get; set; }
 
+    // The structured buffer whose struct element this variable holds whole, as a
+    // Consume() hands one back: its components are read as the members they sit
+    // in, and the declaration names the struct.
+    public RegisterKey StructuredElementOf { get; set; }
+
     public string TypeName => IsBool
         ? "bool"
         : IsInteger

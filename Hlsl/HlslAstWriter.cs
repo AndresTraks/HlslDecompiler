@@ -2512,7 +2512,7 @@ public class HlslAstWriter : HlslWriter
     // operations, the component index of every leaf but those all of them read -
     // a scalar broadcast across the vector. A cross product's lane reads two
     // others and answers nothing.
-    private static int?[] LanesRead(IList<HlslTreeNode> components)
+    private int?[] LanesRead(IList<HlslTreeNode> components)
     {
         // Leaves are component reads, and whatever is not elementwise, which is
         // only a broadcast if every lane reads it.
@@ -2545,13 +2545,17 @@ public class HlslAstWriter : HlslWriter
         }
         return [.. leaves.Select(found =>
         {
-            HlslTreeNode[] own = [.. found.Where(leaf => !leaves.All(other => other.Contains(leaf)))];
-            if (own.Any(leaf => leaf is not IHasComponentIndex))
-            {
-                return null;
-            }
-            int[] lanes = [.. own.Select(leaf => ((IHasComponentIndex)leaf).ComponentIndex).Distinct()];
-            return lanes.Length == 1 ? (int?)lanes[0] : null;
+            // A row of a matrix multiply is the lane its row is, as the mul's
+            // own variable is laid out (SourceLane).
+            int?[] lanes = [.. found
+                .Where(leaf => !leaves.All(other => other.Contains(leaf)))
+                .Select(leaf => leaf is IHasComponentIndex indexed
+                    ? indexed.ComponentIndex
+                    : leaf is DotProductOperation dot
+                        ? _grouper.MatrixMultiplicationGrouper.MatrixRowRegister(dot)
+                        : null)
+                .Distinct()];
+            return lanes.Length == 1 ? lanes[0] : null;
         })];
     }
 

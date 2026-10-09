@@ -23,10 +23,11 @@ VS_OUT main(VS_IN i)
 	float4 t0 = transpose(instances[i.sv_instanceid])[0];
 	float4 t1 = transpose(instances[i.sv_instanceid])[1];
 	float4 t2 = transpose(instances[i.sv_instanceid])[2];
-	float4 t3 = transpose(instances[i.sv_instanceid])[3];
-	o.sv_position = mul(float4(dot(i.position, t0), dot(i.position, t1), dot(i.position, t2), dot(i.position, t3)), viewProjection);
+	float3 t3 = float3(dot(i.position, t0), dot(i.position, t1), dot(i.position, t2));
+	float4 t4 = transpose(instances[i.sv_instanceid])[3];
+	o.sv_position = mul(float4(t3, dot(i.position, t4)), viewProjection);
 	o.normal = float3(dot(i.normal, t0.xyz), dot(i.normal, t1.xyz), dot(i.normal, t2.xyz));
-	o.texcoord = float3(dot(i.position, t0), dot(i.position, t1), dot(i.position, t2));
+	o.texcoord = t3;
 
 	return o;
 }

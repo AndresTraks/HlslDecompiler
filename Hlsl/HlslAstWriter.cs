@@ -1831,6 +1831,51 @@ public class HlslAstWriter : HlslWriter
         return assignments;
     }
 
+    /// <summary>
+    /// The lanes of one add put back into one spelling. AddNegativeTemplate writes
+    /// `x + -1` as `x - 1`, which is what a lane on its own wants, and it cannot see
+    /// the lane beside it: fullscreen_id's position is one mad, `uv * float2(2, -2) +
+    /// float2(-1, 1)`, and with its x a subtraction and its y an addition the two
+    /// would not group, and fxc built them as two mads over two conversions. Where an
+    /// instruction's lanes are an addition and a subtraction of a constant, the
+    /// subtraction is an addition of the negated constant again.
+    /// </summary>
+    private static void RejoinSignedLanes(IList<HlslTreeNode[]> registerGroups)
+    {
+        List<HlslTreeNode> nodes = [.. Reachable(registerGroups.SelectMany(g => g))
+            .Where(n => n.SourceInstruction != 0 && n is AddOperation or SubtractOperation)];
+        foreach (IGrouping<int, HlslTreeNode> instruction in nodes.GroupBy(n => n.SourceInstruction))
+        {
+            if (!instruction.Any(n => n is AddOperation))
+            {
+                continue;
+            }
+            foreach (SubtractOperation subtract in instruction.OfType<SubtractOperation>().ToList())
+            {
+                if (subtract.Subtrahend is not ConstantNode constant)
+                {
+                    continue;
+                }
+                var add = new AddOperation(subtract.Minuend, constant.Negated())
+                {
+                    SourceInstruction = subtract.SourceInstruction,
+                    SourceComponent = subtract.SourceComponent,
+                };
+                subtract.Replace(add);
+                for (int g = 0; g < registerGroups.Count; g++)
+                {
+                    for (int i = 0; i < registerGroups[g].Length; i++)
+                    {
+                        if (ReferenceEquals(registerGroups[g][i], subtract))
+                        {
+                            registerGroups[g][i] = add;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static IEnumerable<HlslTreeNode> Reachable(IEnumerable<HlslTreeNode> roots)
     {
         HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
@@ -1871,6 +1916,7 @@ public class HlslAstWriter : HlslWriter
         // Here because every caller arrives with its roots reduced and nothing named
         // yet, which is the one point an idiom can be put into the graph rather than
         // recognised out of it later. See IdiomRecovery.
+        RejoinSignedLanes(registerGroups);
         IdiomRecovery.Recover(registerGroups, _grouper.MatrixMultiplicationGrouper);
         ReadEarlierNames(registerGroups);
 
@@ -2917,10 +2963,7 @@ public class HlslAstWriter : HlslWriter
         IList<HlslTreeNode[]> registerGroups,
         List<(HlslTreeNode[] Nodes, string Text)> recording)
     {
-        if (_shader.Type != ShaderType.Hull)
-        {
-            return null;
-        }
+        bool isHull = _shader.Type == ShaderType.Hull;
         foreach (HlslTreeNode[] group in registerGroups)
         {
             if (!group.All(node => node is Operation && IsNameable(node))
@@ -2931,12 +2974,39 @@ public class HlslAstWriter : HlslWriter
             }
             int written = recording.Count(r => r.Nodes.Length == group.Length
                 && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second)));
-            if (written > 1)
+            if (isHull && written > 1)
+            {
+                return [group];
+            }
+            if (!isHull && group.Length > 1 && IsReadALaneAtATime(group, recording))
             {
                 return [group];
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Whether every lane of a root vector is written again on its own inside
+    /// another expression. fullscreen_id's texcoord is `float2((float)a, (float)b)`,
+    /// and the position is the texcoord scaled and offset - read a lane apiece, it
+    /// was `2 * (float)a - 1` and `-2 * (float)b + 1`, two conversions and two mads
+    /// where the shader had one of each. Named, the lanes are the variable's
+    /// components, and the grouper takes them back together.
+    /// </summary>
+    private bool IsReadALaneAtATime(
+        HlslTreeNode[] group, List<(HlslTreeNode[] Nodes, string Text)> recording)
+    {
+        if (recording.Count(r => r.Nodes.Length == group.Length
+                && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second))) != 1)
+        {
+            return false;
+        }
+        // A constructor writes each lane on its own as a matter of course, so a lane
+        // of one is read elsewhere only where it is written alone a second time.
+        int own = IsConstructorOnly(group) ? 1 : 0;
+        return group.All(node => recording.Count(r => r.Nodes.Length == 1
+            && ReferenceEquals(r.Nodes[0], node)) > own);
     }
 
     private List<HlslTreeNode[]> SharedRoots(

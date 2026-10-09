@@ -724,6 +724,33 @@ public sealed class NodeCompiler
             : condition;
     }
 
+    // The order that puts both operands' lanes in order, where that is not the
+    // order they are in and one order does: each a component of a register or a
+    // variable, all different, rising together.
+    private static int[] InLaneOrder(IList<HlslTreeNode> left, IList<HlslTreeNode> right)
+    {
+        if (left.Count < 2
+            || !left.Concat(right).All(n => n is IHasComponentIndex)
+            || left.Select(n => ((IHasComponentIndex)n).ComponentIndex).Distinct().Count() != left.Count
+            || right.Select(n => ((IHasComponentIndex)n).ComponentIndex).Distinct().Count() != right.Count)
+        {
+            return null;
+        }
+        int[] order = [.. Enumerable.Range(0, right.Count).OrderBy(i => ((IHasComponentIndex)right[i]).ComponentIndex)];
+        if (order.SequenceEqual(Enumerable.Range(0, right.Count)))
+        {
+            return null;
+        }
+        for (int i = 1; i < order.Length; i++)
+        {
+            if (((IHasComponentIndex)left[order[i]]).ComponentIndex <= ((IHasComponentIndex)left[order[i - 1]]).ComponentIndex)
+            {
+                return null;
+            }
+        }
+        return order;
+    }
+
     // A comparison, or a constant all ones or all zeroes.
     private static bool IsMask(HlslTreeNode node)
     {
@@ -1839,6 +1866,18 @@ public sealed class NodeCompiler
                     int vectorSize = components[0].Inputs[0] is GroupNode vector
                         ? vector.Inputs.Count
                         : PromoteToAnyVectorSize;
+                    // The pairs in the order both operands have their lanes, where one
+                    // order does for both: dot(a.yzx, b.yzx) is dot(a, b), and that is
+                    // how a dot over a register fxc rotated reads otherwise.
+                    if (components.Count == 1
+                        && components[0].Inputs[0] is GroupNode left
+                        && components[0].Inputs[1] is GroupNode right
+                        && left.Inputs.Count == right.Inputs.Count
+                        && InLaneOrder(left.Inputs, right.Inputs) is int[] order)
+                    {
+                        return $"dot({Compile([.. order.Select(i => left.Inputs[i])], vectorSize)}, "
+                            + $"{Compile([.. order.Select(i => right.Inputs[i])], vectorSize)})";
+                    }
                     var x = Compile(components.Select(g => g.Inputs[0]), vectorSize);
                     var y = Compile(components.Select(g => g.Inputs[1]), vectorSize);
                     return $"dot({x}, {y})";
@@ -2762,6 +2801,16 @@ public sealed class NodeCompiler
             // `normalize(n).xyz` of a float3 - which fxc then spelled out as a
             // dp3, an rsq and a mul instead of the one nrm.
             MarkMatched(components);
+            // Every component, in another order, is the normalize of the inputs in
+            // that order: `normalize(t1.yzx).zxy` is normalize(t1). A variable
+            // laid out in the order of the vector normalized - InWrittenOrder -
+            // takes a rotated nrm's components that way.
+            if (components.Count == first.Inputs.Count && components.Count > 1
+                && components.All(c => c is NormalizeOutputNode n && n.Inputs.SequenceEqual(first.Inputs))
+                && components.Select(c => ((NormalizeOutputNode)c).ComponentIndex).Distinct().Count() == components.Count)
+            {
+                return $"normalize({Compile(components.Select(c => first.Inputs[((NormalizeOutputNode)c).ComponentIndex]))})";
+            }
             string input = Compile(first.Inputs);
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count,
                 promoteToVectorSize);

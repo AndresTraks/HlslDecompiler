@@ -93,6 +93,5 @@ reworded vs_3_0/loop_repeat_count
 reworded vs_3_0/nested_select
 reworded vs_4_0/bitwise
 reworded vs_4_0/integer_inputs
-reworded vs_4_0/normal_transform
 reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members

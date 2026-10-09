@@ -2508,6 +2508,20 @@ public class HlslAstWriter : HlslWriter
         return byOrder.Count == 1 ? candidate : [.. byOrder.Values];
     }
 
+    // The lane a value has in the variable it is named in: a row of a matrix
+    // multiply is the row it is - which is how InWrittenOrder lays out the mul's
+    // own variable, whichever register lanes fxc wrote the rows to - and anything
+    // else the component the instruction that made it wrote, or the one it reads.
+    private int? SourceLane(HlslTreeNode node)
+    {
+        if (node is DotProductOperation dot
+            && _grouper.MatrixMultiplicationGrouper.MatrixRowRegister(dot) is int row)
+        {
+            return row;
+        }
+        return node.SourceInstruction != 0 ? node.SourceComponent : ComponentOrder(node);
+    }
+
     /// <summary>
     /// Which component of its register an expression reads, for ordering the
     /// components of one instruction against each other. The first one found: an
@@ -3014,9 +3028,22 @@ public class HlslAstWriter : HlslWriter
                 || (other is DotProductOperation otherDot && _grouper.MatrixMultiplicationGrouper.AreRowsOfOneMatrix(dot, otherDot)))
             ? _grouper.MatrixMultiplicationGrouper.MatrixRowRegister(dot)
             : null)];
+        // A normalize's components by the component of the vector each one
+        // divides, not the register lane fxc put it in: recompiled, fxc stores
+        // normalize(t1) rotated to save a swizzle on the cross product after it,
+        // and named in lane order it was `normalize(t1.yzx)` read back as t2.zxy.
+        int?[] normalized = [.. first.Select(n => n is NormalizeOutputNode normalize
+            && normalize.ComponentIndex < normalize.Inputs.Count
+            && first.All(other => other is NormalizeOutputNode o && o.Inputs.SequenceEqual(normalize.Inputs))
+            ? SourceLane(normalize.Inputs[normalize.ComponentIndex])
+            : null)];
         if (rows.All(r => r != null) && rows.Distinct().Count() == first.Length)
         {
             order = [.. Enumerable.Range(0, first.Length).OrderBy(i => rows[i])];
+        }
+        else if (normalized.All(c => c != null) && normalized.Distinct().Count() == first.Length)
+        {
+            order = [.. Enumerable.Range(0, first.Length).OrderBy(i => normalized[i])];
         }
         else if (first.All(n => n is IHasComponentIndex)
             && first.Select(n => ((IHasComponentIndex)n).ComponentIndex).Distinct().Count() == first.Length

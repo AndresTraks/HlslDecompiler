@@ -36,7 +36,7 @@ float4 main(PS_IN i) : COLOR
 		float3 t13 = normalize(t12);
 		float t14 = pow(saturate(dot(t9, normalize(t13 + t10))), specularPower) + saturate(dot(t9, t13));
 		float t15 = dot(t12, t12) + 1;
-		t7.xyz = t14 * (t11.z == 0 ? lightColors[3] : t11.y == 0 ? lightColors[2] : t11.x == 0 ? lightColors[1] : t7.w == 0 ? lightColors[0] : 0) / t15 + t7.xyz;
+		t7.xyz = t7.xyz + t14 * (t11.z == 0 ? lightColors[3] : t11.y == 0 ? lightColors[2] : t11.x == 0 ? lightColors[1] : t7.w == 0 ? lightColors[0] : 0) / t15;
 		t7.w = t7.w + 1;
 	}
 	float t16 = 1 - saturate(dot(t9, t10));

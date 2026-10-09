@@ -21,7 +21,7 @@ void main(CS_IN i)
 	uint t2 = 0;
 	for (uint t3 = 0; t3 < 8; t3 = t3 + 1) {
 		uint t4 = g0[t3 + i.sv_groupindex & 63];
-		t2 = (t4 & 255) + t2;
+		t2 = t2 + (t4 & 255);
 	}
 	float t5 = (float)count;
 	output[i.sv_dispatchthreadid.x] = (float)t2 / t5;

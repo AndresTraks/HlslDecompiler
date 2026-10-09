@@ -28,7 +28,7 @@ void main(CS_IN i)
 		float t5 = g0[t3].z;
 		float t6 = g0[t3].y;
 		float t7 = g0[t3].x;
-		t1 = float4(t7, t6, t5, t4) * weights[t2] + t1;
+		t1 = t1 + float4(t7, t6, t5, t4) * weights[t2];
 	}
 	output[t0] = t1 / (float4)width;
 }

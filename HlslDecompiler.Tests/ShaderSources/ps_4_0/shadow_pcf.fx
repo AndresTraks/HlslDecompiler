@@ -29,7 +29,7 @@ float4 main(PS_IN i) : SV_Target
 	}
 	for (int t7 = -1; t7 <= 1; t7 = t7 + 1) {
 		float t8 = shadowMap.SampleCmpLevelZero(shadowSamp, float2((float)t7 * bias.z + t2.x, t2.y), t2.z).x;
-		t3 = t8 + t3;
+		t3 = t3 + t8;
 	}
 	for (int t9 = -1; t9 <= 1; t9 = t9 + 1) {
 		float2 t10 = float2((float)t9 * bias.z + t2.x, t2.y + bias.w);

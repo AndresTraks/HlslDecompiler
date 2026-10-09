@@ -31,7 +31,7 @@ void main(CS_IN i)
 	for (uint t2 = 0; t2 < 4; t2 = t2 + 1) {
 		uint t3 = t2 + i.sv_groupindex & 63;
 		float t4 = g0[t3].w;
-		t0 = g0[t3].xyz * t4 + t0;
+		t0 = t0 + g0[t3].xyz * t4;
 		t1 = t1 + t4;
 	}
 	result[i.sv_dispatchthreadid.x].colour = t0 / max(t1, 0.0000999999975);

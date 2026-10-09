@@ -16,25 +16,25 @@ void main(CS_IN i)
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 1) {
-		t0 = g0[i.sv_groupindex - 1] + t0;
+		t0 = t0 + g0[i.sv_groupindex - 1];
 	}
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 2) {
-		t0 = g0[i.sv_groupindex - 2] + t0;
+		t0 = t0 + g0[i.sv_groupindex - 2];
 	}
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 4) {
-		t0 = g0[i.sv_groupindex - 4] + t0;
+		t0 = t0 + g0[i.sv_groupindex - 4];
 	}
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 8) {
-		t0 = g0[i.sv_groupindex - 8] + t0;
+		t0 = t0 + g0[i.sv_groupindex - 8];
 	}
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex] = t0;
@@ -42,13 +42,13 @@ void main(CS_IN i)
 	int t1 = i.sv_groupindex >= 16;
 	if (i.sv_groupindex >= 16) {
 		t1 = g0[i.sv_groupindex - 16];
-		t0 = t1 + t0;
+		t0 = t0 + t1;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	g0[i.sv_groupindex] = t0;
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex >= 32) {
-		t0 = g0[i.sv_groupindex - 32] + t0;
+		t0 = t0 + g0[i.sv_groupindex - 32];
 	}
 	output[i.sv_dispatchthreadid.x] = t0;
 }

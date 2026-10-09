@@ -25,7 +25,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 
 	float t0 = 0;
 	for (int t1 = 0; t1 < 4; t1 = t1 + 1) {
-		t0 = length(patch[t1].pos) + t0;
+		t0 = t0 + length(patch[t1].pos);
 	}
 	o.edges[0] = t0 * edgeScale;
 	o.edges[1] = t0;

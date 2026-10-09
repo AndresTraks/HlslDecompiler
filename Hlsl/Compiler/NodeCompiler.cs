@@ -421,6 +421,10 @@ public sealed class NodeCompiler
     // compile, one more for the value of an assignment, which its group compiles.
     private int _topDepth = 1;
 
+    // The variables the assignment being compiled writes, for an accumulation to
+    // name them first.
+    private HashSet<HlslTreeNode> _assignedVariables;
+
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
     {
         _compileDepth++;
@@ -1666,6 +1670,15 @@ public sealed class NodeCompiler
                     {
                         (addend1, addend2) = (addend2, addend1);
                     }
+                    // An accumulation names what it adds to first: `t0 = t0 + x`.
+                    // Which side fxc's add has it on is its scheduling, and it
+                    // came back the other way round from one round to the next.
+                    else if (_compileDepth == _topDepth && _assignedVariables != null
+                        && addend2.All(_assignedVariables.Contains)
+                        && !addend1.Any(_assignedVariables.Contains))
+                    {
+                        (addend1, addend2) = (addend2, addend1);
+                    }
                     string right = CompileOperand(addend2);
                     return string.Format("{0} + {1}",
                         CompileOperand(addend1),
@@ -2858,6 +2871,12 @@ public sealed class NodeCompiler
             _assignedDirectlyToInteger = tempAssignment.TempVariable.IsInteger;
             int wasTopDepth = _topDepth;
             _topDepth = _compileDepth + 1;
+            HashSet<HlslTreeNode> wasAssignedVariables = _assignedVariables;
+            _assignedVariables = HlslTreeNode.NewNodeSet();
+            foreach (TempAssignmentNode assigned in components.Cast<TempAssignmentNode>())
+            {
+                _assignedVariables.Add(assigned.TempVariable);
+            }
             string compiled;
             try
             {
@@ -2869,6 +2888,7 @@ public sealed class NodeCompiler
                 _assigningToUnsigned = wasAssigningToUnsigned;
                 _assignedDirectlyToInteger = wasAssignedDirectly;
                 _topDepth = wasTopDepth;
+                _assignedVariables = wasAssignedVariables;
             }
             // A variable its readers type as an integer, holding a value that is a
             // float: the integer they read is its bits, so the assignment

@@ -27,7 +27,7 @@ float4 main(PS_IN i) : SV_Target
 			t3 = t9;
 			break;
 		}
-		t1 = t0 * march.x + t1;
+		t1 = t1 + t0 * march.x;
 		t2 = t8;
 		t3 = t9;
 	}

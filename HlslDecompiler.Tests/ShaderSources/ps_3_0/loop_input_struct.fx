@@ -11,7 +11,7 @@ float4 main(PS_IN i) : COLOR
 {
 	float4 t0 = i.color;
 	for (int i_ = 0; i_ < n; i_++) {
-		t0 = colour * i.texcoord + t0;
+		t0 = t0 + colour * i.texcoord;
 	}
 	return t0;
 }

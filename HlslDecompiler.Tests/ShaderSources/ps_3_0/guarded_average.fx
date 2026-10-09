@@ -22,7 +22,7 @@ float4 main(float2 texcoord : TEXCOORD) : COLOR
 		}
 		float2 t12 = (t3 == 0 ? offsets[7].xy : t4 == 0 ? offsets[6].xy : t5 == 0 ? offsets[5].xy : t6 == 0 ? offsets[4].xy : t7 == 0 ? offsets[3].xy : t8 == 0 ? offsets[2].xy : t9 == 0 ? offsets[1].xy : t10 == 0 ? offsets[0].xy : 0) * control.x + texcoord;
 		float4 t13 = tex2Dlod(source, float4(t12, t2));
-		t0 = t13 * t11 + t0;
+		t0 = t0 + t13 * t11;
 		t1 = float2(t11 + t1.x, t1.y + 1);
 	}
 	return t0 / max(t1.x, 0.0000999999975);

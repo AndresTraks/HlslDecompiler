@@ -37,8 +37,8 @@ float4 main(PS_IN i) : SV_Target
 		float t7 = exp((float)(t3 * -t3) / t2);
 		float t8 = t7 * t6;
 		float4 t9 = source.Sample(linearSampler, t5);
-		t1 = t9 * t8 + t1;
-		t4 = t6 * t7 + t4;
+		t1 = t1 + t9 * t8;
+		t4 = t4 + t6 * t7;
 		t3 = t3 + 1;
 	}
 	float4 t10 = source.Sample(linearSampler, i.texcoord);

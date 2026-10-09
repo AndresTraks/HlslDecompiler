@@ -31,7 +31,6 @@ reworded cs_4_1/integer_multiply
 reworded cs_4_1/shared_float_int_index
 reworded cs_5_0/double_select
 reworded cs_5_0/groupshared_neighbours
-reworded cs_5_0/groupshared_scan
 reworded cs_5_0/half_pack
 reworded cs_5_0/high_bit
 reworded cs_5_0/local_array_window
@@ -41,7 +40,6 @@ reworded cs_5_0/tile_depth_bounds
 reworded cs_5_0/tile_luminance
 reworded ds_5_0/isoline_curve
 reworded hs_5_0/carried_constants
-reworded hs_5_0/looped_control_points
 reworded hs_5_0/split_control_points
 reworded ps_3_0/guarded_average
 reworded ps_3_0/if_else_in_loop

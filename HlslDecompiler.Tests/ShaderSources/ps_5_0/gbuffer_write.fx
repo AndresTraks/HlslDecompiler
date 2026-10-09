@@ -44,7 +44,7 @@ PS_OUT main(PS_IN i)
 			t2 = t2 * t3.x;
 			break;
 		case 2:
-			t2 = t3.w * (-t0 * baseColor.xyz + t3.xyz) + t2;
+			t2 = t2 + t3.w * (-t0 * baseColor.xyz + t3.xyz);
 			break;
 		default:
 			break;

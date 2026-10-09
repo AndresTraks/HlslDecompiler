@@ -2097,6 +2097,55 @@ public sealed class NodeCompiler
 
     // An offset shifts the read by whole texels. Leaving it out compiles and
     // reads the wrong ones, so it belongs in the call.
+    /// <summary>
+    /// A Load address that is a texel plus a constant, written as the whole address
+    /// plus the constant: `int3(t2, 0) + int3(1, 0, 0)` rather than
+    /// `int3(t2 + int2(1, 0), 0)`. The shader kept the address in a register, mip
+    /// level and all, and stepped to the neighbouring texel with one iadd over the
+    /// register; given the texel's add alone fxc adds the pair and moves the mip
+    /// level in beside it again, an instruction more (screen_position). Only where
+    /// the mip level is a constant, and some lane adds an integer constant.
+    /// </summary>
+    private string CompileOffsetAddress(List<HlslTreeNode> address)
+    {
+        if (address.Count < 2 || address[^1] is not ConstantNode mip
+            || (mip.IntegerValue is null && mip.Value != MathF.Floor(mip.Value)))
+        {
+            return null;
+        }
+        var bases = new List<HlslTreeNode>();
+        var offsets = new List<HlslTreeNode>();
+        bool offset = false;
+        foreach (HlslTreeNode lane in address.Take(address.Count - 1))
+        {
+            if (lane is AddOperation add
+                && add.Inputs.Count(input => input is ConstantNode { IntegerValue: not null }) == 1
+                && add.Inputs.Single(input => input is not ConstantNode { IntegerValue: not null }) is HlslTreeNode laneBase
+                && laneBase is not ConstantNode)
+            {
+                bases.Add(laneBase);
+                offsets.Add(add.Inputs.Single(input => input is ConstantNode { IntegerValue: not null }));
+                offset = true;
+            }
+            else if (lane is ConstantNode)
+            {
+                return null;
+            }
+            else
+            {
+                bases.Add(lane);
+                offsets.Add(new ConstantNode(0));
+            }
+        }
+        if (!offset)
+        {
+            return null;
+        }
+        bases.Add(mip);
+        offsets.Add(new ConstantNode(0));
+        return $"{Compile(bases, bases.Count)} + {Compile(offsets, offsets.Count)}";
+    }
+
     private static string CompileSampleOffsets(int[] sampleOffsets, ResourceDefinition texture)
     {
         if (sampleOffsets == null)
@@ -2433,7 +2482,8 @@ public sealed class NodeCompiler
             string address;
             try
             {
-                address = Compile(resourceLoad.Address, resourceLoad.Address.Count());
+                address = CompileOffsetAddress(resourceLoad.Address.ToList())
+                    ?? Compile(resourceLoad.Address, resourceLoad.Address.Count());
             }
             finally
             {

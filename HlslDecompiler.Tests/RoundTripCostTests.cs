@@ -115,14 +115,6 @@ public class RoundTripCostTests
         ["ps_4_0/conditional_return"] = (12,
             "The original returns conditionally with retc_nz. HLSL has no spelling for "
             + "that, so `if (c) return x;` compiles to if, ret, endif."),
-        ["ps_4_0/screen_position"] = (15,
-            "One instruction, and it is the position read as a pair. The shader "
-            + "divides sv_position.xy by the resolution and casts it to int2, and "
-            + "both were written out twice - once scalar for the checker pattern, "
-            + "once as a pair in the return. Named, each is written once and reads "
-            + "far better, and the int2 the loads address with becomes one vector "
-            + "add where the original added a scalar 1 to the x alone. Paid for "
-            + "what the same pass takes off partial_overwrite and particle_update."),
         ["gs_4_1/circle"] = (20,
             "One instruction, and it is the position's components not grouping. "
             + "The original writes `mad r2.xyzw, r0.xyzw, l(0.5, 0.5, 0, 0), "

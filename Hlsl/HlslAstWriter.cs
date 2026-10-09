@@ -1232,6 +1232,20 @@ public class HlslAstWriter : HlslWriter
         {
             tested = [tested[0]];
         }
+        // The subexpressions the condition writes more than once, named above the
+        // if. A predicate is written out rather than named and stays that way -
+        // naming a mask names it through an integer variable, which is an `and` the
+        // bytecode did not have (see IStatement.NamedHeldNodes) - but that is about
+        // the mask, not about what the mask is computed from. The operands are
+        // ordinary values, they are evaluated before the branch either way, and
+        // naming one costs nothing: every fixture's instruction count is unchanged.
+        //
+        // A screen space reflection tested a ray's depth against a sampled one
+        // twice over, and wrote out the dot product and the sample twice each - one
+        // line reading as two texture fetches. The hoist also lets a condition read
+        // a name already in scope, through ReadEarlierNames: a blur that had named
+        // its sample on the line above was re-rendering the whole fetch to test it.
+        WriteSharedSubexpressions([[.. tested]]);
         if (WritesFlowAttributes)
         {
             WriteLine("[branch]");

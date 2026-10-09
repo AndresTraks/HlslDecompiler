@@ -30,7 +30,9 @@ float4 main(PS_IN i) : SV_Target
 		if (any(t6 > 1) || any(t6 < 0)) {
 			break;
 		}
-		if (dot(transpose(viewProjection)[2], float4(t4, 1)) / t5 - depthBuffer.SampleLevel(linearSampler, t6, 0).x < thickness && depthBuffer.SampleLevel(linearSampler, t6, 0).x < dot(transpose(viewProjection)[2], float4(t4, 1)) / t5) {
+		float t7 = dot(transpose(viewProjection)[2], float4(t4, 1)) / t5;
+		float t8 = depthBuffer.SampleLevel(linearSampler, t6, 0).x;
+		if (t7 - t8 < thickness && t8 < t7) {
 			t2 = float4(sceneColour.SampleLevel(linearSampler, t6, 0).xyz, 1);
 			break;
 		}

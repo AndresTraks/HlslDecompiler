@@ -51,10 +51,10 @@ public class RoundTripCostTests
         // The decompiler's doing.
         ["cs_5_0/struct_flags"] = (13,
             "Two instructions, and they are the load of the struct. The original "
-            + "reads pos and life with one sixteen byte load; read back, pos is "
-            + "three scalars named one by one and put back together as float3(t3, t5, "
-            + "t6), and life is named and then read from the buffer again for the "
-            + "multiply - so fxc loads twice. The fixture is here for two things the "
+            + "reads pos and life with one sixteen byte load; read back, life is "
+            + "named in the statement that computes the new life, and the store of "
+            + "the position - a statement of its own - reads pos and life again as "
+            + "a float4 of its own, so fxc loads twice. The fixture is here for two things the "
             + "probe that found it showed: `t1 | 1` came back as `t1 | 0.000000`, the "
             + "immediate read as a float, and the instruction writer loaded the float "
             + "members into an int register as numbers rather than bits."),

@@ -1468,8 +1468,31 @@ public sealed class NodeCompiler
                 ? integerType
                 : "float";
         var parts = new List<string>();
-        foreach (IList<HlslTreeNode> group in componentGroups)
+        for (int g = 0; g < componentGroups.Count; g++)
         {
+            IList<HlslTreeNode> group = componentGroups[g];
+            // A run of dot products against the same weights beside other
+            // components is a transpose all the same: a column-major bone blend
+            // into a float4 with a w of 1 came back as three dots of float2(bone0.x,
+            // bone1.x) against the weights, five instructions dearer than the one
+            // blend. TryCompileTransposedDots takes only a whole vector of them, so
+            // the run is offered on its own, and stands as one argument.
+            if (!reinterpretFloats && group.Count == 1 && group[0] is DotProductOperation)
+            {
+                int end = g;
+                while (end + 1 < componentGroups.Count && componentGroups[end + 1].Count == 1
+                    && componentGroups[end + 1][0] is DotProductOperation)
+                {
+                    end++;
+                }
+                if (end > g && end - g + 1 < components.Count
+                    && TryCompileTransposedDots([.. componentGroups.Skip(g).Take(end - g + 1).Select(r => r[0])]) is string run)
+                {
+                    parts.Add(run);
+                    g = end;
+                    continue;
+                }
+            }
             string compiled = Compile(group, group.Count);
             if (reinterpretFloats && IsFloatValued(group[0]))
             {

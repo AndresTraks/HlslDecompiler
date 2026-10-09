@@ -1679,6 +1679,15 @@ public sealed class NodeCompiler
                     {
                         (addend1, addend2) = (addend2, addend1);
                     }
+                    // A select goes second, after what it is added to: `x + (c ? a :
+                    // b)`. fxc's add has it either side from one round to the next.
+                    else if (addend1.First() is MoveConditionalOperation or CompareOperation
+                        && addend2.First() is not (MoveConditionalOperation or CompareOperation)
+                        && !IsSum(addend2.First())
+                        && !(_assignedVariables != null && addend1.Any(_assignedVariables.Contains)))
+                    {
+                        (addend1, addend2) = (addend2, addend1);
+                    }
                     string right = CompileOperand(addend2);
                     return string.Format("{0} + {1}",
                         CompileOperand(addend1),

@@ -32,7 +32,6 @@ reworded cs_4_1/shared_float_int_index
 reworded cs_5_0/double_select
 reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack
-reworded cs_5_0/high_bit
 reworded cs_5_0/local_array_window
 reworded cs_5_0/prefix_flags
 reworded cs_5_0/switch_stored_index
@@ -55,7 +54,6 @@ reworded ps_4_0/branch_flag
 reworded ps_4_0/conditional_return
 reworded ps_4_0/dxbc_continue
 reworded ps_4_0/float_modulo_complement
-reworded ps_4_0/gbuffer_decode
 reworded ps_4_0/half_packing
 reworded ps_4_0/index_and_scale
 reworded ps_4_0/int_divide

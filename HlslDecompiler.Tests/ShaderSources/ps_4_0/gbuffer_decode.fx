@@ -18,7 +18,7 @@ float4 main(PS_IN i) : SV_Target
 	float2 t1 = 0.0000305180438 * float2((float)(gbuffer1.Load(t0).x & 65535), (float)((uint)gbuffer1.Load(t0).x >> 16)) - 1;
 	float t2 = 1 - abs(t1.x) - abs(t1.y);
 	float t3 = max(-t2, 0);
-	float2 t4 = (t1 >= 0 ? -t3 : t3) + t1;
+	float2 t4 = t1 + (t1 >= 0 ? -t3 : t3);
 	float3 t5 = -i.texcoord1 * asfloat(gbuffer1.Load(t0).y) + lightPosition.xyz;
 	float t6 = saturate(1 - length(t5) / lightPosition.w);
 	float t7 = saturate(dot(normalize(float3(t4, t2)), normalize(t5))) * t6 * t6;

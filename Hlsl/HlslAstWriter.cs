@@ -2508,6 +2508,70 @@ public class HlslAstWriter : HlslWriter
         return byOrder.Count == 1 ? candidate : [.. byOrder.Values];
     }
 
+    // The one lane each component reads, where it reads one: of elementwise
+    // operations, the component index of every leaf but those all of them read -
+    // a scalar broadcast across the vector. A cross product's lane reads two
+    // others and answers nothing.
+    private static int?[] LanesRead(IList<HlslTreeNode> components)
+    {
+        // Leaves are component reads, and whatever is not elementwise, which is
+        // only a broadcast if every lane reads it.
+        List<HashSet<HlslTreeNode>> leaves = [];
+        foreach (HlslTreeNode component in components)
+        {
+            HashSet<HlslTreeNode> found = HlslTreeNode.NewNodeSet();
+            HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+            var pending = new Stack<HlslTreeNode>([component]);
+            while (pending.Count != 0)
+            {
+                HlslTreeNode node = pending.Pop();
+                if (!seen.Add(node))
+                {
+                    continue;
+                }
+                if (node is IHasComponentIndex
+                    || (node is Operation operation && !NodeCompiler.IsElementwise(operation))
+                    || node is not Operation and not ConstantNode)
+                {
+                    found.Add(node);
+                    continue;
+                }
+                foreach (HlslTreeNode input in node.Inputs)
+                {
+                    pending.Push(input);
+                }
+            }
+            leaves.Add(found);
+        }
+        return [.. leaves.Select(found =>
+        {
+            HlslTreeNode[] own = [.. found.Where(leaf => !leaves.All(other => other.Contains(leaf)))];
+            if (own.Any(leaf => leaf is not IHasComponentIndex))
+            {
+                return null;
+            }
+            int[] lanes = [.. own.Select(leaf => ((IHasComponentIndex)leaf).ComponentIndex).Distinct()];
+            return lanes.Length == 1 ? (int?)lanes[0] : null;
+        })];
+    }
+
+    // The lanes a vector's components have in the variable they are named in,
+    // laid out as InWrittenOrder lays one instruction's components out: by the
+    // lanes they read where those are all different, by the lanes they were
+    // written to otherwise.
+    private int?[] LanesOf(IList<HlslTreeNode> components)
+    {
+        if (components.All(n => n.SourceInstruction != 0 && HlslTreeNode.IsSameInstruction(n, components[0])))
+        {
+            int?[] read = LanesRead(components);
+            if (read.All(c => c != null) && read.Distinct().Count() == components.Count)
+            {
+                return read;
+            }
+        }
+        return [.. components.Select(SourceLane)];
+    }
+
     // The lane a value has in the variable it is named in: a row of a matrix
     // multiply is the row it is - which is how InWrittenOrder lays out the mul's
     // own variable, whichever register lanes fxc wrote the rows to - and anything
@@ -3032,10 +3096,14 @@ public class HlslAstWriter : HlslWriter
         // divides, not the register lane fxc put it in: recompiled, fxc stores
         // normalize(t1) rotated to save a swizzle on the cross product after it,
         // and named in lane order it was `normalize(t1.yzx)` read back as t2.zxy.
-        int?[] normalized = [.. first.Select(n => n is NormalizeOutputNode normalize
-            && normalize.ComponentIndex < normalize.Inputs.Count
+        int?[] lanes = first[0] is NormalizeOutputNode firstNormalize
+            ? LanesOf(firstNormalize.Inputs)
+            : null;
+        int?[] normalized = [.. first.Select(n => lanes != null
+            && n is NormalizeOutputNode normalize
+            && normalize.ComponentIndex < lanes.Length
             && first.All(other => other is NormalizeOutputNode o && o.Inputs.SequenceEqual(normalize.Inputs))
-            ? SourceLane(normalize.Inputs[normalize.ComponentIndex])
+            ? lanes[normalize.ComponentIndex]
             : null)];
         if (rows.All(r => r != null) && rows.Distinct().Count() == first.Length)
         {
@@ -3056,7 +3124,14 @@ public class HlslAstWriter : HlslWriter
             && first.All(n => HlslTreeNode.IsSameInstruction(n, first[0]))
             && first.Select(n => n.SourceComponent).Distinct().Count() == first.Length)
         {
-            order = [.. Enumerable.Range(0, first.Length).OrderBy(i => first[i].SourceComponent)];
+            // By the lanes the instruction read, where they are all different: fxc
+            // writes `-t0 * t1 + tangent` to a register rotated when the reader
+            // after it wants it so, and laid out by the lanes it wrote it was
+            // `-t0.yzx * t1 + tangent.yzx`, read back as t2.zxy. Otherwise by those.
+            int?[] read = LanesRead(first);
+            order = read.All(c => c != null) && read.Distinct().Count() == first.Length
+                ? [.. Enumerable.Range(0, first.Length).OrderBy(i => read[i])]
+                : [.. Enumerable.Range(0, first.Length).OrderBy(i => first[i].SourceComponent)];
         }
         if (order == null || order.SequenceEqual(Enumerable.Range(0, first.Length)))
         {

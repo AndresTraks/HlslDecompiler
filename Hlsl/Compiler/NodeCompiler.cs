@@ -770,7 +770,7 @@ public sealed class NodeCompiler
     // operands alone, so that a vector of them is the same operation on vectors.
     // A conversion is left out: `(float4)float4(a, b, c, d)` says less than four
     // casts do.
-    private static bool IsElementwise(Operation operation)
+    internal static bool IsElementwise(Operation operation)
     {
         return operation is AddOperation or SubtractOperation or MultiplyOperation
             or BitFieldExtractOperation or BitFieldInsertOperation

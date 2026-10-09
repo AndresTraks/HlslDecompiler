@@ -44,7 +44,7 @@ float4 main(PS_IN i) : SV_Target
 	int t2 = (uint)i.sv_position.x & 3;
 	float t3 = 0;
 	for (uint t4 = 0; t4 < sampleCount; t4 = t4 + 1) {
-		float t5 = depthMap.SampleLevel(pointSampler, (float2(icb1[t4 & 7].x * icb0[t2].x - icb0[t2].y * icb1[t4 & 7].y, dot(icb1[t4 & 7].yx, icb0[t2].xy))) * radius * inverseSize + i.texcoord, 0).x;
+		float t5 = depthMap.SampleLevel(pointSampler, float2(icb1[t4 & 7].x * icb0[t2].x - icb0[t2].y * icb1[t4 & 7].y, dot(icb1[t4 & 7].yx, icb0[t2].xy)) * radius * inverseSize + i.texcoord, 0).x;
 		float t6 = t1.x - t5;
 		t3 = (t6 < radius && bias < t6 ? saturate(dot(t1.yzw, icb1[t4 & 7].xyz)) : 0) + t3;
 	}

@@ -32,7 +32,7 @@ float4 main(PS_IN i) : SV_Target
 	float3 t6 = normalize(t4) - lightDirection;
 	float3 t7 = normalMap.Sample(linearSampler, i.texcoord).xyz;
 	float3 t8 = 2 * t7 - 1;
-	float3 t9 = t8.x * t3 + (cross(t0, t3)) * t8.y + t8.z * t0;
+	float3 t9 = t8.x * t3 + cross(t0, t3) * t8.y + t8.z * t0;
 	float3 t10 = normalize(t9);
 	float t11 = saturate(dot(t10, -lightDirection)) * lightIntensity;
 	float t12 = (flags & 1 ? 1.0 : 0.0) * pow(saturate(dot(t10, normalize(t6))), 32);

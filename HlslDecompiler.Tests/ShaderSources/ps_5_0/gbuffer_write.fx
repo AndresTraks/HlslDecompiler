@@ -56,7 +56,7 @@ PS_OUT main(PS_IN i)
 	float2 t8 = normalMap.Sample(anisoSampler, i.texcoord).xy;
 	float2 t9 = 2 * t8 - 1;
 	float t10 = sqrt(max(1 - dot(t9, t9), 0));
-	float3 t11 = t9.x * t7 + (cross(t4, t7)) * i.tangent.w * t9.y + t10 * t4;
+	float3 t11 = t9.x * t7 + cross(t4, t7) * i.tangent.w * t9.y + t10 * t4;
 	float3 t12 = normalize(t11);
 	float t13 = 1 - saturate(dot(t12, normalize(i.texcoord1)));
 	float t14 = t13 * t13;

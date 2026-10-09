@@ -1648,14 +1648,13 @@ public sealed class NodeCompiler
                     bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
                     bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First())
                         && !IsQuotient(multiplicand2);
-                    string format =
-                        (firstIsAssociative ? "{0}" : "({0})") +
-                        " * " +
-                        (secondIsAssociative ? "{1}" : "({1})");
-
-                    return string.Format(format,
-                        Compile(multiplicand1, promoteToVectorSize),
-                        Compile(multiplicand2, promoteToVectorSize));
+                    // By the node, unless it was written as one call, as CompileOperand
+                    // asks: a cross product is three subtracts and binds as a call does.
+                    string first = Compile(multiplicand1, promoteToVectorSize);
+                    string second = Compile(multiplicand2, promoteToVectorSize);
+                    return (firstIsAssociative || IsOneCall(first) ? first : $"({first})")
+                        + " * "
+                        + (secondIsAssociative || IsOneCall(second) ? second : $"({second})");
                 }
 
             case ModuloOperation _:

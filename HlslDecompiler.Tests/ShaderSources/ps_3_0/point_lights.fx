@@ -28,7 +28,7 @@ float4 main(PS_IN i) : COLOR
 	float4 t6 = tex2D(diffuseMap, uvScale * i.texcoord3);
 	float4 t7 = float4(0.100000001, 0.100000001, 0.100000001, 0);
 	float4 t8 = t6 * i.color;
-	float3 t9 = normalize(t5.x * t3 + (cross(t0, t3)) * t5.y + t5.z * t0);
+	float3 t9 = normalize(t5.x * t3 + cross(t0, t3) * t5.y + t5.z * t0);
 	float3 t10 = normalize(cameraPosition - i.texcoord);
 	for (int i_ = 0; i_ < lightCount; i_++) {
 		float3 t11 = t7.w - float3(1, 2, 3);

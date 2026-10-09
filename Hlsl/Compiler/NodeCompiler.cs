@@ -953,6 +953,28 @@ public sealed class NodeCompiler
             && System.Text.RegularExpressions.Regex.IsMatch(text, @"^(float|int|uint|bool)[234]\(");
     }
 
+    // Whether the text is a minus and then factors multiplied and nothing else: no
+    // operator outside brackets but `*` - `-0.5 * t.y`, `-t0 * x`.
+    private static bool IsNegatedProduct(string text)
+    {
+        if (text.Length < 2 || text[0] != '-' || text[1] == '-' || text[1] == ' ')
+        {
+            return false;
+        }
+        int depth = 0;
+        for (int i = 1; i < text.Length; i++)
+        {
+            char c = text[i];
+            depth += c == '(' || c == '[' ? 1 : c == ')' || c == ']' ? -1 : 0;
+            if (depth == 0 && "+-/%?:<>=&|^!~".Contains(c)
+                && !(c == '-' && i > 0 && (text[i - 1] == 'e' || text[i - 1] == 'E')))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Whether the text is in one pair of brackets from end to end.
     private static bool IsBracketed(string text)
     {
@@ -1731,6 +1753,12 @@ public sealed class NodeCompiler
                     string leftText = IsWrittenAsMultiply(addend1.ToList())
                         ? Compile(addend1)
                         : CompileOperand(addend1);
+                    // A negated product added is one subtracted: `0.5 - 0.5 * y`, not
+                    // `0.5 + -0.5 * y`. Negating is exact, so the value is the same.
+                    if (!IsSum(addend2.First()) && IsNegatedProduct(right))
+                    {
+                        return $"{leftText} - {right[1..]}";
+                    }
                     return string.Format("{0} + {1}",
                         leftText,
                         IsSum(addend2.First()) ? $"({right})" : right);

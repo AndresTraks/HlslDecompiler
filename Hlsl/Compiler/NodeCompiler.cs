@@ -888,9 +888,14 @@ public sealed class NodeCompiler
             string shifted = offset.All(o => o == 0) ? insert : $"({insert} << {CompileIntegers(offset)})";
             // Bracketed: an and binds more loosely than most of what this can sit
             // inside, and `bfi(...) / 4` written bare is anded with the quotient.
+            // The bits kept, as the number they are where that is a positive one:
+            // `& 16777215`, not `& ~-16777216` - but `& ~65280`, not `& -65281`.
+            string keptText = mask.All(m => ~m >= 0)
+                ? CompileIntegers([.. mask.Select(m => ~m)])
+                : $"~{maskText}";
             return insertsIntoNothing
                 ? $"({shifted} & {maskText})"
-                : $"({value} & ~{maskText}) | ({shifted} & {maskText})";
+                : $"({value} & {keptText}) | ({shifted} & {maskText})";
         }
         string maskExpression = $"(((1 << {CompileOperand(widths)}) - 1) << {CompileOperand(offsets)})";
         return insertsIntoNothing
@@ -935,6 +940,7 @@ public sealed class NodeCompiler
         // that are a cross product bind as tightly as any call does, and
         // `(cross(a, b)) * c` says nothing with its brackets.
         return AssociativityTester.NeedsParenthesesAsOperand(list[0]) && !IsOneCall(compiled)
+                && !IsBracketed(compiled)
             ? $"({compiled})"
             : compiled;
     }
@@ -945,6 +951,25 @@ public sealed class NodeCompiler
     {
         return IsOneCall(text)
             && System.Text.RegularExpressions.Regex.IsMatch(text, @"^(float|int|uint|bool)[234]\(");
+    }
+
+    // Whether the text is in one pair of brackets from end to end.
+    private static bool IsBracketed(string text)
+    {
+        if (text.Length < 2 || text[0] != '(' || text[^1] != ')')
+        {
+            return false;
+        }
+        int depth = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            depth += text[i] == '(' ? 1 : text[i] == ')' ? -1 : 0;
+            if (depth == 0 && i != text.Length - 1)
+            {
+                return false;
+            }
+        }
+        return depth == 0;
     }
 
     // Whether the text is one function call and nothing beside it: a name, and a
@@ -1856,7 +1881,7 @@ public sealed class NodeCompiler
                     string castType = components.Count > 1
                         ? convert.TargetType + components.Count
                         : convert.TargetType;
-                    return isSingleTerm
+                    return isSingleTerm || IsBracketed(compiledValue)
                         ? $"({castType}){compiledValue}"
                         : $"({castType})({compiledValue})";
                 }

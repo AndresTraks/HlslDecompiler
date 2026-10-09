@@ -1280,12 +1280,67 @@ public sealed class IntegerOperandAnalysis
         {
             return StoredType.Unknown;
         }
+        // A struct is whatever the members the instruction reaches are, where they
+        // agree. Asked of the struct as a whole, a position and a life beside a
+        // flags word were nothing in particular, and the instruction writer loaded
+        // the two floats into an int register as the integers nearest them.
+        if (definition.ElementType.MemberInfo is { Count: > 0 } members)
+        {
+            return ReachedMembersType(load, members);
+        }
         return definition.ElementType.ParameterType switch
         {
             ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
             ParameterType.Float => StoredType.Float,
             _ => StoredType.Unknown,
         };
+    }
+
+    // The type of the struct members a structured load or store reaches: the
+    // dword each component it names sits in, by its byte offset, and the member
+    // holding that dword. Unknown where they disagree, where the offset is not an
+    // immediate, or where a member is not a plain number.
+    private static StoredType ReachedMembersType(D3D10Instruction instruction, IList<ShaderStructMemberInfo> members)
+    {
+        const int OffsetIndex = 2;
+        if (instruction.GetOperandType(OffsetIndex) != OperandType.Immediate32)
+        {
+            return StoredType.Unknown;
+        }
+        int byteOffset = instruction.GetParamInt(OffsetIndex, 0);
+        IEnumerable<int> dwords;
+        if (instruction.Opcode == D3D10Opcode.StoreStructured)
+        {
+            int mask = instruction.GetWriteMask(0);
+            dwords = Enumerable.Range(0, 4).Where(c => (mask & (1 << c)) != 0);
+        }
+        else
+        {
+            int mask = instruction.GetWriteMask(0);
+            byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
+            dwords = Enumerable.Range(0, 4).Where(c => (mask & (1 << c)) != 0).Select(c => (int)swizzle[c]);
+        }
+        StoredType type = StoredType.Unknown;
+        foreach (int dword in dwords)
+        {
+            int at = byteOffset + dword * 4;
+            ShaderStructMemberInfo member = members
+                .Where(m => m.ByteOffset <= at)
+                .OrderByDescending(m => m.ByteOffset)
+                .FirstOrDefault();
+            StoredType memberType = member?.TypeInfo.ParameterType switch
+            {
+                ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
+                ParameterType.Float => StoredType.Float,
+                _ => StoredType.Unknown,
+            };
+            if (memberType == StoredType.Unknown || (type != StoredType.Unknown && type != memberType))
+            {
+                return StoredType.Unknown;
+            }
+            type = memberType;
+        }
+        return type;
     }
 
     private static bool LoadsIntegerTexels(ShaderModel shader, D3D10Instruction load)

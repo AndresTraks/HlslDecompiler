@@ -613,6 +613,17 @@ public class NodeGrouper
             return false;
         }
 
+        // A relative read is the register it is offset from as well as the index:
+        // cb0[idx + 0] and cb0[idx + 1] share their index and are two rows of a
+        // matrix. Comparing the index alone made the three rows of a bone blended
+        // in from a row_major array one value, and the constructor wrote the whole
+        // blend once per component - a float4 of three float3s, which fxc refused.
+        if (node1 is RelativeAddressNode relative1 && node2 is RelativeAddressNode relative2)
+        {
+            return relative1.RegisterComponentKey.Equals(relative2.RegisterComponentKey)
+                && AreNodesEquivalent(relative1.Index, relative2.Index);
+        }
+
         // A variable has no inputs to compare, so two of them compared equal
         // whatever they were - t0.x was t3.x. Each component of a variable is one
         // node that every reader points at, so the node itself says which it is.

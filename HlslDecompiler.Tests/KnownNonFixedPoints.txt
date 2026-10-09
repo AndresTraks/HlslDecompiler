@@ -20,6 +20,7 @@ reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack
 reworded cs_5_0/local_array_window
 reworded cs_5_0/prefix_flags
+reworded cs_5_0/struct_flags
 reworded cs_5_0/switch_stored_index
 reworded cs_5_0/tile_depth_bounds
 reworded cs_5_0/tile_luminance

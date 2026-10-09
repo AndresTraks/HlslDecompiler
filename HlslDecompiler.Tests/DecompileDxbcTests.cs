@@ -365,6 +365,8 @@ public class DecompileDxbcTests
     [TestCase("cs_4_0", "cached_texel_blur")]
     [TestCase("ps_5_0", "transposed_basis")]
     [TestCase("ps_5_0", "normal_map_basis")]
+    [TestCase("ps_5_0", "matrix_row_blend")]
+    [TestCase("cs_5_0", "struct_flags")]
     [TestCase("gs_5_0", "looped_vertices")]
     [TestCase("hs_5_0", "looped_control_points")]
     [TestCase("ps_5_0", "texture_buffer_globals")]

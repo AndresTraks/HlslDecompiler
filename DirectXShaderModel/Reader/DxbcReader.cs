@@ -549,9 +549,11 @@ public class DxbcReader : BinaryReader
         int firstMemberOffset = ReadInt32();
 
         // An interface pointer's type names the interface, at the end of the
-        // record shader model 5 lengthened: the HLSL wrote `IShade g_one;`.
+        // record shader model 5 lengthened: the HLSL wrote `IShade g_one;`. And
+        // a struct's names the struct: `RWStructuredBuffer<P> ps` was written back
+        // with a struct called PsElement, which is not the type a host asks for.
         string name = null;
-        if (_typesHaveNames && variableClass == ParameterClass.InterfacePointer)
+        if (_typesHaveNames && variableClass is ParameterClass.InterfacePointer or ParameterClass.Struct)
         {
             BaseStream.Position = chunkOffset + typeOffset + 8 + 32;
             int nameOffset = ReadInt32();

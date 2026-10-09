@@ -3,13 +3,13 @@ cbuffer Params : register(b0)
 	float4x4 viewProjection;
 };
 
-struct InstancesElement
+struct Instance
 {
 	float4x4 world;
 	float4 tint;
 };
 
-StructuredBuffer<InstancesElement> instances : register(t0);
+StructuredBuffer<Instance> instances : register(t0);
 
 struct VS_IN
 {

@@ -3,14 +3,14 @@ cbuffer Params : register(b0)
 	float4x4 viewProjection;
 };
 
-struct NodesElement
+struct Node
 {
 	float3x3 rotation;
 	row_major float4x4 world;
 	float4 tint;
 };
 
-StructuredBuffer<NodesElement> nodes : register(t0);
+StructuredBuffer<Node> nodes : register(t0);
 
 struct VS_IN
 {

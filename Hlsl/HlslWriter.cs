@@ -895,8 +895,14 @@ public abstract class HlslWriter
             // A structured buffer whose element is a struct needs that struct named
             // before the buffer that holds it. The reflection data has the members
             // but no name for the type, so one is made from the buffer's.
+            HashSet<string> declaredStructs = [];
             foreach (ResourceDefinition resource in StructuredElementTypes())
             {
+                // Two buffers of one struct declare it once.
+                if (!declaredStructs.Add(GetStructuredElementTypeName(resource)))
+                {
+                    continue;
+                }
                 WriteLine($"struct {GetStructuredElementTypeName(resource)}");
                 WriteLine("{");
                 indent = "	";
@@ -1037,12 +1043,29 @@ public abstract class HlslWriter
         }
     }
 
-    /// <summary>The name given to a structured buffer's struct element. The
-    /// reflection data names the members and not the type, so the buffer names
-    /// it.</summary>
-    private static string GetStructuredElementTypeName(ResourceDefinition resource)
+    /// <summary>The name given to a structured buffer's struct element: its own,
+    /// where shader model 5's reflection data has it, and otherwise one made from
+    /// the buffer's. Not a name the writer's own structs could have, and not one
+    /// another buffer's different struct already has.</summary>
+    private string GetStructuredElementTypeName(ResourceDefinition resource)
     {
+        string own = resource.ElementType?.Name;
+        if (!string.IsNullOrEmpty(own)
+            && System.Text.RegularExpressions.Regex.IsMatch(own, "^[A-Za-z_][A-Za-z0-9_]*$")
+            && !System.Text.RegularExpressions.Regex.IsMatch(own, "_(IN|OUT|CONST)$")
+            && StructuredElementTypes().All(other => other.ElementType?.Name != own
+                || SameMembers(other.ElementType, resource.ElementType)))
+        {
+            return own;
+        }
         return char.ToUpperInvariant(resource.Name[0]) + resource.Name[1..] + "Element";
+    }
+
+    private static bool SameMembers(ShaderTypeInfo a, ShaderTypeInfo b)
+    {
+        return ReferenceEquals(a, b)
+            || (a.MemberInfo.Count == b.MemberInfo.Count
+                && a.MemberInfo.Zip(b.MemberInfo).All(pair => pair.First.Name == pair.Second.Name));
     }
 
     protected string GetStructuredElementType(ResourceDefinition resource)

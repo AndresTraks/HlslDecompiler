@@ -2917,7 +2917,16 @@ public class HlslAstWriter : HlslWriter
             bool wholeAndPart = written.Any(r => r.Nodes.Length == group.Length)
                 && written.Any(r => r.Nodes.Length < group.Length)
                 && group.All(node => node is Operation);
-            if (saved >= RepeatedTextBudget || wholeAndPart)
+            // And only where they are one vector expression together, as
+            // ScatteredInstruction asks: a mad that worked out two samples'
+            // coordinates in its four lanes, each sample reading its own pair, was
+            // named `float3(texcoord.x - texel.x, texcoord.y + texel.y, ...)` with a
+            // lane repeated, and three movs put it back together.
+            // Arithmetic lanes only: a sincos is one instruction writing a sine and
+            // a cosine, and `float2(cos(a), sin(a))` is the pair the shader wanted.
+            bool packedArithmetic = group.All(node => node is AddOperation or SubtractOperation
+                or MultiplyOperation or MultiplyAddOperation or NegateOperation);
+            if ((saved >= RepeatedTextBudget || wholeAndPart) && !(packedArithmetic && IsConstructorOnly(group)))
             {
                 return [group];
             }
@@ -2975,6 +2984,13 @@ public class HlslAstWriter : HlslWriter
             return [group];
         }
         return null;
+    }
+
+    // Whether the components, compiled together, are a constructor of them.
+    private bool IsConstructorOnly(IEnumerable<HlslTreeNode> components)
+    {
+        string together = _compiler.Measure([components]).Recording[^1].Text;
+        return System.Text.RegularExpressions.Regex.IsMatch(together, @"^(float|int|uint|half|double|bool)[234]\(");
     }
 
     /// <summary>

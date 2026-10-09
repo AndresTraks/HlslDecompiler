@@ -51,6 +51,7 @@ reworded ps_4_0/resource_swizzle
 reworded ps_4_0/shadow_pcf
 reworded ps_4_0/vector_subscript
 reworded ps_4_1/cascade_shadow
+reworded ps_5_0/any_not_all
 reworded ps_5_0/depth_aware_blur
 reworded ps_5_0/environment_lighting
 reworded ps_5_0/gbuffer_write

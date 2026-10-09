@@ -2245,9 +2245,20 @@ public sealed class NodeCompiler
                         return anyAll;
                     }
                     string op = operation is LogicalAndOperation ? "&&" : "||";
-                    return string.Format("{0} " + op + " {1}",
-                        Compile(components.Select(g => g.Inputs[0])),
-                        Compile(components.Select(g => g.Inputs[1])));
+                    // An or under an and keeps its brackets: && binds tighter, and
+                    // `a && b || c` is (a && b) || c. An all() turned round into an
+                    // or of three tests, anded with an any(), was written that way
+                    // and tested something else.
+                    string Operand(int index)
+                    {
+                        string text = Compile(components.Select(g => g.Inputs[index]));
+                        return operation is LogicalAndOperation
+                            && components[0].Inputs[index] is LogicalOrOperation
+                            && !text.StartsWith("any(")
+                            ? $"({text})"
+                            : text;
+                    }
+                    return $"{Operand(0)} {op} {Operand(1)}";
                 }
 
             case ClampOperation _:

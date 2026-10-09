@@ -1626,6 +1626,33 @@ public class InstructionParser
         return false;
     }
 
+    // The condition that holds where this one does not, or null where it is not
+    // one this can turn round.
+    private static HlslTreeNode InvertCondition(HlslTreeNode node)
+    {
+        switch (node)
+        {
+            case ComparisonNode comparison:
+                return comparison.Inverted();
+            case GreaterEqualOperation ge:
+                return new ComparisonNode(ge.Source0, ge.Source1, IfComparison.LT);
+            case LogicalAndOperation and:
+                {
+                    HlslTreeNode left = InvertCondition(and.Inputs[0]);
+                    HlslTreeNode right = left == null ? null : InvertCondition(and.Inputs[1]);
+                    return right == null ? null : new LogicalOrOperation(left, right);
+                }
+            case LogicalOrOperation or:
+                {
+                    HlslTreeNode left = InvertCondition(or.Inputs[0]);
+                    HlslTreeNode right = left == null ? null : InvertCondition(or.Inputs[1]);
+                    return right == null ? null : new LogicalAndOperation(left, right);
+                }
+            default:
+                return null;
+        }
+    }
+
     // A comparison result. GE is still modelled as an operation rather than a
     // ComparisonNode, unlike every other comparison, so it has to be named here.
     // Two conditions combined are a condition too: any() over a bool4 is an or of
@@ -3094,11 +3121,14 @@ public class InstructionParser
                         case D3D10Opcode.Xor:
                             return CreateLogicalOperation(instruction.Opcode, inputs, instruction);
                         case D3D10Opcode.Not:
-                            // A not of a comparison mask is the comparison the other way;
-                            // of anything else, the bits flipped.
-                            return inputs[0] is ComparisonNode comparison && comparison.Inverted() != null
-                                ? comparison.Inverted()
-                                : new BitwiseNotOperation(inputs[0]);
+                            // A not of a comparison mask is the comparison the other way,
+                            // and of conditions combined, De Morgan's: all() the other
+                            // way is any() of the comparisons the other way. Of anything
+                            // else, the bits flipped. Flipped, the not of an all() was
+                            // `~(all(m))`, a bitwise not of a bool - -2 where all held,
+                            // which a test takes for true - and `any(m) && !all(m)` came
+                            // back as `any(m) ? ~(all(m)) : 0`, true whenever any held.
+                            return InvertCondition(inputs[0]) ?? new BitwiseNotOperation(inputs[0]);
                         // Float comparisons, like their integer counterparts, only
                         // ever feed a branch or a movc, so they read as conditions.
                         case D3D10Opcode.LT:

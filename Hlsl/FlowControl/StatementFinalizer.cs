@@ -1492,7 +1492,9 @@ public class StatementFinalizer
         {
             return true;
         }
-        if (value is not ComparisonNode)
+        // A comparison, or conditions combined - `any(m) && !all(m)` is as much a
+        // mask as either half of it.
+        if (value is not (ComparisonNode or LogicalAndOperation or LogicalOrOperation))
         {
             return false;
         }
@@ -1518,7 +1520,7 @@ public class StatementFinalizer
         {
             value = move.Inputs[0];
         }
-        compares = value is ComparisonNode;
+        compares = value is ComparisonNode or LogicalAndOperation or LogicalOrOperation;
         return compares
             || value is ConstantNode { IntegerValue: -1 or 0 }
             || value is ConstantNode { IntegerValue: null, Value: 0 };

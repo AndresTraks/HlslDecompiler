@@ -17,8 +17,8 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	float t0 = any(threshold < i.color);
-	float t1 = all(threshold < i.color);
+	bool t0 = any(threshold < i.color);
+	bool t1 = all(threshold < i.color);
 	o.sv_position = mul(i.position, wvp);
 	o.color = t0 ? t1 ? i.color : 0.5 * i.color : float4(0, 0, 0, 1);
 

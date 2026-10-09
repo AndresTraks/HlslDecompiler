@@ -3314,12 +3314,22 @@ public class HlslAstWriter : HlslWriter
         // float's, and calling them uint says something about them that is not so.
         bool isUnsigned = isInteger && !isBits
             && nodes.All(node => ValueTypes.IsUnsignedValue(node) == true);
+        // A bool where every component is a condition only conditions read - the
+        // finalizer's rule (HoldsOnlyACondition) for the values this writer names.
+        // `any(m) && !all(m)` named as a float was converted to 1 or 0 on the way
+        // in, and only tested afterwards.
+        bool isBool = nodes.All(node => node is ComparisonNode or LogicalAndOperation or LogicalOrOperation
+            && node.Outputs.Count != 0
+            && node.Outputs.All(reader => (reader is MoveConditionalOperation select
+                    && ReferenceEquals(select.Condition, node))
+                || reader is LogicalAndOperation or LogicalOrOperation));
         foreach (TempVariableNode variable in variables)
         {
             variable.IsInteger = isInteger;
             variable.IsBits = isBits;
             variable.IsUnsigned = isUnsigned;
             variable.IsDouble = isDouble;
+            variable.IsBool = isBool;
         }
     }
 

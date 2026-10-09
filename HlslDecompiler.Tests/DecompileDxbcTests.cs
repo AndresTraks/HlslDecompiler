@@ -378,6 +378,7 @@ public class DecompileDxbcTests
     [TestCase("hs_5_0", "patch_semantic_index")]
     [TestCase("hs_5_0", "output_patch_weight")]
     [TestCase("hs_5_0", "output_patch_loop")]
+    [TestCase("ps_5_0", "bit_scans")]
     [TestCase("vs_4_0", "dual_quaternion_skin")]
     [TestCase("cs_5_0", "struct_flags")]
     [TestCase("gs_5_0", "looped_vertices")]

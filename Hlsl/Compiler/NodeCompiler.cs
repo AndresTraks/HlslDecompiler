@@ -2569,6 +2569,27 @@ public sealed class NodeCompiler
             : assignment.Value;
     }
 
+    /// <summary>
+    /// The accumulator of an msad4 read at some of its lanes. It is a uint4 whichever
+    /// lanes are read, a lane apiece: where fxc computed lanes 0 and 3 only, the
+    /// accumulators it has are those two, and the lanes between take a zero nothing
+    /// reads.
+    /// </summary>
+    private string CompileMsadAccumulator(Msad4Node[] lanes)
+    {
+        if (lanes.Length == 4 && lanes.Select((l, i) => l.ComponentIndex == i).All(b => b))
+        {
+            return CompileAsInteger(lanes.Select(l => l.Accumulator));
+        }
+        var parts = new List<string>();
+        for (int lane = 0; lane < 4; lane++)
+        {
+            Msad4Node read = lanes.FirstOrDefault(l => l.ComponentIndex == lane);
+            parts.Add(read == null ? "0" : CompileAsInteger([read.Accumulator]));
+        }
+        return $"uint4({string.Join(", ", parts)})";
+    }
+
     public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
     {
         bool wasAssigningToInteger = _assigningToInteger;
@@ -3032,7 +3053,7 @@ public sealed class NodeCompiler
                 reference = CompileAsInteger([msad.Reference]);
                 sourceLow = CompileAsInteger([msad.SourceLow]);
                 sourceHigh = CompileAsInteger([msad.SourceHigh]);
-                accumulator = CompileAsInteger(components.Select(c => ((Msad4Node)c).Accumulator));
+                accumulator = CompileMsadAccumulator(components.Cast<Msad4Node>().ToArray());
             }
             finally
             {

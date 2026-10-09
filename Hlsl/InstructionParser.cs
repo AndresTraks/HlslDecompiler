@@ -2202,13 +2202,16 @@ public class InstructionParser
         const int WindowsOperand = 2;
         HlslTreeNode[] windows = GetInputComponents(instruction, WindowsOperand, 4);
         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
+        int lane = componentIndex;
         if (!TryGetMsadSource(instruction, WindowsOperand, windows,
-            out HlslTreeNode low, out HlslTreeNode high))
+                out HlslTreeNode low, out HlslTreeNode high)
+            && !TryGetCompactedMsadSource(instruction, windows, componentIndex,
+                out low, out high, out lane))
         {
             throw new NotImplementedException(
                 "msad over windows this does not recognise as a uint2");
         }
-        var node = new Msad4Node(inputs[0], low, high, inputs[2], componentIndex);
+        var node = new Msad4Node(inputs[0], low, high, inputs[2], lane);
         // The node reads the two words, so the bfi over each window is read by nothing
         // from here on. The register it was written to says nothing about that - the
         // msad overwrites it, and a value a register no longer holds is only as dead as
@@ -2225,6 +2228,79 @@ public class InstructionParser
             }
         }
         return node;
+    }
+
+    /// <summary>
+    /// The windows of an msad4 whose result is read at some lanes only. fxc builds
+    /// just the windows those lanes need and packs them to the front of the
+    /// register: `m.x + m.w` is `msad r0.xy` over the low word and the window three
+    /// bytes along, and the component is no longer the lane. Each window says which
+    /// lane it is by how far it slides - the low word as it stands is lane 0, a bfi
+    /// of 8n bits over the low word shifted by 8n is lane n - and every one of them
+    /// has to agree on the two words.
+    /// </summary>
+    private bool TryGetCompactedMsadSource(D3D10Instruction instruction, HlslTreeNode[] windows,
+        int componentIndex, out HlslTreeNode low, out HlslTreeNode high, out int lane)
+    {
+        low = null;
+        high = null;
+        lane = -1;
+        int mask = instruction.GetDestinationWriteMask();
+        int previousLane = -1;
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            HlslTreeNode window = Unwrap(windows[component]);
+            HlslTreeNode windowLow = window;
+            int windowLane = 0;
+            if (window is BitFieldInsertOperation insert
+                && AsConstantInt(insert.Width) is int bits
+                && bits is 8 or 16 or 24
+                && AsConstantInt(insert.Offset) == 32 - bits
+                && Unwrap(insert.Value) is ShiftRightOperation shift
+                && AsConstantInt(shift.Amount) == bits)
+            {
+                windowLane = bits / 8;
+                windowLow = Unwrap(shift.Value);
+                HlslTreeNode inserted = Unwrap(insert.Insert);
+                if (high == null)
+                {
+                    high = inserted;
+                }
+                else if (!NodeGrouper.AreNodesEquivalent(high, inserted))
+                {
+                    return false;
+                }
+            }
+            if (low == null)
+            {
+                low = windowLow;
+            }
+            else if (!NodeGrouper.AreNodesEquivalent(low, windowLow))
+            {
+                return false;
+            }
+            // Packed in order, a lane apiece.
+            if (windowLane <= previousLane)
+            {
+                return false;
+            }
+            previousLane = windowLane;
+            if (component == componentIndex)
+            {
+                lane = windowLane;
+            }
+        }
+        // Lane 0 alone reads the low word and nothing of the high one, so there is
+        // no high word to find and any will do.
+        if (high == null && previousLane == 0)
+        {
+            high = new ConstantNode(0);
+        }
+        return high != null && lane >= 0;
     }
 
     /// <summary>

@@ -2134,6 +2134,37 @@ public class HlslSimpleWriter : HlslWriter
     // output - dp3_sat feeding a log became log2 of a negative number. Every case
     // here assigns, in the one shape `{0} = <expression>;`, so the clamp goes on
     // around the expression.
+    private void WriteMsadLanes(D3D10Instruction instruction)
+    {
+        string[] reference = OperandComponentNames(instruction, 1);
+        string[] windows = OperandComponentNames(instruction, 2);
+        string[] accumulators = OperandComponentNames(instruction, 3);
+        var lanes = new List<string>();
+        for (int i = 0; i < reference.Length; i++)
+        {
+            lanes.Add($"msad4({reference[i]}, uint2({windows[i]}, 0), uint4({accumulators[i]}, 0, 0, 0)).x");
+        }
+        string value = lanes.Count == 1 ? lanes[0] : $"uint{lanes.Count}({string.Join(", ", lanes)})";
+        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), value);
+    }
+
+    // An operand's components one at a time, for the components the instruction
+    // writes: `packed.xw` is packed.x and packed.w.
+    private string[] OperandComponentNames(D3D10Instruction instruction, int operandIndex)
+    {
+        string name = GetOperandName(instruction, operandIndex);
+        int dot = name.LastIndexOf('.');
+        string swizzle = dot < 0 ? "" : name[(dot + 1)..];
+        int count = BitOperations.PopCount((uint)instruction.GetDestinationWriteMask());
+        if (swizzle.Length == 0 || swizzle.Any(c => "xyzw".IndexOf(c) < 0))
+        {
+            return [.. Enumerable.Repeat(name, count)];
+        }
+        string baseName = name[..dot];
+        return [.. Enumerable.Range(0, count)
+            .Select(i => $"{baseName}.{swizzle[Math.Min(i, swizzle.Length - 1)]}")];
+    }
+
     private void WriteResult(D3D10Instruction instruction, string format, params object[] args)
     {
         WriteResult(instruction, instruction.GetDestinationParamIndex() ?? 0, format, args);
@@ -2931,6 +2962,16 @@ public class HlslSimpleWriter : HlslWriter
             // and is no part of the answer, which is what makes this the same call.
             case D3D10Opcode.MSAD:
                 {
+                    // Fewer than four lanes and fxc packed the windows the shader reads
+                    // to the front, so which lane a component is is not said by where
+                    // it sits. Each is written as lane 0 of a call of its own, whose
+                    // window is the low word as it stands - the same sum of differences
+                    // over the same four bytes, whichever lane it was.
+                    if (instruction.GetDestinationWriteMask() != 0xF)
+                    {
+                        WriteMsadLanes(instruction);
+                        break;
+                    }
                     byte[] windowSwizzle = instruction.GetSourceSwizzleComponents(2);
                     string windows = GetOperandName(instruction, 2).Split('.')[0];
                     string low = $"{windows}.{"xyzw"[windowSwizzle[0]]}";

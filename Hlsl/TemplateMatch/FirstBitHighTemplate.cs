@@ -19,8 +19,9 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// arrive here as arithmetic over a firstbithigh, and matching one is matching
 /// `31 - (31 - firstbithigh(x))` with the guard around it.
 ///
-/// Only the signed form is matched, and what stops the unsigned one is narrower
-/// than "a temp variable". fxc computes the subtraction into a register of its
+/// The unsigned form is matched where the select reads the subtraction itself:
+/// `x ? 31 - (31 - firstbithigh(x)) : -1`, fxc having folded the register away.
+/// What stops it otherwise is narrower than "a temp variable". fxc computes the subtraction into a register of its
 /// own and selects over that register, so the select's arm is a variable - which
 /// TempResolver exists to see through, and FloatingModuloTemplate does see
 /// through. It will not see through this one: the value is
@@ -62,7 +63,27 @@ public class FirstBitHighTemplate : NodeTemplate<MoveConditionalOperation>
             return new FirstBitHighOperation(signedHigh.Value, signedHigh.IsUnsigned);
         }
 
+        // `x ? 31 - instruction : -1`, the unsigned form: no bit to find only when
+        // x is zero, and that is the select's question.
+        if (ConstantMatcher.IsNegativeOne(select.Source2)
+            && Position(select.Source1) is FirstBitHighOperation { IsUnsigned: true } unsignedHigh
+            && TestsNonZero(select.Condition, unsignedHigh.Value))
+        {
+            return new FirstBitHighOperation(unsignedHigh.Value, isUnsigned: true);
+        }
+
         return null;
+    }
+
+    // Whether a condition is the value read as true where it is not zero.
+    private static bool TestsNonZero(HlslTreeNode condition, HlslTreeNode value)
+    {
+        if (condition is ComparisonNode { Comparison: IfComparison.NE } test
+            && ConstantMatcher.IsZero(test.Right))
+        {
+            condition = test.Left;
+        }
+        return NodeGrouper.AreNodesEquivalent(condition, value);
     }
 
     /// <summary>The instruction's answer read the way the function reads it.</summary>

@@ -42,7 +42,7 @@ DS_OUT main(DS_CONST constants, float3 sv_domainlocation : SV_DomainLocation, co
 	float3 t5 = lerp(patch[0].position * sv_domainlocation.x + sv_domainlocation.y * patch[1].position + patch[2].position * sv_domainlocation.z + normalize(t0) * t4, constants.centre, 0.00999999978);
 	o.sv_position = mul(float4(t5, 1), viewProjection);
 	o.normal = normalize(t0);
-	o.texcoord = t2 + t1;
+	o.texcoord = t1 + t2;
 
 	return o;
 }

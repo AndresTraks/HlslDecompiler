@@ -1924,7 +1924,12 @@ public sealed class NodeCompiler
                     // Integer adds only: a float add's order decides more of what fxc
                     // writes than it should - `t13 + t10` the other way round cost
                     // point_lights its nrm, three instructions.
-                    if (!decided && !IsFloatValued(addend1.First()) && !IsFloatValued(addend2.First())
+                    // And two named values added at the top of a statement, whatever
+                    // they hold: `return t1 + t0` is one add, and nothing about it is
+                    // left for fxc to decide differently.
+                    bool namedPair = _compileDepth == _topDepth
+                        && addend1.All(a => a is TempVariableNode) && addend2.All(a => a is TempVariableNode);
+                    if (!decided && (namedPair || (!IsFloatValued(addend1.First()) && !IsFloatValued(addend2.First())))
                         && CanReorder(addend1, addend2, products: false)
                         && SortsAfter(addend1.First(), leftText, addend2.First(), right))
                     {
@@ -1984,6 +1989,14 @@ public sealed class NodeCompiler
                     // asks: a cross product is three subtracts and binds as a call does.
                     string first = Compile(multiplicand1, promoteToVectorSize);
                     string second = Compile(multiplicand2, promoteToVectorSize);
+                    // Two named values multiplied at the top of a statement go in an
+                    // order of their own, as two added there do.
+                    if (_compileDepth == _topDepth
+                        && multiplicand1.All(m => m is TempVariableNode) && multiplicand2.All(m => m is TempVariableNode)
+                        && SortsAfter(multiplicand1.First(), first, multiplicand2.First(), second))
+                    {
+                        (first, second) = (second, first);
+                    }
                     return (firstIsAssociative || IsOneCall(first) ? first : $"({first})")
                         + " * "
                         + (secondIsAssociative || IsOneCall(second) ? second : $"({second})");

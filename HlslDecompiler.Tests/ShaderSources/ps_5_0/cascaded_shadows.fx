@@ -35,5 +35,5 @@ float4 main(PS_IN i) : SV_Target
 	float3 t4 = mul(float4(i.world, 1), (float4x3)cascadeTransforms[t0]) / t2;
 	float t5 = shadowMaps.SampleCmpLevelZero(shadowSampler, float3(float2(0.5, -0.5) * t4.xy + 0.5, (float)t0), t4.z - shadowBias).x;
 	float t6 = saturate(dot(normalize(i.normal), -lightDirection)) * t5 + 0.100000001;
-	return t6 * t3;
+	return t3 * t6;
 }

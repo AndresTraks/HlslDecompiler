@@ -13,9 +13,9 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	}
 	if (texcoord.y > 0) {
 		float4 t4 = tex2D(sampler0, texcoord.yx);
-		return t4 * t1;
+		return t1 * t4;
 	} else {
 		float4 t5 = tex2D(sampler0, texcoord.xz);
-		return t5 + t1;
+		return t1 + t5;
 	}
 }

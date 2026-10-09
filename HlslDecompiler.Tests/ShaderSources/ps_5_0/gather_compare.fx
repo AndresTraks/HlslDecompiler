@@ -7,5 +7,5 @@ float4 main(float4 texcoord : TEXCOORD) : SV_TARGET
 {
 	float4 t0 = albedo.Gather(samp, texcoord.xy, int2(1, -1));
 	float4 t1 = shadowMap.GatherCmp(shadowSampler, texcoord.xy, texcoord.z);
-	return t1 + t0;
+	return t0 + t1;
 }

@@ -35,7 +35,7 @@ float4 main(PS_IN i) : SV_Target
 		}
 		float t6 = weights[(uint)abs(t3) >> 2][abs(t3) & 3];
 		float t7 = exp((float)(t3 * -t3) / t2);
-		float t8 = t7 * t6;
+		float t8 = t6 * t7;
 		float4 t9 = source.Sample(linearSampler, t5);
 		t1 = t1 + t9 * t8;
 		t4 = t4 + t6 * t7;

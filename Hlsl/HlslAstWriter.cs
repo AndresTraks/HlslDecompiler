@@ -1872,6 +1872,7 @@ public class HlslAstWriter : HlslWriter
         // yet, which is the one point an idiom can be put into the graph rather than
         // recognised out of it later. See IdiomRecovery.
         IdiomRecovery.Recover(registerGroups, _grouper.MatrixMultiplicationGrouper);
+        ReadEarlierNames(registerGroups);
 
         var roots = HlslTreeNode.NewNodeSet();
         foreach (HlslTreeNode[] group in registerGroups)
@@ -1976,7 +1977,93 @@ public class HlslAstWriter : HlslWriter
         {
             CloseUpNumbering(resourceInfo);
         }
-        return Renumber(resourceInfo);
+        List<HlslTreeNode[]> named = Renumber(resourceInfo);
+        RecordNames(named);
+        return named;
+    }
+
+    // The loads statements have named, with the statement that named them.
+    private readonly Dictionary<HlslTreeNode, (TempVariableNode Variable, IStatement Statement)> _namedLoads =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// A load an earlier statement named is read through its name here too, where
+    /// the name is in scope. The naming passes run a statement at a time, and a
+    /// value one of them named was read again from the buffer by the next: a
+    /// particle's life named for the new life and loaded once more for the store
+    /// of its position - an instruction, since fxc does not merge loads from a view
+    /// it writes. And more than an instruction where a store comes between: the
+    /// node is the value the load read, and read again after a store to the same
+    /// element it is the value stored, not the one loaded.
+    /// </summary>
+    private void ReadEarlierNames(IList<HlslTreeNode[]> registerGroups)
+    {
+        if (_namedLoads.Count == 0 || _currentStatement == null)
+        {
+            return;
+        }
+        HashSet<HlslTreeNode> reachable = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in Reachable(registerGroups.SelectMany(g => g)))
+        {
+            reachable.Add(node);
+        }
+        foreach (HlslTreeNode node in reachable.ToList())
+        {
+            if (!_namedLoads.TryGetValue(node, out var named)
+                || ReferenceEquals(named.Statement, _currentStatement)
+                || !IsInScopeAfter(named.Statement, _currentStatement))
+            {
+                continue;
+            }
+            Rewire(node, named.Variable, reachable);
+            for (int g = 0; g < registerGroups.Count; g++)
+            {
+                for (int i = 0; i < registerGroups[g].Length; i++)
+                {
+                    if (ReferenceEquals(registerGroups[g][i], node))
+                    {
+                        registerGroups[g][i] = named.Variable;
+                    }
+                }
+            }
+        }
+    }
+
+    private void RecordNames(List<HlslTreeNode[]> named)
+    {
+        if (_currentStatement == null)
+        {
+            return;
+        }
+        foreach (TempAssignmentNode assignment in named.SelectMany(g => g).OfType<TempAssignmentNode>())
+        {
+            if (assignment.Value is LoadStructuredNode or TextureLoadOutputNode or ResourceLoadNode
+                && !_namedLoads.ContainsKey(assignment.Value))
+            {
+                _namedLoads[assignment.Value] = (assignment.TempVariable, _currentStatement);
+            }
+        }
+    }
+
+    // Whether the later statement comes after the earlier one in the earlier one's
+    // body, or inside a statement that does - where a variable the earlier one
+    // declares can be read.
+    private bool IsInScopeAfter(IStatement earlier, IStatement later)
+    {
+        if (FindPlace(_functionStatements, earlier) is not (IList<IStatement> body, int index))
+        {
+            return false;
+        }
+        for (int k = index + 1; k < body.Count; k++)
+        {
+            bool found = false;
+            new StatementVisitor([body[k]]).Visit(statement => found |= ReferenceEquals(statement, later));
+            if (found)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -2585,6 +2672,10 @@ public class HlslAstWriter : HlslWriter
             if (ReferenceEquals(sibling, candidate[0])
                 || roots.Contains(sibling)
                 || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false)
+                // Not a value of another type: one load reads a struct's float life
+                // and its uint flags together, and as one float2 the flags were
+                // converted to a float on the way in - their bits gone.
+                || ValueTypes.IsIntegerValue(sibling) != ValueTypes.IsIntegerValue(candidate[0])
                 || SiblingOrder(sibling, candidate[0]) is not int siblingOrder
                 || byOrder.ContainsKey(siblingOrder))
             {

@@ -19,5 +19,5 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	double2 t0 = double2(input[sv_dispatchthreadid.x].high, input[sv_dispatchthreadid.x].low);
 	double t1 = t0.x - t0.y;
 	output[sv_dispatchthreadid.x].low = t1;
-	output[sv_dispatchthreadid.x].high = input[sv_dispatchthreadid.x].high / input[sv_dispatchthreadid.x].low;
+	output[sv_dispatchthreadid.x].high = t0.x / t0.y;
 }

@@ -49,12 +49,13 @@ public class RoundTripCostTests
     internal static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
-        ["cs_5_0/struct_flags"] = (13,
-            "Two instructions, and they are the load of the struct. The original "
+        ["cs_5_0/struct_flags"] = (12,
+            "One instruction, and it is the load of the struct. The original "
             + "reads pos and life with one sixteen byte load; read back, life is "
-            + "named in the statement that computes the new life, and the store of "
-            + "the position - a statement of its own - reads pos and life again as "
-            + "a float4 of its own, so fxc loads twice. The fixture is here for two things the "
+            + "named in the statement that computes the new life and pos in the "
+            + "store of the position, a statement of its own, so fxc loads twice. "
+            + "It was two while the store read life from the buffer again rather "
+            + "than through the name the first statement gave it. The fixture is here for two things the "
             + "probe that found it showed: `t1 | 1` came back as `t1 | 0.000000`, the "
             + "immediate read as a float, and the instruction writer loaded the float "
             + "members into an int register as numbers rather than bits."),

@@ -24,9 +24,10 @@ RWStructuredBuffer<DstElement> dst : register(u0);
 [numthreads(8, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float4 t0 = float4(src[sv_dispatchthreadid.x].i.a, src[sv_dispatchthreadid.x].i.b);
+	float3 t0 = src[sv_dispatchthreadid.x].i.a;
+	uint t1 = src[sv_dispatchthreadid.x].i.b;
 	dst[sv_dispatchthreadid.x].i.a = 2 * t0.zyx;
-	dst[sv_dispatchthreadid.x].i.b = (uint)((float)t0.w + 1);
+	dst[sv_dispatchthreadid.x].i.b = (uint)((float)t1 + 1);
 	dst[sv_dispatchthreadid.x].c = src[sv_dispatchthreadid.x].d;
 	dst[sv_dispatchthreadid.x].d = src[sv_dispatchthreadid.x].d;
 }

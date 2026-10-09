@@ -6,8 +6,6 @@ float t;
 float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	if (t < texcoord.x) return a;
-	if (t < texcoord.y) {
-		return b;
-	}
+	if (t < texcoord.y) return b;
 	return c;
 }

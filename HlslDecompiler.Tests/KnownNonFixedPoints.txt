@@ -37,7 +37,6 @@ reworded ps_3_0/tex1d
 reworded ps_4_0/ambient_occlusion
 reworded ps_4_0/bit_field
 reworded ps_4_0/branch_flag
-reworded ps_4_0/conditional_return
 reworded ps_4_0/dxbc_continue
 reworded ps_4_0/float_modulo_complement
 reworded ps_4_0/half_packing

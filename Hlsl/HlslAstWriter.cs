@@ -1192,7 +1192,50 @@ public class HlslAstWriter : HlslWriter
         {
             WriteLine("[branch]");
         }
-        WriteLine($"if ({_compiler.Compile(tested)}) {{");
+        string condition = _compiler.Compile(tested);
+        // An if that only returns is the one line a conditional return is written
+        // as, `if (c) return a;`: fxc compiles that to an if, a ret and an endif,
+        // and read back it was the same test in braces. Written into a buffer to
+        // see whether it is one line, and from the buffer either way, so that the
+        // body is compiled once.
+        if (falseBody == null && trueBody.Count == 1 && trueBody[0] is ReturnStatement { Comparison: null })
+        {
+            System.IO.TextWriter outer = internalWriter;
+            string outerIndent = indent;
+            var buffer = new System.IO.StringWriter();
+            internalWriter = buffer;
+            indent = "";
+            try
+            {
+                WriteStatements(trueBody);
+            }
+            finally
+            {
+                internalWriter = outer;
+                indent = outerIndent;
+            }
+            string[] lines = buffer.ToString().Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+            if (lines.Length == 1 && lines[0].StartsWith("return"))
+            {
+                WriteLine($"if ({condition}) {lines[0]}");
+                return;
+            }
+            WriteLine($"if ({condition}) {{");
+            foreach (string line in lines)
+            {
+                if (line.Length == 0)
+                {
+                    WriteLine();
+                }
+                else
+                {
+                    WriteLine("\t" + line);
+                }
+            }
+            WriteLine("}");
+            return;
+        }
+        WriteLine($"if ({condition}) {{");
         indent += "\t";
         WriteStatements(trueBody);
         indent = indent.Substring(0, indent.Length - 1);

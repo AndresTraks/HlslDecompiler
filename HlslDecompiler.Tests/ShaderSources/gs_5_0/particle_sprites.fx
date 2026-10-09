@@ -26,9 +26,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 {
 	GS_OUT o;
 
-	if (i[0].texcoord <= 0) {
-		return;
-	}
+	if (i[0].texcoord <= 0) return;
 	float2 t0 = float2(saturate(i[0].texcoord) * spriteSize, saturate(i[0].texcoord / fadeDistance) * i[0].color.w);
 	for (int t1 = 0; t1 < 4; t1 = t1 + 1) {
 		float2 t2 = 2 * float2((float)(t1 & 1), (float)(t1 >> 1)) - 1;

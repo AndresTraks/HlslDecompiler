@@ -13,7 +13,7 @@ public abstract class HlslWriter
 {
     protected readonly ShaderModel _shader;
 
-    TextWriter internalWriter;
+    protected TextWriter internalWriter;
     protected string indent = "";
 
     protected HlslAst _ast;

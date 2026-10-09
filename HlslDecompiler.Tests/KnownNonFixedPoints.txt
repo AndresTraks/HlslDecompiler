@@ -56,6 +56,7 @@ reworded ps_5_0/any_not_all
 reworded ps_5_0/depth_aware_blur
 reworded ps_5_0/environment_lighting
 reworded ps_5_0/gbuffer_write
+reworded ps_5_0/inf_select_shared
 reworded ps_5_0/integer_texture_load
 reworded ps_5_0/microfacet_lighting
 reworded ps_5_0/occlusion_kernel

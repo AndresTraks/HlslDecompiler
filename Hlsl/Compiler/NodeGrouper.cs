@@ -443,9 +443,16 @@ public class NodeGrouper
 
     private bool GroupsWithFoldedFactor(HlslTreeNode node1, HlslTreeNode node2)
     {
+        // The other component may be anything that groups with the factor - a
+        // light colour `saturate(d) * float4(1, 0.9, 0.8, 1)` loses its two ones
+        // and leaves saturate(d) in x and w, which read as a constructor of the
+        // saturate, a float2 product and the saturate again cost a mov. Not a
+        // constant, which is not a component of anything, and not a sum: a product
+        // beside a sum made one expression of both, `(t0 * float2(1, 0.25) +
+        // float2(0, 2)) * float2(0.5, 1)` for `float2(0.5 * t0.x, 0.25 * t0.y + 2)`.
         if (node1 is not MultiplyOperation multiply
-            || node2 is MultiplyOperation
-            || node2 is not (TempVariableNode or RegisterInputNode))
+            || node2 is MultiplyOperation or ConstantNode or AddOperation or SubtractOperation
+                or MultiplyAddOperation)
         {
             return false;
         }

@@ -113,6 +113,7 @@ public class DecompileTests
     [TestCase("vs_3_0", "cross_sign")]
     [TestCase("vs_3_0", "bool_branches")]
     [TestCase("vs_2_0", "distance_falloff")]
+    [TestCase("vs_2_0", "light_tint")]
     [TestCase("ps_3_0", "sample_variants_d3d9")]
     [TestCase("vs_3_0", "nested_select")]
     [TestCase("vs_3_0", "loop_relative_address")]

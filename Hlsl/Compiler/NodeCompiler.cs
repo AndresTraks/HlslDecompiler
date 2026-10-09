@@ -582,11 +582,23 @@ public sealed class NodeCompiler
             bool integerFactors = components
                 .OfType<MultiplyOperation>()
                 .Select(multiply => FactorOfFoldedMultiply(multiply))
-                .All(factor => factor is ConstantNode constant && constant.IntegerValue != null);
+                .All(factor => factor is ConstantNode constant && constant.IntegerValue != null)
+                // And only over integers: a float multiplied stays a float, and
+                // `asfloat(m) * int2(1, 2)` mixes the two for nothing.
+                && !components.Any(IsFloatValued);
             List<HlslTreeNode> multiplied = [.. components.Select(FactoredOfFoldedMultiply)];
             List<HlslTreeNode> factors = [..
                 components.Select(c => FactorOfFoldedMultiply(c, integerFactors))];
-            return $"{Compile(multiplied, promoteToVectorSize)} * {Compile(factors, factors.Count)}";
+            // The multiplied side bracketed where it is a sum - which it can be,
+            // grouped through a folded addend of its own - since `a + b * f`
+            // multiplies only b.
+            string multipliedText = Compile(multiplied, promoteToVectorSize);
+            if (IsSum(multiplied[0]) || multipliedText.Contains(" + ") && !IsBracketed(multipliedText)
+                && !IsOneCall(multipliedText))
+            {
+                multipliedText = $"({multipliedText})";
+            }
+            return $"{multipliedText} * {Compile(factors, factors.Count)}";
         }
 
         if (components.Count > 1

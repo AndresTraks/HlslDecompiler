@@ -1,4 +1,4 @@
-﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.DirectXShaderModel;
 using NUnit.Framework;
 using static HlslDecompiler.Tests.ShaderAssembler;
 
@@ -212,6 +212,96 @@ public class TempDeclarationOrderTests
                 }
 
                 """));
+        });
+    }
+
+    // A root vector whose every lane is read again on its own is named so those
+    // reads are its components - unless naming it puts a reader of one lane inside
+    // the value of another, which is a cycle no order of statements writes. The
+    // position below is (dot + 1, dot + 2, dot + 3, d + 4), d the dot of a matrix
+    // multiply of it whose rows each read one lane: named, the multiply reads the
+    // variable whose w its own answer feeds, and the dot statement lands above the
+    // multiply it reads. The position goes back to its lanes inlined.
+    // The short lane text keeps the lanes unnamed and so the root whole; a
+    // coefficient of 1 in a row keeps the multiply's products from fusing into
+    // dots, which would read the lanes as one vector and leave the root nothing
+    // read again on its own; and the w needs a scalar output read that the fold
+    // of the full write leaves on its own - the product's own naming, which is
+    // what the cycle runs through, comes from the pass before the text one.
+    [Test]
+    public void LeavesTheRootUnnamedWhenItsLaneReadersBuildAnotherLane()
+    {
+        const uint Y = 0x55;    // .y replicated
+        const uint XY = 0x04;   // slots x, y = .x, .y
+        const uint XYZ = 0x24;  // .xyz
+        const uint XYZX = 0x24; // .xyzx
+        const uint YYYZ = 0xE5; // .yyyz
+        const uint ZZZY = 0x6A; // .zzzy
+        const uint W = 0xFF;    // .w replicated
+
+        ShaderModel shader = Assemble(ShaderType.Vertex, 3, [
+            Constant(0, 1f, 2f, 3f, 4f),                              // lane offsets, w offset
+            Constant(1, 5f, 6f, 1f, 8f),                              // multiply row y
+            Constant(2, 1f, 10f, 11f, 12f),                           // multiply row x
+            Constant(3, 13f, 1f, 15f, 16f),                           // multiply row z
+            Constant(4, 17f, 18f, 19f, 20f),                          // multiply's last row
+            Constant(5, 2f, 3f, 0f, 0f),                              // the w dot's weights
+            Constant(6, 1f, 1f, 0.5f, 3f),                            // the dot input's weights
+            Constant(7, 3f, 2f, 1f, 4f),                              // the dot's row x
+            Constant(8, 4f, 3f, 2f, 1f),                              // the dot's row y
+            Constant(9, 2f, 4f, 3f, 1f),                              // the dot's row z
+            Declaration(DeclUsage.Position, RegisterType.Input, 0),
+            Declaration(DeclUsage.Position, RegisterType.Output, 0),
+            Declaration(DeclUsage.TexCoord, RegisterType.Output, 1, 1),
+            Declaration(DeclUsage.TexCoord, RegisterType.Output, 2, 2),
+            Instruction(Opcode.Mad, Rd(1), V(0, XYZX), C(6, YYYZ), C(6, ZZZY)), // the shared dot input
+            Instruction(Opcode.Dp4, Rd(2, 0x1), R(1), C(7)),           // its three dots
+            Instruction(Opcode.Dp4, Rd(2, 0x2), R(1), C(8)),
+            Instruction(Opcode.Dp4, Rd(2, 0x4), R(1), C(9)),
+            Instruction(Opcode.Add, Rd(0, 0x7), R(2, XYZ), C(0, XYZ)), // the root's lanes
+            Instruction(Opcode.Mul, Rd(3, 0x7), R(0, Y), C(1, XYZ)),   // the product, a lane at a time
+            Instruction(Opcode.Mad, Rd(3, 0x7), R(0, X), C(2, XYZ), R(3, XYZ)),
+            Instruction(Opcode.Mad, Rd(3, 0x7), R(0, Z), C(3, XYZ), R(3, XYZ)),
+            Instruction(Opcode.Add, Rd(3, 0x7), R(3, XYZ), C(4, XYZ)), // and its last row
+            Instruction(Opcode.Mov, Od(1, 0x7), R(0, XYZ)),            // the root's three first lanes
+            Instruction(Opcode.Mul, Rd(4, 0x3), R(3, XY), C(5, XY)),   // the dot the w lane is built on
+            Instruction(Opcode.Add, Rd(4, 0x1), R(4, Y), R(4, X)),
+            Instruction(Opcode.Add, Rd(0, 0x8), R(4, X), C(0, W)),     // the w lane, over the dot
+            Instruction(Opcode.Mov, Od(1, 0x8), R(0, W)),              // a read of the w the fold hides
+            Instruction(Opcode.Mul, Od(0, 0x7), R(3, XYZ), C(5, Y)),   // the product read whole, scaled
+            Instruction(Opcode.Mov, Od(0, 0x8), R(0, W)),              // the w read once
+            Instruction(Opcode.Mov, Od(2, 0x1), R(0, W)),              // and twice
+            Instruction(Opcode.End),
+        ]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(WriteHlslAst(shader), Is.EqualTo("""
+                struct VS_OUT
+                {
+                	float4 position : POSITION;
+                	float4 texcoord1 : TEXCOORD1;
+                	float4 texcoord2 : TEXCOORD2;
+                };
+
+                VS_OUT main(float4 position : POSITION)
+                {
+                	VS_OUT o;
+
+                	float4 t0 = position.xyzx * float4(1, 1, 0.5, 3) + float4(0.5, 0.5, 0.5, 1);
+                	float t1 = dot(float2(3, 2), t0.xy) + t0.z + 4 * t0.w;
+                	float t2 = dot(float4(4, 3, 2, 1), t0);
+                	float t3 = dot(float4(2, 4, 3, 1), t0);
+                	float2 t4 = float2(t1 + 1 + 5 * (t2 + 2) + 13 * (t3 + 3), t3 + 3 + (10 * (t1 + 1) + 6 * (t2 + 2))) + float2(17, 18);
+                	float t5 = 3 * t4.y + 2 * t4.x;
+                	o.position = float4(3 * t4, 3 * (t2 + 2 + 11 * (t1 + 1) + 15 * (t3 + 3) + 19), t5 + 4);
+                	o.texcoord1 = float4(t1, t2, t3, t5) + float4(1, 2, 3, 4);
+                	o.texcoord2.x = t5 + 4;
+
+                	return o;
+                }
+
+                """), WriteHlslAst(shader));
         });
     }
 }

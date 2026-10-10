@@ -2367,7 +2367,7 @@ public class HlslAstWriter : HlslWriter
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
                     ?? RootOfSeveralRegisters(registerGroups, recording)
-                    ?? RootReadAgain(registerGroups, recording)
+                    ?? RootReadAgain(registerGroups, recording, named.Concat(assignments).ToList())
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
@@ -2987,7 +2987,8 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     private List<HlslTreeNode[]> RootReadAgain(
         IList<HlslTreeNode[]> registerGroups,
-        List<(HlslTreeNode[] Nodes, string Text)> recording)
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        List<HlslTreeNode[]> named)
     {
         bool isHull = _shader.Type == ShaderType.Hull;
         foreach (HlslTreeNode[] group in registerGroups)
@@ -3004,7 +3005,7 @@ public class HlslAstWriter : HlslWriter
             {
                 return [group];
             }
-            if (!isHull && group.Length > 1 && IsReadALaneAtATime(group, recording))
+            if (!isHull && group.Length > 1 && IsReadALaneAtATime(group, recording, named))
             {
                 return [group];
             }
@@ -3021,12 +3022,67 @@ public class HlslAstWriter : HlslWriter
     /// components, and the grouper takes them back together.
     /// </summary>
     private bool IsReadALaneAtATime(
-        HlslTreeNode[] group, List<(HlslTreeNode[] Nodes, string Text)> recording)
+        HlslTreeNode[] group,
+        List<(HlslTreeNode[] Nodes, string Text)> recording,
+        List<HlslTreeNode[]> named)
     {
         if (recording.Count(r => r.Nodes.Length == group.Length
                 && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second))) != 1)
         {
             return false;
+        }
+        // Only where naming the vector cannot put a reader of one lane inside the
+        // value of another, which is a cycle no order of statements writes.
+        // shadowZDir's shadow position is (skin + gWorld[3].xyz, dot + 2): the
+        // matrix multiply of it reads the xyz a lane at a time while the dot in its
+        // w is built on the multiply's answer - through a variable named before
+        // this one, which is why the walk leaves a read only where it finds the
+        // assignment that wrote it. Named, the multiply reads the variable whose w
+        // it feeds, and the t4 statement lands above the t6 it reads.
+        var writtenValues = new Dictionary<int, HlslTreeNode>();
+        foreach (HlslTreeNode[] assignmentGroup in named)
+        {
+            foreach (TempAssignmentNode assignment
+                in assignmentGroup.OfType<TempAssignmentNode>()
+                    .Where(a => a.TempVariable.DeclarationIndex != null))
+            {
+                writtenValues[assignment.TempVariable.DeclarationIndex.Value] = assignment.Value;
+            }
+        }
+        bool Reaches(HlslTreeNode target, HlslTreeNode node)
+        {
+            HashSet<HlslTreeNode> visited = HlslTreeNode.NewNodeSet();
+            return Inside(target, node);
+
+            bool Inside(HlslTreeNode at, HlslTreeNode here)
+            {
+                if (ReferenceEquals(at, here))
+                {
+                    return true;
+                }
+                if (!visited.Add(here))
+                {
+                    return false;
+                }
+                if (here is TempVariableNode read
+                    && read.DeclarationIndex is int index
+                    && writtenValues.TryGetValue(index, out HlslTreeNode value))
+                {
+                    return Inside(at, value);
+                }
+                return HlslTreeNode.TraversableInputs(here).Any(input => Inside(at, input));
+            }
+        }
+        foreach (HlslTreeNode lane in group)
+        {
+            foreach (HlslTreeNode reader in lane.Outputs)
+            {
+                if (!group.Contains(reader, ReferenceEqualityComparer.Instance)
+                    && group.Any(other => Reaches(reader, other)))
+                {
+                    return false;
+                }
+            }
         }
         // A constructor writes each lane on its own as a matter of course, so a lane
         // of one is read elsewhere only where it is written alone a second time.
@@ -3843,6 +3899,19 @@ public class HlslAstWriter : HlslWriter
             foreach (HlslTreeNode other in candidates)
             {
                 if (group.Count == 4 || named.Contains(other))
+                {
+                    continue;
+                }
+                // Components are siblings, never one computed from another: fxc
+                // reads a register's old value before writing it, so a value built
+                // on a candidate is that candidate's value again, not a lane beside
+                // it. gta_ped_face's luma and its double - the second write to the
+                // one register, `mul r1.x, 2, r1.x` over the dp3 - grouped because
+                // the grouper looks through a folded factor to the node it is, and
+                // that node is the other component; the pair came back as an
+                // undeclared float2 read by .x and .y, its two writes glued inside
+                // a constructor at the first read.
+                if (other.IsInputOf(candidate) || candidate.IsInputOf(other))
                 {
                     continue;
                 }

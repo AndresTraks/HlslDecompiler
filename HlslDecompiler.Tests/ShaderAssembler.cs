@@ -123,6 +123,14 @@ internal static class ShaderAssembler
             0x80000000 | (uint)usage | (uint)semanticIndex << 16, Destination(type, number)];
     }
 
+    // A sampler declaration: no usage, but the texture type in bits 27 to 30 of
+    // the usage token - the dcl_2d s0 a texture read names.
+    public static uint[] SamplerDeclaration(SamplerTextureType textureType, int number)
+    {
+        return [(uint)Opcode.Dcl | 2u << 24,
+            0x80000000 | (uint)textureType << 27, Destination(RegisterType.Sampler, number)];
+    }
+
     public static uint[] ConstantInt(int number, params int[] values)
     {
         return [(uint)Opcode.DefI | 5u << 24,

@@ -2388,6 +2388,20 @@ public class HlslAstWriter : HlslWriter
             }
             occurrences = InWrittenOrder(occurrences);
             candidate = occurrences[0];
+            // The variable is declared where the statement being written goes, and
+            // the graph is shared: one node read by both branches of an if is read
+            // by the two returns through one and the same reader node, so naming it
+            // at the first branch rewires the shared reader and the other branch
+            // compiles its text naming too - a name that closed its brace before
+            // that line. Ask every statement the text pass will write after this
+            // one, and that this one does not nest, whether it holds a reader of
+            // what is about to be named - and name nothing of this statement where
+            // it would.
+            if (ReadersOutOfScope(occurrences))
+            {
+                _lastRecording = recording;
+                return assignments;
+            }
             TempVariableNode[] variables = CreateTempVariables(candidate);
             foreach (HlslTreeNode[] occurrence in occurrences)
             {
@@ -2440,6 +2454,94 @@ public class HlslAstWriter : HlslWriter
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
         }
+    }
+
+    /// <summary>
+    /// Whether a reader of one of the nodes about to be named - or the node itself -
+    /// is held by a statement that the text pass will write after this one without
+    /// the name reaching it: a later one in an enclosing block that this one is not
+    /// in, or a sibling branch. Statements already written cannot be touched by
+    /// rewiring - their text is out - and statements inside this one read the name
+    /// from the line about to be written above it.
+    /// </summary>
+    private bool ReadersOutOfScope(List<HlslTreeNode[]> occurrences)
+    {
+        if (_currentStatement == null)
+        {
+            return false;
+        }
+        var watched = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>();
+        foreach (HlslTreeNode[] occurrence in occurrences)
+        {
+            foreach (HlslTreeNode node in occurrence)
+            {
+                stack.Push(node);
+            }
+        }
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!watched.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode reader in node.Outputs)
+            {
+                stack.Push(reader);
+            }
+        }
+        // Statements in the order the text pass writes them: each one, then what
+        // it nests - the branches of an if in the order it writes them.
+        var order = new List<IStatement>();
+        void Walk(IList<IStatement> body)
+        {
+            foreach (IStatement statement in body)
+            {
+                order.Add(statement);
+                if (statement is IfStatement i)
+                {
+                    Walk(i.TrueBody);
+                    if (i.FalseBody != null)
+                    {
+                        Walk(i.FalseBody);
+                    }
+                }
+                else if (statement is LoopStatement l)
+                {
+                    Walk(l.Body);
+                }
+                else if (statement is SwitchStatement s)
+                {
+                    foreach (SwitchCase c in s.Cases)
+                    {
+                        Walk(c.Body);
+                    }
+                }
+            }
+        }
+        Walk(_functionStatements);
+        int here = order.FindIndex(s => ReferenceEquals(s, _currentStatement));
+        HashSet<IStatement> inside = new(ReferenceEqualityComparer.Instance);
+        new StatementVisitor([_currentStatement]).Visit(statement => inside.Add(statement));
+        bool outOfScope = false;
+        for (int k = here + 1; k < order.Count && !outOfScope; k++)
+        {
+            IStatement later = order[k];
+            if (inside.Contains(later) || IsInScopeAfter(_currentStatement, later))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode held in later.Inputs.Values.Concat(later.Outputs.Values))
+            {
+                if (watched.Contains(held))
+                {
+                    outOfScope = true;
+                    break;
+                }
+            }
+        }
+        return outOfScope;
     }
 
     /// <summary>

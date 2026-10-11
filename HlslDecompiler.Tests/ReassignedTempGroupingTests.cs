@@ -1,5 +1,8 @@
 using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl;
 using NUnit.Framework;
+using System.Collections.Generic;
+using System.Linq;
 using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
@@ -74,5 +77,52 @@ public class ReassignedTempGroupingTests
 
                 """), WriteHlslAst(shader));
         });
+    }
+
+    // A lane whose value is built on another lane's new value is no write beside
+    // it, whatever the shapes say: the record the lowering left names exactly
+    // that, and the grouper asks it against every member of the group it is
+    // about to extend - the first of them included. A vertex shader's
+    // texture unpack wrote ch1, ch2 and ch3 into one register, ch3 built on ch1
+    // through a rest of its own; ch1 and ch3 were two adds of a product and
+    // grouped into one `t4.zx = float2(...)`, the fraction between them keeping
+    // ch1 the group's first lane - and the pair read a value the one statement
+    // had yet to write, the variable they shared declared below the read of ch1.
+    // Asked at node level: fxc only schedules a chain this deep in a register it
+    // met in the wild, and the naming passes above the grouper inline the whole
+    // of a hand-assembled one.
+    [Test]
+    public void DoesNotGroupALaneWithTheFirstLaneWhoseValueItReads()
+    {
+        var grouper = new NodeGrouper(new RegisterState(Assemble(ShaderType.Pixel, 3, [
+            Declaration(DeclUsage.TexCoord, RegisterType.Input, 0),
+            Declaration(DeclUsage.Color, RegisterType.Output, 0),
+            Instruction(Opcode.End),
+        ])));
+
+        static TempVariableNode Lane(int component) => new()
+        {
+            DeclarationIndex = 4, ComponentIndex = component, VariableSize = 3,
+        };
+        static TempVariableNode Read(int index, int component) => new()
+        {
+            DeclarationIndex = index, ComponentIndex = component, VariableSize = 1,
+        };
+        // Two adds of reads' rows group on their shapes alone - the pair below
+        // is the same with a record between them.
+        var shapes = grouper.GroupComponents([
+            new TempAssignmentNode(Lane(2), new AddOperation(Read(1, 0), Read(2, 0))),
+            new TempAssignmentNode(Lane(0), new AddOperation(Read(1, 2), Read(2, 2))),
+        ]);
+        Assert.That(shapes.Count, Is.EqualTo(1),
+            "without a record the two adds group, or the generations ask nothing");
+
+        var ch1 = new TempAssignmentNode(Lane(2), new AddOperation(Read(1, 0), Read(2, 0)));
+        var ch3 = new TempAssignmentNode(Lane(0), new AddOperation(Read(1, 2), Read(2, 2)));
+        ch3.DependsOnNewValueOf.Add(ch1);
+        var generations = grouper.GroupComponents([ch1, ch3]);
+        Assert.That(generations.Single(g => g.Contains(ch1, ReferenceEqualityComparer.Instance)).Count,
+            Is.EqualTo(1),
+            "ch1 is written where its reader can see it, alone and not beside ch3");
     }
 }

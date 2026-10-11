@@ -95,18 +95,25 @@ public class NodeGrouper
         return groups;
     }
 
-    // Whether the assignment at nodeIndex and one already in the group from
-    // groupStart want each other's new value - which two statements in order give
-    // and one does not, its lanes all reading the values from before it. A lane
-    // reading another's old value is what one statement gives, and is left be:
-    // `t1.xywz = float4(t1.xyz, t4)` moves z into w as it writes z.
+    // Whether the assignment at nodeIndex and one already in the group - the
+    // first of them included, for the run's first lane is exactly the one a
+    // second write to the register reads back - want each other's new value,
+    // which two statements in order give and one does not, its lanes all
+    // reading the values from before it. A lane reading another's old value is
+    // what one statement gives, and is left be: `t1.xywz = float4(t1.xyz, t4)`
+    // moves z into w as it writes z. A vertex shader's texture unpack
+    // wrote ch1 and ch3 as one `t4.zx = float2(...)` although ch3 is built on
+    // ch1 through the raw minus its multiple between them: the record names
+    // ch1, which is the group's first lane, and asking every member except the
+    // first let the pair group - the one statement read a value it wrote, and
+    // the variable it shares was declared below the read of ch1.
     private static bool ReadsWithinGroup(List<HlslTreeNode> nodes, int groupStart, int nodeIndex)
     {
         if (nodes[nodeIndex] is not TempAssignmentNode added)
         {
             return false;
         }
-        for (int i = groupStart + 1; i < nodeIndex; i++)
+        for (int i = groupStart; i < nodeIndex; i++)
         {
             if (nodes[i] is TempAssignmentNode member
                 && (added.DependsOnNewValueOf.Contains(member) || member.DependsOnNewValueOf.Contains(added)))

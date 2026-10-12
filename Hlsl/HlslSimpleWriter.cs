@@ -2559,10 +2559,44 @@ public class HlslSimpleWriter : HlslWriter
         return masks.Count > 1 ? [.. masks] : null;
     }
 
+    /// <summary>
+    /// A raw access of groupshared memory that names more than one dword at once,
+    /// split into the one dword each statement writes. Raw groupshared is declared
+    /// as an array of dword elements, so an access of several is an assignment per
+    /// element - which dword is whose the access's own swizzle says, and a store's
+    /// value immediate carries one entry per dword beside it. Null where the access
+    /// is not groupshared's or already names one dword.
+    /// </summary>
+    private static int[] SplitGroupSharedRawMasks(D3D10Instruction instruction)
+    {
+        int resourceOperand = instruction.Opcode switch
+        {
+            D3D10Opcode.LdRaw => 2,
+            D3D10Opcode.StoreRaw => 0,
+            _ => -1,
+        };
+        if (resourceOperand < 0
+            || instruction.GetOperandType(resourceOperand) != OperandType.ThreadGroupSharedMemory)
+        {
+            return null;
+        }
+        int mask = instruction.GetWriteMask(0);
+        var masks = new List<int>();
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) != 0)
+            {
+                masks.Add(1 << component);
+            }
+        }
+        return masks.Count > 1 ? [.. masks] : null;
+    }
+
     private void WriteInstruction(D3D10Instruction instruction)
     {
         int[] split = SplitPackedOutputMasks(instruction)
-            ?? SplitDoubleElementMasks(instruction);
+            ?? SplitDoubleElementMasks(instruction)
+            ?? SplitGroupSharedRawMasks(instruction);
         if (split == null)
         {
             WriteInstructionStatement(instruction);
@@ -2938,8 +2972,9 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     // Groupshared memory is declared as an array, so a raw read of it
                     // is a subscript rather than a Load, and each dword it names is
-                    // an element of its own.
-                    int readMask = instruction.GetWriteMask(0);
+                    // an element of its own - an access of several arrives one dword
+                    // at a time, split by the statement writer.
+                    int readMask = DestinationMask(instruction);
                     if (BitOperations.PopCount((uint)readMask) != 1)
                     {
                         throw new NotImplementedException(
@@ -3562,20 +3597,55 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.StoreRaw when IsGroupSharedOperand(instruction, 0):
                 {
-                    // And the same for a store: one element, one assignment.
-                    int storeMask = instruction.GetWriteMask(0);
+                    // And the same for a store: one element, one assignment, an
+                    // access of several arriving one dword at a time, split by the
+                    // statement writer.
+                    int storeMask = DestinationMask(instruction);
                     if (BitOperations.PopCount((uint)storeMask) != 1)
                     {
                         throw new NotImplementedException(
                             "a raw groupshared store of more than one dword");
                     }
+                    int dword = BitOperations.TrailingZeroCount((uint)storeMask);
+                    string storedValue;
+                    if (instruction.GetOperandType(2) == OperandType.Immediate32)
+                    {
+                        // The value immediate carries one entry per dword, and the
+                        // bits are integers as they stand - which is what makes the
+                        // memory raw - so the element is named its own entry.
+                        storedValue = instruction.GetParamInt(2, dword).ToString(_culture);
+                    }
+                    else
+                    {
+                        // Raw groupshared holds bits and is declared as integers,
+                        // and HLSL converts between them by value: what a float
+                        // instruction wrote into the register is stored as its
+                        // bits, wrapped the way StoredBits wraps it for a member -
+                        // unsigned where the memory is, which keeps fxc's X3203
+                        // away. What a mov carried in is left to convert, as
+                        // HoldsStoredFloat leaves it: the move already typed its
+                        // immediate as the integer the store reads, and the two
+                        // conversions cancel. Asked of the one dword this
+                        // statement writes, a component at a time.
+                        storedValue = GetOperandName(instruction, 2);
+                        if (instruction.GetOperandType(2) == OperandType.Temp
+                            && GetSourceStorage(instruction, 2) == ComponentStorage.Numeric
+                            && instruction.GetParamRegisterKey(2)
+                                is D3D10RegisterKey { IsTempRegister: true } source
+                            && IsWrittenAsFloat(instruction, source,
+                                instruction.GetSourceSwizzleComponents(2)[dword]))
+                        {
+                            string cast = _integerOperandAnalysis.IsUnsignedThreadGroupSharedMemory(
+                                instruction.GetParamRegisterKey(0).Number) ? "asuint" : "asint";
+                            storedValue = $"{cast}({storedValue})";
+                        }
+                    }
                     WriteLine("{0} = {1};",
                         _registers.GroupSharedElementReference(
                             instruction.GetParamRegisterKey(0),
                             GetOperandName(instruction, 0),
-                            GroupSharedElement(instruction, 1,
-                                BitOperations.TrailingZeroCount((uint)storeMask))),
-                        GetOperandName(instruction, 2));
+                            GroupSharedElement(instruction, 1, dword)),
+                        storedValue);
                     break;
                 }
             case D3D10Opcode.StoreRaw:

@@ -349,6 +349,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "typed_buffer_read")]
     [TestCase("cs_5_0", "append_buffer_size")]
     [TestCase("cs_5_0", "group_shared_counter")]
+    [TestCase("cs_5_0", "group_shared_tile")]
     [TestCase("cs_5_0", "byte_address_literals")]
     [TestCase("ps_5_0", "gather_cmp_variants")]
     [TestCase("ps_4_0", "vector_subscript")]

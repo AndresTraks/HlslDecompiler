@@ -53,6 +53,17 @@ public class ReflectionEquivalenceTests
             "The same merge of the b210 and b120 phases, from the instruction writer's "
             + "phase-by-phase copy of them: fxc finds the six alike and runs one "
             + "phase per component twice.")],
+        ["cs_5_0/group_shared_tile"] = [("ast",
+            "dcl_tgsm_structured where the original declared dcl_tgsm_raw. Raw "
+            + "groupshared wider than one dword is the one declaration HLSL has no "
+            + "spelling for - raw is a variable without a subscript, and a subscript "
+            + "makes it structured - so the decompilation keeps the same bytes as an "
+            + "array of dwords and fxc declares the array. The words and what is "
+            + "stored in them are the same; only the declaration differs."),
+            ("instruction",
+            "The same array-for-raw spelling of the two variables, from the "
+            + "instruction writer: one store per dword of the raw one rather than "
+            + "the one store of several the original makes.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

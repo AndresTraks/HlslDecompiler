@@ -90,6 +90,16 @@ public class RoundTripCostTests
             + "of a kind the writer has not got."),
 
         // fxc's doing: the output is right and it compiles it differently.
+        ["cs_5_0/group_shared_tile"] = (23,
+            "Eight instructions, and the price of having no spelling for the "
+            + "declaration. The original keeps a float4 and a uint2 in raw "
+            + "groupshared - one sixteen byte and one eight byte dcl_tgsm_raw, two "
+            + "store_raw and two ld_raw. HLSL has no raw array (a raw variable "
+            + "wider than one dword cannot be declared at all), so the "
+            + "decompilation says so as arrays of dword elements, and fxc "
+            + "compiles the four accesses to those as one store and one load per "
+            + "element: six store_structured and six ld_structured where the "
+            + "original had two of each. The same bytes, named a dword at a time."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

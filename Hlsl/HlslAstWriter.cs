@@ -2602,6 +2602,16 @@ public class HlslAstWriter : HlslWriter
         {
             return candidate;
         }
+        // The same rule the operation branch enforces: nothing the candidate is
+        // built on, and nothing built on it, is one of its components.
+        HashSet<HlslTreeNode> within = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode root in candidate)
+        {
+            foreach (HlslTreeNode node in Reachable([root]))
+            {
+                within.Add(node);
+            }
+        }
         foreach (HlslTreeNode sibling in candidate[0].Inputs[0].Outputs)
         {
             if (sibling is not IHasComponentIndex component
@@ -2609,6 +2619,8 @@ public class HlslAstWriter : HlslWriter
                 || indices.Contains(component.ComponentIndex)
                 || !readers.Contains(sibling)
                 || roots.Contains(sibling)
+                || within.Contains(sibling)
+                || candidate.Any(c => Reachable([sibling]).Contains(c))
                 || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false))
             {
                 continue;
@@ -2859,6 +2871,19 @@ public class HlslAstWriter : HlslWriter
             return candidate;
         }
         var byOrder = new SortedDictionary<int, HlslTreeNode> { [order] = candidate[0] };
+        // A sibling is a component read alongside the candidate - never a value the
+        // candidate is built on, nor one built on the candidate. Naming the pair as
+        // lanes of one variable puts a lane's initializer inside the other's read:
+        // a load read by two expressions beside the product built on it came out
+        // `float2 t1 = 2 * t1.y;` beside `float2 t1 = g0[0];` - and once the grouped
+        // compile sees through the self-reference and refuses to write the pair as
+        // one statement, the line is a constructor of whole declarations, which fxc
+        // refuses outright (X3000).
+        HashSet<HlslTreeNode> withinCandidate = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in Reachable([candidate[0]]))
+        {
+            withinCandidate.Add(node);
+        }
         foreach (HlslTreeNode sibling in readers)
         {
             if (ReferenceEquals(sibling, candidate[0])
@@ -2868,6 +2893,8 @@ public class HlslAstWriter : HlslWriter
                 // and its uint flags together, and as one float2 the flags were
                 // converted to a float on the way in - their bits gone.
                 || ValueTypes.IsIntegerValue(sibling) != ValueTypes.IsIntegerValue(candidate[0])
+                || withinCandidate.Contains(sibling)
+                || Reachable([sibling]).Contains(candidate[0])
                 || SiblingOrder(sibling, candidate[0]) is not int siblingOrder
                 || byOrder.ContainsKey(siblingOrder))
             {

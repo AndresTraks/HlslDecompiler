@@ -1156,6 +1156,14 @@ public sealed class IntegerOperandAnalysis
 
     private enum StoredType { Unknown, Integer, Float }
 
+    // Bits whose exponent is all zeroes and are not zero, or all ones: as a float
+    // a denormal or an infinity or NaN, none of which a shader writes as a literal.
+    public static bool IsDenormalOrNaN(uint bits)
+    {
+        uint exponent = (bits >> 23) & 0xFF;
+        return (exponent == 0 && (bits & 0x7FFFFFFF) != 0) || exponent == 0xFF;
+    }
+
     // What the operand of the instruction at index holds, by the instruction that
     // last wrote it. Straight-line order only; a value written in one branch and
     // read after the join reads as whichever write comes last in the listing, which
@@ -1166,7 +1174,18 @@ public sealed class IntegerOperandAnalysis
         OperandType type = reader.GetOperandType(operandIndex);
         if (type == OperandType.Immediate32)
         {
-            return StoredType.Unknown;
+            // The bits say what they can: an immediate whose float is a denormal,
+            // an infinity or a NaN was not written as a float - HLSL spells no
+            // literal with those bits, and fxc folds a float spelled through
+            // asfloat's bits into the flushed or rounded float (probed:
+            // asfloat(3) stores 0, asfloat(0x40000001) stores 2.0). Such bits
+            // reach memory only through an integer store, and the array has to be
+            // typed integer to keep them: stored into a traced float the
+            // immediate printed 0.000000 - the denormal's bits as zero. Any other
+            // immediate stays silent, as before.
+            return IsDenormalOrNaN((uint)reader.GetParamInt(operandIndex, 0))
+                ? StoredType.Integer
+                : StoredType.Unknown;
         }
         if (type != OperandType.Temp)
         {

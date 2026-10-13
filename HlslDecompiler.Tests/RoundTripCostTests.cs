@@ -109,6 +109,14 @@ public class RoundTripCostTests
             + "costs nothing: an `add 0.0` folded to nothing still reads the tile's "
             + "dwords as floats, and the asfloats it says so with recompile to the "
             + "bit moves the original's adds were."),
+        ["cs_5_0/group_shared_round2"] = (24,
+            "Seven instructions for the tile's missing raw spelling and the "
+            + "schedule built around it: four stores and four loads of the float4's "
+            + "elements where the original moved it whole (store_raw and ld_raw), "
+            + "and fxc, handed the whole-register operand no more, splits its one "
+            + "four-lane mad into three - while the mov that carried the 1.0 into "
+            + "the register folds away, since a per-element store can hold the "
+            + "immediate itself. The bounds were an array already and cost nothing."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

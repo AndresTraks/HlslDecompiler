@@ -2928,14 +2928,6 @@ public class InstructionParser
         }
     }
 
-    // Bits whose exponent is all zeroes and are not zero, or all ones: as a float
-    // a denormal or an infinity or NaN, none of which a shader writes as a literal.
-    private static bool IsDenormalOrNaN(uint bits)
-    {
-        uint exponent = (bits >> 23) & 0xFF;
-        return (exponent == 0 && (bits & 0x7FFFFFFF) != 0) || exponent == 0xFF;
-    }
-
     private void ResolvePolymorphicImmediates()
     {
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
@@ -4243,7 +4235,7 @@ public class InstructionParser
                 // read as the denormal its bits make.
                 uint immediateBits = (uint)instruction.GetParamInt(inputParameterIndex, componentIndex);
                 bool notAFloat = (instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
-                        && IsDenormalOrNaN(immediateBits))
+                        && IntegerOperandAnalysis.IsDenormalOrNaN(immediateBits))
                     || instruction.IsAddressOperand(inputParameterIndex);
                 var constant = _integerOperandAnalysis.IsIntegerOperand(instruction) || notAFloat
                     ? new ConstantNode((int)immediateBits)

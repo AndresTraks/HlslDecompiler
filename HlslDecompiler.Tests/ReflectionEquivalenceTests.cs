@@ -73,6 +73,16 @@ public class ReflectionEquivalenceTests
             "The same array-for-raw spelling of the two variables, from the "
             + "instruction writer: one store and one load per dword where the "
             + "original moves the whole registers at once.")],
+        ["cs_5_0/group_shared_round2"] = [("ast",
+            "dcl_tgsm_structured 4, 4 where the original declared dcl_tgsm_raw 16 - "
+            + "the tile's missing raw spelling again, as in cs_5_0/group_shared_tile. "
+            + "The bounds were declared an array and keep their declaration; the one "
+            + "variable HLSL cannot spell raw is the float4. The bytes and their "
+            + "values are the same; only the declaration differs."),
+            ("instruction",
+            "The tile's same array-for-raw spelling, from the instruction writer: "
+            + "one store and one load per dword of the float4 where the original "
+            + "moves it whole.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

@@ -64,6 +64,15 @@ public class ReflectionEquivalenceTests
             "The same array-for-raw spelling of the two variables, from the "
             + "instruction writer: one store per dword of the raw one rather than "
             + "the one store of several the original makes.")],
+        ["cs_5_0/group_shared_addzero"] = [("ast",
+            "The same dcl_tgsm_structured for dcl_tgsm_raw as cs_5_0/group_shared_tile: "
+            + "a float4 and a uint2 of raw groupshared, spelled as arrays of dword "
+            + "elements because HLSL has no raw array. The bytes and what is stored "
+            + "in them are the same; only the declaration differs."),
+            ("instruction",
+            "The same array-for-raw spelling of the two variables, from the "
+            + "instruction writer: one store and one load per dword where the "
+            + "original moves the whole registers at once.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

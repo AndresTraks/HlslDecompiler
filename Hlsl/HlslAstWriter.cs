@@ -733,9 +733,13 @@ public class HlslAstWriter : HlslWriter
             // Into floats, a variable declared an integer goes in as the bits it
             // holds: the store writes a register's bits, and a float sum fxc kept in
             // a register it had used for a mask came back `g0[i] = t2.x`, the sum
-            // converted from the integer its bits make.
+            // converted from the integer its bits make. A raw load's integer is bits
+            // by definition - it is read as a float with asfloat, and an identity
+            // fold that dropped the float operation it stood in leaves it standing
+            // here bare - and it goes in the same way, under the same wrap.
             return destinationHoldsIntegers == false
-                && values.All(v => v is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false })
+                && values.All(v => ValueTypes.IsReinterpretedAsFloat(v)
+                    || v is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false })
                 ? $"asfloat({_compiler.CompileAsInteger(values)})"
                 : _compiler.CompileAsInteger(values);
         }
@@ -744,10 +748,20 @@ public class HlslAstWriter : HlslWriter
         // around it would assert something the graph never said - a groupshared load
         // of an int array came out `asuint(g1[i])` and msad4, which answers uints
         // already, came out wrapped in it too.
+        //
+        // Where the destination is known to hold floats, the value is read as one,
+        // and the store is a float context the way a float output is: bits reaching
+        // it bare - a raw load whose `add 0.0` an identity fold just dropped - are
+        // reinterpreted there rather than converted, because the constructor the
+        // components come out as is float and HLSL converts an integer argument
+        // into it. The operations that survive the fold wrap their own operands;
+        // nothing wrapped this one, so the store has to.
         return destinationHoldsIntegers == true
             && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
             ? CompileRawStoredValue(values)
-            : _compiler.Compile(values);
+            : destinationHoldsIntegers == false
+                ? _compiler.CompileAsFloat(values)
+                : _compiler.Compile(values);
     }
 
     // The dwords a raw store writes: each integer as it is, each float as its bits,
@@ -829,9 +843,13 @@ public class HlslAstWriter : HlslWriter
         {
             foreach ((string name, int[] values) in runs)
             {
+                // The member's own float-ness is the store's, so a run of it reads
+                // bare bits as a float the same way the whole value above does.
                 string run = storesIntegers
                     ? _compiler.CompileAsInteger(values.Select(v => storedValues[v]))
-                    : _compiler.Compile(values.Select(v => storedValues[v]));
+                    : holdsIntegers == false
+                        ? _compiler.CompileAsFloat(values.Select(v => storedValues[v]))
+                        : _compiler.Compile(values.Select(v => storedValues[v]));
                 WriteLine($"{name} = {run};");
             }
             return;

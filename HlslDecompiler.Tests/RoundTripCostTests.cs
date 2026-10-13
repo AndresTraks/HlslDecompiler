@@ -100,6 +100,15 @@ public class RoundTripCostTests
             + "compiles the four accesses to those as one store and one load per "
             + "element: six store_structured and six ld_structured where the "
             + "original had two of each. The same bytes, named a dword at a time."),
+        ["cs_5_0/group_shared_addzero"] = (24,
+            "Eight instructions, and the same missing raw spelling as "
+            + "cs_5_0/group_shared_tile: the float4 and the uint2 of groupshared "
+            + "come back as arrays of dword elements, and fxc compiles their "
+            + "accesses one dword at a time - six stores and six loads where the "
+            + "original had two store_raw and two ld_raw. What the fixture is for "
+            + "costs nothing: an `add 0.0` folded to nothing still reads the tile's "
+            + "dwords as floats, and the asfloats it says so with recompile to the "
+            + "bit moves the original's adds were."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

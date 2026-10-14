@@ -2001,32 +2001,42 @@ public sealed class NodeCompiler
             case MoveConditionalOperation _:
                 {
                     var value1 = CompileCondition(components);
-                    var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
-                    var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
                     // A movc moves bits, but HLSL's mixed select converts. So a branch
                     // of the other kind is reinterpreted to the kind the select is
-                    // read as. Constants don't say their kind.
+                    // read as - compiled in its own kind, so a constructor of
+                    // integers under asfloat is an int vector, not a float one that
+                    // converted them. Constants don't say their kind.
                     bool BranchIs(int input, bool floats) => components.All(c =>
                         c.Inputs[input] is not ConstantNode
                         && (floats ? IsFloatValued(c.Inputs[input]) : ValueTypes.IsIntegerValue(c.Inputs[input]) == true));
-                    for (int branch = 1; branch <= 2; branch++)
+                    string CompileBranch(int branch)
                     {
                         int other = 3 - branch;
-                        if (_assigningToInteger ? BranchIs(branch, true) && BranchIs(other, false)
-                            : BranchIs(branch, false) && BranchIs(other, true))
+                        IEnumerable<HlslTreeNode> nodes = components.Select(g => g.Inputs[branch]);
+                        bool intoInteger = _assigningToInteger;
+                        if (!(intoInteger ? BranchIs(branch, true) && BranchIs(other, false)
+                            : BranchIs(branch, false) && BranchIs(other, true)))
                         {
-                            string call = _assigningToInteger ? (_assigningToUnsigned ? "asuint" : "asint") : "asfloat";
-                            if (branch == 1)
-                            {
-                                value2 = $"{call}({value2})";
-                            }
-                            else
-                            {
-                                value3 = $"{call}({value3})";
-                            }
+                            return Compile(nodes, components.Count);
+                        }
+                        string call = intoInteger ? (_assigningToUnsigned ? "asuint" : "asint") : "asfloat";
+                        bool wasAssigningToInteger = _assigningToInteger;
+                        bool wasReadingAsFloat = _readingAsFloat;
+                        _assigningToInteger = !intoInteger;
+                        _readingAsFloat = intoInteger;
+                        try
+                        {
+                            return $"{call}({Compile(nodes, components.Count)})";
+                        }
+                        finally
+                        {
+                            _assigningToInteger = wasAssigningToInteger;
+                            _readingAsFloat = wasReadingAsFloat;
                         }
                     }
+                    var value2 = CompileBranch(1);
+                    var value3 = CompileBranch(2);
 
                     // `cond ? 1 : 0` is int to HLSL; a float constant branch gets a
                     // decimal point (the other is promoted by it).

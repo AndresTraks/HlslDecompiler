@@ -411,6 +411,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "struct_flag_or")]
     [TestCase("cs_5_0", "select_float_bits")]
     [TestCase("cs_5_0", "select_int_bits")]
+    [TestCase("cs_5_0", "select_raw_store")]
+    [TestCase("cs_5_0", "select_struct_member")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

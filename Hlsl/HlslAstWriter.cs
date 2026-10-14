@@ -721,11 +721,16 @@ public class HlslAstWriter : HlslWriter
         {
             foreach ((string name, int[] values) in runs)
             {
+                // Each member by its own type: a uint member after a float one is
+                // integers whatever the element's first member is.
+                bool? memberHoldsIntegers = bufferKey is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+                    ? holdsIntegers
+                    : _registers.IsIntegerStructuredMember(bufferKey,
+                        storeStructured.ElementByteOffset + storeStructured.Components[values[0]] * 4);
+                HlslTreeNode[] runValues = [.. values.Select(v => storedValues[v])];
                 string run = storesIntegers
-                    ? _compiler.CompileAsInteger(values.Select(v => storedValues[v]))
-                    : holdsIntegers == false
-                        ? _compiler.CompileAsFloat(values.Select(v => storedValues[v]))
-                        : _compiler.Compile(values.Select(v => storedValues[v]));
+                    ? _compiler.CompileAsInteger(runValues)
+                    : CompileStoredValue(runValues, memberHoldsIntegers);
                 WriteLine($"{name} = {run};");
             }
             return;

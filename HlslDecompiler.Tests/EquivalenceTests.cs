@@ -49,6 +49,16 @@ public class EquivalenceTests
             + "integer in a float register as its number, so the doubling after it "
             + "doubles the number rather than the float its bits are. The AST "
             + "writer, which selects asfloat(3 * b[i] + 1), computes the same.")],
+        ["cs_5_0/select_raw_store"] = [("instruction",
+            "The select of select_float_bits, stored with Store4: the float register "
+            + "holds the integer branch as its number, and the store takes its bits. "
+            + "The AST writer, which selects asfloat(int4(...)) beside the float, "
+            + "computes the same.")],
+        ["cs_5_0/select_struct_member"] = [("instruction",
+            "The same select stored into a uint member of a struct: the float "
+            + "register holds the integer branch as its number and the float "
+            + "branch as a float, and the store converts both. The AST writer, which "
+            + "selects asint(t1) beside the uint, computes the same.")],
     };
 
     private const int Trials = 8;

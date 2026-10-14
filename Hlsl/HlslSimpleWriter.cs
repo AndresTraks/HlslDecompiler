@@ -2135,6 +2135,32 @@ public class HlslSimpleWriter : HlslWriter
     // nothing of what its value is, so the immediate was printed as a float - and
     // an int array took l(3), a denormal, as 0.000000 and stored zero. Null where
     // the value is not an immediate or the memory is declared float.
+    /// <summary>
+    /// A structured load into an int register that reads float members and integer
+    /// members together, built as an int vector with the floats carried in as their
+    /// bits. Members of one kind are reinterpreted whole by WriteResult; a mix
+    /// answered to neither, and the constructor was a float one: `r1 =
+    /// float4(p.vel, p.flags)` into an int4 converted the velocity to integers, and
+    /// the mad that read it back through asfloat read the bits of those. A float
+    /// register is left as it was - it holds an integer as the number, which is
+    /// what the utof after it reads.
+    /// </summary>
+    private string MixedStructuredLoad(D3D10Instruction instruction, RegisterKey buffer,
+        string element, int offset, List<int> read)
+    {
+        bool?[] integer = [.. read.Select(c => _registers.IsIntegerStructuredMember(buffer, offset + c * 4))];
+        if (GetDestinationStorage(instruction, 0) != ComponentStorage.Integer
+            || integer.Any(kind => kind == null) || integer.All(kind => kind == integer[0])
+            || _registers.FindStructuredMemberRuns(buffer, element, offset, read) is not { } runs)
+        {
+            return null;
+        }
+        IEnumerable<string> members = runs.Select(run => integer[run.Values[0]] == true
+            ? run.Name
+            : $"asint({run.Name})");
+        return $"int{read.Count}({string.Join(", ", members)})";
+    }
+
     private string StoredImmediateBits(D3D10Instruction instruction)
     {
         if (instruction.GetOperandType(3) != OperandType.Immediate32
@@ -2945,6 +2971,12 @@ public class HlslSimpleWriter : HlslWriter
                         }
                         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
                             $"{element}.{sharedName}{sharedSwizzle}");
+                        break;
+                    }
+                    if (loadPerElement == 1
+                        && MixedStructuredLoad(instruction, buffer, element, offset, read) is string mixed)
+                    {
+                        WriteLine("{0} = {1};", GetOperandName(instruction, 0), mixed);
                         break;
                     }
                     string readElement = _registers.NameStructuredMembers(buffer, element, offset, read)

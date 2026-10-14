@@ -1024,7 +1024,10 @@ public sealed class NodeCompiler
             {
                 case ConstantNode or RegisterInputNode or TempVariableNode:
                     continue;
-                case GroupNode or Operation:
+                // A comparison is arithmetic too, and reads nothing a swap could
+                // move: `t1 | (t2 < 0 ? 1 : 0)` came back the other way round from
+                // every round, fxc reversing the or each time.
+                case GroupNode or Operation or ComparisonNode:
                     foreach (HlslTreeNode input in node.Inputs)
                     {
                         pending.Push(input);

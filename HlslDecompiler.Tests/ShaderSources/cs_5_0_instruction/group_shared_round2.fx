@@ -23,7 +23,7 @@ void main(CS_IN i)
 		g0[1] = asint(r0.y);
 		g0[2] = asint(r0.z);
 		g0[3] = r0.w;
-		g1[0] = 0.000000;
+		g1[0] = 3;
 		g1[1] = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();

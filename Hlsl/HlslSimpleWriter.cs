@@ -2121,6 +2121,23 @@ public class HlslSimpleWriter : HlslWriter
         return HoldsInteger(instruction, operandIndex) ? name : AsInt(name);
     }
 
+    // The value immediate of a structured store into groupshared memory declared
+    // integer: the bits the store writes, as the integer they are. A store says
+    // nothing of what its value is, so the immediate was printed as a float - and
+    // an int array took l(3), a denormal, as 0.000000 and stored zero. Null where
+    // the value is not an immediate or the memory is declared float.
+    private string StoredImmediateBits(D3D10Instruction instruction)
+    {
+        if (instruction.GetOperandType(3) != OperandType.Immediate32
+            || !IsGroupSharedOperand(instruction, 0)
+            || !_integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(
+                instruction.GetParamRegisterKey(0).Number))
+        {
+            return null;
+        }
+        return ImmediateBits(instruction, 3);
+    }
+
     private string ImmediateBits(D3D10Instruction instruction, int operandIndex)
     {
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
@@ -3472,7 +3489,9 @@ public class HlslSimpleWriter : HlslWriter
                             break;
                         }
                         WriteLine("{0}{1} = {2};", element, storedMember,
-                            StoredBits(instruction, 3) ?? GetOperandName(instruction, 3));
+                            StoredImmediateBits(instruction)
+                                ?? StoredBits(instruction, 3)
+                                ?? GetOperandName(instruction, 3));
                         break;
                     }
                     // One member, or the double's two words would be written once

@@ -1707,6 +1707,16 @@ public class AsmWriter
                     isInteger = readAs == ValueKind.Integer;
                 }
             }
+            // A store says nothing of its value either, and groupshared memory every
+            // store fills with integers holds integers: the l(3) one stores into an
+            // int array is the 3 fxc prints, where as a float it read l(0.000000).
+            if (instruction.Opcode == D3D10Opcode.StoreStructured && index == 3
+                && instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory
+                && _integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(
+                    instruction.GetParamRegisterNumber(0)))
+            {
+                isInteger = true;
+            }
             // A bitwise operator over a float's bits: `and r0, r0, l(0x3f800000)`
             // keeps the 1.0 it masks with. Written as the float it is, it read
             // l(1), which is the integer 1 - a different word.

@@ -2392,6 +2392,37 @@ public sealed class NodeCompiler
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
+                    // A movc moves bits, and one between a float and an integer -
+                    // `v > 0.5 ? asuint(v) : (uint4)(v * 100)` - selects the float's
+                    // bits. Written `t2 ? t0 : t1`, HLSL selects in floats: the
+                    // integer was converted to a float and back and the float was
+                    // stored as the integer it rounds to. The branch of the other
+                    // kind is reinterpreted to the kind the select is read as - and
+                    // read as a float, an integer branch is the bits of one, which
+                    // `v > 0.5 ? v : asfloat(k)` selects. Only a branch that is no
+                    // constant says which kind it is; HLSL's own mixed select has
+                    // its conversion in the bytecode.
+                    bool BranchIs(int input, bool floats) => components.All(c =>
+                        c.Inputs[input] is not ConstantNode
+                        && (floats ? IsFloatValued(c.Inputs[input]) : ValueTypes.IsIntegerValue(c.Inputs[input]) == true));
+                    for (int branch = 1; branch <= 2; branch++)
+                    {
+                        int other = 3 - branch;
+                        if (_assigningToInteger ? BranchIs(branch, true) && BranchIs(other, false)
+                            : BranchIs(branch, false) && BranchIs(other, true))
+                        {
+                            string call = _assigningToInteger ? (_assigningToUnsigned ? "asuint" : "asint") : "asfloat";
+                            if (branch == 1)
+                            {
+                                value2 = $"{call}({value2})";
+                            }
+                            else
+                            {
+                                value3 = $"{call}({value3})";
+                            }
+                        }
+                    }
+
                     // Two constant branches are the one place a whole float has
                     // nothing beside it to be typed by: `cond ? 1 : 0` is a pair of
                     // int literals to HLSL, and the arithmetic around it goes

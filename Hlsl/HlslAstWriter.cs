@@ -756,12 +756,17 @@ public class HlslAstWriter : HlslWriter
         // components come out as is float and HLSL converts an integer argument
         // into it. The operations that survive the fold wrap their own operands;
         // nothing wrapped this one, so the store has to.
+        // And into integers, a value the graph says nothing about is read as one: a
+        // select of a float's bits and an integer's is neither kind until the
+        // destination says, and compiled plainly it selected in floats.
         return destinationHoldsIntegers == true
             && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
             ? CompileRawStoredValue(values)
             : destinationHoldsIntegers == false
                 ? _compiler.CompileAsFloat(values)
-                : _compiler.Compile(values);
+                : destinationHoldsIntegers == true && values.Any(v => v is MoveConditionalOperation)
+                    ? _compiler.CompileAsInteger(values)
+                    : _compiler.Compile(values);
     }
 
     // The dwords a raw store writes: each integer as it is, each float as its bits,

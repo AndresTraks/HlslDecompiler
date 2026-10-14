@@ -47,6 +47,19 @@ public class EquivalenceTests
             + "appends takes the id back off r1.w by conversion. Exact up to 2^24, "
             + "and the trials hand the id random bits well past that. The AST "
             + "writer, which types the id as the uint it is, computes the same.")],
+        ["cs_5_0/select_float_bits"] = [("instruction",
+            "The select. A movc picks between a float's bits and an integer, and the "
+            + "instruction writer keeps the integer in a register declared float as "
+            + "the number it is, by convention; the store into the uint4 buffer then "
+            + "converts the whole register, which is right for the integer and the "
+            + "float's value rather than its bits for the other. The AST writer, "
+            + "which selects asint(t0) beside the uint, computes the same.")],
+        ["cs_5_0/select_int_bits"] = [("instruction",
+            "The same select the other way round: the movc picks an integer's bits "
+            + "where the float is not chosen, and the instruction writer holds that "
+            + "integer in a float register as its number, so the doubling after it "
+            + "doubles the number rather than the float its bits are. The AST "
+            + "writer, which selects asfloat(3 * b[i] + 1), computes the same.")],
     };
 
     /// <summary>How many sets of inputs each shader is run over.</summary>

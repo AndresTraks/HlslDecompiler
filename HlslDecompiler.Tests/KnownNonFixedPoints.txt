@@ -32,6 +32,7 @@ reworded cs_5_0/struct_flags
 reworded cs_5_0/switch_stored_index
 reworded cs_5_0/tile_depth_bounds
 reworded cs_5_0/tile_luminance
+reworded cs_5_0/double_negated_move
 reworded ds_5_0/isoline_curve
 reworded hs_5_0/carried_constants
 reworded hs_5_0/patch_semantic_index

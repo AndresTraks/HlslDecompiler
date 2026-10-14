@@ -62,6 +62,12 @@ public class TemplateMatcher
     /// </summary>
     public TempResolver TempResolver { get; set; }
 
+    /// <summary>
+    /// The values the parser recorded as doubles (HlslAst.DoubleValues), which a
+    /// rewrite keeps up to date. Null where nothing is recorded.
+    /// </summary>
+    public ISet<HlslTreeNode> DoubleValues { get; set; }
+
     public TemplateMatcher(NodeGrouper nodeGrouper)
     {
         _stages =
@@ -245,6 +251,15 @@ public class TemplateMatcher
                     }
                     CountReduction(stage, template);
                     CarryValueType(node, replacement);
+                    // A double, too: the record names nodes, and the parser recorded
+                    // the dmov `Move(-min(...))` rather than the negation MoveTemplate
+                    // leaves of it. Forgotten, a double2 of that and another double
+                    // was built as a float2, rounding both through floats on the way
+                    // into a double buffer.
+                    if (DoubleValues != null && DoubleValues.Contains(node))
+                    {
+                        DoubleValues.Add(replacement);
+                    }
                     Replace(node, replacement);
                     HlslTreeNode result = ReduceDepthFirst(replacement, onPath, reduced);
                     reduced[node] = result;

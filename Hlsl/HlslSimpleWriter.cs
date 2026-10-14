@@ -1323,6 +1323,14 @@ public class HlslSimpleWriter : HlslWriter
                 ? ImmediateBits(instruction, sourceIndex)
                 : name;
         }
+        // A double moves between the shadows it is kept in, which are doubles
+        // whatever the registers around them are declared: `mov r2.zw, r1.zzzw`
+        // after a dmov into an int4 register came out as `d2.y = asfloat(d1.y)`,
+        // which does not compile.
+        if (GetDoubleRegisterOperandName(instruction, sourceIndex) != null)
+        {
+            return name;
+        }
         // Between registers of one declaration a move carries what is there, bits
         // and all: a movc selecting between two sets of bits selects bits, and
         // reading them as floats to select between them would flush a small integer

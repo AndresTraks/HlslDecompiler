@@ -119,7 +119,7 @@ public class HlslAstWriter : HlslWriter
                 : null,
         };
         _grouper = new NodeGrouper(_registers);
-        _templateMatcher = new TemplateMatcher(_grouper);
+        _templateMatcher = new TemplateMatcher(_grouper) { DoubleValues = _doubleValues };
 
         // Before the finalizer, which takes readers away - see ValueTypes.Record.
         var values = new List<HlslTreeNode>();

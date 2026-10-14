@@ -2231,7 +2231,6 @@ public sealed class NodeCompiler
                 }
             case LoadStructuredNode load:
                 {
-                    // TODO: consider the byte offset in Inputs[1].
                     // The element or the byte offset is an index, not a float's bits:
                     // in a float context the address would be reinterpreted, and
                     // `buffer[asfloat(element)]` is an index made from the bits of a

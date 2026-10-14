@@ -1648,7 +1648,8 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 break;
             case Opcode.Cmp:
-                // TODO: should be per-component
+                // HLSL's ?: on a vector selects per component, as cmp does: fxc
+                // compiles it back to one cmp over the written components.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
                 break;

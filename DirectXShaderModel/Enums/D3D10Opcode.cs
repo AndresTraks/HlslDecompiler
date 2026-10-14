@@ -230,9 +230,8 @@ public enum D3D10Opcode
 
 public static class D3D10OpcodeExtensions
 {
-    // Declaration tokens use bits 11 and up for their own fields - interpolation
-    // mode, primitive type and so on - so flags defined on instruction tokens, the
-    // saturate modifier in particular, must not be read out of them.
+    // Declarations use bits 11+ for their own fields, so instruction flags such as
+    // saturate must not be read from them.
     private static readonly HashSet<D3D10Opcode> Declarations =
         [.. Enum.GetValues<D3D10Opcode>().Where(o => o.ToString().StartsWith("Dcl"))];
 
@@ -241,8 +240,7 @@ public static class D3D10OpcodeExtensions
         return Declarations.Contains(opcode);
     }
 
-    // Those whose opcode token carries the test-boolean bit, saying whether they
-    // branch on the register being non-zero or on its being zero.
+    // Opcodes whose token carries the test-zero/test-nonzero bit.
     public static bool HasBooleanTest(this D3D10Opcode opcode)
     {
         switch (opcode)
@@ -259,11 +257,7 @@ public static class D3D10OpcodeExtensions
         }
     }
 
-    /// <summary>
-    /// The interlocked operations that keep no result. The ones that do -
-    /// imm_atomic_iadd and its family - name a destination register as well and are
-    /// not read yet.
-    /// </summary>
+    /// <summary>The interlocked operations that return no original value.</summary>
     public static bool IsAtomic(this D3D10Opcode opcode)
     {
         switch (opcode)
@@ -284,10 +278,8 @@ public static class D3D10OpcodeExtensions
     }
 
     /// <summary>
-    /// Whether the interlocked operation keeps the value the resource held before
-    /// it. The same operations as above with an imm_ in front and a destination
-    /// register in front of the resource, which HLSL writes as the out parameter
-    /// the two argument form leaves off.
+    /// The imm_ interlocked operations, whose extra destination returns the original
+    /// value (HLSL's trailing out parameter).
     /// </summary>
     public static bool IsImmediateAtomic(this D3D10Opcode opcode)
     {
@@ -312,9 +304,8 @@ public static class D3D10OpcodeExtensions
     }
 
     /// <summary>
-    /// The HLSL intrinsic an interlocked operation is written as. The unsigned and
-    /// the signed minimum and maximum share one name each - the operands say which,
-    /// the way they do for umin and imin themselves.
+    /// The HLSL intrinsic for an interlocked operation. Signed and unsigned min/max
+    /// share a name; the operand types pick the variant.
     /// </summary>
     public static string AtomicMethodName(this D3D10Opcode opcode)
     {
@@ -333,8 +324,6 @@ public static class D3D10OpcodeExtensions
             D3D10Opcode.ImmAtomicXor => "InterlockedXor",
             D3D10Opcode.ImmAtomicIMax or D3D10Opcode.ImmAtomicUMax => "InterlockedMax",
             D3D10Opcode.ImmAtomicIMin or D3D10Opcode.ImmAtomicUMin => "InterlockedMin",
-            // The exchanges have no form that drops the old value, so these two
-            // names belong to the imm_ opcodes alone.
             D3D10Opcode.ImmAtomicExch => "InterlockedExchange",
             D3D10Opcode.ImmAtomicCmpExch => "InterlockedCompareExchange",
             _ => throw new NotImplementedException(opcode.ToString()),
@@ -346,14 +335,13 @@ public static class D3D10OpcodeExtensions
         switch (opcode)
         {
             case D3D10Opcode.Case:
-            // Its only immediate operand is the texel address, which is integer.
+            // Its only immediate operand is the integer texel address.
             case D3D10Opcode.LD:
             case D3D10Opcode.LDMS:
             case D3D10Opcode.IAdd:
             case D3D10Opcode.IShl:
             case D3D10Opcode.IShr:
             case D3D10Opcode.UShr:
-            // A bit field's width and offset are counts and the value is bits.
             case D3D10Opcode.UBFE:
             case D3D10Opcode.IBFE:
             case D3D10Opcode.BFI:
@@ -363,13 +351,9 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ULT:
             case D3D10Opcode.Ilt:
             case D3D10Opcode.IMad:
-            // Four bytes against four, and a sum of them: integers throughout.
             case D3D10Opcode.MSAD:
             case D3D10Opcode.IMin:
             case D3D10Opcode.IMul:
-            // The unsigned arithmetic is as integer as the signed. Leaving udiv out
-            // printed its divisor l(3, 3, 0, 0) as floats, where the bits of the
-            // integer 3 are a denormal and the division is by zero.
             case D3D10Opcode.Udiv:
             case D3D10Opcode.Umad:
             case D3D10Opcode.UMax:
@@ -379,9 +363,7 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.INeg:
             case D3D10Opcode.IMax:
             case D3D10Opcode.Discard:
-            // Every operand of an interlocked operation is an integer - the address,
-            // the value and the one it compares against - since there is no atomic
-            // over anything else.
+            // Atomics exist only over integers.
             case D3D10Opcode.AtomicIAdd:
             case D3D10Opcode.AtomicAnd:
             case D3D10Opcode.AtomicOr:
@@ -401,10 +383,7 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ImmAtomicUMin:
             case D3D10Opcode.ImmAtomicExch:
             case D3D10Opcode.ImmAtomicCmpExch:
-            // How many elements a buffer holds is a count, and so is the register
-            // it lands in.
             case D3D10Opcode.BufInfo:
-            // The bit instructions read an integer and count or reorder its bits.
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:
             case D3D10Opcode.FirstBitHi:
@@ -418,10 +397,8 @@ public static class D3D10OpcodeExtensions
     }
 
     /// <summary>
-    /// What an instruction reads its register operands as. The integer
-    /// instructions and itof read integers; ftoi and the float instructions read
-    /// floats; a branch, a discard and a movc condition test bits; and a mov, a
-    /// movc value or a bitwise operator carries whatever it was given.
+    /// What an instruction reads its register operands as. Unknown means the
+    /// operand is passed through untyped (mov, movc values, bitwise ops).
     /// </summary>
     public static ValueKind ConsumedKind(this D3D10Opcode opcode)
     {
@@ -443,7 +420,7 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Bits;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
-            // The mip level, and the element and byte offsets.
+            // Mip levels and element/byte offsets.
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.BufInfo:
             case D3D10Opcode.LdStructured:
@@ -453,7 +430,6 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Integer;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
-            // The float it takes the bits of the nearest half float to.
             case D3D10Opcode.F32ToF16:
                 return ValueKind.Float;
             default:
@@ -462,10 +438,8 @@ public static class D3D10OpcodeExtensions
     }
 
     /// <summary>
-    /// What an instruction writes. A comparison writes a mask, all ones or all
-    /// zeroes; ftoi an integer, itof a float; a mov, a movc and the bitwise
-    /// operators write what they read. resinfo and ld_structured depend on the
-    /// instruction rather than the opcode and are answered elsewhere.
+    /// What an instruction writes. Comparisons write all-ones/all-zero masks.
+    /// resinfo and ld_structured depend on the instruction and are answered elsewhere.
     /// </summary>
     public static ValueKind ProducedKind(this D3D10Opcode opcode)
     {
@@ -480,20 +454,12 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdStructured:
                 return ValueKind.Unknown;
-            // How many elements a buffer holds, which is a count and not a measure
-            // of anything that could be a float.
             case D3D10Opcode.BufInfo:
                 return ValueKind.Integer;
-            // The slot an append buffer allocated, and the one a consume buffer
-            // gave up: an index into the buffer, and a counter is no more a float
-            // than the count above is. Taken for one, the register it was written
-            // to was declared float, and the element a ConsumeStructuredBuffer
-            // holds was read through a utof going in and an ftou coming out - the
-            // shift that doubled it written as an add of floats.
+            // An append/consume buffer slot index.
             case D3D10Opcode.ImmAtomicAlloc:
             case D3D10Opcode.ImmAtomicConsume:
                 return ValueKind.Integer;
-            // A raw buffer holds dwords, read out as uints.
             case D3D10Opcode.LdRaw:
                 return ValueKind.Integer;
             case D3D10Opcode.LT:
@@ -509,13 +475,13 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Bits;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
-            // Half float bits, which are an integer however they got there.
+            // Half float bits.
             case D3D10Opcode.F32ToF16:
                 return ValueKind.Integer;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
             case D3D10Opcode.F16ToF32:
-            // A texel, whatever address it was read at.
+            // A texel, though the address is integer.
             case D3D10Opcode.LD:
             case D3D10Opcode.LDMS:
                 return ValueKind.Float;

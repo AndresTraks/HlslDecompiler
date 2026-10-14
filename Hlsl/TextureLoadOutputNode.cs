@@ -10,8 +10,7 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     private int _numOffsets;
     private bool _hasScalarArgument;
 
-    // The texel offsets of sample_aoffimmi, which shift the sample by whole texels
-    // and are part of what it computes.
+    // sample_aoffimmi's immediate texel offsets.
     public int[] SampleOffsets { get; set; }
 
     private TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex, RegisterInputNode texture)
@@ -81,10 +80,8 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
         return node;
     }
 
-    // The DXBC sample variants each take what plain sample does and then one thing
-    // more: a level, a bias, the value compared against, or a pair of gradients.
-    // Inputs stay in the order the accessors below expect - sampler, coordinates,
-    // gradients, texture - with any scalar argument last.
+    // Input order, as the accessors expect: sampler, coordinates, gradients,
+    // offsets, texture, then any scalar argument.
     public static TextureLoadOutputNode CreateSample(
         RegisterInputNode sampler,
         HlslTreeNode[] textureCoords,
@@ -136,8 +133,7 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     public IEnumerable<HlslTreeNode> DerivativeY => Inputs
         .Skip(1 + 2 * _numTextureCoordinates)
         .Take(Controls.HasFlag(TextureLoadControls.Grad) ? _numTextureCoordinates : 0);
-    // The offset a gather4_po takes from a register, which goes after the
-    // coordinates the way the gradients do.
+    // gather4_po's register offset.
     public IEnumerable<HlslTreeNode> Offsets => Inputs
         .Skip(1 + _numTextureCoordinates
             + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0))
@@ -147,7 +143,7 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
             + (Controls.HasFlag(TextureLoadControls.Grad) ? 2 * _numTextureCoordinates : 0)
             + _numOffsets)
         .FirstOrDefault() as RegisterInputNode;
-    // The level, bias or comparison value, whichever the controls call for.
+    // Level, bias or comparison value.
     public HlslTreeNode ScalarArgument => _hasScalarArgument ? Inputs[Inputs.Count - 1] : null;
     public int ComponentIndex { get; }
     public TextureLoadControls Controls { get; private set; }
@@ -171,16 +167,10 @@ public enum TextureLoadControls
     Compare = 16,
     LevelZero = 32,
     Gather = 64,
-    // The lod instruction, which measures a level rather than reading a texel.
+    // The lod instruction.
     CalculateLod = 128,
-    // Which of the two levels it measures: the clamped one the texture would
-    // actually use, or the unclamped one it computed before clamping. The resource
-    // operand's swizzle says which - `t0.x` for the first, `t0.y` for the second.
+    // lod's unclamped level: resource swizzle `t0.y` rather than `t0.x`.
     Unclamped = 256,
-    /// <summary>
-    /// The texel offset is an operand rather than part of the mnemonic: gather4_po
-    /// takes it from a register, so it can differ per pixel where an aoffimmi
-    /// cannot.
-    /// </summary>
+    /// <summary>gather4_po: the texel offset comes from a register.</summary>
     ProgrammableOffset = 512,
 }

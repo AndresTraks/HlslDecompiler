@@ -41,10 +41,8 @@ namespace HlslDecompiler.DirectXShaderModel;
 public class D3D9Instruction : Instruction
 {
     /// <summary>
-    /// True for a pixel shader before version 3. Its input registers are the
-    /// diffuse and specular colours, declared as `dcl v0` with no usage field - and
-    /// a usage field of zero reads as POSITION, which is not a semantic a pixel
-    /// shader may even take.
+    /// True for a pixel shader before ps_3_0, whose v# inputs are COLOR# with no
+    /// usage field (a zero usage would otherwise read as POSITION).
     /// </summary>
     public bool HasImpliedInputSemantics { get; set; }
     
@@ -86,9 +84,8 @@ public class D3D9Instruction : Instruction
     public bool Predicated => (InstructionToken & 0x10000000) != 0;
 
     /// <summary>
-    /// A ps_1_x instruction run beside the one before it, as one pair: the colour
-    /// half and the alpha half of a pixel at once. Neither sees what the other
-    /// writes. fxc writes it with a + in front.
+    /// ps_1_x `+` pairing with the previous instruction; neither sees the other's
+    /// writes.
     /// </summary>
     public bool CoIssue => (InstructionToken & 0x40000000) != 0;
 
@@ -99,8 +96,6 @@ public class D3D9Instruction : Instruction
     {
         switch (GetParamRegisterType(1))
         {
-            // A ps_2_0 texture register is a texture coordinate, numbered by the
-            // register itself.
             case RegisterType.Texture:
                 int textureIndex = GetParamRegisterNumber(1);
                 return textureIndex == 0 ? "TEXCOORD" : "TEXCOORD" + textureIndex;
@@ -216,12 +211,8 @@ public class D3D9Instruction : Instruction
             return "";
         }
 
-        // A bool register holds a single value, so `if b0` carries no swizzle even
-        // though the token has a swizzle field like any other source. A label
-        // register names a position in the shader rather than a value, and a call
-        // and the label it calls have no destination to take a mask from either:
-        // read as one, the swizzle field of `call l1` selects a component and the
-        // call came out `call l1.z`.
+        // Bool and label registers are scalar/positions; their swizzle field is
+        // meaningless (else `call l1` prints as `call l1.z`).
         if (GetParamRegisterType(srcIndex) is RegisterType.ConstBool or RegisterType.Label)
         {
             return "";
@@ -329,8 +320,7 @@ public class D3D9Instruction : Instruction
         return (int)(Params.GetRelativeToken(index) & 0x7FF);
     }
 
-    // The relative operand carries a swizzle like any source; `c0[a0.x]` selects
-    // one component of the address register.
+    // The component of the address register in `c0[a0.x]`.
     public int GetRelativeParamComponent(int index)
     {
         return (int)((Params.GetRelativeToken(index) >> 16) & 0x3);
@@ -348,9 +338,8 @@ public class D3D9Instruction : Instruction
     }
 
     /// <summary>
-    /// The power of two a ps_1_x result is scaled by before it is saturated and
-    /// stored: 1 for _x2, 3 for _x8, -1 for _d2. Four bits, signed. Zero for
-    /// every later model, which has the bits reserved.
+    /// The ps_1_x result scale as a signed power of two (_x2 = 1, _d2 = -1),
+    /// applied before saturate. Zero for later models.
     /// </summary>
     public int GetDestinationResultShift()
     {

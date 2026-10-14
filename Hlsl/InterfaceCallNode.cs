@@ -4,9 +4,8 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// A call through an interface: the method of whatever class is bound to the
-/// instance when the shader runs. The arguments are what the call site had in the
-/// registers the body reads as parameters - whole registers, four components each.
+/// A call through an interface instance. Arguments are the whole registers the
+/// body reads as parameters, four components each.
 /// </summary>
 public class InterfaceCallNode : HlslTreeNode, IHasComponentIndex
 {

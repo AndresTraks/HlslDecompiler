@@ -8,24 +8,11 @@ using System.Text;
 namespace HlslDecompiler.DirectXShaderModel;
 
 /// <summary>
-/// Reads the shaders out of an effect - fx_2_0, fx_4_0, fx_4_1 or fx_5_0.
-///
-/// An effect is variables, techniques, passes and state, and the shaders the passes
-/// set, each of those stored exactly as fxc writes a single shader: a shader model
-/// 1 to 3 token stream with its constant table in fx_2_0, a complete DXBC file with
-/// its signatures and reflection in the later ones. This takes the shaders out and
-/// leaves the rest: the decompiler reads them as it would any other.
-///
-/// fx_2_0 is the Direct3D 9 format, a tag and then the offset of the structured
-/// data, which the effect's names, values and types come before and its shaders
-/// after, each as its length followed by its tokens.
-///
-/// fxc wraps fx_4_x in a DXBC container holding a single FX10 chunk, and writes
-/// fx_5_0 bare, the same body without the container around it. The body starts
-/// with a header of counts, then the "unstructured" data that the structured part
-/// after it points into - strings, default values, types, and the shaders, each
-/// stored as its length followed by its bytes. The structured part says which of
-/// those are shaders: an expression the effect evaluates is a DXBC container too.
+/// Reads the shaders out of an fx_2_0, fx_4_0, fx_4_1 or fx_5_0 effect. Each is
+/// stored as fxc writes a standalone shader (a token stream in fx_2_0, a DXBC file
+/// later). fx_4_x is wrapped in a DXBC container with one FX10 chunk; fx_5_0 is
+/// bare. Expressions are DXBC too, so only the structured part says which blobs
+/// are shaders.
 /// </summary>
 public class EffectReader : BinaryReader
 {
@@ -39,7 +26,6 @@ public class EffectReader : BinaryReader
     {
     }
 
-    /// <summary>Whether this is the version tag an effect body starts with.</summary>
     public static bool IsEffectTag(uint tag)
     {
         return tag is Fx20 or Fx40 or Fx41 or Fx50;
@@ -64,10 +50,6 @@ public class EffectReader : BinaryReader
         })];
     }
 
-    /// <summary>
-    /// Each shader in the effect, as it is stored: a token stream for fx_2_0, a DXBC
-    /// file for the rest.
-    /// </summary>
     public IList<byte[]> ReadShaderBlobs()
     {
         long start = BaseStream.Position;
@@ -91,10 +73,6 @@ public class EffectReader : BinaryReader
             .Where(bytecode => bytecode != null)];
     }
 
-    /// <summary>
-    /// The parameters, techniques and passes of an fx_2_0 effect, with the shaders
-    /// where they are set.
-    /// </summary>
     public D3D9Effect ReadD3D9Effect()
     {
         byte[] file = ReadBytes((int)(BaseStream.Length - BaseStream.Position));
@@ -106,10 +84,6 @@ public class EffectReader : BinaryReader
         return D3D9EffectStructureReader.Read(file);
     }
 
-    /// <summary>
-    /// The variables, state objects, techniques and passes of a Direct3D 10 or 11
-    /// effect, with the shaders where they are set.
-    /// </summary>
     public Effect ReadEffect()
     {
         (long bodyStart, long bodySize) = FindBodyAndSize();
@@ -123,7 +97,7 @@ public class EffectReader : BinaryReader
         return EffectStructureReader.Read(body);
     }
 
-    /// <returns>Where the effect body starts, past the DXBC container's FX10 chunk header if there is one, and how long it is.</returns>
+    // Skips the DXBC container's FX10 chunk header, if any.
     private (long Start, long Size) FindBodyAndSize()
     {
         long start = BaseStream.Position;
@@ -154,11 +128,8 @@ public class EffectReader : BinaryReader
     }
 
     /// <summary>
-    /// The shaders in an fx_2_0 effect, found by what they look like: a length, then a vertex
-    /// or pixel shader version token, and the end token as the last of the tokens
-    /// the length covers. A preshader is a token stream too, of a version of its own
-    /// that is neither, and it is left where it is - the shader it computes
-    /// constants for carries its own copy, in a comment.
+    /// fx_2_0 shaders, found by shape: a length, a vs/ps version token, and an end
+    /// token last. Standalone preshaders have another version and are skipped.
     /// </summary>
     private static List<byte[]> FindD3D9ShaderBlobs(byte[] data)
     {

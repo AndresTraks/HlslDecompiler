@@ -4,8 +4,7 @@ using System.Collections.Generic;
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// Pairs each block opening instruction with the one that closes it, so that the
-/// machine can jump without rescanning.
+/// Pairs each block opening instruction with the one that closes it.
 /// </summary>
 public static class ControlFlow
 {
@@ -28,8 +27,7 @@ public static class ControlFlow
                     open.Push(i);
                     break;
                 case Opcode.Else:
-                    // The if now ends at this else; the else ends where the if would
-                    // have, so it takes the if's place on the stack.
+                    // The else takes the if's place on the stack.
                     matches[open.Pop()] = i;
                     open.Push(i);
                     break;

@@ -1,8 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// HLSL's `log`, which is base e. As with the exponential, fxc has only the base 2
-/// instruction and scales its result by ln 2.
+/// HLSL's base-e `log`.
 /// </summary>
 public class NaturalLogarithmOperation : ConsumerOperation
 {

@@ -10,32 +10,16 @@ using System.Text;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// What a rule costs, over the whole corpus, in one command.
+/// The cost of a rule gated on <see cref="SweepFlags.Enabled"/>:
 ///
 ///     HLSL_SWEEP=my-rule dotnet test --filter CostSweep
 ///
-/// The rule reads <see cref="SweepFlags.Enabled"/>; this decompiles every shader
-/// with it off and then on, and for every shader whose text changed it recompiles
-/// both ways through fxc and reports the instruction counts side by side.
-///
-/// Only the changed ones reach fxc, and that is what makes a sweep worth running:
-/// decompiling the corpus twice takes seconds, while an fxc call takes a third of a
-/// second and a rule usually moves a handful of fixtures. The cost question only
-/// arises where the text moved anyway.
-///
-/// It exists because the alternative is what kept happening: a rule gets reasoned
-/// out from the one fixture that prompted it, and the nine or eleven other fixtures
-/// it moved are discovered afterwards, one revert at a time. Three attempts in the
-/// corpus history went that way. A sweep turns "does this rule pay?" into a
-/// question with an answer.
-///
-/// Explicit, so a normal run never sees it.
+/// Decompiles every shader with the flag off and on, and recompiles only those
+/// whose text changed through fxc, reporting instruction counts side by side.
 /// </summary>
 [TestFixture]
 [Explicit("Run deliberately with HLSL_SWEEP set; it calls fxc and takes minutes.")]
-// SweepFlags is process-global and this is the one thing that writes it, so a
-// sweep runs beside nothing else. Explicit keeps it out of an ordinary run
-// already; this is what says why it must stay out of a parallel one.
+// SweepFlags is process-global.
 [NonParallelizable]
 public class CostSweepTests
 {
@@ -59,8 +43,7 @@ public class CostSweepTests
         var wrong = new List<string>();
         int shaders = 0;
 
-        // Both ways, in one process. The flags come from the environment, so the
-        // baseline is this build with them off - which is the shipped answer.
+        // The baseline is this build with the flags off.
         foreach ((string profile, string baseFilename) in Corpus())
         {
             shaders++;
@@ -121,8 +104,7 @@ public class CostSweepTests
             }
             if (before == null || after == null)
             {
-                // A fixture that did not compile before is the recompile tier's
-                // business; one that stops compiling now is this rule's.
+                // Only one that stops compiling is this rule's regression.
                 report.AppendLine($"{change.Key,-42}"
                     + $"{(before == null ? "no build" : before.ToString()),8}"
                     + $"{(after == null ? "no build" : after.ToString()),9}"
@@ -173,13 +155,7 @@ public class CostSweepTests
         return delta > 0 ? $"+{delta}" : delta.ToString();
     }
 
-    /// <summary>
-    /// What changed, as the lines between the common prefix and the common suffix.
-    /// Not a least-edit diff: a rule that moves two places in one shader has the
-    /// lines between them reported as well, which is more to read and never less
-    /// than the truth. The point is to have the answer and the evidence in one file
-    /// rather than a folder to go and look in.
-    /// </summary>
+    // The lines between the common prefix and suffix; not a minimal diff.
     private static string Diff(string baseline, string variant)
     {
         string[] before = File.ReadAllLines(baseline);
@@ -207,10 +183,6 @@ public class CostSweepTests
         return diff.ToString();
     }
 
-    /// <summary>
-    /// The corpus, once each. RecompileTests.Shaders() is the list the recompile and
-    /// cost tiers run on, which is the list a cost question is asked about.
-    /// </summary>
     private static IEnumerable<(string Profile, string BaseFilename)> Corpus()
     {
         return RecompileTests.Shaders()
@@ -218,11 +190,7 @@ public class CostSweepTests
             .Distinct();
     }
 
-    /// <summary>
-    /// The decompiled text, or null if the decompiler threw - which is a result and
-    /// not a reason to stop: a rule that crashes on one shader should say so beside
-    /// what it did to the others.
-    /// </summary>
+    // Null if the decompiler threw; reported, not fatal.
     private static string Decompile(
         string compiled, string output, string[] flags, bool enabled)
     {
@@ -247,8 +215,6 @@ public class CostSweepTests
         }
     }
 
-    /// <summary>The instruction count fxc gives this text, or null if it does not
-    /// compile.</summary>
     private static int? Recompile(string profile, string hlsl)
     {
         string binary = Path.ChangeExtension(hlsl, ".fxo");
@@ -258,17 +224,8 @@ public class CostSweepTests
     }
 
     /// <summary>
-    /// What the rule changed about what the shader computes, or null where it
-    /// changed nothing. The variant against the baseline, not against the original:
-    /// the question is what the rule did, and a shader whose decompilation already
-    /// differs from the shader it came from is not this rule's doing.
-    ///
-    /// Asked because the rest of this report cannot answer it. Text and instruction
-    /// counts both pass a wrong answer that computes less - and one did:
-    /// `float4(mul(position.xy, M), mul(position.yx, M))` came out as
-    /// `mul(position.xy, M).xyxy`, a different vector in half of it, one instruction
-    /// cheaper and read as an improvement until the interpreter was asked. Suspicious
-    /// good news is what this is here to catch.
+    /// How the variant computes differently from the baseline (not the original),
+    /// or null. A wrong rewrite can look cheaper, so counts alone are not enough.
     /// </summary>
     private static string Differs(Change change)
     {
@@ -289,8 +246,7 @@ public class CostSweepTests
         }
         catch (Exception e)
         {
-            // A machine that cannot run the shader has checked nothing, and saying
-            // so is the point: a silent pass here would read as coverage.
+            // Not silent: an unrun check must not read as coverage.
             return $"not run - {e.GetType().Name}: {e.Message}";
         }
     }

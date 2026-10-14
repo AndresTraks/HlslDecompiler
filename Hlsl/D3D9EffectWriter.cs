@@ -9,14 +9,8 @@ using System.Text;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// An fx_2_0 effect written back as the .fx it was compiled from: its parameters,
-/// textures and samplers, a function for each of its shaders, and the techniques
-/// and passes with the states they set.
-///
-/// Laid out the way <see cref="EffectWriter"/> lays out a Direct3D 10 effect: the
-/// parameters in the effect's order, each shader's function just before the first
-/// parameter that compiles it, and the functions only a pass compiles after the
-/// parameters.
+/// Writes an fx_2_0 effect back as .fx source, laid out like
+/// <see cref="EffectWriter"/>.
 /// </summary>
 public sealed class D3D9EffectWriter
 {
@@ -80,9 +74,7 @@ public sealed class D3D9EffectWriter
     }
 
     /// <summary>
-    /// A function for every shader, named after where it is set: the parameter that
-    /// holds it, or the pass that compiles it. Two that are the same bytecode are
-    /// one function.
+    /// Names a function per distinct bytecode after the parameter or pass that sets it.
     /// </summary>
     private void NameShaders()
     {
@@ -166,8 +158,7 @@ public sealed class D3D9EffectWriter
         }
     }
 
-    // An fx_2_0 effect keeps a struct's members but not the name of its type, so
-    // the type is named after the first parameter of it.
+    // fx_2_0 keeps no struct type names; named after the first parameter of it.
     private void WriteStructType(D3D9EffectValue value)
     {
         if (value.Class != D3DXParameterClass.Struct || _structTypeNames.ContainsKey(value))
@@ -235,8 +226,7 @@ public sealed class D3D9EffectWriter
         }
         else
         {
-            // A parameter with no initializer has a value of nothing but zeros,
-            // which is the same as one initialized to zero.
+            // All zeros: same as no initializer.
             WriteLine(declaration + ";");
         }
     }
@@ -274,9 +264,7 @@ public sealed class D3D9EffectWriter
     }
 
     /// <summary>
-    /// One state as an effect file sets it. In a pass a state of several - a
-    /// texture stage's, a sampler's, a light's - says which it is; in a sampler the
-    /// sampler is the one being declared.
+    /// One state assignment; indexed states omit the index inside a sampler_state.
     /// </summary>
     private string StateAssignment(D3D9EffectState state, bool inSampler)
     {
@@ -300,7 +288,7 @@ public sealed class D3D9EffectWriter
                 return $"({ExpressionValue(state)})";
         }
 
-        // An object state set to nothing: NULL, stored as the integer 0.
+        // NULL is stored as the integer 0.
         if (value.Class == D3DXParameterClass.Object || info.Name is "VertexShader" or "PixelShader" or "Texture" or "Sampler")
         {
             return "NULL";
@@ -325,8 +313,7 @@ public sealed class D3D9EffectWriter
     }
 
     /// <summary>
-    /// A state set from uniforms, as the expression the effect computes it with -
-    /// or, where all it does is copy a parameter into the state, the parameter.
+    /// A state's preshader expression, or the parameter it merely copies.
     /// </summary>
     private static string ExpressionValue(D3D9EffectState state)
     {
@@ -349,8 +336,7 @@ public sealed class D3D9EffectWriter
         return $"{ValueTypeName(state.Value)}({string.Join(", ", outputs)})";
     }
 
-    // Where the c'th component of a value of this shape is in registers: a row of
-    // four per register, however few columns it has.
+    // Register offset of a component: each row takes a whole four-wide register.
     private static int ComponentOffset(D3D9EffectValue value, int component)
     {
         int columns = Math.Max(value.Columns, 1);
@@ -373,8 +359,7 @@ public sealed class D3D9EffectWriter
             return _structTypeNames.TryGetValue(value, out string structName) ? structName : $"{value.Name}_type";
         }
         string name = ValueTypeName(value);
-        // Row major where the shaders that read it say so: the effect's own class
-        // calls every matrix rows.
+        // From the shaders' constant tables: the effect calls every matrix rows.
         if (value.Class is D3DXParameterClass.MatrixRows or D3DXParameterClass.MatrixColumns
             && _constantTypes.TryGetValue(value.Name, out ShaderTypeInfo read)
             && read.ParameterClass == ParameterClass.MatrixRows)
@@ -447,10 +432,7 @@ public sealed class D3D9EffectWriter
         return element.Data == null ? "" : Encoding.ASCII.GetString(element.Data).TrimEnd('\0');
     }
 
-    /// <summary>
-    /// An initializer from a numeric value's data: every element, member and
-    /// component in order, a matrix's by row.
-    /// </summary>
+    /// <summary>An initializer from a value's data; matrices by row.</summary>
     private string Value(D3D9EffectValue value)
     {
         int position = 0;
@@ -516,7 +498,6 @@ public sealed class D3D9EffectWriter
         return text.Append('"').ToString();
     }
 
-    // A blank line before whatever is written next, if anything is.
     private void Separate()
     {
         _separate = _anythingWritten;

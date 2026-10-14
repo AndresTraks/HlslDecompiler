@@ -23,12 +23,9 @@ public class SwitchStatement : IStatement
         Outputs = inputs.ToDictionary();
     }
 
-    /// <summary>The selector and the case labels, which are the constants the
-    /// bytecode compared it against.</summary>
     /// <summary>
-    /// The selector and the case labels. Neither is named: the selector is written
-    /// where the switch opens, above every assignment in the body a name for it
-    /// could come from, and a label is the constant the bytecode compared against.
+    /// Not named: the selector is written above any assignment that could name it,
+    /// and a label is a constant.
     /// </summary>
     public IEnumerable<HeldSlot> HeldSlots =>
     [

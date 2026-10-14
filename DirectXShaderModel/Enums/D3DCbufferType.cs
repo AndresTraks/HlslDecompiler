@@ -6,8 +6,7 @@ public enum D3DCbufferType
     Cbuffer,
     Tbuffer,
     InterfacePointers,
-    // Not a buffer the shader reads: fxc emits one of these per structured
-    // buffer, named after it, holding a variable called $Element whose type is
-    // the element type. It is the only place that type appears.
+    // One per structured buffer, named after it; its $Element variable is the
+    // only record of the element type.
     ResourceBindInfo
 }

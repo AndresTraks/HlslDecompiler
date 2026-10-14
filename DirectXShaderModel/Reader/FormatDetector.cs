@@ -57,10 +57,7 @@ public class FormatDetector
         return format;
     }
 
-    /// <summary>
-    /// Whether a DXBC container holds a chunk of this type. An fx_4_x effect is a
-    /// DXBC file too, of one FX10 chunk and none of the chunks a shader has.
-    /// </summary>
+    // An fx_4_x effect is a DXBC file too, with only an FX10 chunk.
     private static bool HasChunk(BinaryReader reader, long start, string chunkType)
     {
         reader.BaseStream.Position = start + 28;

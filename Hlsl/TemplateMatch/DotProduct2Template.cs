@@ -36,14 +36,10 @@ public class DotProduct2Template : IGroupTemplate
 
         if (a is ConstantNode || b is ConstantNode || x is ConstantNode || y is ConstantNode)
         {
-            // A product with a literal is a weighted sum written out, and is left
-            // that way - except where the shader dotted a vector against weights of
-            // its own: a dp3 of a colour against a def'd (0.3, 0.59, 0.11) came back
-            // as three products added up, a mul and two mads recompiled where the
-            // shader had one dp3. Weights all alike are a common factor, not a dot.
-            // The weights first, as a constant register goes first: NodeFinalizer
-            // puts it there, and the three and four component templates extend the
-            // dot side by side as it stands.
+            // A product with a literal stays a weighted sum, unless the literals are
+            // distinct weights over a groupable vector (a luminance dot). Weights go
+            // first, where NodeFinalizer puts constants and the dp3/dp4 templates
+            // extend the dot.
             if (IsLiteralWeights(a, b, x, y))
             {
                 return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
@@ -69,19 +65,11 @@ public class DotProduct2Template : IGroupTemplate
                     && b is not DotProductOperation
                     && !IsTransposedGather(a, b))
                 {
-                    // The other side is components of one register, so this side may be
-                    // arbitrary - a vector with a different expression per component is
-                    // still the vector the dot was taken over. Dots are left out of it:
-                    // they group as rows of one matrix multiply, and taking them here
-                    // costs a mul that the multiplication grouper would have kept.
+                    // The other side is one register, so this side may be arbitrary.
+                    // Not dots: they group as rows of a matrix multiply instead.
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
                 }
-                // `a*a + b*b` is a length squared, and the vector it is taken over
-                // needs no grouping to be a vector: both factors of each product are
-                // the same value, so whatever the components are the shader squared
-                // them and added them up. grass_wave takes the length of a position
-                // whose x and z are a mad and whose y is read straight from the
-                // input, and those do not group with one another.
+                // `a*a + b*b` is a length squared over any components.
                 if (NodeGrouper.AreNodesEquivalent(a, x) && NodeGrouper.AreNodesEquivalent(b, y))
                 {
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
@@ -97,35 +85,10 @@ public class DotProduct2Template : IGroupTemplate
         }
         else if (_templateMatcher.CanGroupComponents(x, y, allowMatrixColumn) == false)
         {
-            // Not a mirror of the allowance above, and deliberately not. Letting
-            // this side be arbitrary because the a, b side is components of one
-            // register reads as the obvious symmetry and costs instructions:
-            // measured over the corpus it took gbuffer_write from 55 to 60 and
-            // tangent_lighting from 45 to 51, and what it did to the second says
-            // why. `t4.x * t9 + cross(t6, t9) * t4.y + t4.z * t6` became three dot
-            // products of t4.xy against a constructor holding one component of the
-            // cross each, and the normalize above it came apart into a length and a
-            // divide. The dot had eaten the components the cross product grouper and
-            // the normalize grouper were going to claim, and those run at compile
-            // time, after every template - so a template cannot ask what they would
-            // have taken. A dp3 of an input against a vector built a component at a
-            // time therefore stays three products added up, which is the price of
-            // the richer idioms keeping theirs.
-            //
-            // Measured again on 2026-10-09, after the transposed dot rewrite and the
-            // fresh-variable rule: gbuffer_write and tangent_lighting now cost the same
-            // either way, and what the refusal still saves is packed_matrix_members,
-            // ten instructions dearer without it. A cost-ranked choice between the two
-            // was tried and does not work from this side of fxc: an estimate of one
-            // instruction per vector operation tracks a shader's size (0.86 across the
-            // corpus) but moved the wrong way on all six shaders this refusal changes.
-            //
-            // Except where this side's components are reads - of a variable, an
-            // input, a load - which no other grouper builds anything out of. Which
-            // side of each product a component lands on is the order fxc wrote the
-            // multiply in, so without this a luminance dot of levels.xyz against a
-            // texel's channels was recovered in one compile and written out as
-            // three products in the next, as the operands fell.
+            // Deliberately not a mirror of the allowance above: an arbitrary side
+            // here would eat components the cross and normalize groupers claim
+            // later, at compile time. Plain reads are allowed, since no other
+            // grouper uses them and fxc's operand order decides which side they're on.
             if (!IsPlainRead(x) || !IsPlainRead(y) || IsTransposedGather(x, y))
             {
                 return null;
@@ -137,19 +100,9 @@ public class DotProduct2Template : IGroupTemplate
 
 
     /// <summary>
-    /// Whether these are one component taken from each of several values, which is a
-    /// transpose and not a vector. fxc has to move each into place before it can dot
-    /// them, an instruction apiece, so a dot over one never costs less than writing
-    /// the products out - and taking it can cost a great deal more, because the dots
-    /// it leaves behind do not group with one another. A terrain splat weighting
-    /// three layers by one splat sample came back as a dot per output component, the
-    /// lerp above them could not group over three unrelated dots, and the whole
-    /// colour was written a component at a time: eighteen instructions out, thirty
-    /// back.
-    ///
-    /// A matrix is read the other way round and is not caught by this: a row has one
-    /// byte offset and a component apiece, so its components differ in index where
-    /// these agree.
+    /// Whether these are the same component of several values: a transpose, which
+    /// fxc must gather an instruction apiece, so a dot over it never pays. A matrix
+    /// row differs in component index and is not caught.
     /// </summary>
     private static bool IsTransposedGather(params HlslTreeNode[] nodes)
     {
@@ -157,23 +110,15 @@ public class DotProduct2Template : IGroupTemplate
             && nodes.Select(node => ((IHasComponentIndex)node).ComponentIndex)
                 .Distinct().Count() == 1
             && nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length
-            // Reads of the same kind, which is what makes them parallel rather than
-            // one value the writer happened to split. A luminance dot over a texel
-            // reaches here as the load's .x beside a float2 variable holding its
-            // .yz, and those share a component index without being a transpose at
-            // all - the components of one read, named halfway through.
+            // Same node kind: a load's .x beside a variable holding its .yz is
+            // one split value, not a transpose.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
-    // A component read out of something, rather than computed: an operation is what
-    // the cross product and normalize groupers claim, and a read is nothing they do.
+    // A component read, not computed: nothing the cross/normalize groupers claim.
     private static bool IsPlainRead(HlslTreeNode node) =>
         node is IHasComponentIndex && node is not Operation && node is not DotProductOperation;
 
-    // Two literals that differ, weighting two components that group - reads of
-    // one register, or a vector computed a component at a time, as a lerp's is.
-    // The corpus took a dot claiming computed components badly where both sides
-    // were computed (the comment in MatchDotProduct2); against literal weights there is nothing else
-    // for those components to have been claimed by.
+    // Two different literals weighting two components that group.
     private bool IsLiteralWeights(HlslTreeNode weight1, HlslTreeNode weight2,
         HlslTreeNode value1, HlslTreeNode value2)
     {

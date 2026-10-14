@@ -1,10 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// samplepos: where in the pixel one sample of a multisampled resource sits.
-/// HLSL asks with GetSamplePosition and is handed a float2 back, so the two
-/// components are one call; which of them a component is comes from the resource
-/// operand's swizzle, the way a sampled texel's channel does.
+/// samplepos, as one component of GetSamplePosition's float2 (chosen by the
+/// resource operand's swizzle).
 /// </summary>
 public class SamplePositionNode : HlslTreeNode, IHasComponentIndex
 {

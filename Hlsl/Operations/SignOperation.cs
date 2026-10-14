@@ -1,7 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// The sign of a value: -1, 0 or 1. The hardware has no such instruction, so fxc
-// writes it as the difference of two comparisons against zero.
+// sign(x); no instruction, recovered by SignTemplate.
 public class SignOperation : ConsumerOperation
 {
     public SignOperation(HlslTreeNode value)

@@ -9,22 +9,16 @@ public class StatementFinalizer
 {
     private IList<IStatement> _statements;
     private bool _hasReturnValue;
-    // Whether the outputs leave through a struct variable rather than as the one
-    // returned expression. It decides where a return goes when the shader ends on an
-    // if and an else: with a struct they can share one after the branches, and
-    // without one each branch has to carry its own value out.
+    // With an output struct, an if/else at the end can share one return after it;
+    // without, each branch returns its own value.
     private readonly bool _hasOutputStruct;
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
     private readonly ISet<HlslTreeNode> _doubleValues;
-    // The registers the caller of this function reads when it returns - a linkage
-    // body's result, which nothing inside the body reads, being read out of it.
-    // The dead-value pass below would otherwise take it out as computing nothing.
+    // Registers the caller reads on return (a linkage body's result); kept alive.
     private readonly HashSet<RegisterKey> _liveOut;
 
-    // Per break and continue, the register components its loop carries out to a
-    // reader - the keys whose parting value the jump makes observable. Worked out
-    // once, before anything is lowered, because the evidence for it does not
-    // survive: see FindCarriedByJump.
+    // Per break/continue, the keys its loop carries out to a reader. Computed
+    // before lowering destroys the evidence; see FindCarriedByJump.
     private readonly Dictionary<IStatement, HashSet<RegisterComponentKey>> _carriedByJump =
         new(ReferenceEqualityComparer.Instance);
 
@@ -64,20 +58,10 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// A variable an if hands on that nothing reads after the if, assigned in one
-    /// branch only, declared in that branch instead. The finalizer joins whatever
-    /// the branches leave in a register, which declares the variable above the if
-    /// for both branches to assign - and a decal's position, read by nothing but
-    /// the test in the same branch, came out as `float2 t0;` at the top of the
-    /// function and `t0 = mul(...)` deep inside, a reassignment, and nothing can be
-    /// done with a variable whose declaration is somewhere else. Asked of
-    /// VariableLiveness, after everything else, so the answer is the one the
-    /// writer gets.
-    ///
-    /// The if and everything after it stop handing the variable on: they hand on
-    /// what the register held before the if, or nothing where it held nothing.
-    /// Neither is read, which is what dead means. The outermost if goes first, so
-    /// that each level puts back what its own register held on the way in.
+    /// A variable assigned in one branch only and dead after the if is declared in
+    /// that branch rather than above the if. Statements outside the branch revert to
+    /// the register's entry value (or nothing). Outermost if first, so each level
+    /// restores its own entry value. Runs last so liveness matches the writer's.
     /// </summary>
     private void LocalizeDeadJoins()
     {
@@ -130,7 +114,6 @@ public class StatementFinalizer
                         }
                     }
                 });
-                // The first assignment in the branch is the declaration now.
                 TempAssignmentNode first = null;
                 new StatementVisitor(branch).Visit(statement =>
                 {
@@ -146,8 +129,7 @@ public class StatementFinalizer
         }
     }
 
-    // The branch of the if every assignment to the variable is in, or null where
-    // they are in both, or anywhere outside it.
+    // The one branch holding every assignment to the variable, or null.
     private IList<IStatement> BranchAssigningOnly(IfStatement ifStatement, TempVariableNode variable)
     {
         List<IStatement> assigning = [];
@@ -179,18 +161,10 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Copies of one variable into another that never needs to differ from it, made
-    /// one variable. An inner loop works on a copy of the outer loop's accumulator,
-    /// because fxc gave it a register of its own, and copies it back when it is
-    /// done: `float4 t1 = t0; for (...) { t1 = t1 + colour; } t0 = t1;`. Where the
-    /// two are never both wanted holding different values - the outer one is not
-    /// read again until the copy back, and the copy is not read after the outer one
-    /// is assigned anything else - they are one variable, and the loop works on t0.
-    ///
-    /// That is the interference question, asked of VariableLiveness: neither
-    /// variable may be live where the other is assigned, except at the copies
-    /// between them. A copy is all of a statement's lanes or none of them, so that
-    /// a vector is never left half one variable and half the other.
+    /// Merges a copy with its source where they never interfere (neither live where
+    /// the other is assigned, except at the copies), e.g.
+    /// `t1 = t0; for (...) { t1 += c; } t0 = t1;`. All of a statement's lanes or
+    /// none, so a vector is never split between two variables.
     /// </summary>
     private void CoalesceCopies()
     {
@@ -249,16 +223,12 @@ public class StatementFinalizer
         foreach (IStatement statement in statements)
         {
             HashSet<TempVariableNode> writes = VariableLiveness.Writes(statement);
-            // Where the copy is assigned anything but the source, the source must not
-            // be wanted afterwards, or the one variable would hold the copy's value
-            // where the source's was still to be read.
             if (writes.Contains(copy) && !ReferenceEquals(statement, copyStatement)
                 && liveness.MayBeLiveAfter(source, statement))
             {
                 return false;
             }
-            // And the other way about, except where the source is assigned the copy
-            // back - the same value either way.
+            // A copy back assigns the same value either way.
             if (writes.Contains(source) && !CopiesBack(statement, source, copy)
                 && liveness.MayBeLiveAfter(copy, statement))
             {
@@ -268,7 +238,6 @@ public class StatementFinalizer
         return true;
     }
 
-    // Whether the statement assigns the variable nothing but the other one.
     private static bool CopiesBack(IStatement statement, TempVariableNode variable, TempVariableNode from)
     {
         return statement.Outputs.Values.OfType<TempAssignmentNode>()
@@ -291,9 +260,7 @@ public class StatementFinalizer
         return found;
     }
 
-    // What coalescing leaves behind: the copy and the copy back are the variable
-    // assigned itself. The register holds the variable as it is, which the writer
-    // writes nothing for.
+    // After coalescing, the copies are `t = t`; drop them.
     private void RemoveSelfCopies(TempVariableNode variable)
     {
         new StatementVisitor(_statements).Visit(statement =>
@@ -312,12 +279,8 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// A join phi whose every leaf is one variable is that variable. Most are
-    /// replaced as the branches are lowered; one that merges another join - an if
-    /// inside the then branch of an if/else hands its own join up - is not, since
-    /// the inner join is a phi and not the variable it stands for until the
-    /// branches are unified, and the statements after the outer if went on holding
-    /// it: it reached the writer as a phi of phis.
+    /// Replaces a join phi whose leaves are all one variable with that variable.
+    /// Catches phis of phis (nested joins) that branch lowering leaves behind.
     /// </summary>
     private void LowerResolvedPhis()
     {
@@ -368,10 +331,7 @@ public class StatementFinalizer
             foreach (var output in outputsToRemove)
             {
                 statement.Outputs.Remove(output.Key);
-                // A mova nothing reads - the read through the address register took
-                // the element off the product the mova was given, and reads that
-                // instead - still read the product, and kept `float t0 = 4 * idx`
-                // alive as a name for it.
+                // An unread mova would keep its operand alive as a variable.
                 if (output.Key.RegisterKey is D3D9RegisterKey { Type: RegisterType.Addr }
                     && output.Value is MoveOperation && output.Value.Outputs.Count == 0)
                 {
@@ -379,14 +339,8 @@ public class StatementFinalizer
                 }
             }
 
-            // A phi nobody reads keeps its inputs alive for nothing. It can be the
-            // output of any block, not just an assignment - an if whose branches all
-            // return still merges what they wrote.
-            // A phi a store still carries is not dead, whatever the node graph says:
-            // the reader is the store rather than a node. Removed on the graph's word
-            // alone it was disconnected from its inputs as well, so the branch value
-            // feeding it lost its only reader, went unnamed, and the phi - still sitting
-            // in the store - reached the compiler unlowered.
+            // Unread phis, from any block, keep inputs alive for nothing. A phi a
+            // statement holds (e.g. a store) is still read, though not via the graph.
             outputsToRemove = statement.Outputs
                 .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
                 .Where(o => !IsRenderedByAnyStatement(o.Value))
@@ -411,38 +365,24 @@ public class StatementFinalizer
     {
         if (statements[i] is AssignmentStatement assignment)
         {
-            // Only what this statement computes: a value carried through unchanged
-            // from its inputs belongs to the statement that computed it. Judging it
-            // here, in a loop body whose own outputs read it, found every consumer
-            // inside the body and dropped the assignment from the statement before
-            // the loop as well, which then inlined a loop invariant into every use.
+            // Only computed values: a carried one belongs to the statement that
+            // computed it, and judging it here would inline loop invariants.
             var assignmentOutputs = assignment.Outputs
                 .Where(o => o.Key.RegisterKey.IsTempRegister)
                 .Where(o => !(assignment.Inputs.TryGetValue(o.Key, out var input) && ReferenceEquals(input, o.Value)))
-                // What the caller reads on the way out is read, whoever the
-                // reader is: a body's result has no reader inside the body, and
-                // nothing here can see the fcall that goes looking for it.
+                // Read by the caller (fcall), invisible here.
                 .Where(o => !_liveOut.Contains(o.Key.RegisterKey))
                 .ToDictionary();
-            // Which registers this statement assigns have a component shared with a
-            // statement that holds it. By register rather than by component, since a
-            // load writes four and only the one a condition reads looks shared - and
-            // by register rather than by statement, since one statement carries
-            // several: the comparison beside the load is not the load.
+            // By register, not component: of a load's four components only the one a
+            // condition reads looks shared.
             HashSet<RegisterComponentKey> sharedRegisters = SharedWithHoldingStatement(assignmentOutputs);
             foreach (var assignmentOutput in assignmentOutputs)
             {
                 var assignmentNode = assignmentOutput.Value;
 
-                // A constant or a plain register read is never worth a variable,
-                // wherever it is read - a literal in a loop body is a literal, and an
-                // input is an input. Unless a phi reads it: then it is the value a
-                // loop counter or accumulator starts from, and the variable is the
-                // point. Or unless a break or a continue carries it out of the loop,
-                // which is the same kind of reader seen from the other side - the
-                // `1` a reflection sets its hit flag to before breaking is read by
-                // nothing and is the whole answer, and dropped as a literal the
-                // shader reported every pixel as a miss.
+                // A constant or input read is never worth a variable, unless a phi
+                // reads it (a loop's start value) or a statement holds it (e.g. a
+                // flag a break carries out of the loop).
                 if (IsFreeToRead(assignmentNode) && assignmentNode.Outputs.All(v => v is not PhiNode)
                     && FindHoldingStatements(assignmentNode).Length == 0)
                 {
@@ -450,16 +390,11 @@ public class StatementFinalizer
                     continue;
                 }
 
-                // Check if assignment output goes only into itself. A phi consumer
-                // means the value leaves the statement - to a branch join, or along a
-                // loop backedge into the next iteration - so it is still live.
+                // Read only within this statement; a phi reader means it leaves.
                 if (assignmentNode.Outputs.All(v => v is not PhiNode && v.IsInputOf(assignment.Outputs.Values)))
                 {
-                    // A store into a local array holds its value without being a
-                    // node that reads it. Written into the very next statement the
-                    // value can be inlined there; held any further away it has to be
-                    // named here, since a store in between may change what the value
-                    // reads - a swap loads both elements before it writes either.
+                    // A local array store may inline the value only if it is the very
+                    // next statement; a store between could change what it reads.
                     IStatement[] holders = FindHoldingStatements(assignmentNode);
                     if ((holders.Length == 0 && !sharedRegisters.Contains(assignmentOutput.Key))
                         || (holders.Length == 1 && i < statements.Count - 1
@@ -477,9 +412,7 @@ public class StatementFinalizer
                     IStatement nextStatement = statements[i + 1];
                     if (nextStatement is ClipStatement clip)
                     {
-                        // Only when the clip is all that reads it. A sample whose
-                        // alpha feeds the clip and the colour after it was dropped
-                        // here and re-read at every later use.
+                        // Only when the clip is its sole reader.
                         if (assignmentNode.IsInputOf(clip.Values)
                             && assignmentNode.Outputs.All(o => o.IsInputOf(clip.Values)))
                         {
@@ -489,10 +422,7 @@ public class StatementFinalizer
                     }
                     else if (nextStatement is IfStatement ifStatement)
                     {
-                        // The condition inlines the value, so an assignment feeding
-                        // nothing but the comparison is dead. Keeping it wrote a
-                        // `t0 = a < b;` that nothing had declared, of a type that a
-                        // temp cannot hold anyway.
+                        // The condition inlines a value only it reads.
                         if (assignmentNode.IsInputOf(ifStatement.Comparison)
                             && assignmentNode.Outputs.All(o => o.IsInputOf(ifStatement.Comparison))
                             && !sharedRegisters.Contains(assignmentOutput.Key))
@@ -548,10 +478,8 @@ public class StatementFinalizer
                 .Where(o => o.Key.RegisterKey.IsTempRegister)
                 .Where(o => !statement.Inputs.ContainsKey(o.Key) || statement.Inputs[o.Key] != statement.Outputs[o.Key])
                 .ToList();
-            // Which of these values feeds which, taken now because lowering is about
-            // to replace each of them with a variable. After that a read of the value
-            // this statement computes and a read of the one the register held before
-            // are the same name, and nothing tells them apart.
+            // Which value feeds which, taken before lowering makes new and old value
+            // the same name.
             var feeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
             foreach (var reader in newAssignments)
             {
@@ -560,11 +488,8 @@ public class StatementFinalizer
                         && fed.Value.IsInputOf(reader.Value))
                     .Select(fed => fed.Key)];
             }
-            // The same for the output registers: one that reads a value this statement
-            // assigns to a temp has to be written after that assignment, and one that
-            // reads what the register held before has to be written before it. An
-            // output whose value *is* the temp's value is neither - it recomputes it
-            // from the old variable, and the sort's overwrite rule handles that.
+            // Likewise for output registers. An output whose value is the temp's own
+            // is excluded; the sort's overwrite rule handles it.
             var outputFeeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
             foreach (var output in statement.Outputs.Where(o => !o.Key.RegisterKey.IsTempRegister))
             {
@@ -573,31 +498,21 @@ public class StatementFinalizer
                         && fed.Value.IsInputOf(output.Value))
                     .Select(fed => fed.Key)];
             }
-            // By register, for the reason the removal above asks it that way.
             HashSet<RegisterComponentKey> sharedRegisters = SharedWithHoldingStatement(newAssignments);
             var assignmentByKey = new Dictionary<RegisterComponentKey, TempAssignmentNode>();
             foreach (var newAssignment in newAssignments)
             {
                 HlslTreeNode tempValue = newAssignment.Value;
 
-                // Insert temp variable if value has output outside of current statement
-                // or if an iteration variable is changed. A store statement holding the
-                // value is a use outside the statement too.
+                // Read outside this statement, including by a holding statement.
                 bool doesOutputExitStatement = tempValue.Outputs.Any(v => !v.IsInputOf(statement.Outputs.Values))
                     || FindHoldingStatements(tempValue).Length != 0
-                    // And the same question the removal above asks: a value a store
-                    // or an append holds alongside another reader has left the
-                    // statement, whatever the node graph says about it.
                     || sharedRegisters.Contains(newAssignment.Key);
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
                 TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
-                // A register whose value is a variable already - the old value an
-                // interlocked operation hands back through its out parameter - is that
-                // variable, read where it is. Given one of its own it was copied the
-                // moment the call returned: `int t1 = t0;`, and t1 read from then on.
-                // Not where the register was assigned before, or feeds a phi: there
-                // the copy is the assignment that carries the value on.
+                // A value that is already a variable (an atomic's out parameter) needs
+                // no copy, unless the register had a variable or a phi reads it.
                 if (tempValue is TempVariableNode && tempInputAssignment == null && tempInputVariable == null
                     && !tempValue.Outputs.Any(usage => usage is PhiNode))
                 {
@@ -611,31 +526,12 @@ public class StatementFinalizer
                     bool? isUnsignedValue = ValueTypes.IsUnsignedValue(tempValue);
                     bool isInteger = isIntegerValue
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
-                    // Also before the clear, and not only because it reads better
-                    // there: whether the bits are a float's is a question about the
-                    // readers as much as the maker, and there are none afterwards.
                     bool isBits = ValueTypes.IsBitsVariable(tempValue, isInteger);
                     tempValue.Outputs.Clear();
-                    // A register fxc reuses for a value of the other type is not
-                    // one variable: a flag register that goes on to hold a dot
-                    // product is an int variable assigned asint of a float, and
-                    // every read of it after that reads the bits. Where the value
-                    // says what it is and the variable already there says
-                    // otherwise, the value gets a variable of its own - unless the
-                    // value feeds a phi over the variable, which is what makes it
-                    // that variable in the first place.
                     TempVariableNode existing = tempInputAssignment?.TempVariable ?? tempInputVariable;
-                    // And a value that has nothing to do with the one before it gets a
-                    // variable of its own too. The register had the other value in
-                    // it, which is fxc's allocation and not the shader's: a decal's
-                    // position and the colour it blends were one float3 because they
-                    // took turns in r1, and the position's third row, overwritten
-                    // within the statement, could then be no part of it. Where the
-                    // new value reads the old one - `t = t + x` - it is the same
-                    // variable going on, and where it feeds a phi over the variable
-                    // it has to be - not a phi over values of its own, which is two
-                    // branches agreeing with each other and nothing to do with what
-                    // the register held before the if.
+                    // A reused register is a new variable when the type differs, or
+                    // when the value does not read the old one (`t = t + x` does),
+                    // unless it feeds a phi over the existing variable.
                     if (existing != null
                         && ((isIntegerValue != null && existing.IsInteger != isIntegerValue
                                 && !tempUsages.Any(u => u is PhiNode))
@@ -651,28 +547,18 @@ public class StatementFinalizer
                         {
                             IsInteger = isInteger,
                             IsBits = isBits,
-                            // Not for bits: those are a float's, and calling them uint
-                            // says something about them that is not so.
                             IsUnsigned = isInteger && !isBits && isUnsignedValue == true,
-                            // A double is one because the instruction that wrote it
-                            // said so: the arithmetic over it is the same addition
-                            // and multiply whatever its operands are made of, so
-                            // neither the value nor its readers can be asked, and
-                            // the register cannot either - fxc reuses one for a
-                            // double here and a float there.
+                            // Only the writing instruction knows a double.
                             IsDouble = !isInteger && _doubleValues.Contains(tempValue),
                             IsBool = HoldsOnlyACondition(tempValue, tempUsages),
                         };
                     var tempAssignment = new TempAssignmentNode(tempVariable, tempValue);
-                    // The value entering a loop header declares the variable; everything
-                    // else that feeds a phi - a branch join, or the loop backedge - is
-                    // assigning to a variable that already exists.
+                    // Only the pre-loop value declares; other phi feeds reassign.
                     bool declaresLoopVariable = tempUsages.Count != 0
                         && tempUsages.All(u => u is PhiNode phi
                             && phi.IsLoopHeader
                             && ReferenceEquals(phi.PreLoopValue, tempValue));
-                    // A value with no node reading it - one held by a store statement
-                    // alone - is not "all phis"; it is a fresh declaration.
+                    // No readers at all (held only) is a declaration, not "all phis".
                     if ((tempUsages.Count != 0 && tempUsages.All(u => u is PhiNode) && !declaresLoopVariable)
                         || tempInputAssignment != null
                         || tempInputVariable != null)
@@ -694,31 +580,22 @@ public class StatementFinalizer
                                 }
                                 tempVariable.Outputs.Add(output);
                             }
-                            // Nothing reads the phi through those edges any more. Leaving
-                            // them means a second pass over the same phi - the statement is
-                            // reached both at the top level and through the if it belongs
-                            // to - rewires consumers that have already moved and registers
-                            // them against a second variable.
+                            // Else a second visit of the phi rewires readers again.
                             tempUsage.Outputs.Clear();
                             ReplaceInStatementNodes(tempUsage, tempVariable);
                         }
-                        // Keep the back-reference, so that rewiring the variable later -
-                        // unifying the branches of an if onto one variable, say - can find
-                        // the uses, the merging phi among them.
+                        // Kept so later rewiring (branch unification) finds the phi too.
                         tempVariable.Outputs.Add(tempUsage);
                         int index = tempUsage.Inputs.IndexOf(tempValue);
                         tempUsage.Inputs[index] = tempVariable;
                     }
-                    // A statement holding the value reads the variable from now on.
                     ReplaceInStatementNodes(tempValue, tempVariable);
                     ReplaceAnyAssignment(newAssignment.Key, tempValue, tempAssignment);
                     assignmentByKey[newAssignment.Key] = tempAssignment;
                 }
             }
 
-            // Once every assignment exists, the record can name them. The
-            // assignment rather than its variable: branch and loop unification
-            // re-points variables afterwards, and the assignment stays itself.
+            // Recorded by assignment, not variable: unification re-points variables.
             foreach ((RegisterComponentKey key, TempAssignmentNode assignment) in assignmentByKey)
             {
                 foreach (RegisterComponentKey fed in feeds[key])
@@ -769,20 +646,15 @@ public class StatementFinalizer
         }
     }
 
-    // An if hands out the single variable its branches assigned, either directly or
-    // through the phi that merges them. A register arriving that way already has a
-    // variable, so assigning it again must not declare a second one.
+    // The variable an if hands out, directly or via its join phi, so reassigning it
+    // does not declare a second one.
     private static TempVariableNode GetExistingVariable(HlslTreeNode inputAssignment)
     {
         if (inputAssignment is TempVariableNode variable)
         {
             return variable;
         }
-        // A loop header phi is left alone: its variable is declared before the loop,
-        // which the backedge handling below already accounts for. A join phi may
-        // merge another join phi - an if inside the then branch of an if/else
-        // hands its own join up - so the question is asked of each input in turn:
-        // a phi of phis is the one variable when every leaf is.
+        // Not loop header phis. A phi of phis is one variable when every leaf is.
         if (inputAssignment is PhiNode phi && !phi.IsLoopHeader && phi.Inputs.Count != 0)
         {
             TempVariableNode merged = null;
@@ -801,10 +673,8 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Both branches of an if assign a register through one variable, declared above
-    /// the if - a declaration inside a branch would go out of scope at its closing
-    /// brace. The first branch to assign a register owns the variable, the others are
-    /// rewired onto it, and every branch assignment is therefore a reassignment.
+    /// Puts both branches' assignments of a register on one variable declared above
+    /// the if; the first branch's variable wins and all become reassignments.
     /// </summary>
     private void UnifyBranchVariables(IfStatement ifStatement)
     {
@@ -818,8 +688,7 @@ public class StatementFinalizer
             }
             foreach (var output in body.Last().Outputs)
             {
-                // A branch either assigns the register itself, or hands out the
-                // variable a nested if already merged its own branches into.
+                // Either an assignment or a nested if's merged variable.
                 var assignment = output.Value as TempAssignmentNode;
                 TempVariableNode branchVariable =
                     assignment?.TempVariable ?? output.Value as TempVariableNode;
@@ -827,9 +696,7 @@ public class StatementFinalizer
                 {
                     continue;
                 }
-                // A register the branch only carries through keeps the node it
-                // entered with. It is assigned elsewhere, so it is not the
-                // branch's to declare or reassign.
+                // Carried through unchanged: not the branch's to assign.
                 if (ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entryValue)
                     && ReferenceEquals(entryValue, output.Value))
                 {
@@ -837,18 +704,11 @@ public class StatementFinalizer
                 }
                 if (variableByRegister.TryGetValue(output.Key, out TempVariableNode variable))
                 {
-                    // The branches can already share the variable: two ifs in a row
-                    // assigning the same register hand the second one a phi over it,
-                    // and both of its branches then reuse that one variable.
+                    // May already be shared (two ifs in a row on one register).
                     if (!ReferenceEquals(branchVariable, variable))
                     {
                         branchVariable.Replace(variable);
-                        // And wherever a statement holds the variable rather than
-                        // reading it through the graph: a branch that stores what it
-                        // just computed holds that value as the store's own, and
-                        // Replace reaches nothing there. Left behind, the store asked
-                        // for the variable this branch has just given up - a name
-                        // nothing declares any more.
+                        // Replace does not reach held references.
                         ReplaceInStatementNodes(branchVariable, variable);
                         if (assignment != null)
                         {
@@ -871,9 +731,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Every case that assigns a register must assign the same variable, the way the
-    /// two branches of an if/else do. The first case to assign it owns the variable;
-    /// the rest reassign it, and the switch carries it out.
+    /// <see cref="UnifyBranchVariables"/> for switch cases.
     /// </summary>
     private void UnifyCaseVariables(SwitchStatement switchStatement)
     {
@@ -904,16 +762,9 @@ public class StatementFinalizer
             }
         }
 
-        // A case whose body ends in a switch or an if of its own carries a phi out
-        // of it: that statement joined its own branches onto a variable of its own,
-        // and the break after it still holds the join. The variable is what the case
-        // assigns, and taking the phi for nothing left the register unwritten on
-        // that path, so the case read as zero - the nested switch bug.
-        //
-        // After the plain assignments, not among them, because the variable the
-        // enclosing scope goes on to read is one of theirs. Letting a variable
-        // created inside the nested statement own the register instead left the
-        // switch carrying one variable and the return reading another.
+        // A case ending in a nested if/switch carries out a join phi; its variable is
+        // what the case assigns. Done after the plain assignments so that one of
+        // theirs, which the enclosing scope reads, owns the register.
         foreach (SwitchCase switchCase in switchStatement.Cases)
         {
             if (switchCase.Body.Count == 0)
@@ -946,8 +797,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// The variable the case last put the register in, looking back past the break
-    /// to the statement that did the assigning.
+    /// The variable the case last put the register in, looking back past the break.
     /// </summary>
     private static TempVariableNode VariableAssignedInBody(
         IList<IStatement> body, RegisterComponentKey key)
@@ -971,9 +821,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Points every assignment and every read of one variable inside these statements
-    /// at another, for a case that carries its result out of a nested statement while
-    /// an earlier case already owns the variable the switch will carry.
+    /// Points every assignment and read of one variable in the body at another.
     /// </summary>
     private void Reassign(
         IList<IStatement> body, TempVariableNode from, TempVariableNode to)
@@ -983,16 +831,9 @@ public class StatementFinalizer
             return;
         }
 
-        // The reads as well as the assignments. A loop inside the case reads the
-        // variable it carries over its own backedge, and that read is a graph edge
-        // rather than an assignment: rewriting only the assignments left it naming
-        // the variable this pass has just stopped anything from declaring, and the
-        // writer numbered that name for itself on the way past.
+        // Graph reads (e.g. a nested loop's backedge) and held reads (a store's
+        // operands) as well as assignments, or they name an undeclared variable.
         from.Replace(to);
-        // And the reads that are not graph edges at all - the value or the address
-        // of a store the case makes. A store of the variable the case carries went
-        // the same way for the same reason: `output[t1] = t1` of a name nothing
-        // declares, where the case had just been put onto a variable of its own.
         ReplaceInStatementNodes(from, to);
 
         new StatementVisitor(body).Visit(statement =>
@@ -1041,11 +882,8 @@ public class StatementFinalizer
         }
         if (lastStatement is IfStatement ifStatement)
         {
-            // One return after the branches where the outputs leave through a struct:
-            // the branches filled it, and returning it once is what the bytecode does
-            // - it falls through the endif to a single ret. Pushed into each branch
-            // instead it cost an instruction apiece, since fxc then writes a ret in
-            // each of them.
+            // One return after the if where possible: a return per branch costs fxc
+            // a ret instruction apiece.
             if (ifStatement.FalseBody != null && !_hasOutputStruct
                 && !ReturnOnceAfter(statements, ifStatement))
             {
@@ -1054,7 +892,6 @@ public class StatementFinalizer
             }
             else
             {
-                // Without an else branch the fall-through path needs its own return.
                 statements.Add(new ReturnStatement(ifStatement.Outputs));
             }
             return;
@@ -1063,11 +900,7 @@ public class StatementFinalizer
             || lastStatement is DiscardStatement
             || lastStatement is BreakStatement || lastStatement is ContinueStatement
             || lastStatement is SwitchStatement
-            // A statement that does its work by side effect ends a shader that
-            // returns nothing, and those returned above. One that has a value to
-            // return still has to return it: a pixel shader storing to a buffer and
-            // then answering a colour ends on the store, and left as the end of it
-            // the colour went unwritten - output with no return in it at all.
+            // A side-effect statement can still precede a returned value.
             || lastStatement is AppendStatement
             || lastStatement is StoreStructuredStatement
             || lastStatement is StoreTypedStatement
@@ -1077,7 +910,6 @@ public class StatementFinalizer
             || lastStatement is RestartStripStatement
             || lastStatement is SyncStatement)
         {
-            // Return after the statement, not in place of it.
             statements.Add(new ReturnStatement(lastStatement.Outputs));
             return;
         }
@@ -1085,14 +917,9 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// An if/else whose two branches each end by writing the output, returned once
-    /// after it through a variable both branches assign - the shape the bytecode
-    /// has, a write of o0 in each branch and one ret after the endif. Returned from
-    /// each branch instead, fxc writes a ret in each, an instruction apiece. With
-    /// an output struct the branches fill the struct and this is already so; a
-    /// single output has no variable of its own, so the components are given one.
-    /// Only where each branch ends in an assignment that writes every component of
-    /// the output itself, and nothing else in the branches does.
+    /// For an if/else whose branches both end by writing the whole single output,
+    /// gives the output a variable both assign so the caller returns once after the
+    /// if, matching the bytecode's single ret.
     /// </summary>
     private bool ReturnOnceAfter(IList<IStatement> statements, IfStatement ifStatement)
     {
@@ -1105,8 +932,7 @@ public class StatementFinalizer
         List<RegisterComponentKey> outputs = [.. trueEnd.Outputs.Keys
             .Where(key => key.RegisterKey.IsOutput)
             .OrderBy(key => key.ComponentIndex)];
-        // Shader model 4 and later, where a ret is an instruction: a ps_3_0 return
-        // in each branch costs nothing, and reads as plainly as the variable.
+        // SM4+ only; a ps_3_0 return per branch costs nothing.
         if (outputs.Count == 0
             || outputs[0].RegisterKey is not D3D10RegisterKey
             || outputs.Select(key => key.RegisterKey).Distinct().Count() != 1
@@ -1132,7 +958,6 @@ public class StatementFinalizer
             }
             ifStatement.Outputs[outputs[i]] = variables[i];
         }
-        // The return itself is the caller's, after the if.
         return true;
     }
 
@@ -1143,11 +968,8 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// A register carried through a loop must reuse the variable declared before it,
-    /// wherever in the body it is assigned - not only in the body's last statement.
-    /// An assignment inside a branch, or before a <c>continue</c>, is just as much a
-    /// write to the loop-carried variable. A register written only inside the body
-    /// has no counterpart before the loop and keeps its own variable.
+    /// A register assigned before the loop reuses that variable wherever the body
+    /// assigns it, including inside branches and before a <c>continue</c>.
     /// </summary>
     private void UseLoopVariablesInBody(LoopStatement loopStatement, AssignmentStatement preLoopStatement)
     {
@@ -1155,7 +977,6 @@ public class StatementFinalizer
         {
             foreach (var bodyOutput in bodyStatement.Outputs.ToList())
             {
-                // Assigned before the loop, or a variable carried on into it as it is.
                 if (!preLoopStatement.Outputs.TryGetValue(bodyOutput.Key, out var preLoopValue)
                     || ((preLoopValue as TempAssignmentNode)?.TempVariable ?? preLoopValue as TempVariableNode)
                         is not TempVariableNode loopVariable)
@@ -1165,22 +986,17 @@ public class StatementFinalizer
 
                 if (bodyOutput.Value is TempAssignmentNode bodyAssignment)
                 {
-                    // Not just the property: whatever the body already rewired to read
-                    // the old variable goes on reading it, and comes out as a name
-                    // nothing ever assigns.
+                    // Readers too, not just the assignment's property.
                     ReplaceLoopVariable(bodyAssignment.TempVariable, loopVariable, loopStatement, preLoopStatement);
                 }
                 else if (bodyOutput.Value is TempVariableNode joinVariable)
                 {
-                    // The value came from a branch join rather than a plain assignment.
-                    // The join allocated its own variable; it is the loop-carried one.
+                    // A branch join's own variable is the loop-carried one.
                     ReplaceLoopVariable(joinVariable, loopVariable, loopStatement, preLoopStatement);
                 }
                 else if (bodyOutput.Value is PhiNode joinPhi && !joinPhi.IsLoopHeader)
                 {
-                    // Same case, but the statement still holds the unlowered join phi.
-                    // Lowering the branches rewrote its operands to the variable they
-                    // share, so the join variable is reachable through them.
+                    // Unlowered join phi: its operands are the shared variable.
                     foreach (var branchVariable in joinPhi.Inputs.OfType<TempVariableNode>().ToList())
                     {
                         ReplaceTempVariable(branchVariable, loopVariable);
@@ -1190,8 +1006,7 @@ public class StatementFinalizer
         });
     }
 
-    // The body's variables given the loop's where the two disagree about type,
-    // for SplitUncarriedLoopValues to look at once liveness can be asked.
+    // Type-mismatched merges, for SplitUncarriedLoopValues to revisit.
     private readonly List<(LoopStatement Loop, IStatement PreLoop, TempVariableNode Carried,
         TempVariableNode Own, List<TempAssignmentNode> Assignments)> _typeChangingCarries = [];
 
@@ -1213,19 +1028,9 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// A register a loop's body assigns a value of another type to, given back the
-    /// variable of its own type where the loop carries nothing in it.
-    ///
-    /// UseLoopVariablesInBody gives every register the body assigns the variable it
-    /// had before the loop, on the reading that the loop carries it round. Which is
-    /// so where something reads it at the head of the loop or after it, and not
-    /// where fxc has only reused the register: tile_luminance loads an int from
-    /// groupshared memory into the register a float sample had held before the
-    /// loop, the load was declared in the float's variable, and the sum it went
-    /// into was added as floats - exact for the counts it holds, and not for an int
-    /// past 2^24. Where liveness says the variable is wanted neither at the head of
-    /// the loop nor after it, every value of it inside the loop is one the body
-    /// assigned, and those go back to the variable they were lowered with.
+    /// Undoes a type-changing merge from <see cref="UseLoopVariablesInBody"/> where
+    /// the variable is dead at the loop head and after the loop: fxc only reused
+    /// the register, and e.g. an int load must not live in a float variable.
     /// </summary>
     private void SplitUncarriedLoopValues()
     {
@@ -1237,9 +1042,8 @@ public class StatementFinalizer
             {
                 continue;
             }
-            // Every assignment of the variable in the loop has to be one that came
-            // with the other type; a value of the loop variable's own type assigned
-            // there as well would be renamed with them.
+            // Every in-loop assignment must be of the other type, or it would be
+            // renamed too.
             List<TempAssignmentNode> inLoop = [];
             new StatementVisitor(carry.Loop.Body).Visit(statement =>
             {
@@ -1254,10 +1058,7 @@ public class StatementFinalizer
             own.Outputs.Clear();
             HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
             var pending = new Stack<HlslTreeNode>();
-            // From what each statement in the loop computes - not every value its
-            // map holds, which includes registers carried through from before the
-            // loop - and not on past another assignment, which is a value computed
-            // elsewhere and read by name.
+            // Walk from computed (not carried) values, stopping at other assignments.
             new StatementVisitor(carry.Loop.Body).Visit(statement =>
             {
                 foreach (var output in statement.Outputs.ToList())
@@ -1320,14 +1121,9 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Rewrites every reference to one temp variable so it uses another, across the
-    /// graph and across every statement. <see cref="TempAssignmentNode.TempVariable"/>
-    /// is a property rather than a graph input, so it needs its own pass, and so do
-    /// the nodes a statement holds beside its maps - the value and address of a
-    /// store, the values of an append or a clip. Those are not edges in the graph,
-    /// so Replace never reaches them: a store left holding the variable this one
-    /// supersedes asked for a name nothing ever declares, which is what a loop whose
-    /// body stores the counter after a `continue` came out as.
+    /// Rewrites every reference to a variable: graph edges, held nodes, statement
+    /// maps and <see cref="TempAssignmentNode.TempVariable"/>, none of which Replace
+    /// alone reaches.
     /// </summary>
     private void ReplaceTempVariable(TempVariableNode from, TempVariableNode to)
     {
@@ -1356,26 +1152,15 @@ public class StatementFinalizer
                 if (ReferenceEquals(assignment.TempVariable, from))
                 {
                     assignment.TempVariable = to;
-                    // The variable already exists; this is no longer a declaration.
                     assignment.IsReassignment = true;
                 }
             }
         });
     }
 
-    // A statement can hold nodes outside its input and output maps - the address and
-    // values of a store, the values of a clip. Those are not consumers in the graph,
-    // so rewiring by output list never reaches them, and a phi left behind there
-    // reaches compilation unlowered.
-    // The local array stores that hold a node directly - as their value or their
-    // index - rather than reading it through the graph. A structured store or a
-    // clip holds its values the same way, but they inline whatever they hold
-    // wherever it was computed, as they always have; only the local array, whose
-    // stores can change what an earlier load meant, is made to keep the distance.
     /// <summary>
-    /// The registers among these assignments with a component that a statement
-    /// holds and something else reads as well. Asked of the register because the
-    /// components of one are named together or not at all.
+    /// Registers with a component a statement holds and something else also reads.
+    /// By register, since components are named together or not at all.
     /// </summary>
     private HashSet<RegisterComponentKey> SharedWithHoldingStatement(
         IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> assignments)
@@ -1389,11 +1174,7 @@ public class StatementFinalizer
                 continue;
             }
             shared.Add(assignment.Key);
-            // And the components that belong with it. A load writes four and only
-            // the one a condition reads looks shared, so naming that one alone
-            // leaves the other three as an expression with nowhere to go - and a
-            // statement carries several instructions, so its other registers, and
-            // even its other writes to this one, are values of their own.
+            // Plus sibling components from the same instruction only.
             foreach (var sibling in all)
             {
                 if (!sibling.Key.RegisterKey.Equals(assignment.Key.RegisterKey)
@@ -1411,17 +1192,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether two components were written by the same instruction, which is what
-    /// makes them components of one value rather than two that share a register.
-    /// The same kind of node over the same inputs but for the component each reads.
-    /// </summary>
-    /// <summary>
-    /// Whether two components were written by the same instruction, which is what
-    /// makes them components of one value rather than two that share a register.
-    /// The node carries which instruction made it, so this is that question and
-    /// nothing else. It used to be asked of the node type and the operands, which
-    /// two loads of one register answer the same way - and which needed the
-    /// resource swizzle and the offset immediate read back out to tell apart.
+    /// Written by the same instruction, so components of one value.
     /// </summary>
     private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
     {
@@ -1429,11 +1200,8 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether a value a statement holds is read anywhere else as well. One holder
-    /// and nothing else needs no variable - the store writes the expression where
-    /// it stands, which is how every buffer write in the corpus reads. Two of them,
-    /// or one beside a reader in the graph, is a value the bytecode computed once,
-    /// and inlining it computes it again at each.
+    /// Held and read elsewhere too, so inlining would compute it twice. A sole
+    /// holder inlines the expression.
     /// </summary>
     private bool IsSharedWithHoldingStatement(HlslTreeNode node)
     {
@@ -1449,29 +1217,10 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether a value read by nothing is one a break or a continue carries out of
-    /// the loop rather than one that is simply dead. A jump is the one statement
-    /// whose reader is not a node: the value a register holds when the jump is
-    /// taken is what the loop leaves behind on that path, and the phi closing the
-    /// loop reads the value at the end of the body instead, so nothing in the value
-    /// graph points at this one. fxc copies a loop carried value into its register
-    /// before a break and again at the end of the body; dropping the first stops
-    /// the loop advancing on that path, and a ray march lost its last step that way.
-    ///
-    /// What settles it is the register, not the node: the value is carried exactly
-    /// when the loop hands that register's component on to a reader, because that
-    /// is what makes the jump's parting value observable. Anything else a jump
-    /// happens to be live across - the comparison a clip beside it tests, the `or`
-    /// of two bounds checks - writes a register the loop carries nowhere, and is
-    /// dead where it looks dead; holding it writes an assignment that nothing
-    /// declared.
-    ///
-    /// Asking the node's shape instead - a move, or an add of a constant, which is
-    /// what a copy and a counter step look like - is the same answer for those two
-    /// and wrong for everything else a branch computes before it jumps. A screen
-    /// space reflection samples the scene colour inside the branch that found a hit
-    /// and breaks with it, and the sample is neither shape: all four components of
-    /// the hit went out as dead, and the shader returned black for every pixel.
+    /// Whether an unread value is the one a break/continue carries out of the loop.
+    /// No graph node reads it (the loop phi reads the end-of-body value), so it is
+    /// decided by register: carried when the loop hands that register on to a
+    /// reader. Not by node shape, which misses e.g. a sample taken before a break.
     /// </summary>
     private bool IsCarriedByJump(IStatement jump, HlslTreeNode node)
     {
@@ -1485,25 +1234,10 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Which register components each break and continue parts with observably: the
-    /// ones the loop it leaves hands on to a reader.
-    ///
-    /// Worked out here, once, rather than where it is asked, because the evidence
-    /// is gone by the second asking. The loop carries a register out through the
-    /// phi that closes it, and the proof that anything reads the register is that
-    /// phi's own readers - which <see cref="InsertTempVariableAssignments"/> clears
-    /// as it lowers the phi onto a variable. So the removal pass, running first,
-    /// saw a phi with readers and kept the jump's parting value, and the insertion
-    /// pass saw the same phi with none, judged the value unheld and gave it no
-    /// variable: the scene colour of a reflection came out as a bare
-    /// `sceneColour.SampleLevel(...)` on a line of its own, an expression
-    /// statement assigning nothing. One answer, taken before either pass runs, is
-    /// what keeps the two from disagreeing.
-    ///
-    /// Walked with the enclosing loop in hand, which <see cref="StatementVisitor"/>
-    /// does not carry. A switch's body keeps the loop: a break there leaves the
-    /// switch and not the loop, so the register goes on to the rest of the body -
-    /// still observable, which is the side to err on.
+    /// Per break/continue, the keys its loop hands on to a reader. Computed once
+    /// up front: <see cref="InsertTempVariableAssignments"/> clears the loop phi's
+    /// readers, and the removal and insertion passes must agree. A break in a
+    /// switch keeps the enclosing loop, erring towards observable.
     /// </summary>
     private void FindCarriedByJump()
     {
@@ -1562,19 +1296,8 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether the statement renders the node in a slot of its own - the value a store
-    /// writes, the address it writes through, the coordinate of a texel, what an
-    /// interlocked operation compares against - rather than merely recording it as
-    /// some register's value in passing.
-    ///
-    /// These are exactly the slots ReplaceInStatementNodes rewires, and the two have
-    /// to agree on the same set: a value a store carries is read by that store, however
-    /// little the node graph says about it, and a register slot on an if is bookkeeping
-    /// that the writer never renders. Listing only indexable temp stores here, while
-    /// rewiring six kinds of statement there, is what let a value a structured store
-    /// carried be judged dead. Both now ask the statement - this one through
-    /// NamedHeldNodes and that one through ReplaceHeldNode - so the two sets are the
-    /// same set by construction and cannot drift apart again.
+    /// Whether some statement holds the node by name. Same slot set as
+    /// <see cref="ReplaceInStatementNodes"/>, both derived from HeldSlots.
     /// </summary>
     private bool IsRenderedByAnyStatement(HlslTreeNode node)
     {
@@ -1587,9 +1310,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Rewrites the values the statements hold outside their maps, which the
-    /// graph's own Replace does not reach: a held reference is not an input edge,
-    /// so nothing in the node points back at the statement holding it.
+    /// Replace for held references, which are not graph edges.
     /// </summary>
     private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)
     {
@@ -1598,28 +1319,14 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether this value is a comparison that nothing does arithmetic with - a mask
-    /// read only as a condition, which is what a bool variable is for.
-    ///
-    /// Every reader has to be a condition. A mask is all ones where a bool promoted
-    /// to a number is one, so anything that adds it, masks with it or stores it
-    /// reads a different value if the declaration changes; a select, an if and a
-    /// break only ask whether it is zero.
-    ///
-    /// A predicate a statement holds counts as a condition and is not in the
-    /// readers: the branch tests it without reading it through the graph. That is
-    /// what NamedHeldNodes tells apart - held and written out again, as against held
-    /// and read by name - so a value held only that way is a condition and a value
-    /// some statement names is not.
+    /// A mask read only as a condition, so it can be a bool. Every reader must only
+    /// test for zero (select, if, break): a bool converts to 1, a mask is all ones.
+    /// Predicates written out again count as conditions; named held values do not.
     /// </summary>
     private bool HoldsOnlyACondition(HlslTreeNode value, IEnumerable<HlslTreeNode> readers)
     {
-        // A flag an if/else joins - `t = a <= 1` in one branch, `t = -1` in the
-        // other, as decal_blend's is - holds a mask whichever branch ran, and a
-        // join read only as a condition is one too. Declared int, the comparison
-        // is normalised to 0 or 1 on the way in, which is the `and` the shader
-        // did not have. Whichever of the values is lowered first declares the
-        // variable, so a mask constant into such a join counts the same.
+        // A mask joined by an if/else (`t = a <= 1` / `t = -1`) and read only as a
+        // condition; either branch's value may be the declaring one.
         HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
         if (readers.Any() && readers.All(reader => reader is PhiNode)
             && IsMask(value, seen, out bool compares)
@@ -1627,8 +1334,7 @@ public class StatementFinalizer
         {
             return true;
         }
-        // A comparison, or conditions combined - `any(m) && !all(m)` is as much a
-        // mask as either half of it.
+        // A comparison, or comparisons combined with && / ||.
         if (value is not (ComparisonNode or LogicalAndOperation or LogicalOrOperation))
         {
             return false;
@@ -1661,8 +1367,7 @@ public class StatementFinalizer
             || value is ConstantNode { IntegerValue: null, Value: 0 };
     }
 
-    // A join of masks that nothing reads but a test against zero, a select's
-    // condition, or another such join.
+    // A join of masks read only by zero tests, select conditions or such joins.
     private static bool IsMaskJoin(HlslTreeNode phi, HashSet<HlslTreeNode> seen, ref bool compares)
     {
         if (phi is not PhiNode)
@@ -1743,9 +1448,7 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether a phi merges the variable with what else reaches it: one of its
-    /// inputs is the variable, or the assignment to it, or a branch join that does -
-    /// a loop's pre-loop value, or the register an if leaves alone on one side.
+    /// Whether an input of the phi, or of a nested join, is the variable or its assignment.
     /// </summary>
     private static bool Merges(PhiNode phi, TempVariableNode variable)
     {
@@ -1771,11 +1474,9 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Whether a value reads a variable, directly or through the arithmetic that
-    /// makes it - not through another variable, which is a value of its own, and not
-    /// through a load: a blended colour that samples at the decal's position reads
-    /// the position for the coordinate, which makes the colour no more the position
-    /// going on than any other value computed from it.
+    /// Whether a value reads the variable through arithmetic only: not through
+    /// another variable, and not through a load (a sample's coordinate does not make
+    /// the result a continuation of it).
     /// </summary>
     private static bool Reads(HlslTreeNode value, TempVariableNode variable)
     {

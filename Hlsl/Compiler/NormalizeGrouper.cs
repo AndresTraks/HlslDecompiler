@@ -27,15 +27,8 @@ public class NormalizeGrouper
             }
         }
 
-        // The whole of what the length was taken over, and not part of it. Part is
-        // not a normalize of that part: a parallax shader normalized a tangent
-        // space view vector and then used its .xy and its .z apart, and the two
-        // components on their own came out as normalize(v.xy), which is a
-        // different vector. Where the group is not the whole, the divisions stand
-        // as they are and say the same thing.
-        //
-        // Matched as a set rather than in order, since a length does not care:
-        // normalize(position.yxz) divides by the length of x, y and z.
+        // All of the length's components, not a subset: normalize(v).xy is not
+        // normalize(v.xy). Matched as a set, since order does not affect a length.
         HlslTreeNode[] dividends = [.. components
             .Take(normalizeComponentCount)
             .Cast<DivisionOperation>()

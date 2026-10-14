@@ -3,11 +3,8 @@
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// One component of an element of an indexable temp, x0[i].y, read at run time.
-/// A local array is memory rather than a register: a value graph cannot see
-/// through a store at one index followed by a load at another, so a load is a
-/// leaf that names the element rather than the value last written there, and a
-/// store is a statement.
+/// A read of x0[i].y. Indexable temps are memory, so a load is a leaf naming the
+/// element, not the value last stored there.
 /// </summary>
 public class IndexableTempLoadNode : HlslTreeNode, IHasComponentIndex
 {

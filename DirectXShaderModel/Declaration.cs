@@ -27,9 +27,8 @@ public class ConstantDeclaration
     }
 
     /// <summary>
-    /// How many registers one element of an array occupies. A matrix stored
-    /// column-major takes a register per column, row-major one per row, so it is
-    /// read off the declaration's own size rather than assumed from the type.
+    /// Registers per array element. Depends on matrix packing, so subclasses read
+    /// it off the declared size.
     /// </summary>
     public virtual int RegistersPerElement => System.Math.Max(TypeInfo.Rows, 1);
 
@@ -45,10 +44,8 @@ public class D3D9ConstantDeclaration : ConstantDeclaration
     public short RegisterCount { get; }
 
     /// <summary>
-    /// A uniform an fx_2_0 preshader reads rather than the shader. Its register is
-    /// one the parser chose so as not to collide with the shader's own: in the
-    /// preshader it was numbered in a table of its own, and a shader compiled from
-    /// the decompilation reads it directly, wherever fxc puts it.
+    /// A uniform an fx_2_0 preshader reads. Its register is chosen by the parser to
+    /// avoid the shader's own; the preshader numbered it in a separate table.
     /// </summary>
     public bool IsPreshaderInput { get; init; }
 
@@ -75,10 +72,8 @@ public class D3D10ConstantDeclaration : ConstantDeclaration
     public int VariableOffset { get; }
 
     /// <summary>
-    /// The buffer this variable was declared in, and whether that buffer is a
-    /// texture buffer. A cbuffer is flattened into globals, which binds the same
-    /// and reads the same; a tbuffer binds to a t register and is read with ld, so
-    /// it has to keep its block and its name.
+    /// The declaring buffer. A cbuffer can be flattened into globals; a tbuffer
+    /// binds to a t register and must keep its block and name.
     /// </summary>
     public string BufferName { get; init; }
 
@@ -92,8 +87,7 @@ public class D3D10ConstantDeclaration : ConstantDeclaration
         VariableOffset = variableOffset;
     }
 
-    // Array elements are 16-byte aligned, so a float4x3 stored by column is three
-    // registers and by row four, whatever the type alone would say.
+    // Array elements are 16-byte aligned.
     public override int RegistersPerElement =>
         System.Math.Max((VariableSize / System.Math.Max(TypeInfo.NumElements, 1) + 15) / 16, 1);
 }
@@ -114,13 +108,9 @@ public class RegisterDeclaration
     {
     }
 
-    // D3D_REGISTER_COMPONENT_TYPE, from the signature: 1 uint32, 2 sint32,
-    // 3 float32. SV_VertexID and its like are integral and will not compile as
-    // float, so the type is taken from the signature rather than assumed.
+    // D3D_REGISTER_COMPONENT_TYPE from the signature: 1 uint32, 2 sint32, 3 float32.
     public int ComponentType { get; set; }
 
-    // How the rasteriser interpolates the input. Dropping it changed what the
-    // shader does: nointerpolation recompiled as a linear interpolant.
     public D3D10InterpolationMode InterpolationMode { get; init; }
 
     private string InterpolationModifier => InterpolationMode switch
@@ -139,17 +129,16 @@ public class RegisterDeclaration
     public ResultModifier ResultModifier { get; }
 
     /// <summary>
-    /// What the register is called where its semantic does not say it. A hull
-    /// shader's tessellation factors are one HLSL array across several registers,
-    /// so o1.x is edges[1] and not a field called sv_tessfactor1.
+    /// A name the semantic does not give, e.g. edges[1] for a tessellation factor
+    /// array spread across registers.
     /// </summary>
     public string NameOverride { get; set; }
 
     public string Name => NameOverride ?? Semantic.ToLower();
 
     /// <summary>
-    /// Whether the register holds integers: a thread id, or what the signature says.
-    /// Asked of the type name, `nointerpolation float4` contains "int".
+    /// Whether the register holds integers. Not asked of TypeName:
+    /// `nointerpolation float4` contains "int".
     /// </summary>
     public bool IsInteger =>
         (RegisterKey is D3D10RegisterKey d3D10RegisterKey
@@ -185,32 +174,24 @@ public class RegisterDeclaration
     }
 
     /// <summary>
-    /// How many registers the declaration covers, for a run declared as one array
-    /// by dcl_indexrange - `float4 texcoord[4] : TEXCOORD`, which HLSL spreads over
-    /// TEXCOORD0 to TEXCOORD3. One for everything else.
+    /// Registers covered by a dcl_indexrange array, e.g. `float4 texcoord[4] :
+    /// TEXCOORD`; otherwise one.
     /// </summary>
     public int ArrayLength { get; set; } = 1;
 
     public int WriteMask { get; set; }
 
-    // Length of ".xy" = 2
-    // Length of ".yw" = 4 (xyzw)
-    // A point size or a fog factor is one value however wide the register holding
-    // it is written: `dcl_psize o1` declares a full mask and `mov o1, c4.x` widens
-    // it again, but PSIZE has to be a scalar to compile.
+    // PSIZE and FOG must be scalar to compile, whatever the declared mask.
     private bool IsScalarSemantic => Semantic == "PSIZE" || Semantic == "FOG";
 
-    // Overrides the width MaskedLength would otherwise derive from WriteMask.
-    // Needed when a register is packed and this declaration's own mask does not
-    // start at x - TEXCOORD1 shares a register with TEXCOORD0 and is declared at
-    // .z alone - since the usual highest-bit-plus-one rule would then count
-    // padding that belongs to the other declaration sharing the register.
+    // For a packed register whose mask does not start at x, where the
+    // highest-bit-plus-one rule would count the other declaration's components.
     public int? MaskedLengthOverride { get; set; }
 
-    // Which patch constant this is, for a domain shader: several registers can be
-    // one array, so the name it reads by comes from the signature.
+    // A domain shader's patch constant, whose name comes from the signature.
     public RegisterSignature PatchConstantSignature { get; set; }
 
+    // Highest written component plus one: .xy is 2, .yw is 4.
     public int MaskedLength
     {
         get

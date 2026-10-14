@@ -1,15 +1,9 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// One component of what `input.Consume()` returns. A consume buffer takes the
-/// last slot from its counter and reads the element there, which the bytecode
-/// writes as an imm_atomic_consume and then one ld_structured per component -
-/// four of them for a float4, at byte offsets 0, 4, 8 and 12.
-///
-/// A ConsumeStructuredBuffer has no other spelling: no subscript, and no counter
-/// to read the slot out of. So the call has to be named and its components read
-/// out of the variable afterwards, the way a GetDimensions result is - and for
-/// the same reason, that one call fills several values at once.
+/// One component of `input.Consume()`, compiled as imm_atomic_consume plus one
+/// ld_structured per component. The call has no other spelling, so it is named
+/// and its components read from the variable, like a GetDimensions result.
 /// </summary>
 public class ConsumeNode : HlslTreeNode, IHasComponentIndex
 {
@@ -24,21 +18,14 @@ public class ConsumeNode : HlslTreeNode, IHasComponentIndex
     public int ComponentIndex { get; }
 
     /// <summary>
-    /// The value the consume instruction put in a register, which says which call
-    /// this is a component of. Held rather than read: nothing in the graph reads
-    /// the slot once the loads have become these, which is what lets the
-    /// assignment the consume made go away as dead.
+    /// Identifies the call. Held, not an input, so the consume's slot assignment
+    /// becomes dead.
     /// </summary>
     public HlslTreeNode Slot { get; }
 
-    /// <summary>The variable the writer named this call into.</summary>
     public TempVariableNode NamedAs { get; set; }
 
-    // Whether the element is an integer, from the buffer's declared element type
-    // the way a structured load beside it answers. The consume says nothing about
-    // it on its own - what the instruction reads is a slot, which is an integer
-    // whatever the elements are - so a uint element whose bits are a float's was
-    // converted into the float variable that read it rather than reinterpreted.
+    // From the buffer's declared element type; the slot itself is always an integer.
     public bool? IsIntegerElement { get; init; }
 
     public override string ToString()
@@ -48,9 +35,8 @@ public class ConsumeNode : HlslTreeNode, IHasComponentIndex
 }
 
 /// <summary>
-/// What an imm_atomic_consume leaves in a register: the slot it took. Nothing
-/// reads it once the loads from the buffer have become <see cref="ConsumeNode"/>s,
-/// so the assignment goes away and the call stands for both instructions.
+/// The slot imm_atomic_consume returns. Unread once the loads are <see
+/// cref="ConsumeNode"/>s, so its assignment dies.
 /// </summary>
 public class ConsumeSlotNode : HlslTreeNode
 {
@@ -68,11 +54,8 @@ public class ConsumeSlotNode : HlslTreeNode
 }
 
 /// <summary>
-/// What an imm_atomic_alloc leaves in a register: the slot it took, which the
-/// store_structured addressed by it then fills. The two together are one Append,
-/// and an append buffer has no other spelling - no subscript, and no counter to
-/// read the slot out of - so nothing else reads this and the assignment goes away
-/// as dead, the way a consume's does.
+/// The slot imm_atomic_alloc returns, filled by a store_structured; together one
+/// Append. Nothing else reads it, so its assignment dies.
 /// </summary>
 public class AppendSlotNode : HlslTreeNode
 {
@@ -90,12 +73,8 @@ public class AppendSlotNode : HlslTreeNode
 }
 
 /// <summary>
-/// imm_atomic_alloc or imm_atomic_consume over a buffer that keeps a counter
-/// without being an append or a consume one. `buf.IncrementCounter()` takes the
-/// next slot and `buf.DecrementCounter()` gives the last one back, and the slot
-/// is then an index like any other - read and written through a subscript, which
-/// is what an RWStructuredBuffer has and the append and consume ones have not. So
-/// this is a value in its own right rather than half of a call.
+/// imm_atomic_alloc/consume on a counter buffer that is not append/consume:
+/// `buf.IncrementCounter()` or `buf.DecrementCounter()`, a value used as an index.
 /// </summary>
 public class BufferCounterNode : HlslTreeNode
 {

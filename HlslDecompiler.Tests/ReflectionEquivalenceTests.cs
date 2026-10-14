@@ -9,30 +9,17 @@ using System.Linq;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// That a decompilation declares what the shader it came from declares: its
-/// constant buffers laid out the same, its resources bound where they were, its
-/// signatures, its classes and interfaces, and the declarations that change what it
-/// does - interpolation, early depth, thread groups. Compared by recompiling each
-/// writer's output and reading both shaders back.
-///
-/// The other tiers cannot see this. The goldens say the text has not changed, the
-/// recompile tier that fxc accepts it, and the equivalence tier that it computes the
-/// same - in a machine that reads constants by register and inputs by semantic, so
-/// a buffer laid out differently or an interface renamed passes all three and then
-/// reads the wrong memory, or binds nothing, on a GPU.
+/// The recompiled decompilation declares what the original does: buffer layout,
+/// bindings, signatures, interfaces, and declarations like interpolation and thread
+/// groups. The equivalence machine names inputs, so it cannot see these.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it reads one .fxc, writes its output under a path
-// named after its profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class ReflectionEquivalenceTests
 {
-    /// <summary>
-    /// Shaders whose decompilation declares something else, by writer, and why. A
-    /// listed writer that starts declaring the same fails the test so that its entry
-    /// gets removed.
-    /// </summary>
+    // A listed writer that starts declaring the same fails, so its entry gets removed.
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
         ["ps_3_0/partial_precision"] = [("ast",
@@ -110,8 +97,6 @@ public class ReflectionEquivalenceTests
         {
             Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
         }
-        // A ps_1_x shader declares nothing - no dcl, no constant table when it was
-        // assembled by hand - and recompiles as ps_2_0, which declares everything.
         if (profile.StartsWith("ps_1_"))
         {
             Assert.Ignore("A ps_1_x shader declares nothing to compare against its ps_2_0 recompile.");
@@ -171,7 +156,7 @@ public class ReflectionEquivalenceTests
         }
     }
 
-    // A multiset difference: a line the original declares twice has to be there twice.
+    // Multiset difference.
     internal static IEnumerable<string> Except(List<string> lines, List<string> other)
     {
         var remaining = other.GroupBy(l => l).ToDictionary(g => g.Key, g => g.Count());

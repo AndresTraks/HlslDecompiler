@@ -19,9 +19,8 @@ public class TempAssignmentOrderTests
     [TestCase(40)]
     public void SortRespectsOneDependencyAmongManyUnrelated(int count)
     {
-        // One real dependency: the last assignment reads the first variable. Every
-        // other pair is unrelated, so the comparator calls them equal - which makes
-        // "equal" non-transitive, and a comparison sort may place them anywhere.
+        // Unrelated pairs compare equal, so "equal" is non-transitive and a
+        // comparison sort may misplace the one real dependency.
         var shared = Variable(0);
         var producer = new TempAssignmentNode(shared, new AddOperation(new ConstantNode(1), new ConstantNode(2)));
         var consumer = new TempAssignmentNode(Variable(count - 1), new MultiplyOperation(shared, new ConstantNode(5)));

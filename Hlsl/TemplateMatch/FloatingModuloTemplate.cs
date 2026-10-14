@@ -3,24 +3,10 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts a floating point remainder back together.
-///
-/// There is no instruction for it, so fxc writes the fractional part of the
-/// quotient with the sign of the quotient put back, scaled by the divisor:
-/// `(q >= -q ? frac(abs(q)) : -frac(abs(q))) * y`, where q is x / y. That is what
-/// the shader does and not remotely what it says.
-///
-/// Shader model 3 has neither a divide nor a comparison that reaches a register:
-/// cmp puts the sign selection in one instruction and tests the quotient against
-/// zero, and the quotient itself is what rcp and mul make of a divide. The test
-/// is the same one - q >= -q holds just where q >= 0 - so both spellings of the
-/// selection and of the quotient fold to the same remainder.
-///
-/// The rcp that makes a quotient is often not in the expression at all: fxc hoists
-/// the loop-invariant half of a divide into a temp and reads that at every use, and
-/// a variable is as much a wall to this template as a register is. It asks the
-/// matcher's resolver what such a variable holds, and reads the quotient through
-/// it.
+/// Recovers fmod(x, y) from fxc's expansion
+/// `(q >= -q ? frac(abs(q)) : -frac(abs(q))) * y`, q = x / y, in its movc and
+/// SM3 cmp + rcp forms. The quotient or rcp may sit in a hoisted variable, read
+/// through the matcher's TempResolver.
 /// </summary>
 public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
 {
@@ -49,8 +35,6 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
 
     private HlslTreeNode TryReduce(HlslTreeNode signedFraction, HlslTreeNode scale)
     {
-        // A movc picks the sign from a comparison of the quotient against its own
-        // negation, which the branch condition can still be seen to say.
         if (signedFraction is MoveConditionalOperation select
             && select.Source2 is NegateOperation negated
             && ReferenceEquals(negated.Value, select.Source1))
@@ -65,10 +49,7 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             return Remainder(dividend, divisor, scale);
         }
 
-        // A cmp tests its first operand against zero and takes the second or third
-        // with it - the same sign selection, its test folded into the instruction.
-        // What it tests is what the fraction took the absolute value of: the
-        // quotient is read twice, not computed twice.
+        // SM3 cmp: the same sign selection with the test against zero built in.
         if (signedFraction is CompareOperation cmp
             && IsNegationOf(cmp.LessValue, cmp.GreaterEqualValue)
             && cmp.GreaterEqualValue is FractionalOperation cmpFraction
@@ -79,14 +60,8 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
             return Remainder(cmpDividend, cmpDivisor, scale);
         }
 
-        // The negation on the fraction instead of on the scale, which is what
-        // reassociation leaves behind rather than anything the source said: fxc
-        // folds `y - fmod(x, y)` into one mad of the negated fraction,
-        // `mad(-s, y, y)`, and the multiply inside it is the remainder with a
-        // negation over it that belongs to the subtraction. Taken off here and put
-        // back around the remainder, the add above it reads as the subtraction it
-        // was; left alone, the whole sign selection was written out beside an fmod
-        // of the very same quotient that had been recognised.
+        // fxc folds `y - fmod(x, y)` into `mad(-s, y, y)`; the negation belongs
+        // to the subtraction and moves outside the remainder.
         if (signedFraction is NegateOperation negatedFraction
             && TryReduce(negatedFraction.Value, scale) is HlslTreeNode negatedRemainder)
         {
@@ -97,34 +72,25 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
     }
 
     /// <summary>
-    /// The remainder the signed fraction and the scale put together: the fraction's
-    /// quotient divided by the scale's divisor, once they are seen to be the same.
+    /// The remainder, once the scale is seen to be the quotient's divisor.
     /// </summary>
     private static HlslTreeNode Remainder(
         HlslTreeNode dividend, HlslTreeNode divisor, HlslTreeNode scale)
     {
-        // The divisor is read twice, once in the quotient and once as the scale,
-        // and a modifier on it - `-k.x` - is a node of its own at each.
+        // Equivalence, not identity: a modifier like `-k.x` is a fresh node at each read.
         if (NodeGrouper.AreNodesEquivalent(divisor, scale))
         {
             return new FloatingModuloOperation(dividend, scale);
         }
 
-        // A remainder takes its sign from the dividend, not the divisor, so scaling
-        // by the opposite of what was divided by is a negated fmod rather than one -
-        // which is how fxc writes `-fmod(x, y)`: the negation joins the scale, and
-        // the rcp keeps its sign.
+        // fmod takes the dividend's sign, so a negated scale is `-fmod(x, y)`.
         if (scale is NegateOperation negatedScale
             && NodeGrouper.AreNodesEquivalent(negatedScale.Value, divisor))
         {
             return new NegateOperation(new FloatingModuloOperation(dividend, negatedScale.Value));
         }
 
-        // The same opposition with the negation on the other side of it: the rcp
-        // carries it and the scale does not, which is what fxc makes of dividing
-        // by something already negative - `-fmod(x, -y)`. The fmod keeps the
-        // divisor its quotient was made with, so the sign is written where the
-        // shader read it.
+        // A negated divisor in the rcp only: `-fmod(x, -y)`.
         if (divisor is NegateOperation negatedDivisor
             && NodeGrouper.AreNodesEquivalent(negatedDivisor.Value, scale))
         {
@@ -135,11 +101,7 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
     }
 
     /// <summary>
-    /// The quotient as a dividend and a divisor. With a div instruction it is the
-    /// instruction itself; without one it is x multiplied by the reciprocal of y,
-    /// whichever side the reciprocal is on. Either the quotient or the reciprocal
-    /// may be the value a variable holds rather than a node of the expression, and
-    /// both are looked through where the resolver can see what the variable holds.
+    /// Splits x / y or x * rcp(y), looking through variables via the resolver.
     /// </summary>
     private bool TrySplitQuotient(
         HlslTreeNode quotient, out HlslTreeNode dividend, out HlslTreeNode divisor)
@@ -170,11 +132,8 @@ public class FloatingModuloTemplate : NodeTemplate<MultiplyOperation>
         _templateMatcher.TempResolver is { } resolver ? resolver.Resolve(node) : node;
 
     /// <summary>
-    /// `q >= -q` is how the sign of q is tested without naming a constant, which
-    /// is what fxc writes when the comparison is an instruction of its own; `q >= 0`
-    /// says the same and holds just as well, and is what a cmp leaves no room for
-    /// spelling otherwise. A branch condition parses as a ComparisonNode and a
-    /// value as a GreaterEqualOperation; this is the second.
+    /// `q >= -q` or `q >= 0`, as a GreaterEqualOperation value or a ComparisonNode
+    /// branch condition.
     /// </summary>
     private static bool IsNotNegative(HlslTreeNode condition, HlslTreeNode value)
     {

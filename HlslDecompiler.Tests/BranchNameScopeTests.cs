@@ -4,17 +4,9 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// A value computed before an if and read by what both of its branches return is
-// one node read twice through one reader - the two returns hold the same
-// expression - and naming it while writing the first branch rewires that shared
-// reader, so the second branch compiled its text naming too: X3004 at a name
-// whose declaration closed its brace one line before. The naming pass only gives
-// the variable to readers of the statement it is writing; it has to notice that
-// the graph it shares reaches a statement the text pass will write after this
-// one in a place the name will not reach. fxc never compiles HLSL into the shape
-// - it would have named the value above the branch - so it is assembled by hand,
-// after a vehicle dirt pass that read one sample's .xyz above the branch and its
-// .w through both of them.
+// A value from before an if, read by both branches through one shared reader node.
+// Naming it inside the first branch would leave the second branch naming a variable
+// out of scope (X3004). Hand-assembled: fxc would name it above the branch.
 public class BranchNameScopeTests
 {
     private const uint X = 0x00;    // .x replicated
@@ -85,10 +77,7 @@ public class BranchNameScopeTests
                 endif
 
                 """));
-            // The first branch cannot name the shared .w - the else branch reads
-            // the same reader node and would then name an undeclared thing - so it
-            // writes the fetch out where it reads it, and only the last reader,
-            // which nothing can follow, gets the variable.
+            // Only the last reader of the shared .w gets the variable.
             Assert.That(WriteHlslAst(shader), Is.EqualTo("""
                 sampler2D s0;
                 sampler2D s1;

@@ -14,8 +14,7 @@ public class HlslSimpleWriter : HlslWriter
 {
     private int _loopVariableIndex = -1;
     private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
-    // Over the phase being written rather than the whole shader: what an immediate
-    // means is decided by what reads it, and a hull shader's phases read their own.
+    // Per phase, not per shader: a hull shader's phases read their own immediates.
     private IntegerOperandAnalysis _integerOperandAnalysis;
 
     public HlslSimpleWriter(ShaderModel shader)
@@ -28,15 +27,12 @@ public class HlslSimpleWriter : HlslWriter
     protected override void WriteMethodBody()
     {
         _integerOperandAnalysis = new IntegerOperandAnalysis(_phaseShader);
-        // Before the walk below, which asks it what reads a pair it has just seen
-        // filled.
+        // Before FindMovedDoubles, which queries it.
         _programOrder = new ProgramOrder(_phaseShader,
             (instruction, operand) => GetSourceComponents(
                 instruction, operand, instruction.GetSourceSwizzleComponents(operand)));
         FindMovedDoubles();
-        // Per function, not per shader: a hull shader's two functions are written
-        // through one writer, and neither inherits the other's loop counters or the
-        // slots it was still holding.
+        // Reset per function: a hull shader's two functions share one writer.
         _loopVariableIndex = -1;
         _allocatedSlots.Clear();
         _consumedSlots.Clear();
@@ -61,9 +57,7 @@ public class HlslSimpleWriter : HlslWriter
             WriteLine();
         }
 
-        // A shader with dynamic linkage runs its bodies as methods of their own
-        // class: main reaches the first label and no further, and the temps main
-        // needs are only the ones written before it.
+        // With dynamic linkage, main stops at the first label; the rest are class methods.
         IList<Instruction> mainInstructions =
             _registers.Linkage != null && _registers.Linkage.HasLinkage
             ? [.. _phaseShader.Instructions.Take(_registers.Linkage.MainInstructionCount)]
@@ -81,14 +75,8 @@ public class HlslSimpleWriter : HlslWriter
             }
             else if (instruction is D3D10Instruction d9d10Instruction)
             {
-                // The one place a statement is two instructions rather than one.
-                // An append buffer has no spelling for half of it: no subscript to
-                // store through, and no counter to keep the slot in - so
-                // imm_atomic_alloc and the store that fills the slot are written as
-                // the Append they came from, or neither of them can be written at
-                // all. The store is not always the instruction after: what is
-                // appended is computed between the two whenever it reads nothing the
-                // alloc needed, so the slot waits here for the store that fills it.
+                // imm_atomic_alloc + store_structured on an append buffer is one Append;
+                // neither half can be written alone. The store need not follow directly.
                 if (d9d10Instruction.Opcode == D3D10Opcode.ImmAtomicAlloc
                     && IsAppendResource(d9d10Instruction.GetParamRegisterKey(1)))
                 {
@@ -122,8 +110,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a store appends the element the alloc before it took the slot for:
-    /// the same buffer, addressed by the register the alloc wrote.
+    /// Whether the store writes the same buffer at the slot the alloc returned.
     /// </summary>
     private static bool IsAppendPair(D3D10Instruction alloc, D3D10Instruction store)
     {
@@ -133,8 +120,7 @@ public class HlslSimpleWriter : HlslWriter
             && store.GetParamRegisterKey(1).Equals(alloc.GetParamRegisterKey(0));
     }
 
-    // The alloc that took each slot, by the register it left the slot in, waiting
-    // for the store that fills it.
+    // Pending allocs, by the register holding the slot, until their store arrives.
     private readonly Dictionary<RegisterKey, D3D10Instruction> _allocatedSlots = [];
 
     // The variable each consume call filled, by the register it left its slot in.
@@ -154,11 +140,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The constant registers an fx_2_0 preshader fills, as locals filled the same
-    /// way. The preshader runs before the shader, so these come first, and the
-    /// instructions that read c1 read the local c1 rather than a uniform: nothing
-    /// declares one there, because the effect compiler moved its arithmetic out of
-    /// the shader and left only the register.
+    /// Writes the constant registers an fx_2_0 preshader fills as locals, ahead of
+    /// the body; no uniform is declared for them.
     /// </summary>
     private void WritePreshaderOutputs()
     {
@@ -221,24 +204,17 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The line a temp variable is declared by: as wide as it is written and of the
-    /// type it is written as, with the doubles it holds shadowed beside it. The body
-    /// of a linkage method declares its locals the same way main declares its temps.
+    /// Declares a temp as wide and of the type it is written as, plus its double shadow.
     /// </summary>
     private void WriteTemporaryVariableDeclaration(RegisterKey registerKey, int writeMask)
     {
-        // An array subscript has to be an integer, and the address register is
-        // only ever used as one.
         bool isAddressRegister = registerKey is D3D9RegisterKey addressKey
             && addressKey.Type == RegisterType.Addr;
-        // A register holding only integers has to be declared as one: a shift or a
-        // bitwise operator will not take a float, however the bits got there.
+        // Shifts and bitwise operators will not take a float.
         string scalarType = isAddressRegister || IsIntegerTempRegister(registerKey, writeMask)
             ? "int"
             : IsHalfTempRegister(registerKey) ? "half" : "float";
-        // The address register is as wide as it is written: `mova a0.xy`
-        // loads two indices, and reading them both out of a scalar is not
-        // possible.
+        // `mova a0.xy` loads two indices, so a0 is as wide as it is written.
         string writeMaskName = isAddressRegister ? AddressTypeName(writeMask) : writeMask switch
         {
             0x1 => scalarType,
@@ -247,12 +223,8 @@ public class HlslSimpleWriter : HlslWriter
             0xF => scalarType + "4",
             _ => scalarType + "4",// TODO
         };
-        // A register nothing but doubles is written to needs no float variable
-        // beside their shadow: every value in it is named through the shadow, and
-        // the float2 a StructuredBuffer<double> loads through was declared and
-        // never read. Asked of the writes rather than of the mask, because fxc
-        // reuses a register freely and one holding a double at .xy and a
-        // comparison mask at .x needs both.
+        // A register only doubles are written to needs no float variable. Decided by
+        // the writes, not the mask: one register may hold a double and a float mask.
         if (FindFloatWrittenComponents(registerKey) != 0)
         {
             WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(registerKey));
@@ -261,12 +233,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The shadow variable a register's doubles are kept in. A double takes two
-    /// components, so a register holds two of them where it holds four floats, and
-    /// each one is declared alongside the register: `double2 d0` beside `float4 r0`,
-    /// with r0.xy as d0.x and r0.zw as d0.y. Transcribed as the two float components
-    /// they really are, the arithmetic would be done in floats over each half of
-    /// the number separately, which is not the number at all.
+    /// Declares the shadow holding a register's doubles: `double2 d0` beside
+    /// `float4 r0`, with r0.xy as d0.x and r0.zw as d0.y.
     /// </summary>
     private void WriteDoubleRegisterDeclaration(RegisterKey registerKey)
     {
@@ -280,8 +248,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The instruction main ends at: the last one there is, or the one before the
-    /// first label once dynamic linkage starts writing bodies of their own.
+    /// The last instruction of main: before the first label under dynamic linkage.
     /// </summary>
     private Instruction LastMainInstruction()
     {
@@ -290,12 +257,6 @@ public class HlslSimpleWriter : HlslWriter
             : _phaseShader.Instructions[^1];
     }
 
-    /// <summary>
-    /// A call through an interface: the result lands in the register every body it
-    /// could run writes, and the arguments are the registers any of those bodies
-    /// reads before writing them - named as main names them, which is how they reach
-    /// the body under its own parameter names.
-    /// </summary>
     private void WriteBranchAttribute()
     {
         if (WritesFlowAttributes)
@@ -305,10 +266,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// An append of a struct element: the struct put together a member at a time
-    /// from the register's components, and appended. The register itself is a
-    /// float4 and not the struct, which fxc refused (X3017). False where the
-    /// element is not a struct, or the store does not write it whole from offset 0.
+    /// Appends a struct element built member by member from the register (appending
+    /// the float4 itself is X3017). False unless the store writes a struct from offset 0.
     /// </summary>
     private bool WriteStructAppend(D3D10Instruction alloc, D3D10Instruction store)
     {
@@ -343,6 +302,10 @@ public class HlslSimpleWriter : HlslWriter
 
     private int _appendCount;
 
+    /// <summary>
+    /// A call through an interface: the result lands in the register every body
+    /// writes; arguments are the registers the bodies read before writing.
+    /// </summary>
     private void WriteInterfaceCall(D3D10Instruction instruction)
     {
         int function = (int)instruction.OperandTokens.Tokens[0];
@@ -365,16 +328,11 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A body transcribed instruction by instruction: its locals declared the way
-    /// main's temps are, its ret replaced by the return of the one register it
-    /// writes, and the registers it reads before writing them already the
-    /// parameter names the signature declares.
+    /// Transcribes a linkage body; its ret becomes a return of the register it writes.
     /// </summary>
     protected override void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body)
     {
-        // The classes are written before main, and a body writes instructions the
-        // way main writes them - which asks for the analyses main's method body
-        // would have built by then. The same phase, so the same answers.
+        // Classes are written before main, so build main's analyses here.
         _integerOperandAnalysis ??= new IntegerOperandAnalysis(_phaseShader);
         _programOrder ??= new ProgramOrder(_phaseShader,
             (instruction, operand) => GetSourceComponents(
@@ -400,10 +358,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether the instruction is the half of a call the writer folds into
-    /// the other half: the slot an append buffer took and the one a
-    /// consume buffer takes are written as part of Append and Consume, so
-    /// neither leaves an assignment behind to declare a register for.
+    /// Whether the instruction is an append/consume slot write folded into the
+    /// Append or Consume call, leaving no assignment of its own.
     /// </summary>
     private bool IsFoldedIntoCall(D3D10Instruction instruction)
     {
@@ -414,12 +370,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The constant a register component holds, where that is knowable: one
-    /// write in the whole program, and that write a mov of an immediate. A
-    /// structured atomic names its member by the byte offset beside the element
-    /// index in its address, and fxc puts that offset in a register as readily
-    /// as in an immediate - `mov r0.y, l(0)` beside `imm_atomic_cmp_exch r1.x,
-    /// u0, r0.xyxx, ..`, where the zero names the first member.
+    /// The byte offset in a structured atomic's address when it sits in a register
+    /// written exactly once, by a mov of an immediate.
     /// </summary>
     private bool TryGetAddressOffsetConstant(
         D3D10Instruction instruction, int addressIndex, out int byteOffset)
@@ -447,8 +399,6 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 if (write != null)
                 {
-                    // Written twice: which of them this read sees is a
-                    // question a transcription cannot answer.
                     return false;
                 }
                 write = d3d10;
@@ -467,10 +417,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components of a register written by anything that is not a double, as a
-    /// write mask. A write that goes through the shadow variable leaves the float
-    /// components of the register untouched, so a register only doubles are written
-    /// to answers zero and needs no float variable at all.
+    /// The components of a register written other than through its double shadow.
     /// </summary>
     private int FindFloatWrittenComponents(RegisterKey registerKey)
     {
@@ -481,17 +428,11 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return 0b1111;
             }
-            // A slot the writer folds into the call it belongs to is written
-            // by no line of the output, so the register holding it needs no
-            // declaration either: an Append carries its own slot and a
-            // Consume carries its own, and `float r1;` stood for a value
-            // nothing else in the function mentions.
             if (IsFoldedIntoCall(d3d10))
             {
                 continue;
             }
-            // The register a call through an interface returns into is written
-            // by that call, floats, whatever its operand tokens say.
+            // An interface call writes floats to its return register.
             if (InterfaceCallDestination(d3d10) is RegisterKey returned
                 && Equals(returned, registerKey))
             {
@@ -504,10 +445,8 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     continue;
                 }
-                // Per statement, not per instruction: a load that takes a double and
-                // a uint of the element is written as two, and only the double's half
-                // of it goes through the shadow. Counted whole, the uint's component
-                // was held to be a double's and the register went undeclared.
+                // Per statement, not per instruction: a load of a double and a uint
+                // is written as two, and only the double's part uses the shadow.
                 int[] split = SplitPackedOutputMasks(d3d10) ?? SplitDoubleElementMasks(d3d10);
                 foreach (int part in split ?? [d3d10.GetWriteMask(destination)])
                 {
@@ -529,8 +468,7 @@ public class HlslSimpleWriter : HlslWriter
         return mask;
     }
 
-    // Which halves of a register ever hold a double: bit 0 for the pair at .xy and
-    // bit 1 for the pair at .zw.
+    // Bit 0: the pair at .xy ever holds a double; bit 1: the pair at .zw.
     private int GetDoublePairMask(RegisterKey registerKey)
     {
         int pairs = 0;
@@ -549,25 +487,16 @@ public class HlslSimpleWriter : HlslWriter
         return "d" + registerKey.Number;
     }
 
-    /// <summary>
-    /// The shadow variable an operand's doubles are named by, or null where the
-    /// operand holds none. Which halves of the register it covers is asked of the
-    /// instruction rather than of the operand: a source names one double for each
-    /// value the instruction computes, and fxc repeats the pair across the swizzle
-    /// so that the nth of them is at slot 2n.
-    /// </summary>
-    // The components of the destination this statement writes, which for an
-    // instruction written as several is the part of it being written now.
+    // The destination components this statement writes; for an instruction
+    // written as several statements, the current part.
     private int DestinationMask(D3D10Instruction instruction)
     {
         return _destinationMaskOverride ?? instruction.GetWriteMask(0);
     }
 
     /// <summary>
-    /// Whether the member a structured load or store reaches is a double. Asked at
-    /// the first component the mask names rather than of the element as a whole: an
-    /// element with a double in it has other members beside, and a load of the float
-    /// among them is a load of a float.
+    /// Whether the member at the mask's first component is a double; other members
+    /// of the same element may be floats.
     /// </summary>
     private bool IsDoubleStructuredComponent(D3D10Instruction instruction, int resourceOperand)
     {
@@ -585,79 +514,45 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Which halves of its destination each mov copies a double into, by instruction:
-    /// bit 0 for the pair at .xy and bit 1 for the pair at .zw. fxc assembles a
-    /// double vector out of movs of the raw halves - `mov r0.zw, r0.xxxy` puts the
-    /// pair at r0.xy into the pair at r0.zw - and nothing about the instruction says
-    /// it carries one number rather than two floats. The opcode cannot say and
-    /// neither can a set of register components: fxc uses one for a double here and
-    /// a float there. What says is where the walk below has got to.
+    /// Per mov, the destination pairs it copies a double into (bit 0 .xy, bit 1 .zw).
+    /// Only the walk in FindMovedDoubles can tell: `mov r0.zw, r0.xxxy` looks the
+    /// same whether it moves a double or two floats.
     /// </summary>
     private Dictionary<D3D10Instruction, int> _movedDoublePairs =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// Every register pair the walk ever found holding a double, which is what the
-    /// shadow variables are declared from. Asked of the walk rather than of a scan
-    /// for double instructions, because a shader can hold doubles without one: a
-    /// load of a double member and a store of it back is the whole of what some do,
-    /// and their shadow was named and never declared.
+    /// Every register pair ever holding a double; shadows are declared from this.
+    /// A shader can hold doubles without any double instruction (load and store).
     /// </summary>
     private HashSet<(RegisterKey Register, int Pair)> _doubleRegisterPairs = [];
 
     /// <summary>
-    /// What the register pairs held when each instruction was reached, for the
-    /// instructions reached with any of them holding a double. A source operand
-    /// reads what was there before the instruction, and whether that was a double
-    /// is a question about the moment and not about the register: fxc uses a pair
-    /// for a double here and for two numbers there. Empty for every shader without
-    /// a double in it, which is all but a handful.
+    /// The pairs holding a double just before each instruction (only where any do).
     /// </summary>
     private Dictionary<D3D10Instruction, HashSet<(RegisterKey Register, int Pair)>> _liveDoublePairs =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// Which pairs of its destination each instruction leaves holding a double,
-    /// whatever the instruction was. The mov record above is this one narrowed to
-    /// the opcode that needs it for its operands; a load needs it to know that the
-    /// pair it filled is about to be read as a double.
+    /// Per instruction of any opcode, the destination pairs it leaves holding a double.
     /// </summary>
     private Dictionary<D3D10Instruction, int> _madeDoublePairs =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// The movs that make a double out of two 32-bit values rather than carry one
-    /// that was already a double. Both kinds are in the mov record above, because
-    /// both leave a double in the destination pair - what this adds is which side
-    /// of the mov the shadow is on. A mov that carries one reads a shadow and
-    /// writes a shadow; one that makes a double reads two numbers and writes a
-    /// shadow, and naming a shadow on its source side named a pair that is not one.
-    ///
-    /// Per mov rather than per pair, which is as fine as the shape needs: a mov
-    /// that joined one of its pairs and carried the other would have to read a
-    /// uint2 and a double out of one operand, and fxc writes a double uniform as
-    /// the pair it already is rather than moving it anywhere.
+    /// Movs that join two 32-bit values into a double rather than carry one: their
+    /// source is not a shadow, only their destination.
     /// </summary>
     private HashSet<D3D10Instruction> _joinedDoubleMovs =
         new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>
-    /// Whether any instruction passes doubles at all, which is what makes the look
-    /// forward below worth doing. Every shader without one answers no and never
-    /// scans.
-    /// </summary>
     private bool _hasDoubleInstructions;
 
-    /// <summary>What wrote a register component and what reads it, which is the whole
-    /// of what this writer knows about a value: see ProgramOrder.</summary>
     private ProgramOrder _programOrder;
 
     /// <summary>
-    /// Walks the instructions in order keeping track of which register pairs hold a
-    /// double, so that a mov between two of them can be told from a mov of two
-    /// floats. A pair holds one from where a double instruction or a load of a double
-    /// member wrote it until something else writes either of its components; a mov
-    /// out of a pair that holds one carries the double on.
+    /// Tracks in program order which register pairs hold a double: from a double
+    /// write or double-member load until either component is overwritten.
     /// </summary>
     private void FindMovedDoubles()
     {
@@ -672,9 +567,7 @@ public class HlslSimpleWriter : HlslWriter
         var live = new HashSet<(RegisterKey Register, int Pair)>();
         foreach (Instruction instruction in _phaseShader.Instructions)
         {
-            // Before the destination is looked at, and before the write below
-            // changes what is live: a store has no temp destination and is exactly
-            // the instruction that has to know what the pair it reads was holding.
+            // Recorded before the destination check: stores have no temp destination.
             if (instruction is D3D10Instruction withSources && live.Count != 0)
             {
                 _liveDoublePairs[withSources] = [.. live];
@@ -696,9 +589,7 @@ public class HlslSimpleWriter : HlslWriter
                     _movedDoublePairs[d3d10] = madeDouble;
                 }
             }
-            // Every pair the instruction touches stops holding what it held, and the
-            // ones it just made doubles start. A write to one component of a pair is
-            // enough to lose the number: half a double is not one.
+            // Writing either component of a pair ends the double it held.
             for (int pair = 0; pair < 2; pair++)
             {
                 if ((writeMask & (0b11 << (pair * 2))) == 0)
@@ -719,11 +610,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether the value a structured store writes was a double when the store was
-    /// reached. The opcode cannot say and neither can the element: a store of a
-    /// double into a member that is not one is how a shader writes the number's two
-    /// words out, and there is no instruction for the split. What says is where the
-    /// walk above had got to.
+    /// Whether the value a structured store writes was a live double at the store.
     /// </summary>
     private bool StoresLiveDouble(D3D10Instruction instruction)
     {
@@ -733,7 +620,6 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        // Both halves of an aligned pair, or there is no double being stored.
         int mask = DestinationMask(instruction);
         byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
         for (int component = 0; component < 4; component += 2)
@@ -750,16 +636,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A store of a double into something that is not one, written as the asuint
-    /// that takes it apart. The two words come back through out parameters - there
-    /// is no expression for one of them - and fxc takes a buffer element's
-    /// components as those parameters directly, so no name has to be invented for
-    /// the pair on the way.
-    ///
-    /// False where the store is of something else, which leaves the assignment the
-    /// caller was about to write. A store into a member that *is* a double is one
-    /// of those: the element holds the number, and assigning the shadow to it is
-    /// the whole of what the instruction did.
+    /// Writes a double stored into a non-double member as `asuint(d, e.x, e.y)`.
+    /// False otherwise, including a store into a double member (a plain assignment).
     /// </summary>
     private bool WriteDoubleBitsStore(D3D10Instruction instruction, string target)
     {
@@ -779,7 +657,6 @@ public class HlslSimpleWriter : HlslWriter
         for (int pair = 0; pair < 2; pair++)
         {
             int low = pair * 2;
-            // Both halves, or it is not a double being written.
             if ((writeMask & (0b11 << low)) != (0b11 << low))
             {
                 continue;
@@ -798,17 +675,12 @@ public class HlslSimpleWriter : HlslWriter
                 isDouble = _registers.IsDoubleStructuredMember(
                     instruction.GetParamRegisterKey(3),
                     elementByteOffset + resourceSwizzle[low] * 4)
-                    // Or the member is not a double and a double instruction reads
-                    // the pair all the same, which makes the two components the
-                    // number's bits: the load is where they enter, so it is where
-                    // the asdouble that joins them goes. Left as a load of two
-                    // floats, the arithmetic read a shadow nothing had assigned to.
+                    // Or a double instruction reads the loaded pair: the load joins
+                    // the bits with asdouble.
                     || _programOrder.IsReadAsDouble(instruction, destination, pair);
             }
             else if (instruction.Opcode == D3D10Opcode.Mov)
             {
-                // The pair the mov reads for this pair of its destination, which the
-                // swizzle gives at the destination's own position.
                 byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
                 bool isAlignedPair = swizzle[low] % 2 == 0
                     && swizzle[low + 1] == swizzle[low] + 1;
@@ -818,17 +690,9 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     isDouble = isAlignedPair && live.Contains((source, swizzle[low] / 2));
                 }
-                // Two integers moved out of something that is not a register, into a
-                // pair a double instruction goes on to read: the two words of a
-                // double. fxc reads a double uniform straight off the pair it
-                // occupies and a uint2 uniform it cannot, so it movs that one into a
-                // register first, and the words enter the shader at the mov.
-                //
-                // Integers, because what the join needs is their bits: a pair of
-                // floats held in a register declared float would have to be read
-                // back through asuint, and whether such a register holds a number or
-                // a float's bits is the one thing this writer does not record - see
-                // the entries in EquivalenceTests.KnownDifferences that turn on it.
+                // Two integers (e.g. a uint2 uniform) moved into a pair a double
+                // instruction reads: the mov joins the double's two words. Integers
+                // only, since whether a float register holds bits is not recorded.
                 else if (_hasDoubleInstructions && isAlignedPair
                     && _programOrder.IsReadAsDouble(instruction, destination, pair)
                     && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
@@ -850,20 +714,14 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The two 32-bit values a two component operand names, one at a time, so that
-    /// the asdouble joining them can name each. Either a swizzle of two letters off
-    /// a wider variable - `bits.xy` - or a two wide one named whole, which a pair
-    /// that is the whole of what it is on comes out as.
-    ///
-    /// Null where the name is neither, which leaves the plain move the caller was
-    /// about to write rather than an asdouble of something that is not two values.
+    /// Splits a two-component operand name (`bits.xy`, or a whole two-wide variable)
+    /// into its components for asdouble. Null if it is neither.
     /// </summary>
     private static (string Low, string High)? SplitTwoComponentName(string name)
     {
         int dot = name.LastIndexOf('.');
         string swizzle = dot < 0 ? "" : name[(dot + 1)..];
-        // A dot inside a subscript is not a swizzle: `buffer[i.x]` names one value
-        // and ends in a letter all the same.
+        // A dot inside a subscript (`buffer[i.x]`) is not a swizzle.
         if (swizzle.Length == 0 || !swizzle.All(c => "xyzw".Contains(c)))
         {
             return ($"{name}.x", $"{name}.y");
@@ -874,10 +732,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a structured load fills a register pair with a double built out of
-    /// the two components of the element it read, rather than with the element's
-    /// own two numbers. The member is not a double - the element says nothing - and
-    /// what makes it one is that a double instruction goes on to read the pair.
+    /// Whether a structured load of a non-double member fills a pair a double
+    /// instruction then reads, so the load is written as an asdouble.
     /// </summary>
     private bool MakesDoubleFromBits(D3D10Instruction instruction)
     {
@@ -887,23 +743,15 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        // The one shape the join can be written in: the whole of what the load
-        // writes is one pair, and the element is a vector whose components can be
-        // named one at a time. An element with members of its own puts the two words
-        // who knows where in it, and `asdouble` of a member is not something this
-        // writer can spell.
+        // Only one pair loaded from a plain vector element; struct members are unsupported.
         return instruction.GetDestinationWriteMask() is 0b0011 or 0b1100
             && _registers.FindStructuredBuffer(instruction.GetParamRegisterKey(3))
                 ?.ElementType is { MemberInfo: null or { Count: 0 } };
     }
 
     /// <summary>
-    /// A double a constant buffer holds, named by which element of its variable it is
-    /// rather than by the components it takes: the second double of a double2 is at
-    /// cb0[0].zw, and the swizzle a register read would give it calls it `.zw`. A
-    /// double4 spills into the next register, and the base counts back over the ones
-    /// the variable has already filled, so its `.z` is the second register's first
-    /// pair.
+    /// Names a constant-buffer double by its element, not its components: a double2's
+    /// second double at cb0[0].zw is `.y`. A double4 spills into the next register.
     /// </summary>
     private string GetDoubleConstantOperandName(D3D10Instruction instruction, int operandIndex)
     {
@@ -934,34 +782,27 @@ public class HlslSimpleWriter : HlslWriter
         return elements == "xyzw"[..width] ? name : $"{name}.{elements}";
     }
 
+    /// <summary>
+    /// The shadow variable naming an operand's doubles, or null if it holds none.
+    /// A source names one double per value computed; fxc puts the nth at slot 2n.
+    /// </summary>
     private string GetDoubleRegisterOperandName(D3D10Instruction instruction, int operandIndex)
     {
         bool isDestination = instruction.IsDestinationOperand(operandIndex);
-        // A structured load or store carries a double as plainly as the arithmetic
-        // does, and the element says so where the opcode cannot: a load from a
-        // StructuredBuffer<double> fills a pair, and written to the register's two
-        // float components the arithmetic that follows read a shadow nothing had
-        // assigned to.
+        // Structured loads/stores carry doubles by element type, not by opcode.
         bool isStructuredDouble = instruction.Opcode switch
         {
             D3D10Opcode.LdStructured => operandIndex == 0
                 && (IsDoubleStructuredComponent(instruction, 3)
                     || MakesDoubleFromBits(instruction)),
-            // And a store of a double into a member that is not one, which is how
-            // a shader writes the number's two words out: the value is still the
-            // double in the shadow, and the asuint that splits it is written where
-            // the store is.
+            // A double stored into a non-double member is split by asuint at the store.
             D3D10Opcode.StoreStructured => operandIndex == 3
                 && (IsDoubleStructuredComponent(instruction, 0)
                     || StoresLiveDouble(instruction)),
             _ => false,
         };
-        // And a mov says so only through the walk: which of its halves carry a
-        // double was decided by what the registers held when it was reached.
         int movedPairs = _movedDoublePairs.TryGetValue(instruction, out int moved) ? moved : 0;
-        // The destination of either kind of mov, and the source of one that carries
-        // a double rather than making one out of two numbers: there is no shadow on
-        // the reading side of a join.
+        // A joining mov has no shadow on its source side.
         bool isMovedDouble = movedPairs != 0
             && (operandIndex == 0
                 || (operandIndex == 1 && !_joinedDoubleMovs.Contains(instruction)));
@@ -976,8 +817,6 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         var pairs = new List<int>();
-        // A mov names the pairs the walk found on both sides of it: the destination's
-        // own, and for the source whichever pair the swizzle reads for each of them.
         if (isMovedDouble)
         {
             byte[] movSwizzle = instruction.GetSourceSwizzleComponents(1);
@@ -990,8 +829,7 @@ public class HlslSimpleWriter : HlslWriter
                 pairs.Add(isDestination ? pair : movSwizzle[pair * 2] / 2);
             }
         }
-        // The value a structured store carries is read at the components its mask
-        // names, which is the destination's mask and not this operand's swizzle.
+        // A store's value is read at the destination mask's components.
         else if (isStructuredDouble && !isDestination)
         {
             int storeMask = DestinationMask(instruction) & 0b0101;
@@ -1029,8 +867,7 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         string name = GetDoubleRegisterName(registerKey);
-        // A register with only the one pair of doubles in it is declared a double
-        // and has no halves to name.
+        // Only the .xy pair: declared a scalar double.
         if (GetDoublePairMask(registerKey) == 1)
         {
             return name;
@@ -1039,20 +876,9 @@ public class HlslSimpleWriter : HlslWriter
         return subscript == "xy" ? name : $"{name}.{subscript}";
     }
 
-    // Only when every written component is an integer no float instruction ever
-    // touches. fxc reuses a register freely, and one it uses for a loop counter and
-    // later for an angle is a float register holding an integer for a while, not
-    // an int register holding a float - the float would truncate. What such a
-    // component holds, and how the integer instructions get at it, is the
-    // register's storage: see IntegerOperandAnalysis.GetStorage.
     /// <summary>
-    /// Whether every write of a register asks for partial precision, which is what
-    /// lets it be declared half and the half cast come off each of those writes.
-    ///
-    /// Every write, because the modifier is a property of the instruction and not of
-    /// the register: fxc fills one with a mov_sat at full precision and overwrites it
-    /// with a mul_pp, and declaring that half would narrow the write that did not ask
-    /// for it.
+    /// Whether every write of a register is _pp, so it can be declared half. One
+    /// full-precision write is enough to keep it float.
     /// </summary>
     private bool IsHalfTempRegister(RegisterKey registerKey)
     {
@@ -1076,6 +902,7 @@ public class HlslSimpleWriter : HlslWriter
         return written;
     }
 
+    // Only if no float ever lands in it: a float in an int register would truncate.
     private bool IsIntegerTempRegister(RegisterKey registerKey, int writeMask)
     {
         if (_integerOperandAnalysis == null || registerKey is not D3D10RegisterKey)
@@ -1100,9 +927,7 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
-        // A constant buffer variable is kept the way it was declared: an int
-        // index moved into an int register is a move, not a conversion, and
-        // `(int)idx` over an int said otherwise.
+        // A constant buffer variable keeps its declared type.
         if (instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer)
         {
             return IsIntegerConstant(instruction, operandIndex)
@@ -1116,8 +941,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return ComponentStorage.Numeric;
         }
-        // Every component of a register shares its declaration, so the first one
-        // read answers for all of them.
+        // All components share the register's declaration.
         ComponentStorage storage = ComponentStorage.Numeric;
         foreach (byte component in instruction.GetSourceSwizzleComponents(operandIndex).Distinct())
         {
@@ -1156,14 +980,7 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
-        // oMask joins the temps because the analysis has a type for it - a uint -
-        // where a register outside them usually holds whatever number it is given.
-        // Outputs join them too, typed by their signature: `mov o1.x, vPrim` moves
-        // the primitive id whole, and a float carried on the way into a uint output
-        // keeps its bits only below 2^24. The same answer IsFloatOutput already
-        // gives of them - the instructions say nothing about what an output holds,
-        // and left untyped, an integer reaching an int output was always a crossing
-        // into a float one.
+        // oMask is a uint; outputs are typed by their signature.
         if (instruction.GetOperandType(operandIndex)
             is not (OperandType.Temp or OperandType.OutputCoverageMask or OperandType.Output))
         {
@@ -1210,19 +1027,13 @@ public class HlslSimpleWriter : HlslWriter
                 ? _integerOperandAnalysis.GetStructuredElementKind(instruction)
                 : ValueKind.Integer;
         }
-        // A typed view is addressed by a coordinate: a texel index, whatever the
-        // texel it names is kept as. Read as a float, an integer coordinate in a
-        // register of bits was reinterpreted - `tex[asfloat(coordinate)]`, which
-        // truncates the bits of a float back into an index of a texel nobody asked
-        // for.
+        // A typed view's coordinate is an integer texel index.
         if (instruction.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped
             && operandIndex == 1)
         {
             return ValueKind.Integer;
         }
-        // And the texel itself is whatever the view holds. Taken for the float a
-        // texel usually is, an integer one was stored through asfloat(), which HLSL
-        // converts back by value: the texel became the number its bits spell.
+        // The stored texel is whatever the view holds, not always a float.
         if (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 2)
         {
             return _integerOperandAnalysis.GetTypedStoreKind(instruction);
@@ -1231,8 +1042,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return ValueKind.Bits;
         }
-        // An attribute is a float and where it is evaluated is not: a sample index,
-        // or an offset counted in sixteenths of a pixel.
+        // The evaluation place (sample index, or offset in 1/16 pixel) is an integer.
         if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped)
         {
             return operandIndex == 2 ? ValueKind.Integer : ValueKind.Float;
@@ -1241,12 +1051,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a conditional break's comparison is one the shader itself settled:
-    /// both sides constants it defined, and the comparison between them true.
-    ///
-    /// True only, never false. fxc does not emit a break that never breaks, so a
-    /// false answer here means this has misread something - and dropping the break
-    /// on that reading is a larger claim than writing the `break;` on a true one.
+    /// Whether a break_comp compares two def constants and is true. A false result
+    /// still keeps the conditional break rather than dropping it.
     /// </summary>
     private bool IsSettledComparison(D3D9Instruction instruction)
     {
@@ -1268,10 +1074,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The one value a source operand reads, where it is a constant the shader
-    /// defined with def and carries a modifier that can be applied to it here.
-    /// Null for a register the shader computes or a uniform the application sets,
-    /// neither of which has a value to read at this point.
+    /// The value a source reads from a def constant, with its modifier applied.
     /// </summary>
     private float? DefinedConstantValue(D3D9Instruction instruction, int operandIndex)
     {
@@ -1303,50 +1106,35 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A value carried by a mov or a movc out of a register of one declaration into
-    /// one of the other. An integer moving between them is converted - it is a
-    /// number on both sides - and a float held as bits is read back out of them.
-    /// Putting one *into* bits is left to <see cref="WriteResult"/>, which wraps the
-    /// whole expression and so keeps a saturate inside the reinterpretation rather
-    /// than around it.
+    /// A mov/movc source crossing between int and float declarations: an integer is
+    /// converted, a float held as bits is read back. Putting a float into bits is
+    /// left to <see cref="WriteResult"/>, so a saturate stays inside it.
     /// </summary>
     private string Moved(D3D10Instruction instruction, int sourceIndex, string name)
     {
         if (instruction.GetOperandType(sourceIndex) == OperandType.Immediate32)
         {
-            // An integer immediate is a number in either declaration; a float one
-            // goes into an int register as its bits, written as the integer they
-            // are. `asint(1)` is not them: a whole float prints without a decimal
-            // point, and HLSL reads that as the integer 1.
+            // A float immediate into an int register is written as its bits;
+            // `asint(1)` would read a whole float as the integer 1.
             return !IsIntegerImmediate(instruction)
                 && GetDestinationStorage(instruction, 0) == ComponentStorage.Integer
                 ? ImmediateBits(instruction, sourceIndex)
                 : name;
         }
-        // A double moves between the shadows it is kept in, which are doubles
-        // whatever the registers around them are declared: `mov r2.zw, r1.zzzw`
-        // after a dmov into an int4 register came out as `d2.y = asfloat(d1.y)`,
-        // which does not compile.
+        // Double shadows are doubles whatever the register's declaration.
         if (GetDoubleRegisterOperandName(instruction, sourceIndex) != null)
         {
             return name;
         }
-        // Between registers of one declaration a move carries what is there, bits
-        // and all: a movc selecting between two sets of bits selects bits, and
-        // reading them as floats to select between them would flush a small integer
-        // to zero. Only a move between the two declarations converts, and then a
-        // float is reinterpreted where an integer is converted. Putting a float
-        // *into* bits is left to WriteResult, which wraps the whole expression and
-        // so keeps a saturate inside the reinterpretation rather than around it.
+        // Same declaration: carry the bits as they are (reading them as floats
+        // would flush small integers to zero).
         ComponentStorage source = GetSourceStorage(instruction, sourceIndex);
         ComponentStorage destination = GetDestinationStorage(instruction, 0);
         if (source == destination)
         {
             return name;
         }
-        // Where every source crosses, the conversion goes on once around the whole
-        // expression in WriteResult; where only some do, each of those carries its
-        // own, since the halves of a select have to meet as the same kind.
+        // If every source crosses, WriteResult converts the whole expression once.
         if (IsReinterpretedResult(instruction, 0))
         {
             return name;
@@ -1355,31 +1143,22 @@ public class HlslSimpleWriter : HlslWriter
         {
             return source == ComponentStorage.Integer ? $"asfloat({name})" : AsInt(name);
         }
-        // As wide as what is being moved. A scalar cast over two components takes
-        // the first and spreads it: `(float)vThreadID.xy` is the x of it twice, and
-        // an address built that way reads the wrong texel - which is what
-        // `mov r0.xy, vThreadID.xy` came out as.
+        // As wide as the move: `(float)vThreadID.xy` would be x twice.
         int length = MovedComponentCount(instruction);
         string size = length == 1 ? "" : length.ToString();
         return destination == ComponentStorage.Integer ? $"(int{size}){name}" : $"(float{size}){name}";
     }
 
-    /// <summary>
-    /// How many components a move carries: the ones its destination mask names.
-    /// </summary>
     private static int MovedComponentCount(D3D10Instruction instruction)
     {
         return instruction.HasDestination ? instruction.GetDestinationMaskLength() : 1;
     }
 
-    // How an immediate an instruction reads is printed: as an integer where the
-    // opcode says so, or where a mov's readers do.
+    // Whether an instruction's immediates print as integers: by opcode, or for a
+    // mov by its readers.
     private bool IsIntegerImmediate(D3D10Instruction instruction)
     {
-        // The only immediate an eval takes is the place it evaluates the attribute
-        // at - a sample index, or an offset in sixteenths of a pixel - whatever the
-        // attribute itself is made of. A samplepos takes one immediate too, and it
-        // is the sample it asks about, however much of a float2 it answers with.
+        // Their only immediate is a sample index or offset.
         if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.EvalSnapped
             or D3D10Opcode.SamplePos)
         {
@@ -1397,15 +1176,11 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether what an instruction writes goes into an int register as a float's
-    /// bits. A move between registers of one declaration is not that: it carries
-    /// what is there as it is.
+    /// Whether an instruction writes a float's bits into an int register. A move
+    /// between registers of one declaration does not.
     /// </summary>
     private bool IsReinterpretedResult(D3D10Instruction instruction, int destinationIndex)
     {
-        // The register's declaration and not the component's history: a load writing
-        // a whole register writes a float into every component of it, whatever each
-        // of them holds elsewhere in the shader.
         if (GetDestinationStorage(instruction, destinationIndex) != ComponentStorage.Integer
             || instruction.GetOperandType(destinationIndex) != OperandType.Temp)
         {
@@ -1415,15 +1190,13 @@ public class HlslSimpleWriter : HlslWriter
         {
             int firstValue = instruction.Opcode == D3D10Opcode.Mov ? 1 : 2;
             ComponentStorage destination = GetDestinationStorage(instruction, destinationIndex);
-            // An immediate carries its own reinterpretation, as the bits it is.
+            // An immediate is already written as bits.
             if (Enumerable.Range(firstValue, instruction.OperandTokens.OperandCount - firstValue)
                 .Any(value => instruction.GetOperandType(value) == OperandType.Immediate32))
             {
                 return false;
             }
-            // A register of the same declaration on either side carries what is
-            // there; only a temp answers for its own declaration, an input or a
-            // constant being a value whatever the register rule makes of it.
+            // A temp source of the same declaration carries its bits as they are.
             if (Enumerable.Range(firstValue, instruction.OperandTokens.OperandCount - firstValue)
                 .Any(value => instruction.GetOperandType(value) == OperandType.Temp
                     && GetSourceStorage(instruction, value) == destination))
@@ -1435,8 +1208,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether what an instruction writes is a float. A mov carries whatever it is
-    /// given, so the operand it carries answers for it.
+    /// Whether an instruction writes a float; for a mov, decided by its sources.
     /// </summary>
     private bool IsFloatValue(D3D10Instruction instruction)
     {
@@ -1444,8 +1216,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return GetProducedKind(instruction) == ValueKind.Float;
         }
-        // A saturating move clamps to [0, 1], which is a float's range and nothing
-        // an integer is put through.
+        // Saturate implies a float.
         if (instruction.Saturate)
         {
             return true;
@@ -1471,8 +1242,7 @@ public class HlslSimpleWriter : HlslWriter
         return true;
     }
 
-    // Whether a numeric operand only ever holds integers: read and written by
-    // integer instructions and never by a float one.
+    // Whether a numeric operand is only ever touched by integer instructions.
     private bool HoldsIntegers(D3D10Instruction instruction, int operandIndex)
     {
         RegisterKey key = instruction.GetParamRegisterKey(operandIndex);
@@ -1488,9 +1258,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The register a call through an interface leaves its result in: not an operand
-    /// of the fcall - it has none - but the one register every body it could run
-    /// writes. Null for every other instruction.
+    /// The register an fcall's bodies all return into (fcall has no destination
+    /// operand); null for other instructions.
     /// </summary>
     private RegisterKey InterfaceCallDestination(D3D10Instruction instruction)
     {
@@ -1537,9 +1306,8 @@ public class HlslSimpleWriter : HlslWriter
         return tempRegisters;
     }
 
-    // udiv and sincos write two registers, and HasDestination does not describe them
-    // - it answers for the one destination the rest of the model assumes. Either of
-    // the two may be null where the shader wants only one of the results.
+    // udiv, sincos and imul write two registers, which HasDestination does not
+    // describe; either may be null.
     private static IEnumerable<int> GetDestinationParamIndices(Instruction instruction)
     {
         if (instruction is D3D10Instruction d3d10
@@ -1566,9 +1334,7 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction is D3D9Instruction d3d9)
         {
             RegisterType type = d3d9.GetParamRegisterType(destIndex);
-            // Addr and Texture are one register type number. In a vertex shader it is
-            // the address register, which needs declaring like a temp; in a pixel
-            // shader it is a texture coordinate input, which does not.
+            // Addr and Texture share a type number: a0 in a vertex shader, tN in a pixel shader.
             return type == RegisterType.Temp
                 || (type == RegisterType.Addr && _shader.Type != ShaderType.Pixel);
         }
@@ -1581,8 +1347,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return "r" + registerKey.Number;
         }
-        // `mova` writes the address register like a temp, so it is collected as
-        // one and needs a name and a declaration for the same reason.
+        // `mova` writes the address register like a temp.
         if (registerKey is D3D9RegisterKey d3d9RegisterKey && d3d9RegisterKey.Type == RegisterType.Addr)
         {
             return "a" + registerKey.Number;
@@ -1598,8 +1363,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             source = $"saturate({source})";
         }
-        // Not where the register it is written to is declared half: the declaration
-        // asks for the same precision, once, for every write of it.
+        // Not into a register already declared half.
         if (resultModifier.HasFlag(ResultModifier.PartialPrecision)
             && !IsHalfDestination(instruction))
         {
@@ -1622,8 +1386,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return IsHalfTempRegister(key);
         }
-        // An output the signature declares at partial precision is a half already -
-        // `half4 o;` - so a half cast on the way into it says the same thing twice.
+        // An output declared at partial precision is already half.
         return _registers.MethodOutputRegisters
             .Any(declaration => declaration.RegisterKey.Equals(key)
                 && declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision));
@@ -1642,12 +1405,7 @@ public class HlslSimpleWriter : HlslWriter
                     $"{GetSourceName(instruction, 1)} + {GetSourceName(instruction, 2)}");
                 break;
             case Opcode.BreakC:
-                // fxc writes an unconditional break as a comparison it already knows
-                // the answer to - `break_ne c11.y, -c11.y` over a defined 1 - because
-                // a break inside an if is what shader model 3 has instead of one.
-                // Written out literally that reads `if (1 != -1) break;`, which is
-                // every loop in the profile that breaks. The ast writer evaluates the
-                // comparison and says `break;`, and this is the same answer.
+                // fxc writes an unconditional break as `break_ne c11.y, -c11.y` over def 1.
                 if (IsSettledComparison(instruction))
                 {
                     WriteLine("break;");
@@ -1656,21 +1414,17 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 break;
             case Opcode.Cmp:
-                // HLSL's ?: on a vector selects per component, as cmp does: fxc
-                // compiles it back to one cmp over the written components.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
                 break;
             case Opcode.Crs:
-                // A cross product reads three components to write any one of them, and
-                // writes the three the destination mask covers, the way nrm does.
+                // Always reads three components, whatever the mask.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"cross({GetSourceName(instruction, 1, 3)}, {GetSourceName(instruction, 2, 3)})");
                 break;
             case Opcode.DP2Add:
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    // The two vectors are two components wide whatever is written; the
-                    // addend is a scalar and must not take that width too.
+                    // The addend is a scalar, not the vectors' width.
                     $"dot({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)}) + {GetSourceName(instruction, 3, 1)}");
                 break;
             case Opcode.Dp3:
@@ -1680,9 +1434,7 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.Dst:
                 {
-                    // The fixed-function distance step: x is 1, y is the product of
-                    // the two y's, z and w come one from each source. Both sources
-                    // are read at fixed components, so both are named at full width.
+                    // dst reads fixed components, so both sources are named at full width.
                     string first = GetSourceName(instruction, 1, 4);
                     string second = GetSourceName(instruction, 2, 4);
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -1732,8 +1484,6 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.Lit:
                 {
-                    // n.l, n.h and the specular power come from x, y and w of the one
-                    // source, so it is named at full width and indexed three times.
                     string source = GetSourceName(instruction, 1, 4);
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                         $"lit({source}.x, {source}.y, {source}.w)");
@@ -1754,7 +1504,7 @@ public class HlslSimpleWriter : HlslWriter
                 string loopVariable = "i" + _loopVariableIndex;
                 if (intRegister == null)
                 {
-                    // The trip count is a uniform, declared rather than defined by a defi.
+                    // No defi: the trip count is a uniform.
                     string count = _registers.GetRegisterName(
                         new D3D9RegisterKey(RegisterType.ConstInt, loopRegisterNumber));
                     WriteLine("for (int {1} = 0; {1} < {0}; {1}++) {{", count, loopVariable);
@@ -1772,9 +1522,7 @@ public class HlslSimpleWriter : HlslWriter
                 indent += "\t";
                 break;
             case Opcode.Lrp:
-                // lrp is dst = src2 + src0 * (src1 - src2), so src2 is what it
-                // blends from and src1 what it blends to. Naming them in bytecode
-                // order blended the wrong way round.
+                // lrp is src2 + src0 * (src1 - src2): operands reversed for lerp.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"lerp({GetSourceName(instruction, 3)}, {GetSourceName(instruction, 2)}, {GetSourceName(instruction, 1)})");
                 break;
@@ -1788,11 +1536,7 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.M4x3:
             case Opcode.M4x4:
                 {
-                    // A dot product per row against consecutive registers, the matrix
-                    // operand naming the first of them. The first number in the
-                    // mnemonic is how wide the vector and each row are, the second how
-                    // many rows there are - and the rows are the components written,
-                    // so neither operand is as wide as the destination mask.
+                    // mNxM: N is the vector/row width, M the row count (consecutive registers).
                     int columns = instruction.Opcode is Opcode.M4x3 or Opcode.M4x4 ? 4 : 3;
                     int rows = instruction.Opcode switch
                     {
@@ -1841,7 +1585,6 @@ public class HlslSimpleWriter : HlslWriter
                 int repRegisterNumber = instruction.GetParamRegisterNumber(0);
                 ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(repRegisterNumber);
                 _loopVariableIndex++;
-                // As with loop, the trip count is a uniform when there is no defi.
                 object repCount = loopRegister != null
                     ? loopRegister[0]
                     : _registers.GetRegisterName(
@@ -1862,8 +1605,7 @@ public class HlslSimpleWriter : HlslWriter
                     $"({GetSourceName(instruction, 1)} >= {GetSourceName(instruction, 2)}) ? 1 : 0");
                 break;
             case Opcode.Sgn:
-                // The two registers after the value are scratch space the hardware
-                // wanted and nothing reads, so they are no part of the result.
+                // The other two sources are scratch registers.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"sign({GetSourceName(instruction, 1)})");
                 break;
@@ -1933,38 +1675,17 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.Comment:
             case Opcode.End:
                 break;
-            // What reaches here is the part of the shader model 1 to 3 instruction set
-            // that fxc does not emit: the matrix multiplies m4x4 to m3x2, crs, sgn, dst,
-            // cnd, expp, logp, bem, the ps_1_x texture addressing instructions, and
-            // call, callnz and setp. The expression writer handles several of them
-            // already, so a shader assembled by hand - which is where they come from,
-            // there being no HLSL that compiles to them - decompiles as an expression
-            // and throws here. Filling them in is not the difficulty; having nothing to
-            // check it against is. This fxc refuses ps_1_x outright (X3539) and never
-            // chooses the others, so no fixture can be made for any of them the way
-            // every other one here was.
+            // Instructions fxc never emits (cnd, expp, logp, bem, call, setp, ...)
+            // have no fixture to check a transcription against.
             default:
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
     }
 
-    // ftoi, ftou, itof and utof each say how to read their source and what to make
-    // of it, and a plain move says neither. A temp register is declared with one
-    // integer type, so utof on a register holding 0xFFFFFFFF read it as -1 where
-    // the original reads 4294967295. The reading is a reinterpretation of the same
-    // bits; only the outer cast converts. Both are as wide as what is written,
-    // since a bare (float) over two components is X3014.
     /// <summary>
-    /// firstbit_hi and firstbit_shi, which HLSL has one function for and counts
-    /// the other way round: firstbithigh gives the position of the bit from the
-    /// bottom, and both instructions give the number of bits above it. So the
-    /// statement is the subtraction, and the case each instruction has no answer
-    /// for has to be said as well - a word with no bit to find answers 0xffffffff
-    /// rather than the 32 the subtraction would give. The signed form has two such
-    /// words, 0 and -1, being the two whose bits are all their own sign.
-    ///
-    /// The cast is what picks the instruction: firstbithigh over a uint is
-    /// firstbit_hi and over an int it is firstbit_shi, and a temp is declared int.
+    /// firstbit_hi/shi count from the top, HLSL's firstbithigh from the bottom:
+    /// written as 31 - firstbithigh, with -1 where no bit is found (0, and -1 for
+    /// the signed form). A uint cast selects firstbit_hi over firstbit_shi.
     /// </summary>
     private void WriteFirstBitHigh(D3D10Instruction instruction, bool signed)
     {
@@ -1977,14 +1698,14 @@ public class HlslSimpleWriter : HlslWriter
             $"{found} ? 31 - firstbithigh({value}) : -1");
     }
 
+    // ftoi/ftou/itof/utof: the inner cast reinterprets the source, the outer one
+    // converts; both as wide as the write (a bare (float) over a vector is X3014).
     private void WriteConversion(D3D10Instruction instruction, string readAs, string convertTo)
     {
         int length = instruction.GetDestinationMaskLength();
         string size = length == 1 ? "" : length.ToString();
         string source = GetOperandName(instruction, 1);
-        // An int register holds the integer already, and `(int)` on top of that would
-        // convert it to itself. `(uint)` is not the same nothing: it says which half
-        // of the range the bits mean, and utof of a negative int is not itof of it.
+        // `(int)` on an int register is a no-op; `(uint)` is not (utof != itof).
         string reinterpreted = readAs == null
                 || (readAs == "int" && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
             ? source
@@ -1994,9 +1715,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// dtof and dtoi, and ftod and itod the other way about: as wide as the values
-    /// converted rather than as the components they take, one side of the conversion
-    /// filling two components for each value where the other fills one.
+    /// Double conversions, sized by value count rather than component count.
     /// </summary>
     private void WriteDoubleConversion(D3D10Instruction instruction, string convertTo)
     {
@@ -2006,32 +1725,17 @@ public class HlslSimpleWriter : HlslWriter
             $"({convertTo}{size}){GetOperandName(instruction, 1)}");
     }
 
-    // A comparison writes all ones for true and all zeroes for false, which is what
-    // lets an and with it act as a mask. A mask is bits, so the register holding it
-    // is an int one, where -1 and 0 are the numbers wanted; where the mask goes into
-    // a float register instead, nothing integer ever touches it and its readers only
-    // test it, for which -1 and 0 do as well.
+    // A comparison writes all ones (-1) for true and 0 for false, a mask.
     private void WriteComparison(D3D10Instruction instruction, string op, bool unsigned = false)
     {
         string left = GetOperandName(instruction, 1);
         string right = GetOperandName(instruction, 2);
-        // A temp register is declared signed, and `<` between signed values orders
-        // them by sign first: ult held 0x80000000 to be below 1, and written without
-        // this the comparison said the opposite. One side is enough - the other is
-        // promoted to match whichever is unsigned - so a register already declared
-        // one needs nothing, and the cast goes on the side that is not an immediate,
-        // where it says something.
+        // Temps are declared signed, so ult/uge cast each non-uint side to uint.
+        // Immediates are left alone: `(uint)0 <= x` draws a tautology warning.
         if (unsigned)
         {
             int length = instruction.GetDestinationMaskLength();
             string size = length == 1 ? "" : length.ToString();
-            // Whichever side is not unsigned already, rather than one of them where
-            // neither is. One was enough to make the comparison unsigned - HLSL
-            // promotes the other to match - but a signed operand beside an unsigned
-            // one is a mismatch it resolves by assuming unsigned and warns about, and
-            // this writer says what it means everywhere else. An immediate is left
-            // alone: a literal takes the type it is compared against, and `(uint)0 <=
-            // x` is a tautology fxc warns about in its own right.
             if (!IsUnsignedOperand(instruction, 1)
                 && instruction.GetOperandType(1) != OperandType.Immediate32)
             {
@@ -2047,26 +1751,15 @@ public class HlslSimpleWriter : HlslWriter
             $"({left} {op} {right}) ? -1 : 0");
     }
 
-    // Whether the instruction reads its integer operands as unsigned. Only the
-    // opcodes that come in both forms need asking: the unsigned one of a pair says
-    // what its operands are, where an opcode with no signed counterpart says nothing
-    // about them either way.
+    // The unsigned half of a signed/unsigned opcode pair.
     private static bool ReadsUnsignedImmediates(D3D10Instruction instruction)
     {
         return instruction.Opcode is D3D10Opcode.ULT or D3D10Opcode.UGE
             or D3D10Opcode.UMax or D3D10Opcode.UMin or D3D10Opcode.UShr;
     }
 
-    /// <summary>
-    /// Whether the operand is a register HLSL already reads as unsigned - a uint
-    /// constant buffer variable, an input the signature types one, a thread id. A
-    /// temp is never one: the writer declares them all int.
-    /// </summary>
-    // An addend of an iadd, as an int where it is an unsigned register and the
-    // other addend a negative immediate. HLSL adds a uint and an int as uints, so
-    // `id.x + -4` wrapped to four thousand million, and the register the number
-    // went into - a float, holding it as a number - held that where the shader
-    // had -4: blur_row's clamp at zero let it through.
+    // An unsigned iadd operand cast to int when the other is a negative immediate:
+    // HLSL adds uint and int as uint, so `id.x + -4` would wrap.
     private string SignedAddend(D3D10Instruction instruction, int operandIndex, int otherIndex)
     {
         string name = GetOperandName(instruction, operandIndex);
@@ -2086,6 +1779,10 @@ public class HlslSimpleWriter : HlslWriter
         return $"(int{size}){name}";
     }
 
+    /// <summary>
+    /// Whether HLSL already reads the operand as uint (uint cbuffer variable,
+    /// uint input, thread id). Temps are always declared int.
+    /// </summary>
     private bool IsUnsignedOperand(D3D10Instruction instruction, int operandIndex)
     {
         if (instruction.GetOperandType(operandIndex) is OperandType.Immediate32
@@ -2096,13 +1793,8 @@ public class HlslSimpleWriter : HlslWriter
         return DeclaredTypeOf(instruction, operandIndex) == DeclaredType.Uint;
     }
 
-    // and, or and xor work on the bits, whatever the register holding them is
-    // declared as. A register holding what a float comparison wrote is declared
-    // float, and HLSL will not apply a bitwise operator to one - X3082 - so where
-    // that happens the bits are named directly. asint and asfloat reinterpret
-    // rather than convert, which is what makes this the same operation and not a
-    // rounding of it: the mask anded here is 0x3f800000, the bits of 1.0f, and
-    // converting it to an integer would make it 1065353216.
+    // and/or/xor on a float register go through asint/asfloat: HLSL rejects
+    // bitwise operators on floats (X3082), and a conversion would change the bits.
     private void WriteBitwise(D3D10Instruction instruction, string op)
     {
         bool reinterpret = !IsIntegerDestination(instruction);
@@ -2117,33 +1809,16 @@ public class HlslSimpleWriter : HlslWriter
     {
         if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
         {
-            // What a bitwise operator ands is the immediate's bits, whatever the
-            // register holding the other operand is declared as, and they are
-            // written as the integer they are. `asint(1)` is not them: a whole
-            // float prints without a decimal point, and HLSL reads that as the
-            // integer 1.
+            // The immediate's bits as an integer; `asint(1)` would read 1.0f as 1.
             return ImmediateBits(instruction, operandIndex);
         }
         string name = GetOperandName(instruction, operandIndex);
-        // An integer is one already; a float has to be reinterpreted, HLSL not
-        // applying a bitwise operator to one at all (X3082).
         return HoldsInteger(instruction, operandIndex) ? name : AsInt(name);
     }
 
-    // The value immediate of a structured store into groupshared memory declared
-    // integer: the bits the store writes, as the integer they are. A store says
-    // nothing of what its value is, so the immediate was printed as a float - and
-    // an int array took l(3), a denormal, as 0.000000 and stored zero. Null where
-    // the value is not an immediate or the memory is declared float.
     /// <summary>
-    /// A structured load into an int register that reads float members and integer
-    /// members together, built as an int vector with the floats carried in as their
-    /// bits. Members of one kind are reinterpreted whole by WriteResult; a mix
-    /// answered to neither, and the constructor was a float one: `r1 =
-    /// float4(p.vel, p.flags)` into an int4 converted the velocity to integers, and
-    /// the mad that read it back through asfloat read the bits of those. A float
-    /// register is left as it was - it holds an integer as the number, which is
-    /// what the utof after it reads.
+    /// A structured load of mixed float and int members into an int register, built
+    /// as an int vector with the floats as asint. Null unless the members are mixed.
     /// </summary>
     private string MixedStructuredLoad(D3D10Instruction instruction, RegisterKey buffer,
         string element, int offset, List<int> read)
@@ -2161,6 +1836,8 @@ public class HlslSimpleWriter : HlslWriter
         return $"int{read.Count}({string.Join(", ", members)})";
     }
 
+    // An immediate stored to int groupshared memory, as integer bits (l(3) is a
+    // denormal float, which prints as 0).
     private string StoredImmediateBits(D3D10Instruction instruction)
     {
         if (instruction.GetOperandType(3) != OperandType.Immediate32
@@ -2193,11 +1870,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return true;
         }
-        // An output register is typed by its signature, not by the storage analysis -
-        // which files every output as numeric, since a float register holds whatever
-        // it is given. A bitwise write to an int output is an integer write: it wants
-        // `o.z = x ^ y`, and `o.z = asfloat(x ^ y)` converts the bits it was writing
-        // into the number they happen to make.
+        // Outputs are typed by their signature.
         if (instruction.GetOperandType(destinationIndex.Value) == OperandType.Output)
         {
             return !IsFloatOutput(instruction, destinationIndex.Value);
@@ -2205,11 +1878,6 @@ public class HlslSimpleWriter : HlslWriter
         return GetDestinationStorage(instruction, destinationIndex.Value) == ComponentStorage.Integer;
     }
 
-    // A D3D10 result can be clamped to [0, 1] by a bit on the instruction rather
-    // than by anything in the operands, and dropping it is not visible in the
-    // output - dp3_sat feeding a log became log2 of a negative number. Every case
-    // here assigns, in the one shape `{0} = <expression>;`, so the clamp goes on
-    // around the expression.
     private void WriteMsadLanes(D3D10Instruction instruction)
     {
         string[] reference = OperandComponentNames(instruction, 1);
@@ -2224,8 +1892,7 @@ public class HlslSimpleWriter : HlslWriter
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), value);
     }
 
-    // An operand's components one at a time, for the components the instruction
-    // writes: `packed.xw` is packed.x and packed.w.
+    // `packed.xw` as packed.x and packed.w, one per written component.
     private string[] OperandComponentNames(D3D10Instruction instruction, int operandIndex)
     {
         string name = GetOperandName(instruction, operandIndex);
@@ -2252,32 +1919,20 @@ public class HlslSimpleWriter : HlslWriter
         {
             format = Wrapped(format, "saturate");
         }
-        // An output register the signature types as a float holds an integer result
-        // as its bits: a shader packing two half floats ends with `iadd o0.x, ...`,
-        // and that is a float's bit pattern and not the number the bits add up to.
+        // An integer result into a float output is its bits.
         if (GetProducedKind(instruction) == ValueKind.Integer
             && IsFloatOutput(instruction, destinationIndex)
             && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
             format = Wrapped(format, "asfloat");
         }
-        // And a dword a buffer handed back, into a register declared float: those
-        // bits are a float's. A buffer holds whatever was stored in it, and fxc
-        // converts with an instruction of its own - a utof behind the load - so a
-        // load with no conversion behind it whose register a float instruction
-        // reads is a load of a float's bit pattern. Converted instead, it came back
-        // as the number those bits happen to make, which for a texel below 2^-126
-        // is zero.
+        // A loaded dword read as a float is a float's bits (fxc would emit a utof).
         if (IsLoadedBitsResult(instruction, destinationIndex))
         {
             format = Wrapped(format, "asfloat");
         }
-        // A float result into an int register keeps its bits the same way, which is
-        // how that register holds a float at all. Around the saturate above and not
-        // inside it: what is clamped to [0, 1] is the number, not its bits. Never
-        // onto a double: the shadow variable holding one is declared double, so the
-        // register's own storage says nothing about it, and `asint` of a double is
-        // not a conversion the language has.
+        // A float into an int register as asint, outside the saturate. Never a
+        // double: its shadow is declared double.
         if (IsReinterpretedResult(instruction, destinationIndex)
             && GetDoubleRegisterOperandName(instruction, destinationIndex) == null)
         {
@@ -2287,18 +1942,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A result's expression wrapped in a call: `{0} = x;` becomes `{0} = f(x);`.
-    ///
-    /// Every format reaching WriteResult assigns one expression to the destination,
-    /// which is what lets a wrapper go round the middle of it rather than round the
-    /// whole statement - `asint({0} = x;)` is not a thing. Four rules wrap one in
-    /// turn, each of them with its own copy of the two slices that take the
-    /// expression out and put it back; this is that, once, with the shape they all
-    /// assumed said out loud.
-    ///
-    /// Said out loud and checked, because a format of another shape would otherwise
-    /// be sliced into nonsense and written out as if nothing were wrong. It can only
-    /// be reached by a caller that is already wrong, so nothing in the corpus does.
+    /// Wraps a result's expression in a call: `{0} = x;` becomes `{0} = f(x);`.
+    /// Throws on any other format shape.
     /// </summary>
     private static string Wrapped(string format, string call)
     {
@@ -2313,16 +1958,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The value a store or an interlocked operation writes, where a float register
-    /// is holding it and the memory it goes into is integer: the float's bits, which
-    /// is what the instruction writes. Null where that is not the case, which leaves
-    /// the operand as the caller would have named it.
-    ///
-    /// The mirror of IsLoadedBitsResult on the way out. fxc converts with an
-    /// instruction of its own - an ftou in front of the store - so a store with none
-    /// writes the bits that are in the register, and converting them wrote the whole
-    /// number nearest the float instead. Which for a depth in [0, 1] is nought or
-    /// one, so every tile came out with bounds of zero.
+    /// A float stored into integer memory, as its bits (fxc would emit an ftou to
+    /// convert). Null otherwise. The mirror of IsLoadedBitsResult.
     /// </summary>
     private string StoredBits(D3D10Instruction instruction, int operandIndex)
     {
@@ -2333,16 +1970,11 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         string name = GetOperandName(instruction, operandIndex);
-        // Signed where the element says so, which keeps fxc's X3203 away: it
-        // resolves a mismatch by assuming unsigned and warns, and the shader this
-        // came from had no such warning.
+        // asint for a signed member, avoiding fxc's X3203 mismatch warning.
         return instruction.Opcode == D3D10Opcode.StoreStructured
             && _registers.IsUnsignedStructuredMember(
                 instruction.GetParamRegisterKey(0),
-                // The member this store reaches: the element's offset plus where in
-                // the element the mask starts, the way IsDoubleStructuredComponent
-                // counts. The element's own base answers for a scalar element and
-                // for the first member of a struct, and for nothing further in.
+                // Element offset plus the mask's first component.
                 instruction.GetParamInt(2, 0)
                     + FirstComponent(DestinationMask(instruction)) * 4) == false
             ? AsInt(name)
@@ -2350,13 +1982,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether what the register components an operand reads were last written with
-    /// is a float, rather than an integer that a float register happens to be
-    /// holding. Asked of the writer and not of the register, for the reason
-    /// IsReadAsFloat is asked of the readers: fxc fills one register with a texel
-    /// address here and a colour there, and only what put the value in says which it
-    /// is. A mov says nothing - its own kind is unknown - so a value moved in is left
-    /// to convert, which is what it did before.
+    /// Whether every component an operand reads was last written with a float.
+    /// Asked of the last writer, since fxc reuses registers; a mov answers no.
     /// </summary>
     private bool HoldsStoredFloat(D3D10Instruction instruction, int operandIndex)
     {
@@ -2367,16 +1994,10 @@ public class HlslSimpleWriter : HlslWriter
         }
         int[] components = GetSourceComponents(instruction, operandIndex,
             instruction.GetSourceSwizzleComponents(operandIndex));
-        // Every component, so that a store of a register holding a float and an
-        // integer at once is left alone rather than reinterpreted whole.
         return components.Length != 0
             && components.All(component => IsWrittenAsFloat(instruction, register, component));
     }
 
-    /// <summary>
-    /// Whether the last instruction to write a register component wrote a float.
-    /// Read backwards in program order, the way IsReadAsFloat reads forwards.
-    /// </summary>
     private bool IsWrittenAsFloat(D3D10Instruction before, RegisterKey register, int component)
     {
         return _programOrder.LastWriterOf(before, register, component) is D3D10Instruction previous
@@ -2384,10 +2005,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether an operand is an index HLSL takes unsigned. A subscript of a buffer
-    /// or of a typed view takes a uint, and a byte address buffer's offset is one
-    /// too; a texture's Load takes a signed int3 and is not one of these. Each of
-    /// them carries its index as its second operand, loads and stores alike.
+    /// Whether the operand is a buffer/UAV/raw index, which HLSL takes as uint
+    /// (a texture Load takes a signed int3).
     /// </summary>
     private static bool IsUnsignedIndexOperand(D3D10Instruction instruction, int operandIndex)
     {
@@ -2398,13 +2017,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether the register components an operand reads were last written with a
-    /// signed integer, in a register declared float.
-    ///
-    /// Only an ftoi says so. Every other way a number reaches a float register
-    /// leaves a float there, or an unsigned integer an ftou made, or whatever a mov
-    /// carried in from somewhere this does not follow - and calling any of those
-    /// signed would be a claim about them rather than a reading of them.
+    /// Whether every component an operand reads was last written by an ftoi.
     /// </summary>
     private bool HoldsSignedInteger(D3D10Instruction instruction, int operandIndex)
     {
@@ -2415,24 +2028,14 @@ public class HlslSimpleWriter : HlslWriter
         }
         int[] components = GetSourceComponents(instruction, operandIndex,
             instruction.GetSourceSwizzleComponents(operandIndex));
-        // Every component, so that an address built half one way and half the other
-        // is left as it was rather than called signed whole.
         return components.Length != 0
             && components.All(component => _programOrder
                 .LastWriterOf(instruction, register, component)?.Opcode == D3D10Opcode.Ftoi);
     }
 
     /// <summary>
-    /// Whether what a memory load writes into a register declared float is the bits
-    /// of a float rather than a number to convert. The mirror of
-    /// IntegerOperandAnalysis.HoldsFloatBits, which is the same question about an
-    /// int register: there a float's bits are what the register holds all along,
-    /// and here they arrive as a dword out of a buffer.
-    ///
-    /// Only a load of memory, not any integer-producing instruction. An ftou puts
-    /// an integer in a register because the shader asked for the number; a buffer
-    /// hands back whatever was stored in it, and nothing but a conversion
-    /// instruction would have made that a number.
+    /// Whether a memory load into a float register loads a float's bits rather than
+    /// a number. Only loads: an ftou's integer is a number the shader asked for.
     /// </summary>
     private bool IsLoadedBitsResult(D3D10Instruction instruction, int destinationIndex)
     {
@@ -2445,16 +2048,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        // Asked of this load's own readers, not of the register. Whether a float
-        // instruction ever touches the component says nothing about the dword this
-        // load put there: `ld r0, r0.x, t1` over a Buffer&lt;uint&gt; of indices
-        // writes a register a mul wrote before it and a mul reads after it, and
-        // what it loaded is an index the next ld addresses a texel with. What says
-        // is what reads the value before anything writes over it.
-        //
-        // Every component the load writes, so that one filling a register with an
-        // address and a colour at once is left alone rather than reinterpreted
-        // whole.
+        // Asked of this load's own readers, not of the register's other uses;
+        // every written component must be read as a float.
         RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex);
         int mask = DestinationMask(instruction);
         for (int component = 0; component < 4; component++)
@@ -2469,13 +2064,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether the first thing to read a register component reads it as a float,
-    /// before anything writes over it. Read in program order, the way the shadow
-    /// walk above counts: a component holds what it holds until something else
-    /// writes it, and what the readers make of it is what the value is.
-    ///
-    /// False where nothing reads it, which leaves a load whose value goes nowhere
-    /// as the plain load it looks like.
+    /// Whether the first reader of a component after the given write reads a float.
+    /// False if nothing reads it.
     /// </summary>
     private bool IsReadAsFloat(D3D10Instruction after, RegisterKey register, int component)
     {
@@ -2484,8 +2074,7 @@ public class HlslSimpleWriter : HlslWriter
             && GetConsumedKind(reader, operand) == ValueKind.Float;
     }
 
-    // Whether the destination is an output register the signature does not type as
-    // an integer - so a float, whose bits an integer instruction writes.
+    // Whether the destination is an output the signature does not type as integer.
     private bool IsFloatOutput(D3D10Instruction instruction, int destinationIndex)
     {
         if (instruction.GetOperandType(destinationIndex) != OperandType.Output)
@@ -2506,11 +2095,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Set while one instruction is written as more than one statement, to the
-    /// components this statement is for. One instruction can write two things that
-    /// have to be said separately - `mov o1.xyz, r0.xyw` over a TEXCOORD at o1.xy
-    /// and a TEXCOORD1 at o1.z is two assignments - and naming it once wrote the
-    /// whole of it into the first field and left the second unwritten.
+    /// The components of the current statement while one instruction is written as
+    /// several, e.g. `mov o1.xyz` over TEXCOORD at o1.xy and TEXCOORD1 at o1.z.
     /// </summary>
     private int? _destinationMaskOverride;
 
@@ -2520,9 +2106,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components an instruction writes, grouped by the output declaration each
-    /// belongs to, or null where they are all one declaration's - which is every
-    /// instruction but the few that write a packed output across both.
+    /// The written components grouped by output declaration, or null if only one.
     /// </summary>
     private int[] SplitPackedOutputMasks(D3D10Instruction instruction)
     {
@@ -2559,12 +2143,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A structured load or store that takes a double and another member of the
-    /// element at once - `ld_structured r1.xyz, i, l(8), t0.xyzx` over a struct whose
-    /// double is followed by a uint - split into the masks each member wants. One
-    /// statement cannot be both: the register is the shadow variable for the double's
-    /// two components and itself for the rest, and a run of each is one statement.
-    /// Null where the element holds no double or the whole mask is one kind.
+    /// Splits a structured access covering a double and other members into one mask
+    /// per run of each kind (the double goes through the shadow). Null if not mixed.
     /// </summary>
     private int[] SplitDoubleElementMasks(D3D10Instruction instruction)
     {
@@ -2598,9 +2178,6 @@ public class HlslSimpleWriter : HlslWriter
             int elementComponent = swizzle != null ? swizzle[component] : component;
             int byteAddress = elementByteOffset + elementComponent * 4;
             bool isDouble = _registers.IsDoubleStructuredMember(resourceKey, byteAddress);
-            // The upper half of a double belongs with the value it is half of, not
-            // with whatever follows: a run breaks where the kind changes, and the
-            // top half of a number is the same kind as its bottom half.
             if (isDouble != last)
             {
                 masks.Add(0);
@@ -2612,12 +2189,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A raw access of groupshared memory that names more than one dword at once,
-    /// split into the one dword each statement writes. Raw groupshared is declared
-    /// as an array of dword elements, so an access of several is an assignment per
-    /// element - which dword is whose the access's own swizzle says, and a store's
-    /// value immediate carries one entry per dword beside it. Null where the access
-    /// is not groupshared's or already names one dword.
+    /// Splits a multi-dword raw groupshared access into one statement per dword,
+    /// since raw groupshared is declared as a dword array. Null if not needed.
     /// </summary>
     private static int[] SplitGroupSharedRawMasks(D3D10Instruction instruction)
     {
@@ -2680,10 +2253,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.IShl:
                 WriteResult(instruction, "{0} = {1} << {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
                 break;
-            // Shifts and masks, since HLSL has no intrinsic for a bit field. An
-            // unsigned extract has to shift an unsigned value or it drags the sign
-            // bit down; a signed one puts the field at the top of a signed value
-            // and shifts it back.
+            // No bit field intrinsic: ubfe shifts a uint (no sign fill), ibfe shifts
+            // the field to the top of an int and back.
             case D3D10Opcode.UBFE:
                 {
                     int length = instruction.GetDestinationMaskLength();
@@ -2709,8 +2280,7 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.UShr:
                 {
-                    // A temp register is declared signed, and >> on a signed value
-                    // shifts in the sign bit rather than zeroes.
+                    // Temps are signed; >> on them would shift in the sign bit.
                     int length = instruction.GetDestinationMaskLength();
                     string size = length == 1 ? "" : length.ToString();
                     WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0),
@@ -2751,9 +2321,7 @@ public class HlslSimpleWriter : HlslWriter
                 } + "({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Discard:
-                // discard_nz tests the bits, like if_nz; clip tests the sign of a
-                // float, and a comparison mask is NaN as a float, which is never
-                // negative - `clip(mask)` never discarded anything.
+                // Not clip(): a comparison mask is NaN as a float, never negative.
                 WriteLine("if ({0}) discard;", ZeroTest(instruction, 0));
                 break;
             case D3D10Opcode.Dp2:
@@ -2766,8 +2334,6 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine($"{_registers.StreamParameterName(instruction.Stream)}"
                     + $".Append({_registers.StreamVariableName(instruction.Stream)});");
                 break;
-            // Control flow was skipped entirely, so a DXBC loop with a guarded break
-            // printed as `while (true)` with nothing to end it.
             case D3D10Opcode.If:
                 WriteBranchAttribute();
                 WriteLine("if ({0}) {{", ZeroTest(instruction, 0));
@@ -2859,8 +2425,6 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.GE:
                 WriteComparison(instruction, ">=");
                 break;
-            // The float comparisons, beside ieq and ine further down: both pairs
-            // write the same mask and are told apart by what they read it from.
             case D3D10Opcode.Eq:
                 WriteComparison(instruction, "==");
                 break;
@@ -2882,9 +2446,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Ftou:
                 WriteConversion(instruction, null, "uint");
                 break;
-            // A buffer that keeps a counter without being an append or a consume one
-            // hands the slot back for the shader to subscript with, which is a value
-            // and an ordinary statement.
+            // On a counter buffer (not append/consume), the slot is an ordinary value.
             case D3D10Opcode.ImmAtomicAlloc:
                 WriteResult(instruction, "{0} = {1}.IncrementCounter();",
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -2895,10 +2457,8 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.ImmAtomicConsume:
                 {
-                    // A consume buffer has one method and it both takes the slot and
-                    // reads the element, so the call goes here and the loads that
-                    // follow read the variable it filled - the same shape
-                    // GetDimensions takes, and for the same reason.
+                    // Consume() takes the slot and reads the element; later loads read
+                    // the variable it filled.
                     string consumed = $"consumed{_consumeCount++}";
                     string element = GetStructuredElementType(
                         _registers.ResourceDefinitions.First(d =>
@@ -2913,9 +2473,7 @@ public class HlslSimpleWriter : HlslWriter
                 when _consumedSlots.TryGetValue(instruction.GetParamRegisterKey(1), out string consumedElement)
                     && IsConsumeResource(instruction.GetParamRegisterKey(3)):
                 {
-                    // A component of the element that call read, picked by the byte
-                    // offset the load asks for - and by the member it sits in, where
-                    // the element is a struct: `consumed0.x` off an Item is X3018.
+                    // By member where the element is a struct (`consumed0.x` is X3018).
                     int component = instruction.GetParamInt(2, 0) / 4;
                     string member = _registers.NameStructuredMembers(
                         instruction.GetParamRegisterKey(3), consumedElement, 0, [component]);
@@ -2925,21 +2483,12 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.LdStructured:
                 {
-                    // The byte offset picks a row where the element is a matrix. A
-                    // struct element would pick a member, which is not read yet.
                     string element = $"{GetOperandName(instruction, 3)}[{GetOperandName(instruction, 1)}]";
                     RegisterKey buffer = instruction.GetParamRegisterKey(3);
                     int offset = instruction.GetParamInt(2, 0);
-                    // Which components of the element are read, in the order the
-                    // destination mask writes them.
                     byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
                     int writeMask = DestinationMask(instruction);
-                    // One entry per value the load reads, which for a double is one
-                    // per pair of components: counted per component, a struct of two
-                    // doubles named four members and built a float4 of them. Asked of
-                    // the member this statement reads rather than of the element, so
-                    // that a float beside a double in one is still one value to one
-                    // component.
+                    // One entry per value read: a double takes two components.
                     int loadPerElement = IsDoubleStructuredComponent(instruction, 3) ? 2 : 1;
                     List<int> loaded = [.. Enumerable.Range(0, 4)
                         .Where(c => (writeMask & (1 << c)) != 0)];
@@ -2948,10 +2497,7 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         read.Add(elementSwizzle[loaded[value]]);
                     }
-                    // Groupshared memory wider than one register is a struct of them,
-                    // and the byte offset picks which. Named as the element itself, a
-                    // read of one member was a whole struct assigned to a register and
-                    // a swizzle taken off a struct besides.
+                    // Groupshared wider than a register is a struct; the offset picks the member.
                     if (_registers.ThreadGroupSharedMember(buffer, offset)
                         is var (sharedName, sharedComponents, sharedBase))
                     {
@@ -2961,10 +2507,7 @@ public class HlslSimpleWriter : HlslWriter
                                 instruction.GetSourceSwizzleNameForMask(3,
                                     instruction.GetDestinationWriteMask()),
                                 sharedBase, sharedComponents);
-                        // Rebased only drops a swizzle that names the whole of what it
-                        // is on when it has rebasing to do; a member read whole from
-                        // its first component keeps it otherwise, and `.m0.xyzw` off a
-                        // float4 says nothing.
+                        // Drop a whole-member swizzle (`.m0.xyzw`).
                         if (sharedSwizzle == "." + "xyzw"[..sharedComponents])
                         {
                             sharedSwizzle = "";
@@ -2981,28 +2524,16 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     string readElement = _registers.NameStructuredMembers(buffer, element, offset, read)
                         ?? _registers.ApplyStructuredElementRow(buffer, element, offset);
-                    // Where the element is neither a matrix (whose offset picks a row)
-                    // nor a struct (whose offset picks a member), it is a scalar or a
-                    // vector and the byte offset selects a component of it: reading the
-                    // .w of a uint4 is the load at offset twelve, whole components past
-                    // the operand's own. A double takes two of those components for
-                    // each value it is, so a pair of them names one - the load at
-                    // offset eight of a double2 is its `.y`, not its `.zw`.
+                    // A scalar/vector element: the byte offset selects components (offset
+                    // 12 of a uint4 is .w; offset 8 of a double2 is .y).
                     if (readElement == element)
                     {
                         var names = new List<char>();
-                        // One name per entry, the list already holding one entry per
-                        // value: the component it names is divided down to the value
-                        // it is half of.
                         foreach (int component in read)
                         {
                             names.Add("xyzw"[(component + offset / 4) % 4 / loadPerElement]);
                         }
-                        // Left off where it names the element's values in order, which
-                        // is the element itself. Written only for the offset before
-                        // this, a load fxc reordered - `t0.zwxy` over a double2, whose
-                        // first value is the element's second - came out as the whole
-                        // element with its values the wrong way round.
+                        // Omitted only when it is the identity swizzle.
                         string picked = new string([.. names]);
                         int width = _registers.GetRegisterMaskedLength(buffer) / loadPerElement;
                         if (picked != "xyzw"[..Math.Min(width, 4)])
@@ -3010,13 +2541,7 @@ public class HlslSimpleWriter : HlslWriter
                             readElement += "." + picked;
                         }
                     }
-                    // Two components a double instruction goes on to read as one
-                    // number are its two words, and the asdouble that joins them
-                    // belongs here, where they enter: the destination names the
-                    // shadow, which holds the double itself, and the arithmetic over
-                    // it reads that. Written as a load of two floats instead, the
-                    // components were converted to the numbers their bits spell and
-                    // the arithmetic read a shadow nothing had assigned to.
+                    // Two words later read as a double are joined into the shadow here.
                     if (MakesDoubleFromBits(instruction) && read.Count == 2)
                     {
                         readElement = string.Format("asdouble({0}.{1}, {0}.{2})", element,
@@ -3028,10 +2553,7 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.LdRaw when IsGroupSharedOperand(instruction, 2):
                 {
-                    // Groupshared memory is declared as an array, so a raw read of it
-                    // is a subscript rather than a Load, and each dword it names is
-                    // an element of its own - an access of several arrives one dword
-                    // at a time, split by the statement writer.
+                    // Groupshared is an array: a subscript per dword (already split).
                     int readMask = DestinationMask(instruction);
                     if (BitOperations.PopCount((uint)readMask) != 1)
                     {
@@ -3049,8 +2571,7 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.LdRaw:
                 {
-                    // As many dwords as the highest component asked for, at the byte
-                    // offset: Load, Load2, Load3 or Load4, then the resource's swizzle.
+                    // LoadN up to the highest component read, then the swizzle.
                     byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
                     int[] read = GetSourceComponents(instruction, 2, swizzle);
                     int width = read.Max() + 1;
@@ -3074,20 +2595,12 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0),
                     GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
                 break;
-            // msad4 takes the two words of an eight byte source; the instruction takes
-            // the four windows fxc slid along them, and HLSL has no intrinsic for that
-            // shape. Both words are in the windows: the first window is the low one
-            // outright, and the fourth is that word's top byte with three bytes of the
-            // high one above it, so shifting the fourth down by a byte gives the high
-            // word's bottom three. Its fourth byte lies past the end of the last window
-            // and is no part of the answer, which is what makes this the same call.
+            // msad4 takes two words; the instruction takes four sliding windows. The
+            // first window is the low word; the fourth >> 8 gives the high word's
+            // low three bytes, the only ones msad4 reads.
             case D3D10Opcode.MSAD:
                 {
-                    // Fewer than four lanes and fxc packed the windows the shader reads
-                    // to the front, so which lane a component is is not said by where
-                    // it sits. Each is written as lane 0 of a call of its own, whose
-                    // window is the low word as it stands - the same sum of differences
-                    // over the same four bytes, whichever lane it was.
+                    // Fewer lanes: fxc packs them, so each becomes lane 0 of its own call.
                     if (instruction.GetDestinationWriteMask() != 0xF)
                     {
                         WriteMsadLanes(instruction);
@@ -3103,11 +2616,7 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case D3D10Opcode.Mov:
-                // A mov that is a double entering the shader as its two words: the
-                // destination names the shadow the number is kept in, and the two
-                // 32-bit values the source names are joined into it. Written as a
-                // plain move the shadow was assigned nothing at all, and fxc said so
-                // - X4000, used without having been completely initialized.
+                // Joins two 32-bit words into the double shadow.
                 if (_joinedDoubleMovs.Contains(instruction)
                     && SplitTwoComponentName(GetOperandName(instruction, 1))
                         is (string lowWord, string highWord))
@@ -3128,9 +2637,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Mul:
                 WriteResult(instruction, "{0} = {1} * {2};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
                 break;
-            // The double precision arithmetic. Each one is the operator or the
-            // intrinsic it is named after, over the shadow variables the doubles
-            // are kept in; only the width of a conversion is its own question.
+            // Double arithmetic, over the shadow variables.
             case D3D10Opcode.DAdd:
                 WriteResult(instruction, "{0} = {1} + {2};", GetOperandName(instruction, 0),
                     GetOperandName(instruction, 1), GetOperandName(instruction, 2));
@@ -3196,16 +2703,13 @@ public class HlslSimpleWriter : HlslWriter
                 WriteDoubleConversion(instruction, "double");
                 break;
             case D3D10Opcode.Rsq:
-                // The instruction HLSL has for this, rather than the division and
-                // the root it is made of: fxc folds neither back, so `1 / sqrt(x)`
-                // is a div and a sqrt where the shader had one rsq.
+                // Not `1 / sqrt(x)`: fxc would not fold it back into rsq.
                 WriteResult(instruction, "{0} = rsqrt({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Sample:
                 WriteResult(instruction, "{0} = {2}.Sample({3}, {1}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
-            // The resource swizzle chooses the level rather than naming a channel,
-            // and the level is a float, so it is read here and not written after.
+            // The resource swizzle picks clamped or unclamped, not a channel.
             case D3D10Opcode.Lod:
                 WriteResult(instruction, "{0} = {2}.{4}({3}, {1});",
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1),
@@ -3225,8 +2729,7 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Gather4:
                 {
-                    // The swizzle on the sampler picks the channel gathered. Red is what
-                    // Gather returns; the other three have methods of their own.
+                    // The sampler swizzle picks the channel gathered.
                     string method = instruction.GetSourceSwizzleComponents(3)[0] switch
                     {
                         1 => "GatherGreen",
@@ -3243,10 +2746,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Gather4Po:
             case D3D10Opcode.Gather4PoC:
                 {
-                    // The offset is an operand rather than part of the mnemonic, so
-                    // the texture and the sampler are one further along and the
-                    // offset goes where an immediate one would - last, after the
-                    // compared value where there is one.
+                    // The offset is operand 2, shifting texture and sampler along.
                     bool compares = instruction.Opcode == D3D10Opcode.Gather4PoC;
                     string method = instruction.GetSourceSwizzleComponents(4)[0] switch
                     {
@@ -3265,9 +2765,6 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.Gather4C:
                 {
-                    // The same four texels as a gather, each compared against the
-                    // value after the coordinate. The channel is the sampler's
-                    // swizzle again, and only red has a method without a suffix.
                     string method = instruction.GetSourceSwizzleComponents(3)[0] switch
                     {
                         1 => "GatherCmpGreen",
@@ -3298,8 +2795,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {2}.SampleGrad({3}, {1}, {4}, {5}{6}){7};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetOperandName(instruction, 4), GetOperandName(instruction, 5), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.LD:
-                // A texture buffer has no Load: each element of it is a variable of
-                // the block, and the address says which.
+                // A tbuffer has no Load; the address picks a variable.
                 if (TextureBufferVariable(instruction) is string bufferVariable)
                 {
                     WriteResult(instruction, "{0} = {1}{2};", GetOperandName(instruction, 0),
@@ -3309,7 +2805,6 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = {2}.Load({1}{3}){4};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.LDMS:
-                // One sample of a texel: Texture2DMS.Load(int2, sampleIndex).
                 WriteResult(instruction, "{0} = {2}.Load({1}, {3}{4}){5};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3), GetSampleOffset(instruction), GetResourceSwizzle(instruction));
                 break;
             case D3D10Opcode.ResInfo:
@@ -3318,8 +2813,6 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.BufInfo:
                 WriteBufferInfo(instruction);
                 break;
-            // Where the attribute is evaluated is an integer: a sample index, or an
-            // offset in sixteenths of a pixel.
             case D3D10Opcode.EvalSampleIndex:
                 WriteResult(instruction, "{0} = EvaluateAttributeAtSample({1}, {2});",
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1),
@@ -3330,8 +2823,6 @@ public class HlslSimpleWriter : HlslWriter
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1),
                     GetOperandName(instruction, 2));
                 break;
-            // The centroid of the covered part of the pixel, which takes no operand
-            // to say so.
             case D3D10Opcode.EvalCentroid:
                 WriteResult(instruction, "{0} = EvaluateAttributeCentroid({1});",
                     GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -3339,8 +2830,7 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;
-            // The resource names itself and the sample index is an integer; the
-            // render target has no name, and a function of its own instead.
+            // The render target (rasterizer operand) has its own function.
             case D3D10Opcode.SamplePos:
                 if (instruction.GetOperandType(1) == OperandType.Rasterizer)
                 {
@@ -3373,23 +2863,14 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.Udiv:
                 {
-                    // Quotient and remainder, either of which may be null. Unsigned,
-                    // and it has to say so: `asint(x) % 5` is a signed modulus, which
-                    // fxc lowers with a sign test of its own, and where the shader had
-                    // already taken the sign off - the abs and the mask of a signed
-                    // modulus lowered once - fxc folded the two together and lost it.
+                    // Quotient and remainder (either may be null), explicitly unsigned:
+                    // a signed % would get its own sign handling from fxc.
                     string dividend = AsUint(instruction, 2);
                     string divisor = AsUint(instruction, 3);
                     bool wantsQuotient = instruction.GetOperandType(0) != OperandType.Null;
                     bool wantsRemainder = instruction.GetOperandType(1) != OperandType.Null;
-                    // One instruction writing two results is two statements here, and
-                    // the quotient is assigned before the remainder reads its
-                    // operands. Where the quotient lands in a register an operand is
-                    // read from - a signed division lowers to
-                    // `udiv r1.xyzw, r2.xyzw, r1.xyzw, r2.xyzw`, the dividend and the
-                    // quotient being the one register - the remainder divided the
-                    // quotient by the divisor. Naming an operand that the quotient is
-                    // about to overwrite keeps the value the instruction read.
+                    // The quotient may overwrite an operand the remainder still reads
+                    // (`udiv r1, r2, r1, r2`), so keep those operands first.
                     if (wantsQuotient && wantsRemainder)
                     {
                         dividend = KeptOperand(instruction, 2, 0, "uint", "dividend", dividend);
@@ -3401,9 +2882,7 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     if (wantsRemainder)
                     {
-                        // fxc folds `asfloat(u % 5)` - an unsigned remainder by an
-                        // immediate, reinterpreted - to zero, a bug of its own; the
-                        // remainder spelled out as `u - u / 5 * 5` it compiles.
+                        // fxc bug: folds `asfloat(u % 5)` to zero; `u - u / 5 * 5` works.
                         bool reinterpreted = IsFloatOutput(instruction, 1);
                         string remainder = reinterpreted && instruction.GetOperandType(3) == OperandType.Immediate32
                             ? $"{dividend} - {dividend} / {divisor} * {divisor}"
@@ -3432,8 +2911,7 @@ public class HlslSimpleWriter : HlslWriter
                     string angle = GetOperandName(instruction, 2);
                     bool wantsSine = instruction.GetOperandType(0) != OperandType.Null;
                     bool wantsCosine = instruction.GetOperandType(1) != OperandType.Null;
-                    // The sine is assigned before the cosine reads the angle, and fxc
-                    // gives the sine the register the angle is in.
+                    // The sine may overwrite the angle before the cosine reads it.
                     if (wantsSine && wantsCosine)
                     {
                         angle = KeptOperand(instruction, 2, 0, "float", "angle", angle);
@@ -3474,38 +2952,25 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.LdUAVTyped:
                 {
-                    // The same subscript a store uses, read rather than written - and
-                    // the components of the texel it asks for, which the operand on the
-                    // view says and the destination mask counts. A uint4 buffer read
-                    // into one register component is `tiles[i].x`; without the swizzle
-                    // the whole texel was assigned to the one component, which is the
-                    // implicit truncation fxc warns about with X3206.
+                    // Swizzled to the mask (else X3206 truncation); `.xyzw` is dropped.
                     string texel = instruction.GetSourceSwizzleNameForMask(
                         2, instruction.GetDestinationWriteMask());
-                    // A texel read whole keeps no swizzle: `.xyzw` off a float4 says
-                    // nothing, the way the structured load says it below.
                     WriteResult(instruction, "{0} = {1}[{2}]{3};", GetOperandName(instruction, 0),
                         GetOperandName(instruction, 2), GetOperandName(instruction, 1),
                         texel == ".xyzw" ? "" : texel);
                     break;
                 }
             case D3D10Opcode.StoreUAVTyped:
-                // A texel, addressed by as many coordinates as the resource has
-                // dimensions - which is what GetSourceLength answers for it.
                 WriteLine("{0}[{1}] = {2};", GetOperandName(instruction, 0),
                     GetOperandName(instruction, 1),
                     StoredBits(instruction, 2) ?? GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.StoreStructured:
                 {
-                    // A struct element is written a member at a time: one store of
-                    // sixteen bytes over a struct of a float3 and a float is both
-                    // of them, and writing it as one assignment kept only the last.
+                    // A struct element is written a member at a time.
                     RegisterKey buffer = instruction.GetParamRegisterKey(0);
                     string element = $"{GetOperandName(instruction, 0)}[{GetOperandName(instruction, 1)}]";
                     int writeMask = DestinationMask(instruction);
-                    // One entry per value the store writes, the way the load reads
-                    // them: a double takes two components and is one member.
                     int storePerElement = IsDoubleStructuredComponent(instruction, 0) ? 2 : 1;
                     List<int> masked = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
                     List<int> written = [];
@@ -3517,9 +2982,7 @@ public class HlslSimpleWriter : HlslWriter
                         buffer, element, instruction.GetParamInt(2, 0), written);
                     if (runs == null)
                     {
-                        // And the same for a store: written as the element, a store of
-                        // one member assigned the whole of it, and the second member's
-                        // store overwrote the first's.
+                        // A groupshared struct member, as for the load.
                         string storedMember = _registers.ThreadGroupSharedMember(
                                 buffer, instruction.GetParamInt(2, 0))
                             is var (storeName, _, _)
@@ -3535,10 +2998,7 @@ public class HlslSimpleWriter : HlslWriter
                                 ?? GetOperandName(instruction, 3));
                         break;
                     }
-                    // One member, or the double's two words would be written once
-                    // per run. A double is one member wherever it is split: the
-                    // uint2 it goes into is one, and a pair of uints beside each
-                    // other in a struct is not something fxc writes with one store.
+                    // Only for one member, or the split would repeat per run.
                     if (runs.Count == 1 && WriteDoubleBitsStore(instruction, runs[0].Name))
                     {
                         break;
@@ -3546,11 +3006,8 @@ public class HlslSimpleWriter : HlslWriter
                     byte[] valueSwizzle = instruction.GetSourceSwizzleComponents(3);
                     foreach ((string name, int[] values) in runs)
                     {
-                        // Which part of the value operand goes here, counted in the
-                        // values it holds: the second double of a shadow is its .y,
-                        // where the register's components make it the .z. A shadow
-                        // holding one double has no halves to pick from, and `d0.x`
-                        // off a double is not HLSL.
+                        // Picked by value: a shadow's second double is .y, not .z; a
+                        // scalar double shadow takes no swizzle.
                         string valueName = GetOperandName(instruction, 3);
                         bool isWholeShadow = storePerElement == 2
                             && GetDoublePairMask(instruction.GetParamRegisterKey(3)) == 1;
@@ -3583,12 +3040,9 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.ImmAtomicExch:
             case D3D10Opcode.ImmAtomicCmpExch:
                 {
-                    // A byte address buffer takes the interlocked operations as its
-                    // own methods over a byte offset; everything else takes them as
-                    // free functions over the element. The imm_ forms keep what the
-                    // resource held, in a register that goes in front of the rest -
-                    // so every operand is one further along - and HLSL takes it as
-                    // the out parameter after the value.
+                    // Raw buffers use methods, others free functions over the element.
+                    // imm_ forms have the original-value register first; HLSL takes
+                    // it as the trailing out parameter.
                     string method = instruction.Opcode.AtomicMethodName();
                     bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
                     int first = keepsOriginal ? 1 : 0;
@@ -3597,17 +3051,9 @@ public class HlslSimpleWriter : HlslWriter
                     bool hasCompare = instruction.Opcode
                         is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
                     int valueIndex = first + (hasCompare ? 3 : 2);
-                    // A float whose bits the memory holds is reinterpreted rather
-                    // than cast: a depth written in as asuint is minimised as the
-                    // integer those bits make, and a cast made it the whole number
-                    // nearest the depth, which for every tile was nought or one.
                     string bits = StoredBits(instruction, valueIndex);
                     string value = bits ?? GetOperandName(instruction, valueIndex);
-                    // InterlockedMax and InterlockedMin come signed and unsigned,
-                    // chosen by the type of the value, and a register here is an int
-                    // or a float: the unsigned one has to say so at the value or the
-                    // signed one is what is written back. An asuint has said it
-                    // already.
+                    // InterlockedMax/Min pick signedness from the value's type.
                     if (bits == null
                         && instruction.Opcode is D3D10Opcode.AtomicUMax or D3D10Opcode.AtomicUMin
                             or D3D10Opcode.ImmAtomicUMax or D3D10Opcode.ImmAtomicUMin)
@@ -3628,13 +3074,8 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     string target = _registers.GroupSharedElementReference(
                         instruction.GetParamRegisterKey(first), resource, address);
-                    // An element that is a struct takes the operation on one of its
-                    // members, and which one is the byte offset beside the element
-                    // index in the address. Read off it where that address is an
-                    // immediate; where fxc works it into a register the register is
-                    // only as knowable as its writes, and one write of an immediate
-                    // is knowable enough. Named by neither, the call goes out with
-                    // no member at all and fxc answers X3013.
+                    // On a struct element, address.y's byte offset picks the member
+                    // (without it, X3013).
                     int? memberOffset =
                         instruction.GetOperandType(first + 1) == OperandType.Immediate32
                             ? instruction.GetParamInt(first + 1, 1)
@@ -3657,9 +3098,6 @@ public class HlslSimpleWriter : HlslWriter
                 }
             case D3D10Opcode.StoreRaw when IsGroupSharedOperand(instruction, 0):
                 {
-                    // And the same for a store: one element, one assignment, an
-                    // access of several arriving one dword at a time, split by the
-                    // statement writer.
                     int storeMask = DestinationMask(instruction);
                     if (BitOperations.PopCount((uint)storeMask) != 1)
                     {
@@ -3670,23 +3108,12 @@ public class HlslSimpleWriter : HlslWriter
                     string storedValue;
                     if (instruction.GetOperandType(2) == OperandType.Immediate32)
                     {
-                        // The value immediate carries one entry per dword, and the
-                        // bits are integers as they stand - which is what makes the
-                        // memory raw - so the element is named its own entry.
                         storedValue = instruction.GetParamInt(2, dword).ToString(_culture);
                     }
                     else
                     {
-                        // Raw groupshared holds bits and is declared as integers,
-                        // and HLSL converts between them by value: what a float
-                        // instruction wrote into the register is stored as its
-                        // bits, wrapped the way StoredBits wraps it for a member -
-                        // unsigned where the memory is, which keeps fxc's X3203
-                        // away. What a mov carried in is left to convert, as
-                        // HoldsStoredFloat leaves it: the move already typed its
-                        // immediate as the integer the store reads, and the two
-                        // conversions cancel. Asked of the one dword this
-                        // statement writes, a component at a time.
+                        // Raw groupshared is integer: a float-written value is stored
+                        // as its bits, as StoredBits does.
                         storedValue = GetOperandName(instruction, 2);
                         if (instruction.GetOperandType(2) == OperandType.Temp
                             && GetSourceStorage(instruction, 2) == ComponentStorage.Numeric
@@ -3721,16 +3148,12 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case D3D10Opcode.DclConstantBuffer:
             case D3D10Opcode.DclGlobalFlags:
-            // The run it names is written as one array parameter, above.
             case D3D10Opcode.DclIndexRange:
-            // How many times the phase runs. The phase is unrolled into a copy of
-            // its body per run before it reaches here, so the count is already
-            // spent and each copy writes the factor its own run wrote.
+            // Phases are unrolled per instance before this point.
             case D3D10Opcode.DclHSForkPhaseInstanceCount:
             case D3D10Opcode.DclHSJoinPhaseInstanceCount:
             case D3D10Opcode.DclGSInputPrimitive:
             case D3D10Opcode.DclGSMaxOutputVertexCount:
-            // The [instance] attribute, written with the signature.
             case D3D10Opcode.DclGSInstanceCount:
             case D3D10Opcode.DclInput:
             case D3D10Opcode.DclInputPS:
@@ -3740,14 +3163,10 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclOutputSgv:
             case D3D10Opcode.DclInputSiv:
             case D3D10Opcode.DclOutput:
-            // Written as the [domain] attribute and the patch's size, with the
-            // signature rather than in the body.
+            // Tessellation declarations are written as attributes with the signature.
             case D3D10Opcode.DclInputControlPointCount:
             case D3D10Opcode.DclOutputControlPointCount:
             case D3D10Opcode.DclTessDomain:
-            // And so are the rest of a hull shader's tessellation declarations,
-            // beside the phase markers it is split along, the bound on a factor
-            // among them.
             case D3D10Opcode.DclTessPartitioning:
             case D3D10Opcode.DclTessOutputPrimitive:
             case D3D10Opcode.DclHSMaxTessFactor:
@@ -3756,8 +3175,6 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.HsForkPhase:
             case D3D10Opcode.HsJoinPhase:
             case D3D10Opcode.DclGSOutputPrimitiveTopology:
-            // The stream the emits go to, which is written as the parameter the
-            // shader already declares.
             case D3D10Opcode.DclStream:
             case D3D10Opcode.DclOutputSiv:
             case D3D10Opcode.DclResource:
@@ -3765,18 +3182,14 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.DclResourceStructured:
             case D3D10Opcode.DclResourceRaw:
             case D3D10Opcode.DclUnorderedAccessViewRaw:
-            // The rows are written out with the other declarations.
             case D3D10Opcode.CustomData:
             case D3D10Opcode.DclSampler:
             case D3D10Opcode.DclTemps:
-            // Declared with the temps, above.
             case D3D10Opcode.DclIndexableTemp:
             case D3D10Opcode.DclThreadGroup:
             case D3D10Opcode.DclUnorderedAccessViewStructured:
-            // Declared at file scope, before main.
             case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
             case D3D10Opcode.DclThreadGroupSharedMemoryStructured:
-            // Declared at file scope, before main, in their own words.
             case D3D10Opcode.DclFunctionBody:
             case D3D10Opcode.DclFunctionTable:
             case D3D10Opcode.DclInterface:
@@ -3791,11 +3204,7 @@ public class HlslSimpleWriter : HlslWriter
                         : "");
                 break;
             case D3D10Opcode.Ret:
-                // The last ret is the method returning, which is written after the
-                // body. Anywhere else it is an early return, and dropping it lost the
-                // branch that took it. With dynamic linkage main ends at the first
-                // label - the rets beyond it close the bodies, and each body writes
-                // its own return.
+                // Only main's last ret is the closing return, written after the body.
                 if (!ReferenceEquals(instruction, LastMainInstruction()))
                 {
                     WriteLine(_registers.MethodOutputRegisters.Count != 0 && _shader.Type != ShaderType.Geometry
@@ -3804,24 +3213,19 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 break;
             default:
-                // Anything not listed above writes nothing, which silently drops
-                // the instruction - sample_l left an empty method body.
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
     }
 
-    // sincos writes the cosine to x and the sine to y, and a shader wanting only
-    // one of them masks the other off. HLSL names them the other way round -
-    // sincos(value, sine, cosine) - and writing the one destination as both
-    // arguments put whichever came second in both components.
+    // sm3 sincos writes cos to x and sin to y; HLSL's sincos(v, sin, cos) is the
+    // other way round.
     private void WriteSinCos(D3D9Instruction instruction)
     {
         const int CosineComponent = 1;
         const int SineComponent = 2;
         int writeMask = instruction.GetDestinationWriteMask();
         string register = GetDestinationRegisterName(instruction);
-        // One component: sincos replicates a scalar, and naming the source as
-        // wide as the destination asked HLSL for float2 outputs.
+        // A scalar source: sincos replicates it.
         string value = GetSourceName(instruction, 1, 1);
         if ((writeMask & CosineComponent) != 0 && (writeMask & SineComponent) != 0)
         {
@@ -3837,7 +3241,6 @@ public class HlslSimpleWriter : HlslWriter
         }
     }
 
-    // The register alone, for the one caller that names its own components.
     private string GetDestinationRegisterName(D3D9Instruction instruction)
     {
         int destinationIndex = instruction.GetDestinationParamIndex().Value;
@@ -3850,9 +3253,7 @@ public class HlslSimpleWriter : HlslWriter
         D3D9RegisterKey registerKey = instruction.GetParamRegisterKey(destIndex);
 
         string registerName;
-        // Addr and Texture are the same register type number, told apart by the
-        // kind of shader. Not by the opcode: shader model 1 has no mova and writes
-        // the address register with a plain mov, which was being named as an input.
+        // Addr/Texture told apart by shader type, not opcode: vs_1_1 writes a0 with mov.
         if (registerKey.Type == RegisterType.Addr && _shader.Type == ShaderType.Vertex)
         {
             registerName = "a" + registerKey.Number;
@@ -3867,8 +3268,7 @@ public class HlslSimpleWriter : HlslWriter
         return string.Format("{0}{1}", registerName, writeMaskName);
     }
 
-    // rowOffset reads a register after the one the operand names, which is
-    // how a matrix product names its rows: the operand is the first of them.
+    // rowOffset selects a later register, for the rows of a matrix product.
     private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null,
         int rowOffset = 0)
     {
@@ -3887,8 +3287,7 @@ public class HlslSimpleWriter : HlslWriter
             case RegisterType.Const4:
             case RegisterType.ConstBool:
             case RegisterType.ConstInt:
-                // A relatively addressed def is the base of an array, not the value
-                // being read - substituting its literal drops the subscript.
+                // A relatively addressed def is an array base, not a literal.
                 if (!instruction.Params.HasRelativeAddressing(srcIndex))
                 {
                     string constantValue = GetSourceConstantValue(instruction, srcIndex, destinationLength, rowOffset);
@@ -3910,11 +3309,8 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
 
-                // A struct member has a name of its own, and the register it owns
-                // swizzles the member rather than the struct. A scalar is named whole:
-                // HLSL broadcasts it where a wider value is wanted. A register indexed
-                // at run time names its member below, off the declaration rather than
-                // off a register number the index is not part of.
+                // A struct member is swizzled itself; a scalar is named whole and
+                // broadcast. Relative addressing is handled below.
                 if (!instruction.Params.HasRelativeAddressing(srcIndex)
                     && _registers.TryGetConstantMember(
                         new RegisterComponentKey(
@@ -3934,12 +3330,8 @@ public class HlslSimpleWriter : HlslWriter
                     throw new NotImplementedException();
                 }
 
-                // An array of structs picked at run time: the address register counts
-                // registers across the array, so the element is that over the registers
-                // one takes, and the constant beside it says which register of the
-                // element - which member - is read. Indexed as though each register
-                // were an element, `g_Lights[a0 + 2].x` reads a struct where a float4
-                // was wanted, two elements past the one the shader asked for.
+                // Struct array indexed at run time: a0 counts registers, so the element
+                // is a0 / stride and the remaining offset picks the member.
                 if (decl.TypeInfo.MemberInfo != null
                     && instruction.Params.HasRelativeAddressing(srcIndex))
                 {
@@ -3969,10 +3361,7 @@ public class HlslSimpleWriter : HlslWriter
                     }
                 }
 
-                // An array of matrices takes two subscripts, and its register offset
-                // counts registers across the whole array: the element is that offset
-                // over the registers an element takes - its columns, stored by column
-                // - and the register within the element is what is left.
+                // Matrix array: element = offset / registers per element, then the row.
                 if (decl.TypeInfo.Rows > 1 && decl.TypeInfo.NumElements > 1)
                 {
                     int offset = registerKey.Number - decl.RegisterIndex;
@@ -3986,8 +3375,6 @@ public class HlslSimpleWriter : HlslWriter
                         matrix + instruction.GetSourceSwizzleName(srcIndex, destinationLength));
                 }
 
-                // The registers are the matrix's rows where it was packed row major
-                // and its columns otherwise, and the constant table says which.
                 if (decl.TypeInfo.ParameterClass is ParameterClass.MatrixRows
                     or ParameterClass.MatrixColumns)
                 {
@@ -3996,9 +3383,7 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 else if (decl.TypeInfo.NumElements > 1)
                 {
-                    // Each element of `float4 m[4]` has a register of its own, and every
-                    // one of them reads as m without the subscript. When the subscript
-                    // is the address register the offset folds into it instead.
+                    // With relative addressing the offset folds into the subscript.
                     sourceRegisterName = instruction.Params.HasRelativeAddressing(srcIndex)
                         ? decl.Name
                         : $"{decl.Name}[{registerKey.Number - decl.RegisterIndex}]";
@@ -4018,7 +3403,7 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(instruction.GetSourceModifier(srcIndex), sourceRegisterName);
     }
 
-    // x0[3], x0[r0.x], x0[r0.x + 1]: the array, then the element it names.
+    // x0[3], x0[r0.x], x0[r0.x + 1].
     private static string GetIndexableTempOperandName(
         D3D10Instruction instruction,
         int operandIndex,
@@ -4056,9 +3441,8 @@ public class HlslSimpleWriter : HlslWriter
         return GetDynamicOperandName(instruction, operandIndex, operandIndices, out _);
     }
 
-    /// <param name="member">The struct member named, when the operand reads an
-    /// element of an array of structs picked at run time; the swizzle then wants
-    /// rebasing onto it, and a scalar wants none.</param>
+    /// <param name="member">The struct member named in a run-time indexed struct
+    /// array; the caller rebases the swizzle onto it.</param>
     private string GetDynamicOperandName(
         D3D10Instruction instruction,
         int operandIndex,
@@ -4078,19 +3462,12 @@ public class HlslSimpleWriter : HlslWriter
         OperandType operandType = instruction.GetOperandType(operandIndex);
         if (operandType == OperandType.ImmediateConstantBuffer)
         {
-            // One index rather than a buffer and an element, and no declaration to be
-            // named from. The immediate beside the index is the row the read starts
-            // at, which names which of the arrays in the buffer it reads; dropped, the
-            // read was of the wrong rows.
+            // The immediate beside the index picks which array in the icb is read.
             return $"{_registers.ImmediateConstantBufferName((int)operandIndices[0].Immediate)}"
                 + $"[{index}]";
         }
-        // A run of output registers declared as one array by dcl_indexrange, written
-        // through the index. The only thing that indexes one is an instanced hull
-        // phase, writing the factor of the run it is - so the register is the run's
-        // number past the first of the range, and the phase was unrolled into a copy
-        // per run, which is what that number is. Named the ordinary way from there,
-        // so the factor reads as the field it is rather than as a subscripted one.
+        // An indexed output range is only written by an instanced hull phase, which
+        // was unrolled: the index is the instance, so name the register directly.
         if (operandType == OperandType.Output && instruction.ForkInstance is int instance)
         {
             var writtenKey = new D3D10RegisterKey(
@@ -4099,29 +3476,19 @@ public class HlslSimpleWriter : HlslWriter
             return _registers.GetRegisterName(
                 new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
         }
-        // A control point of a patch is read the way a vertex of a primitive is -
-        // which control point, then which register of it - so it is named the same
-        // way. Left out, it fell through to the constant buffer case at the end and
-        // was named off whatever declaration sat at that register: a hull shader
-        // looping over its control points asked for `dot(f[r0.y].xyz, f[r0.y].xyz)`,
-        // where f is the cbuffer float beside it, which does not compile.
+        // Control points are indexed like geometry shader vertices.
         if (operandType is OperandType.Input or OperandType.InputControlPoint
             or OperandType.OutputControlPoint)
         {
-            // A run of input registers declared as one array by dcl_indexrange has
-            // one index, and the immediate beside it is the first register of the
-            // run; a geometry shader has two, and the second names the register
-            // while the first is the vertex.
+            // One index: a dcl_indexrange input array starting at the immediate.
+            // Two: vertex, then register.
             if (operandIndices.Length == 1)
             {
                 var arrayKey = new D3D10RegisterKey(
                     OperandType.Input, (int)operandIndices[0].Immediate);
                 return $"{_registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0))}[{index}]";
             }
-            // The vertex is the dynamic part; the second index names the register.
-            // Which member of the vertex is a question about the component read, not
-            // about the register: two semantics can share one, and naming the
-            // register's own declaration read the first of them whichever was meant.
+            // The member is found by component: two semantics can share a register.
             bool isOutputPatch = operandType == OperandType.OutputControlPoint;
             var vertexKey = isOutputPatch
                 ? D3D10RegisterKey.CreateControlPointOutput((int)operandIndices[1].Immediate, 0)
@@ -4142,8 +3509,7 @@ public class HlslSimpleWriter : HlslWriter
         int elementOffset = _registers.GetConstantBufferElementOffset(registerKey, declaration);
         if (declaration.TypeInfo.MemberInfo != null && declaration.TypeInfo.NumElements > 1)
         {
-            // An array of structs: the element is the index over the registers one
-            // takes, and the constant part of the offset picks the member.
+            // Element = index / stride; the constant offset picks the member.
             int stride = declaration.RegistersPerElement;
             string element = elementOffset / stride == 0
                 ? $"{index} / {stride}"
@@ -4164,9 +3530,7 @@ public class HlslSimpleWriter : HlslWriter
         }
         if (declaration.TypeInfo.Rows > 1)
         {
-            // An array of matrices takes two subscripts. The index counts registers,
-            // which is rows across the whole array, so the element is that over the row
-            // count - `dot(position, instances[r0.x])` asks for a dot with a matrix.
+            // Matrix array: the index counts registers, so divide by the row count.
             return RegisterState.MatrixRegisterName(
                 declaration.TypeInfo,
                 $"{declaration.Name}[{index} / {declaration.RegistersPerElement}]",
@@ -4190,9 +3554,7 @@ public class HlslSimpleWriter : HlslWriter
         return components > 1 ? "int" + components : "int";
     }
 
-    // aL counts the enclosing loop; a0 is the address register, one index per
-    // component - `c0[a0.y]` is not `c0[a0.x]`, and reading the one for the other
-    // indexes the array in the wrong place.
+    // aL is the enclosing loop counter; a wide a0 keeps its component.
     private string GetRelativeAddressIndex(D3D9Instruction instruction, int srcIndex)
     {
         if (instruction.GetRelativeParamRegisterType(srcIndex) == RegisterType.Loop)
@@ -4223,17 +3585,14 @@ public class HlslSimpleWriter : HlslWriter
         {
             string index = GetRelativeAddressIndex(instruction, srcIndex);
 
-            // The subscripted register need not be the first of the array, whether the
-            // array is a run of defs or a declared one: `floats[i + 2]` reads c2[a0.x]
-            // when floats starts at c0.
+            // `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
             var registerKey = instruction.GetParamRegisterKey(srcIndex);
             int elementOffset = 0;
             if (_registers.FindConstantArray(registerKey) is ConstantArray literals)
             {
                 elementOffset = registerKey.Number - literals.BaseRegisterIndex;
             }
-            // A matrix array is not this case: its register offset counts rows, and
-            // the row has already been taken off it by the time we get here.
+            // Not matrix arrays: their row offset was handled by the caller.
             else if (_registers.FindConstant(registerKey) is ConstantDeclaration declared
                 && declared.TypeInfo.NumElements > 1
                 && declared.TypeInfo.Rows == 1)
@@ -4256,16 +3615,9 @@ public class HlslSimpleWriter : HlslWriter
         int registerNumber = instruction.GetParamRegisterNumber(srcIndex) + rowOffset;
         byte[] swizzle = instruction.GetSourceSwizzleComponents(srcIndex);
 
-        // Which entries of the swizzle are read depends on which components are
-        // written, not on how many: `mad oC0.zw, v0.z, c0.xyxy, c0.xyyx` reads
-        // entries 2 and 3, so the second addend is (y, x) and not (x, y). Taking
-        // the first two made the mad add 1 to z and 0 to w, both wrong. This is
-        // how GetSourceSwizzleName has always selected them. A caller naming a
-        // length instead means the low components, as it does there.
-        // A dot product reads as many components as it is wide, whatever it
-        // writes: `dp3 r0.w, v0, c0` against a def'd c0 read c0's w alone, the one
-        // component the destination names, and came out `dot(color.xyz, 0)`. This
-        // is the width GetSourceSwizzleName gives the same operands.
+        // Swizzle entries are picked by which components are written (`c0.xyyx`
+        // under .zw is (y, x)), as in GetSourceSwizzleName; a dot product reads
+        // its full width whatever it writes.
         int? dotWidth = instruction.Opcode switch
         {
             Opcode.Dp3 => 3,
@@ -4298,9 +3650,7 @@ public class HlslSimpleWriter : HlslWriter
         switch (registerType)
         {
             case RegisterType.ConstBool:
-                // Only defb gives a bool register a literal value, and nothing in the
-                // codebase emits one. Otherwise the register names a uniform, which
-                // the caller resolves through the constant table.
+                // defb literals are not modelled; the caller names the uniform.
                 return null;
             case RegisterType.ConstInt:
                 {
@@ -4313,11 +3663,7 @@ public class HlslSimpleWriter : HlslWriter
                     uint[] constant = components
                         .Select(s => constantInt[s]).ToArray();
 
-                    // Negate, Abs and AbsAndNegate over an integer constant would be
-                    // `-c`, `abs(c)` and `-abs(c)` component by component. They were
-                    // written as loops around a throw, which is three unreachable
-                    // statements and the same behaviour; no shader in the corpus has
-                    // reached here with one.
+                    // Source modifiers on an integer constant are not supported.
                     if (instruction.GetSourceModifier(srcIndex) != SourceModifier.None)
                     {
                         throw new NotImplementedException();
@@ -4388,10 +3734,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The element a raw groupshared access names, from the byte address it carries
-    /// and which dword of that access this is. Folded where the address is the
-    /// literal it almost always is - a component of a groupshared variable sits at a
-    /// constant offset.
+    /// The dword element a raw groupshared access names; folded for a literal address.
     /// </summary>
     private string GroupSharedElement(D3D10Instruction instruction, int addressOperand, int dword)
     {
@@ -4411,9 +3754,7 @@ public class HlslSimpleWriter : HlslWriter
     {
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
 
-        // Which run of an instanced phase this is, which the unrolling settled: each
-        // copy of the body reads it as the number of its own run, and there is
-        // nothing in HLSL to name it by.
+        // Each unrolled copy of an instanced phase knows its own instance number.
         if (registerKey.OperandType == OperandType.InputForkInstanceID)
         {
             return (instruction.ForkInstance ?? 0).ToString(_culture);
@@ -4421,10 +3762,7 @@ public class HlslSimpleWriter : HlslWriter
 
         if (registerKey.OperandType == OperandType.Immediate64)
         {
-            // The operand carries two doubles, and the instruction reads one per
-            // value it computes: the pair of slots its swizzle names for each of
-            // them. One value reading one double is a scalar; two reading different
-            // ones are a vector, the same as the register beside it they multiply.
+            // One double per value computed, at the slot pair the swizzle names.
             byte[] doubleSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             string[] doubles = [.. Enumerable.Range(0, instruction.ValueCount)
                 .Select(value => ConstantFormatter.Format(instruction.GetParamDouble(
@@ -4438,15 +3776,9 @@ public class HlslSimpleWriter : HlslWriter
 
         if (registerKey.OperandType == OperandType.Immediate32)
         {
-            // The 32 bits are typed by the instruction using them. Reading an integer
-            // as a float printed its bit pattern - l(4) came out as 0.000000. A mov
-            // uses them for nothing itself, so its immediate is typed by whatever
-            // reads the register afterwards: -1.0f moved into a register that is a
-            // loop counter elsewhere is still -1.0f.
+            // Typed by the instruction using them; for a mov, by its readers.
             bool isInteger = IsIntegerImmediate(instruction) || instruction.IsAddressOperand(operandIndex);
-            // A float immediate moved into an int register is stored as its bits,
-            // which is how that register holds floats - but the asint goes on in
-            // Moved or WriteResult, so nothing is needed here.
+            // Any asint is added by Moved or WriteResult instead.
             bool asBits = false;
             if (registerKey.ImmediateSingle.Length == 1)
             {
@@ -4456,28 +3788,17 @@ public class HlslSimpleWriter : HlslWriter
                 return asBits ? AsInt(scalar) : scalar;
             }
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
-            // Which entries of the swizzle are read depends on which components are
-            // written, as it does for a defined constant: `mov o0.zw, l(0, 0, 1, 2)`
-            // writes 1 and 2, not the first two.
+            // `mov o0.zw, l(0, 0, 1, 2)` writes 1 and 2.
             int[] components = GetSourceComponents(instruction, operandIndex, swizzle);
-            // Typed the same way as the single component above: a vector immediate
-            // feeding an integer instruction is a vector of integers, and
-            // `& float2(0.000000, 0.000000)` is the mask 255 read as float bits.
             string[] constant = [.. components
                 .Select(s => isInteger
                     ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
                     : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
-            // Unsigned where the instruction reads it so. A bare literal takes the
-            // type of what it is compared against, which is why one of those is left
-            // alone, but a vector immediate is written out as a constructor and an
-            // int4 of it really is signed: `(uint)i >= int4(1, 2, 4, 8)` is the
-            // mismatch fxc resolves by assuming unsigned and warns about.
+            // A vector constructor has a sign of its own, unlike a bare literal.
             string immediateType = isInteger
                 ? (ReadsUnsignedImmediates(instruction) ? "uint" : "int")
                 : "float";
-            // One component is a scalar, not a one wide vector. `int1(0)` is legal
-            // HLSL almost everywhere and not as a subscript, where fxc wants a
-            // scalar: `bounds[int1(0)]` is an invalid index.
+            // A scalar, not `int1(0)`, which is invalid as a subscript.
             string vector = components.Length == 1
                 ? constant[0]
                 : $"{immediateType}{components.Length}(" + string.Join(", ", constant) + ")";
@@ -4485,8 +3806,6 @@ public class HlslSimpleWriter : HlslWriter
         }
 
         D3D10OperandModifier modifier = instruction.GetOperandModifier(operandIndex);
-        // A double in a temp register is held in the shadow variable for it rather
-        // than in the two float components it really occupies.
         if (GetDoubleRegisterOperandName(instruction, operandIndex) is string doubleRegister)
         {
             return ApplyModifier(modifier, doubleRegister);
@@ -4495,8 +3814,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return ApplyModifier(modifier, doubleConstant);
         }
-        // A relatively addressed operand decodes to a meaningless register number,
-        // so its element has to be named from the index register instead.
+        // A relatively addressed operand's decoded register number is meaningless.
         D3D10OperandTokenCollection.OperandIndex[] operandIndices =
             instruction.OperandTokens.GetOperandIndices(operandIndex);
         string registerName;
@@ -4510,22 +3828,13 @@ public class HlslSimpleWriter : HlslWriter
         {
             registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices, out dynamicMember);
             isPackedScalar = dynamicMember != null && dynamicMember.Width == 1;
-            // A vertex of a patch or a primitive, read at an index: the member it
-            // names is as wide as its own declaration, and a member one component
-            // wide has no swizzle to pick from.
+            // An indexed vertex member is as wide as its declaration.
             if (registerKey.OperandType is OperandType.Input or OperandType.InputControlPoint
                     or OperandType.OutputControlPoint
                 && operandIndices.Length > 1
                 && !operandIndices[1].IsRelative)
             {
-                // Keyed by the register within the vertex, which is the immediate
-                // beside the index. The number decoded from a relatively addressed
-                // operand is meaningless - the parser says so where it models the
-                // element rather than reading it - so a vertex read at a computed
-                // index, `v[r1.z][0]`, found no declaration for the key as it stood
-                // and the width fell through to a throw. A geometry shader that
-                // loops over its vertices rather than being unrolled is that shape,
-                // and it stopped the instruction writer outright.
+                // Keyed by the immediate register index, not the decoded number.
                 var vertexRegister = new D3D10RegisterKey(
                     registerKey.OperandType == OperandType.OutputControlPoint
                         ? OperandType.OutputControlPoint
@@ -4537,42 +3846,25 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (registerKey.OperandType == OperandType.ConstantBuffer)
         {
-            // Several variables can share one register, so which is being read
-            // depends on the component: cb0[0].y is `n`, not `mode.y`.
+            // Variables share registers: the component picks the variable (or member).
             byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
             registerName = _registers.GetRegisterName(new RegisterComponentKey(registerKey, component));
-            // Width of what was actually named, which for a struct is the member and
-            // not the struct: `o.a.s` is a float, however wide struct2 is.
             isPackedScalar = _registers.GetRegisterMaskedLength(
                 new RegisterComponentKey(registerKey, component)) == 1;
-            // One operand can read across two variables packed into one register.
-            // `imax r0.yz, cb0[0].xy, -cb0[0].xy` reads a and b, and naming it from the
-            // first component alone read a twice.
+            // One read may span several packed variables.
             if (_destinationMaskOverride == null
                 && TryNamePackedComponents(instruction, operandIndex, registerKey, out string packed))
             {
                 return ApplyModifier(modifier, packed);
             }
         }
-        // A control point read back from the control point phase is packed the
-        // way that phase's outputs were.
         else if (registerKey.OperandType is OperandType.Input or OperandType.OutputControlPoint)
         {
-            // fxc can pack two differently named inputs into one register - TEXCOORD0
-            // at v2.xy and TEXCOORD1 at v2.z - so which is meant depends on which
-            // component is actually read, the same as a packed constant.
+            // Inputs are packed too (TEXCOORD0 at v2.xy, TEXCOORD1 at v2.z).
             byte component = instruction.GetSourceSwizzleComponents(operandIndex)[0];
             var inputComponentKey = new RegisterComponentKey(registerKey, component);
             registerName = _registers.GetRegisterName(inputComponentKey);
-            // As wide as the declaration covering the component, packed or not: a
-            // lone `float thickness` at v0.w is one component too, and reading it
-            // as `thickness.w` off a float is not HLSL.
             isPackedScalar = _registers.GetRegisterMaskedLength(inputComponentKey) == 1;
-            // One read can cross from one packed variable into another: a coordinate
-            // built as `float3(uv2, uv1.x)` reads v0.zw and v0.x. Named from the first
-            // component and rebased onto it, the component that belongs to the
-            // earlier-packed variable runs below its base. A constructor over each
-            // variable, each swizzled as its own, says what is read.
             if (_destinationMaskOverride == null
                 && TryNamePackedComponents(instruction, operandIndex, registerKey, out string packedInputs))
             {
@@ -4581,9 +3873,7 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (registerKey.IsOutput && instruction.IsDestinationOperand(operandIndex))
         {
-            // fxc packs two outputs into one register as readily as two inputs, so
-            // which field is written depends on the component. Named by the register
-            // alone, both writes went to the first of them.
+            // Outputs are packed too; the first written component picks the field.
             int outputMask = _destinationMaskOverride ?? instruction.GetWriteMask(operandIndex);
             var outputComponentKey = new RegisterComponentKey(registerKey,
                 Enumerable.Range(0, 4).First(c => (outputMask & (1 << c)) != 0));
@@ -4596,15 +3886,10 @@ public class HlslSimpleWriter : HlslWriter
             registerName = _registers.GetRegisterName(registerKey);
         }
         string writeMaskName;
-        // A buffer is named, never masked or swizzled: what it reads or writes is
-        // said by the method - Load2, Store - and the register's own mask.
+        // A buffer is named, never masked or swizzled.
         if ((instruction.Opcode == D3D10Opcode.LdStructured && operandIndex == 3)
             || (instruction.Opcode == D3D10Opcode.LdRaw && operandIndex == 2)
             || (instruction.Opcode == D3D10Opcode.StoreRaw && operandIndex == 0)
-            // A structured store carries a mask saying which members of the element
-            // it writes, which the members named after the subscript already say:
-            // `store_structured u0.xy, ...` came out as `dst.xy[i].c`, a subscript
-            // the buffer has not got.
             || (instruction.Opcode == D3D10Opcode.StoreStructured && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.StoreUAVTyped && operandIndex == 0)
             || (instruction.Opcode == D3D10Opcode.LdUAVTyped && operandIndex == 2)
@@ -4617,12 +3902,7 @@ public class HlslSimpleWriter : HlslWriter
         }
         else if (instruction.IsDestinationOperand(operandIndex))
         {
-            // The mask within the field written, not within the register holding it.
-            // A patch constant packed above a tessellation factor - CENTRE at o0.yzw -
-            // was named by the register's own components: the write of its z said
-            // `o.centre.z`, which is its y, and the write of its w said `o.centre`,
-            // assigning a float to a float3. Shifted down by where the field starts,
-            // a write of the whole of it says nothing, as it should.
+            // The mask within the field, not the register (CENTRE at o0.yzw: z is .y).
             int mask = _destinationMaskOverride ?? instruction.GetWriteMask(operandIndex);
             var componentKey = new RegisterComponentKey(registerKey, FirstComponent(mask));
             int fieldBase = _registers.GetOutputComponentBase(componentKey);
@@ -4633,12 +3913,8 @@ public class HlslSimpleWriter : HlslWriter
         }
         else
         {
-            // A texture or a sampler is named, never swizzled. The swizzle a sampling
-            // instruction carries on its resource operand selects components of the
-            // result, and on the sampler of a gather it selects the channel; neither
-            // belongs on the object itself. A writable view carries one the same way
-            // - `resinfo r0.xy, l(0), u0.xyzw` - and `tex.xy.GetDimensions(...)` is
-            // not a subscript the object has.
+            // Textures, samplers and UAVs are never swizzled: their swizzle applies
+            // to the result (or a gather's channel).
             if (registerKey.OperandType == OperandType.Resource
                 || registerKey.OperandType == OperandType.Sampler
                 || registerKey.OperandType == OperandType.UnorderedAccessView)
@@ -4646,8 +3922,7 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier, registerName);
             }
 
-            // One statement of a split instruction reads only the components it
-            // writes, so the source swizzle follows that statement's mask.
+            // A split statement reads only the components it writes.
             if (_destinationMaskOverride != null && GetSourceLength(instruction, operandIndex) == null)
             {
                 return ApplyModifier(modifier, registerName
@@ -4655,12 +3930,8 @@ public class HlslSimpleWriter : HlslWriter
             }
 
             int? maskedLength = GetSourceLength(instruction, operandIndex);
-            // A scalar variable sharing a register has no component of its own to
-            // name once the variable itself is named.
             if (dynamicMember != null)
             {
-                // A vector member of a run-time element: as wide as the member, and
-                // rebased onto it.
                 maskedLength = dynamicMember.Width;
             }
             writeMaskName = isPackedScalar
@@ -4669,60 +3940,37 @@ public class HlslSimpleWriter : HlslWriter
                     instruction.GetSourceSwizzleName(operandIndex, maskedLength),
                     dynamicMember?.ComponentBase ?? GetConstantComponentBase(instruction, operandIndex),
                     maskedLength);
-            // An integer instruction whose result is reinterpreted has to compute in
-            // integers. A register holding the number 3 as a float, added to 4 as a
-            // float, gives the float 7 - and the bits of 7.0f are not 7, so the
-            // asfloat that stores the sum and the asint that reads it back give
-            // something else entirely. `(i + 1) & 63` over a loop counter is the
-            // ordinary way to meet this.
+            // An integer op into an int register must compute in integers: a float
+            // 3 + 4 is 7.0f, whose bits are not 7.
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
                 && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
-                // A constant the declaration types as an integer is one already.
                 && !IsIntegerConstant(instruction, operandIndex)
                 && instruction.HasDestination
-                // Only where the result is an integer's, which is what makes the
-                // float the operand holds the wrong thing to compute with. A load's
-                // address is read as an integer too and has nothing to do with what
-                // the texel it fetches is kept as.
                 && GetProducedKind(instruction) == ValueKind.Integer
                 && GetDestinationStorage(instruction, instruction.GetDestinationParamIndex() ?? 0)
                     == ComponentStorage.Integer)
             {
-                // As wide as the operand where it has a width of its own - a load's
-                // address is three wide under a one wide load - and as the
-                // destination otherwise. A scalar cast over a vector takes the first
-                // component and spreads it.
+                // As wide as the operand (a scalar cast would broadcast .x).
                 int length = maskedLength ?? instruction.GetDestinationMaskLength();
                 string size = length == 1 ? "" : length.ToString();
                 return ApplyModifier(modifier,
                     $"(int{size}){string.Format("{0}{1}", registerName, writeMaskName)}");
             }
-            // And an index HLSL takes unsigned, out of a float register holding a
-            // signed integer. The subscript of a buffer or of a typed view takes a
-            // uint, so the implicit conversion clamps a negative to zero where the
-            // bytecode's ftoi kept it negative, and a read past the edge of a
-            // texture became a read of texel zero. Cast to int it wraps instead,
-            // which is what the instruction did with the dwords it was handed.
+            // An ftoi result used as a uint index: cast to int so a negative wraps
+            // rather than clamping to zero in the float-to-uint conversion.
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
                 && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
                 && !IsIntegerConstant(instruction, operandIndex)
                 && IsUnsignedIndexOperand(instruction, operandIndex)
                 && HoldsSignedInteger(instruction, operandIndex))
             {
-                // As wide as the index: a typed view's coordinate counts by the
-                // dimensions of the resource, and an element index is one.
                 int indexLength = maskedLength ?? 1;
                 string indexSize = indexLength == 1 ? "" : indexLength.ToString();
                 return ApplyModifier(modifier,
                     $"(int{indexSize}){string.Format("{0}{1}", registerName, writeMaskName)}");
             }
-            // An int register holding bits: what a float instruction reading it
-            // wants is the float those bits are, and not the number they make. A
-            // register of loop counters is declared int too and is the other way
-            // about, which is why the two are told apart component by component.
-            // And a uniform or an attribute declared an integer: fxc writes a utof or
-            // an itof wherever the source meant the number, so a float instruction
-            // reading one as it stands is reading a float's bits.
+            // A float read of float bits held in an int register, or of an integer
+            // uniform/input without a utof/itof, is an asfloat.
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Float
                 && (HoldsFloatBits(instruction, operandIndex)
                     || IsIntegerUniformOrInput(instruction, operandIndex)))
@@ -4730,11 +3978,8 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier,
                     $"asfloat({string.Format("{0}{1}", registerName, writeMaskName)})");
             }
-            // A negation or an absolute on bits a mov carries is a float operation:
-            // `movc r2, r3, r2, -r2` over a fraction negates the number, and
-            // negating the bits of one gives a different number entirely. Read as a
-            // float, negated, and put back as bits. An integer instruction's
-            // negation is the integer's, whatever the component otherwise holds.
+            // A modifier on float bits a mov carries applies to the float:
+            // asint(-asfloat(x)).
             if (modifier is not D3D10OperandModifier.None
                 && GetConsumedKind(instruction, operandIndex) != ValueKind.Integer
                 && HoldsFloatBits(instruction, operandIndex))
@@ -4747,12 +3992,8 @@ public class HlslSimpleWriter : HlslWriter
         return ApplyModifier(modifier, string.Format("{0}{1}", registerName, writeMaskName));
     }
 
-    // An operand a shift reads. A register that holds an integer as a float holds
-    // the number wanted and not its bits, so it is converted rather than
-    // reinterpreted - and it has to be, since HLSL will not shift a float at all
-    // (X3082). Bits storage is read with asint already, an int register and a
-    // constant declared int need nothing, and the cast is as wide as what is
-    // written, since a bare (int) over two components is X3014.
+    // A shift operand as an int (HLSL will not shift a float, X3082), cast as wide
+    // as the write (a bare (int) over a vector is X3014).
     private string ShiftOperand(D3D10Instruction instruction, int operandIndex)
     {
         string name = GetOperandName(instruction, operandIndex);
@@ -4761,9 +4002,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return name;
         }
-        // A temp holding an integer as a float holds the number wanted, and is
-        // converted; a register the declaration says is a float holds a float, and
-        // what a shift wants of one is its bits.
+        // A float temp holds an integer as a number: convert. A declared float: its bits.
         if (!instruction.GetParamRegisterKey(operandIndex).IsTempRegister)
         {
             return AsInt(name);
@@ -4773,16 +4012,8 @@ public class HlslSimpleWriter : HlslWriter
         return $"(int{size}){name}";
     }
 
-    // An operand read as an unsigned integer: bits reinterpreted as such, an int
-    // register cast - as wide as the destination, since a bare (uint) over two
-    // components is X3014 - and an immediate as it is.
-    // How many operands have been named to keep them from a result written over them.
     private int _keptOperandCount;
 
-    /// <summary>
-    /// Whether an operand reads the register given - the one a result is about to be
-    /// written into. An immediate reads no register and can never be overwritten.
-    /// </summary>
     private static bool IsSameRegister(D3D10Instruction instruction, int operandIndex, RegisterKey registerKey)
     {
         return instruction.GetOperandType(operandIndex) != OperandType.Immediate32
@@ -4790,13 +4021,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names an operand that a result is about to be written over, so that the
-    /// statements after it read the value the instruction read. One instruction
-    /// answering two results is two statements here, and the first can land in a
-    /// register the second still reads: `udiv r1.xyzw, r2.xyzw, r1.xyzw, r2.xyzw`
-    /// and `sincos r0.x, r1.x, r0.x` are both written that way by fxc. Left alone,
-    /// the remainder divided the quotient and the cosine answered cos(sin(x)).
-    /// Returns the expression unchanged where there is nothing to keep.
+    /// Copies an operand into a local when the first of two results overwrites it
+    /// (`sincos r0.x, r1.x, r0.x`); otherwise returns the expression unchanged.
     /// </summary>
     private string KeptOperand(D3D10Instruction instruction, int operandIndex,
         int writtenIndex, string typeName, string baseName, string expression)
@@ -4811,6 +4037,7 @@ public class HlslSimpleWriter : HlslWriter
         return name;
     }
 
+    // An operand read as uint; the cast is as wide as the write (X3014).
     private string AsUint(D3D10Instruction instruction, int operandIndex)
     {
         string name = GetOperandName(instruction, operandIndex);
@@ -4828,11 +4055,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a loop has to be marked [loop] for fxc to compile it at all: a
-    /// sample with implicit derivatives inside a loop fxc cannot count is an error
-    /// unless the loop is marked, so the source it came from was marked. Every
-    /// other loop is left to fxc. A loop fxc can count is one whose first break
-    /// tests a comparison against an immediate - `ige r, r, l(4)` then breakc.
+    /// Whether a loop needs [loop] to compile: it uses implicit derivatives and is
+    /// not counted (no breakc on a comparison with an immediate).
     /// </summary>
     private bool LoopSamplesWithGradients(Instruction loop)
     {
@@ -4879,10 +4103,7 @@ public class HlslSimpleWriter : HlslWriter
         return samples && !counted;
     }
 
-    // if_nz branches when the register is non-zero, if_z when it is zero.
-    // A test against zero is of the bits, not the number: if_nz and movc take
-    // -0.0f and a comparison mask as set, and `x != 0` as a float takes neither.
-    // Only a register declared int is tested as it is.
+    // A zero test is of the bits: -0.0f and a comparison mask (NaN) are non-zero.
     private string ZeroTest(D3D10Instruction instruction, int operandIndex, bool nonZero = false)
     {
         string name = instruction.GetOperandType(operandIndex) == OperandType.Immediate32
@@ -4898,7 +4119,6 @@ public class HlslSimpleWriter : HlslWriter
         return $"{name} {test} 0";
     }
 
-    // What the component an operand reads first is declared to hold.
     private DeclaredType DeclaredTypeOf(D3D10Instruction instruction, int operandIndex)
     {
         return _registers.GetDeclaredType(new RegisterComponentKey(
@@ -4906,16 +4126,13 @@ public class HlslSimpleWriter : HlslWriter
             instruction.GetSourceSwizzleComponents(operandIndex)[0]));
     }
 
-    // A constant declared bool, int or uint holds its integer as one.
     private bool IsIntegerConstant(D3D10Instruction instruction, int operandIndex)
     {
         return instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer
             && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Bool or DeclaredType.Int or DeclaredType.Uint;
     }
 
-    // Not a bool, which fxc reads into float arithmetic through a select of 1.0.
-    // And only in arithmetic: a gather's offset and GetSamplePosition's index count
-    // as float operands to GetConsumedKind, and are the integers they are declared.
+    // Only in float arithmetic, and not bools (fxc selects 1.0 for those).
     private bool IsIntegerUniformOrInput(D3D10Instruction instruction, int operandIndex)
     {
         if (instruction.Opcode is not (D3D10Opcode.Add or D3D10Opcode.Mul or D3D10Opcode.Mad
@@ -4930,12 +4147,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether an operand holds an integer rather than a float. A temp by its
-    /// register's declaration, which the register rule decides; anything else by
-    /// the declaration that names it - a constant buffer variable by its own type,
-    /// an input by the component type its signature gives. The register rule is no
-    /// use for those: a float input read by nothing but a shift looks like an
-    /// integer to it, and the shift is reading its bits.
+    /// Whether an operand holds an integer: a temp by its storage, anything else by
+    /// its declared type.
     /// </summary>
     private bool HoldsInteger(D3D10Instruction instruction, int operandIndex)
     {
@@ -4947,18 +4160,10 @@ public class HlslSimpleWriter : HlslWriter
         return DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Bool or DeclaredType.Int or DeclaredType.Uint;
     }
 
-    // The resource operand carries a swizzle saying which channel of the texture
-    // each component of the result comes from: `sample r0, v0.xyxx, t2.yzxw, s0`
-    // puts green in x. Leaving it out reads the wrong channels and compiles.
-    // A comparison sample returns one value, so there is nothing to permute.
     private int _resourceInfoCount;
 
-    // GetDimensions fills out parameters rather than returning a value, so the
-    // result goes through a variable of its own and is then moved to the register,
-    // which is what carries the resource operand's swizzle and the write mask. The
-    // two-argument overload is width and height at mip 0; anything more takes the
-    // full form, which for a 2D texture is the mip in and width, height and mip
-    // count out - z, the depth or array size, is what a 2D texture has not got.
+    // GetDimensions fills out parameters into a local, then the resource swizzle
+    // moves it into the register.
     private void WriteResourceInfo(D3D10Instruction instruction)
     {
         string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
@@ -4978,31 +4183,21 @@ public class HlslSimpleWriter : HlslWriter
                 read[swizzle[component]] = true;
             }
         }
-        // A multisampled texture has one overload and it is the three argument
-        // one: no mip level, and the sample count where the mip count would be.
-        // Asking it for two came out as X3013, no matching intrinsic.
+        // Multisampled textures have no mip overload.
         if (IsMultisampled(instruction, 2))
         {
             WriteMultisampledDimensions(instruction, 2, type, dimensions);
         }
         else
         {
-            // The mip form is the one with the level in and the mip count out; the
-            // resinfo's own mip operand says whether the shader asked at a level,
-            // and reading the count says it asked for the mip form whichever way it
-            // was asked at. What else is out, and in which components, is the
-            // resource's shape: a 1D reports width alone and the count in w; its
-            // array the element count in y; an array of 2D, a cube array and a 3D
-            // the element count or the depth in z. Writing them all as the 2D
-            // overload asked for intrinsics those shapes do not have.
+            // The mip form (level in, mip count out to w) when a level is given or
+            // the count is read. The shape decides the other outputs: 1D width only,
+            // 2D arrays, cube arrays and 3D also z.
             ResourceDimension? dimension = ResourceDimensionOf(instruction, 2);
             bool hasDepth = dimension is ResourceDimension.Texture2DArray
                 or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
             bool is1D = dimension == ResourceDimension.Texture1D;
-            // Anything read past the components the shape's no-mip form reports -
-            // the mip count always, the depth of a shape that has none - has no
-            // no-mip spelling either, so that too is left in the mip form, where a
-            // 4-wide variable has the component the swizzle reads either way.
+            // Reading past what the no-mip form reports needs the mip form.
             int noMipComponents = is1D ? 1 : hasDepth ? 3 : 2;
             bool mipForm = mipLevel != "0" || read.Skip(noMipComponents).Any(r => r);
             if (!mipForm && !hasDepth && !is1D)
@@ -5027,11 +4222,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// bufinfo, which reports how many elements a buffer holds - or how many bytes
-    /// a byte address one does. HLSL asks through GetDimensions like the rest, in
-    /// the overload the buffer takes: a structured one reports its stride beside
-    /// the count, which fxc knows as a constant and does not ask for, so the second
-    /// out parameter is written into and never read.
+    /// bufinfo via GetDimensions; a structured buffer also reports a stride, unread.
     /// </summary>
     private void WriteBufferInfo(D3D10Instruction instruction)
     {
@@ -5053,16 +4244,10 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// sampleinfo, which reports how many samples a resource has. HLSL asks for it
-    /// through GetDimensions like the size, so this writes a call of its own and
-    /// leaves the width and height it also returns unread - one instruction more
-    /// than the shader had, which is what writing instruction by instruction costs
-    /// wherever one HLSL call becomes two.
+    /// sampleinfo via GetDimensions, or GetRenderTargetSampleCount for the rasterizer.
     /// </summary>
     private void WriteSampleInfo(D3D10Instruction instruction)
     {
-        // How many samples the render target has, which is asked for on its own and
-        // not read out of a GetDimensions: there is no resource to call one on.
         if (instruction.GetOperandType(1) == OperandType.Rasterizer)
         {
             WriteResult(instruction, "{0} = GetRenderTargetSampleCount();",
@@ -5072,16 +4257,13 @@ public class HlslSimpleWriter : HlslWriter
         string type = instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
         string dimensions = $"dimensions{_resourceInfoCount++}";
         WriteMultisampledDimensions(instruction, 1, type, dimensions);
-        // The count is the last out parameter, which an array pushes to w by
-        // reporting how many elements it has in front of it.
+        // An array's element count pushes the sample count to w.
         string component = IsMultisampledArray(instruction, 1) ? "w" : "z";
         WriteResult(instruction, "{0} = {1}.{2};", GetOperandName(instruction, 0), dimensions, component);
     }
 
     /// <summary>
-    /// The GetDimensions a multisampled texture takes: width, height and the sample
-    /// count, with the element count between them for an array, and no mip level in
-    /// either - there are no mips to ask about.
+    /// Width, height, [elements,] sample count; multisampled textures have no mips.
     /// </summary>
     private void WriteMultisampledDimensions(
         D3D10Instruction instruction, int resourceOperand, string type, string dimensions)
@@ -5102,8 +4284,6 @@ public class HlslSimpleWriter : HlslWriter
         return ResourceDimensionOf(instruction, operandIndex) == ResourceDimension.Texture2DmsArray;
     }
 
-    /// <summary>Whether the resource an operand names is a multisampled texture,
-    /// which changes which GetDimensions overloads there are.</summary>
     private bool IsMultisampled(D3D10Instruction instruction, int operandIndex)
     {
         return ResourceDimensionOf(instruction, operandIndex) is ResourceDimension.Texture2Dms
@@ -5116,6 +4296,8 @@ public class HlslSimpleWriter : HlslWriter
             instruction.GetParamRegisterKey(operandIndex))?.Dimension;
     }
 
+    // The texture operand's swizzle picks the channel of each result component
+    // (`t2.yzxw` puts green in x). Comparison samples return one value.
     private static string GetResourceSwizzle(D3D10Instruction instruction)
     {
         if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ
@@ -5123,12 +4305,9 @@ public class HlslSimpleWriter : HlslWriter
         {
             return "";
         }
-        // Of the operand that names the texture, which a register offset moves.
         return instruction.GetSourceSwizzleName(TextureOperandIndex(instruction));
     }
 
-    // An offset shifts the sample by whole texels. Leaving it out compiles and
-    // reads the wrong ones, so it belongs in the call.
     private string GetSampleOffset(D3D10Instruction instruction)
     {
         if (instruction.SampleOffsets == null)
@@ -5154,9 +4333,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// The variable an ld reads, where the resource it reads is a texture buffer
-    /// and the address is a constant: each 16 byte element of the block is one of
-    /// its variables. Null for anything else.
+    /// The tbuffer variable an ld reads (one per 16-byte element); null if not a tbuffer.
     /// </summary>
     private string TextureBufferVariable(D3D10Instruction instruction)
     {
@@ -5170,20 +4347,15 @@ public class HlslSimpleWriter : HlslWriter
             .Where(d => d.IsTextureBuffer && d.BufferName == buffer.Name);
         if (instruction.GetOperandType(1) != OperandType.Immediate32)
         {
-            // Read at an index the shader works out rather than a constant one, so
-            // no one variable of the block is what is being read: the array it is an
-            // element of is named instead, subscripted by the address. Falling
-            // through to a Load on the buffer's own name does not compile - a
-            // tbuffer is a block like a cbuffer, and the block is not an identifier,
-            // only what it declares.
+            // A computed address subscripts the block's array (the block name is
+            // not an identifier).
             D3D10ConstantDeclaration array = declarations
                 .FirstOrDefault(d => d.TypeInfo.NumElements > 1);
             if (array == null)
             {
                 return null;
             }
-            // The address counts registers within the buffer, so an array whose
-            // element takes more than one register is indexed by however many.
+            // The address counts registers, not elements.
             string index = GetOperandName(instruction, 1);
             if (array.RegistersPerElement > 1)
             {
@@ -5197,9 +4369,7 @@ public class HlslSimpleWriter : HlslWriter
             ?.Name;
     }
 
-    // A texture buffer is declared with a dcl_resource_buffer and read with an ld
-    // like any other buffer, so it is addressed the same way and belongs in both
-    // questions above; only what the load is written as differs.
+    // Includes tbuffers, which ld reads like any other buffer.
     private ResourceDefinition LoadedResource(D3D10Instruction instruction)
     {
         return _registers.ResourceDefinitions
@@ -5210,18 +4380,14 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// Which operand names the texture. The third for everything that samples or
-    /// loads, and the fourth for a gather that takes its offset from a register -
-    /// that offset is an operand of its own, and pushes the rest along.
+    /// Operand 2, or 3 for gather4_po whose register offset shifts the rest along.
     /// </summary>
     private static int TextureOperandIndex(D3D10Instruction instruction)
     {
         return instruction.Opcode is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC ? 3 : 2;
     }
 
-    // Which declared variable a component of a packed register belongs to, told apart
-    // by where that variable starts: two packed constants, or two packed inputs, never
-    // share a starting component.
+    // Identifies a packed variable by its starting component, which is unique.
     private int GetPackedComponentBase(D3D10RegisterKey registerKey, int component)
     {
         var key = new RegisterComponentKey(registerKey, component);
@@ -5234,14 +4400,8 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A constructor over the variables one operand reads, when fxc packed several
-    /// into one register - two scalars, or TEXCOORD0 at v0.xy and TEXCOORD1 at v0.zw -
-    /// and the read crosses from one into another. Naming the operand from its first
-    /// component and rebasing the whole swizzle onto that variable runs a component
-    /// belonging to a differently-packed variable off its end: below the base when it
-    /// sits in the earlier-packed variable, or past it when a later one is read
-    /// through an earlier variable's name. Each run of consecutive components sharing a
-    /// variable is named and swizzled as that variable.
+    /// A constructor over the packed variables one read spans, e.g.
+    /// `float3(uv2, uv1.x)`; each run of components is swizzled as its own variable.
     /// </summary>
     private bool TryNamePackedComponents(
         D3D10Instruction instruction,
@@ -5259,7 +4419,6 @@ public class HlslSimpleWriter : HlslWriter
 
         int[] bases = [.. components.Select(c => GetPackedComponentBase(registerKey, c))];
 
-        // Maximal runs of consecutive components that share one variable.
         var runs = new List<List<int>>();
         var runBases = new List<int>();
         for (int i = 0; i < components.Length; i++)
@@ -5276,7 +4435,6 @@ public class HlslSimpleWriter : HlslWriter
         }
         if (runs.Count < 2)
         {
-            // All one variable, which a single rebased swizzle already names.
             return false;
         }
 
@@ -5292,7 +4450,6 @@ public class HlslSimpleWriter : HlslWriter
             {
                 letters += "xyzw"[c - variableBase];
             }
-            // The whole variable read in order needs no swizzle on it.
             int maskedLength = _registers.GetRegisterMaskedLength(
                 new RegisterComponentKey(registerKey, run[0]));
             if (letters != "xyzw"[..maskedLength])
@@ -5308,10 +4465,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
-    /// A constant buffer packs several variables into one register, so a float3
-    /// declared after a float sits at .yzw. The swizzle naming it is rebased onto the
-    /// variable, whose own components start at x - eyePos.yzw asks for components it
-    /// has not got.
+    /// Rebases a register swizzle onto a packed variable: a float3 at .yzw reads .xyz.
     /// </summary>
     private static string Rebased(string swizzleName, int componentBase, int? maskedLength)
     {
@@ -5346,9 +4500,8 @@ public class HlslSimpleWriter : HlslWriter
         };
     }
 
-    // Which entries of a source swizzle an instruction reads: those the destination
-    // mask selects, unless the operand has a width of its own - a texture coordinate
-    // is as wide as the texture whatever the destination mask says.
+    // The swizzle entries read: by the destination mask unless the operand has a
+    // width of its own.
     private int[] GetSourceComponents(D3D10Instruction instruction, int operandIndex, byte[] swizzle)
     {
         int? length = GetSourceLength(instruction, operandIndex);
@@ -5367,22 +4520,12 @@ public class HlslSimpleWriter : HlslWriter
             .Select(i => (int)swizzle[i])];
     }
 
-    // The coordinate is as wide as the texture, not as wide as whatever the sample
-    // is being written into: a comparison sample writes one component and still
-    // reads a two component coordinate. ld addresses a texel of a particular mip,
-    // so its address is one wider still - Load on a Texture2D takes an int3.
+    // An operand's own width, where it does not follow the destination mask;
+    // null where it does.
     private int? GetSourceLength(D3D10Instruction instruction, int operandIndex)
     {
-        // A dot product reads both its operands as wide as the product and not as
-        // wide as the one component it writes. Sized by the destination, the
-        // immediate of `dp3 r0.w, r0.xyzx, l(0.2125, 0.7154, 0.0721, 0)` came out
-        // as the one component the w mask selects: float1(0), a luminance of zero.
-        // An interlocked operation reads one component from each of its operands. The
-        // address is a whole operand rather than the two a store splits it into, so
-        // its second component is the byte offset within the element and is not part
-        // of the subscript - unless the resource is a typed texture, which is
-        // addressed by a coordinate as wide as it has dimensions, the same as the
-        // store into it.
+        // Atomics read scalars; the address width depends on the resource (the
+        // byte offset is not part of a structured subscript).
         if (instruction.Opcode.IsAtomic() || instruction.Opcode.IsImmediateAtomic())
         {
             bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
@@ -5397,52 +4540,36 @@ public class HlslSimpleWriter : HlslWriter
                 return 1;
             }
         }
-        // An operand of a double instruction that is not itself doubles - the
-        // condition of a dmovc, the float a ftod converts - is as wide as the values
-        // the instruction computes. As wide as the destination mask it was read two
-        // components for each of them: the condition of a dmovc over one double came
-        // out `r0.xx`, which is the same bool twice.
+        // A non-double operand of a double instruction (dmovc condition, ftod
+        // source) has one component per value, not two.
         if (instruction.HasDoubleOperands && !instruction.IsDoubleOperand(operandIndex))
         {
             return instruction.ValueCount;
         }
-        // The gradients a sample_d reads are as wide as the texture, the same as the
-        // coordinate before them: a 2D gradient is a float2, and written as wide as
-        // the destination `SampleGrad(s, c, r0.xyxx, r0.zwzz)` hands it two float4s
-        // and truncates both.
+        // Gradients are as wide as the texture.
         if (instruction.Opcode == D3D10Opcode.SampleD && operandIndex is 4 or 5)
         {
             return GetTextureDimension(instruction);
         }
-        // The level a sample_l reads, the bias of a sample_b and the value a
-        // comparison sample tests are one number each, whatever the destination mask
-        // is: `SampleLevel(s, c, r0.zzz)` is a float3 truncated to the one float it
-        // takes, which is not what the shader asked for.
+        // LOD, bias and comparison value are scalars.
         if (operandIndex == 4 && instruction.Opcode is D3D10Opcode.SampleL
             or D3D10Opcode.SampleB or D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ
             or D3D10Opcode.Gather4C)
         {
             return 1;
         }
-        // The offset a gather4_po reads from a register is as wide as the texture,
-        // the same as the coordinate before it.
         if (operandIndex == 2
             && instruction.Opcode is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC)
         {
             return GetTextureDimension(instruction);
         }
-        // Where an attribute is evaluated is as wide as the question: one sample
-        // index, or an offset in x and y. The operand is as wide as the destination
-        // mask otherwise, and `EvaluateAttributeSnapped(v, int4(...))` is not an
-        // overload of anything.
+        // A snapped offset is int2; a sample index is a scalar.
         if (operandIndex == 2)
         {
             if (instruction.Opcode == D3D10Opcode.EvalSnapped)
             {
                 return 2;
             }
-            // And which sample GetSamplePosition is asked about is one index,
-            // however wide the float2 it answers with.
             if (instruction.Opcode is D3D10Opcode.EvalSampleIndex or D3D10Opcode.SamplePos)
             {
                 return 1;
@@ -5471,8 +4598,7 @@ public class HlslSimpleWriter : HlslWriter
             return GetTextureDimension(instruction);
         }
 
-        // A texel of the view being written, addressed by as many coordinates as it
-        // has dimensions - and no mip, there being only the one to write to.
+        // Typed UAVs: one coordinate per dimension, no mip.
         if (instruction.Opcode == D3D10Opcode.StoreUAVTyped)
         {
             return _registers.GetResourceDimensionSize(instruction.GetParamRegisterKey(0));
@@ -5493,13 +4619,9 @@ public class HlslSimpleWriter : HlslWriter
         }
         if (instruction.Opcode is D3D10Opcode.LdRaw or D3D10Opcode.StoreRaw)
         {
-            // One byte offset.
             return 1;
         }
-        // One element and one byte offset within it, however many components the
-        // element has. Sized by the destination, `ld_structured r0.xy,
-        // vThreadID.x, l(0), t0` subscripted the buffer with `i.xx`, which fxc
-        // refuses: an index is a scalar.
+        // Element index and byte offset are scalars.
         if (instruction.Opcode is D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured
             && operandIndex is 1 or 2)
         {
@@ -5508,8 +4630,7 @@ public class HlslSimpleWriter : HlslWriter
         return null;
     }
 
-    // Those that take a texture coordinate at operand 1 and the resource at 2. ld is
-    // not one: its address carries a mip level rather than a coordinate.
+    // Coordinate at operand 1, resource at 2. Not ld, whose address carries a mip.
     private static bool IsSamplingOpcode(D3D10Opcode opcode)
     {
         switch (opcode)

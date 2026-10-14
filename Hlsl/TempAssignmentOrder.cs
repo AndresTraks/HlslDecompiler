@@ -4,25 +4,14 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Orders temp assignments so that one is written before anything that reads the
-/// variable it assigns.
-///
-/// This is a partial order - most pairs of assignments have nothing to do with each
-/// other - and a partial order cannot be handed to a comparison sort. "Unrelated"
-/// comes back as "equal", equal is then not transitive, and insertion sort stops at
-/// the first element that does not compare greater, which can be one that should
-/// have come after. With four assignments and one real dependency between them, the
-/// sort put the variable's use before its assignment.
-///
-/// So it sorts rather than compares: repeatedly take the first assignment whose
-/// dependencies have all been placed, which keeps the original order among
-/// assignments that do not depend on each other.
+/// Orders temp assignments so each comes before the readers of its variable. A
+/// topological sort, not a comparison sort: the order is partial, and treating
+/// "unrelated" as "equal" breaks transitivity. Unrelated items keep their order.
 /// </summary>
 public class TempAssignmentOrder
 {
-    /// <param name="wantsNewValueOf">For an item that is not itself an assignment -
-    /// an output register's value - the assignments whose value it wants as this
-    /// statement computes it. An assignment carries that record on itself.</param>
+    /// <param name="wantsNewValueOf">For a non-assignment item, the assignments whose
+    /// new value it reads.</param>
     public static List<T> Sort<T>(
         IEnumerable<T> items,
         System.Func<T, HlslTreeNode[]> nodes,
@@ -35,24 +24,13 @@ public class TempAssignmentOrder
                 wantsNewValueOf == null ? [] : [.. wantsNewValueOf(item)],
                 index))
             .ToList();
-        // Both of the costs below are asked the same questions over and over: the
-        // selection is quadratic in how many assignments there are and runs once per
-        // placement, so a pair is compared up to as many times as there are items,
-        // and every comparison walks expressions to ask what reads what. Neither
-        // answer can change while this sorts - it reorders a list and leaves the
-        // graph alone - so both are remembered for the call. A forty instruction
-        // chain of samples reaches two hundred and twenty-eight assignments and a
-        // million comparisons, which was ten of the eleven seconds it took to write.
+        // Pairs are compared repeatedly and the graph does not change, so memoize.
         var ordering = new Ordering<T>(remaining);
         var sorted = new List<T>(remaining.Count);
         while (remaining.Count != 0)
         {
-            // By index, not ReferenceEquals: T can be a value type (a tuple, a
-            // KeyValuePair), and comparing two boxed structs by reference never
-            // excludes an item from being checked against itself - which, for a
-            // TempAssignmentNode, ComesBefore can answer true to, blocking the one
-            // real candidate every round and leaving the fallback below to paper
-            // over it by accident.
+            // By index, not ReferenceEquals: T can be a value type, and an item can
+            // come before itself.
             int next = -1;
             for (int i = 0; i < remaining.Count; i++)
             {
@@ -71,8 +49,7 @@ public class TempAssignmentOrder
                     break;
                 }
             }
-            // Every one of them waits on another, which a value graph cannot really
-            // be. Take the first rather than spin.
+            // A cycle; take the first rather than spin.
             if (next < 0)
             {
                 next = 0;
@@ -87,18 +64,12 @@ public class TempAssignmentOrder
         T Item, HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, int Index);
 
     /// <summary>
-    /// The pairwise order, computed once per pair, over reachability computed once
-    /// per node the entries are rooted at. What a walk is asked is only ever whether
-    /// one particular assignment or one particular variable is read, and there are
-    /// two of those per entry, so each walk records the ones it passes rather than
-    /// everything it visits - the same answers out of a set that stays small.
+    /// Memoized pairwise order. Each walk records only the sought nodes (the entries'
+    /// assignments and variables) it reaches, keeping the sets small.
     /// </summary>
     private sealed class Ordering<T>
     {
-        // By pair asked rather than by every pair there could be: the answers are
-        // sparse - five thousand of them over the whole fixture corpus - and a table
-        // would be the square of how many assignments a statement names, which is a
-        // way to run out of memory where the code it replaces only ran slowly.
+        // Sparse dictionary, not an n-squared table.
         private readonly Dictionary<(int, int), bool> _pairs = [];
         private readonly HashSet<HlslTreeNode> _sought = HlslTreeNode.NewNodeSet();
         private readonly Dictionary<HlslTreeNode, HashSet<HlslTreeNode>> _reached =
@@ -129,9 +100,7 @@ public class TempAssignmentOrder
 
         private bool Compare(Entry<T> x, Entry<T> y)
         {
-            // What one write wants of another is recorded at lowering, which is the
-            // only point at which wanting the value this statement computes and wanting
-            // the one the register held before are different things.
+            // Recorded at lowering, the only point where new and old value differ.
             if (NeedsNewValue(y, x))
             {
                 return true;
@@ -140,9 +109,8 @@ public class TempAssignmentOrder
             {
                 return false;
             }
-            // Neither wants the other new, so a read of a variable the other overwrites
-            // is a read of the value from before, and has to come first. This is what
-            // keeps `t1 = t1 + 1` at the end of a loop body.
+            // Otherwise a read of a variable the other overwrites wants the old value
+            // and goes first; this keeps `t1 = t1 + 1` at the end of a loop body.
             if (ReadsOverwritten(x.Nodes, y.Nodes))
             {
                 return true;
@@ -168,8 +136,7 @@ public class TempAssignmentOrder
                 && (Reads(node, tempAssignment) || Reads(node, tempAssignment.TempVariable));
         }
 
-        // Whether sought is the node itself or anything the node is built from, which
-        // is what HlslTreeNode.IsInputOf answers one question at a time.
+        // Memoized HlslTreeNode.IsInputOf.
         private bool Reads(HlslTreeNode node, HlslTreeNode sought)
         {
             if (!_reached.TryGetValue(node, out HashSet<HlslTreeNode> reached))
@@ -208,8 +175,8 @@ public class TempAssignmentOrder
         return Sort(items, n => new HlslTreeNode[] { n });
     }
 
-    /// <summary>Whether <paramref name="reader"/> wants a value that any of
-    /// <paramref name="written"/> computes here, rather than its earlier one.</summary>
+    /// <summary>Whether <paramref name="reader"/> wants the new value of something
+    /// <paramref name="written"/> assigns.</summary>
     private static bool NeedsNewValue<T>(Entry<T> reader, Entry<T> written)
     {
         IEnumerable<TempAssignmentNode> wants = reader.Wants
@@ -219,15 +186,11 @@ public class TempAssignmentOrder
     }
 
     /// <summary>
-    /// Whether <paramref name="later"/>, placed after <paramref name="earlier"/>,
-    /// reads a variable that <paramref name="earlier"/> overwrites and wants the
-    /// value from before it. In that order the read is of the wrong value, and no
-    /// other order puts it right where the two depend on each other in a circle.
+    /// Whether <paramref name="later"/> wants the old value of a variable that
+    /// <paramref name="earlier"/> overwrites, so this order reads the wrong value.
     /// </summary>
     public static bool ReadsStale(HlslTreeNode[] later, HlslTreeNode[] earlier)
     {
-        // Wanting the value this statement computes is the other thing entirely:
-        // the order is then exactly what it should be.
         IEnumerable<TempAssignmentNode> wants = later.OfType<TempAssignmentNode>()
             .SelectMany(r => r.DependsOnNewValueOf);
         if (earlier.OfType<TempAssignmentNode>().Any(assignment =>
@@ -246,9 +209,8 @@ public class TempAssignmentOrder
                 && assignment.TempVariable.IsInputOf(reader)));
     }
 
-    // What makes an assignment a dependency is that the variable it assigns is read,
-    // not that the assignment node itself is reachable - a variable is a leaf, so it
-    // never is.
+    // A read of the variable counts too: a variable is a leaf, so the assignment
+    // node itself is not reachable through it.
     private static bool IsInputOf(HlslTreeNode input, HlslTreeNode node)
     {
         if (input is TempAssignmentNode tempAssignment)

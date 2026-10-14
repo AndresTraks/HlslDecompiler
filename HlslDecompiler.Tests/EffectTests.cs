@@ -11,14 +11,8 @@ using System.Reflection;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// Direct3D 10 and 11 effects, for the shaders in them.
-///
-/// The effects live apart from CompiledShaders, under CompiledEffects, because
-/// every tier that enumerates CompiledShaders reads one shader from each file and
-/// an effect is several. What is checked here is what the effect adds: that it is
-/// recognised as one, that every shader in it is found and nothing else is, and
-/// that each decompiles to HLSL that recompiles and computes what it did. The
-/// techniques and passes around them are not decompiled yet.
+/// Effects (fx_2_0 to fx_5_0). Kept under CompiledEffects, apart from
+/// CompiledShaders, whose tiers read one shader per file.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
@@ -27,12 +21,8 @@ public class EffectTests
     private const string Root = "CompiledEffects";
 
     /// <summary>
-    /// The profiles of the shaders each effect holds, in the order it stores them -
-    /// which is not the order the source names them in. fxc writes a shader set by
-    /// name where the variable is declared, ahead of those compiled in a pass, so
-    /// the geometry shader in passes comes before the pixel shader of the first pass.
-    /// fx_2_0 stores the variables' shaders first as well, then the ones compiled in
-    /// passes from the last pass to the first, a pixel shader before a vertex shader.
+    /// In storage order, not source order: shader variables come first, then pass
+    /// shaders (fx_2_0: last pass first, pixel before vertex).
     /// </summary>
     [TestCase("fx_2_0", "passes", "ps_2_0 ps_2_0 vs_2_0 ps_2_0 vs_1_1")]
     [TestCase("fx_2_0", "preshader", "ps_3_0 ps_2_0 ps_3_0 ps_2_0 ps_2_0 vs_2_0")]
@@ -58,10 +48,7 @@ public class EffectTests
             Is.EqualTo(shaderProfiles));
     }
 
-    /// <summary>
-    /// A shader on its own is still a shader: fx_4_x is a DXBC file as well, and
-    /// telling the two apart is by its chunks.
-    /// </summary>
+    // fx_4_x is DXBC too; the chunks tell them apart.
     [TestCase("ps_4_0", "constant")]
     [TestCase("cs_5_0", "histogram")]
     public void ShaderIsNotAnEffect(string profile, string baseFilename)
@@ -70,13 +57,7 @@ public class EffectTests
         Assert.That(FormatDetector.Detect(stream), Is.EqualTo(ShaderFileFormat.Dxbc));
     }
 
-    /// <summary>
-    /// What a preshader computes reads as what was written, where the preshader and
-    /// the shader each did half of it. The matrix product the preshader works out
-    /// and the vector the shader multiplies by it are one mul of the two; a uniform
-    /// the shader multiplies a texel by and the preshader multiplies a scale by is a
-    /// common factor of two products, not four dot products of it repeated.
-    /// </summary>
+    // Arithmetic split between preshader and shader reads back as one expression.
     [TestCase("ast", "o.position = mul(i.position, mul(world, viewProjection));")]
     [TestCase("ast", "return t0 * tint + (2 * scale + 1) * tint;")]
     public void PreshadedArithmeticReadsAsWritten(string writer, string line)
@@ -97,12 +78,8 @@ public class EffectTests
     }
 
     /// <summary>
-    /// The interpreter runs a preshader before the shader, and what it makes of the
-    /// preshader's instructions is checked here rather than assumed: against the
-    /// same effect compiled with /Op, which keeps the arithmetic in the shaders,
-    /// where the machine already knows what every instruction means. Without this,
-    /// a preshader instruction the decompiler and the interpreter misread the same
-    /// way would agree with itself.
+    /// Checks the preshader interpreter against the effect compiled with /Op, which
+    /// keeps the arithmetic in the shaders.
     /// </summary>
     [TestCaseSource(nameof(PreshadedEffects))]
     [Category("Recompile")]
@@ -150,12 +127,8 @@ public class EffectTests
     }
 
     /// <summary>
-    /// The whole effect decompiled and compiled again, by each writer, is the same
-    /// effect: the same buffers, variables, values, annotations, state objects,
-    /// techniques, passes and assignments - <see cref="EffectDescription"/> has
-    /// every one of them - and each of its shaders computes what the original's
-    /// did and declares what it declared, as <see cref="ReflectionSnapshot"/> has it. The structure is compared as the runtime would load it, so a state
-    /// written in other words that compiles to the same assignment is the same.
+    /// A round-tripped effect has the same <see cref="EffectDescription"/>, and each
+    /// shader computes the same and has the same <see cref="ReflectionSnapshot"/>.
     /// </summary>
     [TestCaseSource(nameof(WholeEffects))]
     [Category("Recompile")]
@@ -226,10 +199,7 @@ public class EffectTests
                     unsupported.Add($"shader {i} ({originalShaders[i].Profile}): {e.Message}");
                 }
 
-                // And declares what it did: the description above has each shader
-                // as its profile and nothing more, so its signatures, its resources
-                // and the declarations that change how it runs are compared the way
-                // a shader on its own is.
+                // The description has only each shader's profile.
                 List<string> expected = ReflectionSnapshot.Lines(originalShaders[i]);
                 List<string> actual = ReflectionSnapshot.Lines(recompiledShaders[i]);
                 string shader = $"The {writer} writer's shader {i} ({originalShaders[i].Profile})";
@@ -247,8 +217,6 @@ public class EffectTests
         }
     }
 
-    // The line each description first says something else on, with the line before
-    // it for where it is.
     private static string FirstDifference(string expected, string actual)
     {
         string[] expectedLines = expected.Split('\n');
@@ -280,7 +248,7 @@ public class EffectTests
         return reader.ReadShaders();
     }
 
-    // fxc on an effect: no entry point to name, and whatever else it is asked.
+    // No entry point for an effect.
     private static string RunFxc(string profile, string sourceFilename, string objectFilename, string option = null)
     {
         var startInfo = RecompileTests.CreateFxcProcessStartInfo();
@@ -335,10 +303,8 @@ public class EffectTests
     }
 
     /// <summary>
-    /// The recompile and equivalence tiers, for each shader of each effect and both
-    /// writers. Each shader is recompiled alone for its own profile, as fxc would
-    /// compile it if it were not in an effect. One an fx_2_0 preshader computes
-    /// constants for is run with them, and its decompilation computes them itself.
+    /// Each shader recompiled alone for its own profile. A preshaded fx_2_0 shader
+    /// runs with the preshader's constants; its decompilation computes them itself.
     /// </summary>
     [TestCaseSource(nameof(Effects))]
     [Category("Recompile")]

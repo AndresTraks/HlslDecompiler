@@ -6,16 +6,9 @@ using System.Text.RegularExpressions;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// What a shader declares, as lines that compare: what the host binds and reads it
-/// by, and the declarations that change what it does without changing its
-/// arithmetic. The equivalence tier runs a shader and compares what it computes;
-/// none of this is visible to it - a constant buffer laid out differently, a
-/// variable renamed, an interpolation mode dropped all compute the same in the
-/// machine and something else on a GPU, or nothing at all once the host looks a
-/// name up.
-///
-/// Write masks are left out of the declarations: a decompilation may read fewer
-/// components of an input than the original declared, and fxc declares what is read.
+/// What a shader declares, as comparable lines: bindings, layouts and declarations
+/// that the equivalence tier cannot see. Declaration write masks are left out:
+/// fxc declares only what the decompilation reads.
 /// </summary>
 public static class ReflectionSnapshot
 {
@@ -53,8 +46,7 @@ public static class ReflectionSnapshot
         foreach (ResourceDefinition resource in shader.ResourceDefinitions)
         {
             string element = resource.ElementType == null ? "" : $" element {Describe(resource.ElementType)}";
-            // Whether the author named the slot: the decompilation names every one,
-            // and the slot itself is the bind point compared beside it.
+            // The decompilation names every slot; the bind point is compared anyway.
             D3DShaderInputFlags flags = resource.Flags & ~D3DShaderInputFlags.UserPacked;
             lines.Add($"resource {resource.Name} {resource.ShaderInputType} {resource.ResourceReturnType} " +
                 $"dimension {resource.ResourceViewDimension} samples {resource.NumSamples} " +
@@ -97,8 +89,7 @@ public static class ReflectionSnapshot
 
     private static void AddConstantTable(ShaderModel shader, List<string> lines)
     {
-        // The reader answers an empty table for a comment that is not one - a
-        // preshader, say.
+        // Other comments (a preshader) read as an empty table.
         foreach (D3D9Instruction comment in shader.Instructions.OfType<D3D9Instruction>()
             .Where(i => i.Opcode == Opcode.Comment))
         {
@@ -111,14 +102,11 @@ public static class ReflectionSnapshot
         }
     }
 
-    // The declarations a shader runs differently by: everything a dcl says but the
-    // registers' masks, and the temps it needs, which are the compiler's business.
+    // Register masks and temp counts are the compiler's business.
     private static readonly Regex Mask = new(@"\b([a-zA-Z]+\d*(\[\d+\])*)\.[xyzw]{1,4}\b");
 
-    // What a hull shader's phases hand one another: the control points they read and
-    // the patch constants a later phase reads back from an earlier one. Which phase
-    // computes a value, and which reads it back rather than computing it again, is
-    // fxc's to schedule; what leaves the shader is its signatures, compared above.
+    // Inputs between hull phases are fxc's scheduling; the signatures cover what
+    // leaves the shader.
     private static readonly Regex HullPhaseInput = new(@"^dcl_input (vpc|vicp|vocp)");
 
     private static void AddDeclarations(ShaderModel shader, List<string> lines)

@@ -17,11 +17,8 @@ public class NodeVisitor
         Visit(_nodes, action, HlslTreeNode.NewNodeSet());
     }
 
-    // Once per node, not once per path. The only visitor swaps a constant onto the
-    // right hand side, which stops applying the moment it has, so seeing a node again
-    // through another path changes nothing - and a subexpression read in two places
-    // is reached twice as often at every level above it. Sixteen instructions built
-    // on each other came to twenty-five million visits.
+    // Once per node, not per path: per-path visits grow exponentially with shared
+    // subexpressions.
     private static void Visit(IEnumerable<HlslTreeNode> nodes, Action<HlslTreeNode> action, HashSet<HlslTreeNode> seen)
     {
         foreach (var node in nodes)

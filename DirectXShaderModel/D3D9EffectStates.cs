@@ -4,17 +4,14 @@ using System.Linq;
 namespace HlslDecompiler.DirectXShaderModel;
 
 /// <summary>
-/// A state an fx_2_0 effect sets: its name in an effect file, whether it is one
-/// of several told apart by an index - a texture stage, a sampler, a light, a
-/// transform, a constant register - and the names its values have.
+/// An fx_2_0 state. IsIndexed: one of several told apart by an index (stage,
+/// sampler, light, transform, constant register).
 /// </summary>
 public sealed record D3D9EffectStateInfo(string Name, bool IsIndexed = false, IReadOnlyDictionary<uint, string> ValueNames = null);
 
 /// <summary>
-/// D3DX9's table of the states an effect can set, which a state indexes - in the
-/// order of state_table in Wine's d3dx9_36/effect.c. The value names are the
-/// Direct3D 9 enumerations' without their prefixes, which is how an effect file
-/// writes them.
+/// D3DX9's state table, in the order of state_table in Wine's d3dx9_36/effect.c.
+/// Value names are the D3D9 enumerations without prefixes.
 /// </summary>
 public static class D3D9EffectStates
 {

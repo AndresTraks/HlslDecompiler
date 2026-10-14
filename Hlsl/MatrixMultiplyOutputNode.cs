@@ -4,16 +4,9 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// One component of a vector by matrix multiplication - one row's worth. fxc writes
-/// `mul(v, M)` as a dot product of the vector against each row of the matrix, so the
-/// idiom is as many of these as the matrix has rows, all sharing the vector and the
-/// matrix.
-///
-/// A node rather than something the compiler recognises out of the components it is
-/// about to write, for the reason IdiomRecovery gives. This is the one where that
-/// matters most: a matrix multiply is the idiom the naming is most apt to take apart,
-/// because its components are dot products that read well on their own, and the
-/// writer cannot see that the four of them are one thing until it compiles them.
+/// One component (one row's dot product) of a matrix multiplication; the idiom is
+/// one of these per row, sharing vector and matrix. A node rather than writer-side
+/// recognition so naming cannot split the dot products apart (see IdiomRecovery).
 /// </summary>
 public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
 {
@@ -30,8 +23,7 @@ public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
         {
             AddInput(component);
         }
-        // The operands that are expressions rather than names go in as edges too, so
-        // that a fold or a name reaching one of them reaches this.
+        // Expression operands are edges too, so folds and names reach them.
         if (matrix.ElementIndexNode != null)
         {
             _elementIndexAt = Inputs.Count;
@@ -47,15 +39,11 @@ public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
 
     public int ComponentIndex { get; }
 
-    /// <summary>How many components the multiplication has, which is a row each.</summary>
     public int RowCount => _matrix.MatrixRowCount;
 
     /// <summary>
-    /// The multiplication as it stands now, with the operands read back out of the
-    /// graph rather than out of the context this was built from. A name given to
-    /// something in the vector after the idiom was recovered has to reach the text,
-    /// and a context built once would still be holding the node the name replaced -
-    /// which is the same trap IStatement.HeldSlots is about.
+    /// Rebuilt from the current inputs: the original context would still hold nodes
+    /// that names have since replaced (cf. IStatement.HeldSlots).
     /// </summary>
     public MatrixMultiplicationContext Matrix => new(
         [.. Inputs.Take(_vectorLength)],

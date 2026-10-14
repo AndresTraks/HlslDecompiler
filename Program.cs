@@ -12,8 +12,6 @@ class Program
 {
     private const string Name = "HlslDecompiler";
 
-    // 0 decompiled, 1 the input could not be read or decompiled or the output not
-    // written, 2 the command line was wrong.
     private const int Success = 0;
     private const int Failure = 1;
     private const int UsageError = 2;
@@ -62,8 +60,7 @@ class Program
             return UsageError;
         }
 
-        // Decompiled whole before anything is written, so that a shader the
-        // decompiler cannot take leaves no half-written file or half a listing.
+        // Decompile everything before writing, so a failure leaves no partial output.
         List<(string Path, string Text)> outputs;
         try
         {
@@ -143,10 +140,7 @@ class Program
     }
 
     /// <summary>
-    /// An effect is written back whole: its parameters, its shaders as functions,
-    /// and its techniques. Its disassembly is a listing per shader, each under a
-    /// header naming it by stage and place - vs0, ps0 and so on, numbered per stage
-    /// in the order the effect stores them.
+    /// The whole effect as HLSL, or a listing per shader with --asm.
     /// </summary>
     private static string DecompileEffect(Stream inputStream, CommandLineOptions options)
     {
@@ -171,10 +165,7 @@ class Program
         return hlsl.ToString();
     }
 
-    /// <summary>
-    /// An archive of separate shaders, each to a file of its own in the output
-    /// directory: archive_vs0.fx, archive_ps0.fx and so on, or .asm with --asm.
-    /// </summary>
+    /// <summary>One output file per shader: archive_vs0.fx, archive_ps0.fx, ...</summary>
     private static List<(string Path, string Text)> DecompileRgxa(
         Stream inputStream, CommandLineOptions options)
     {
@@ -197,11 +188,6 @@ class Program
         return outputs;
     }
 
-    /// <summary>
-    /// Several shaders in one output: each under a comment naming it - its stage and
-    /// its place among that stage's shaders, then its profile - with a blank line
-    /// between one and the next.
-    /// </summary>
     private static string WriteEach(IEnumerable<ShaderModel> shaders, Func<ShaderModel, string> write)
     {
         var output = new StringBuilder();
@@ -217,10 +203,7 @@ class Program
         return output.ToString();
     }
 
-    /// <summary>
-    /// The name a shader of several goes by: its stage and its place among that
-    /// stage's shaders, vs0, ps0, vs1, in the order they are stored.
-    /// </summary>
+    // vs0, ps0, vs1: numbered per stage in stored order.
     private static IEnumerable<(ShaderModel Shader, string Name)> NameEach(
         IEnumerable<ShaderModel> shaders)
     {
@@ -242,9 +225,7 @@ class Program
         return new HlslSimpleWriter(shader) { WritesFlowAttributes = options.WritesFlowAttributes };
     }
 
-    // What went wrong, in a line. The decompiler says what it has no reading of by
-    // throwing NotImplementedException with the construct's name, which on its own
-    // reads as a bare opcode.
+    // A NotImplementedException message is just a construct's name, so label it.
     private static string Describe(Exception e) => e switch
     {
         NotImplementedException => $"not implemented: {e.Message}",

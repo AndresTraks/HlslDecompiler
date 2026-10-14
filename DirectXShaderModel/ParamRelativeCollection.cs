@@ -21,10 +21,8 @@ public class ParamRelativeCollection : D3D9ParamCollection
     }
 
     /// <summary>
-    /// Whether a relatively addressed operand is followed by a token naming the
-    /// register that indexes it. Shader model 1 has no such token: the address
-    /// register is always a0.x there, so the bit marks the addressing and nothing
-    /// follows it. Assuming one anyway shifts every later parameter along by one.
+    /// Whether a relatively addressed operand is followed by an index register
+    /// token. Shader model 1 has none: the index is always a0.x.
     /// </summary>
     public bool HasSeparateRelativeToken { get; set; } = true;
 
@@ -61,8 +59,7 @@ public class ParamRelativeCollection : D3D9ParamCollection
     {
         if (!HasSeparateRelativeToken)
         {
-            // a0.x, spelled out: the register type in the top bits, number zero,
-            // component zero.
+            // a0.x
             return (uint)RegisterType.Addr << 28;
         }
 

@@ -10,27 +10,14 @@ using System.Runtime.CompilerServices;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// A statement holds values outside its input and output maps - the address and
-/// values of a store, the comparison a break tests - and those references are not
-/// edges in the value graph, so nothing that walks or rewrites the graph reaches
-/// them. Every pass that needs them asks the statement, through the slots it
-/// declares in IStatement.HeldSlots.
-///
-/// The one thing that can still go wrong is a held field with no slot. It compiles,
-/// every walk silently skips it, and what it holds is judged dead or left pointing
-/// at a node that has been replaced - which is the shape of the bug cbadf26 fixed,
-/// when the same knowledge was a switch over the statement types in seven places.
-/// So the slots are checked against the fields rather than trusted: add a node to a
-/// statement and this fails until it is either slotted or excluded here, with the
-/// reason written down.
+/// Nodes a statement holds outside its input/output maps are not graph edges and
+/// are reached only via IStatement.HeldSlots. A node field without a slot would be
+/// silently skipped by every walk, so each one must be slotted or excluded here.
 /// </summary>
 [TestFixture]
 public class HeldSlotTests
 {
-    /// <summary>
-    /// The node-typed members that are deliberately not held values, and why. Each
-    /// is a reference to something the statement does not compile as an expression.
-    /// </summary>
+    // Node-typed members that are not compiled as expressions.
     private static readonly Dictionary<string, string> NotHeldValues = new()
     {
         ["AtomicStatement.Destination"] = "the resource operated on, named from its register",
@@ -48,7 +35,6 @@ public class HeldSlotTests
             .OrderBy(type => type.Name);
     }
 
-    // A name per question, so that a failure says which of the two it was.
     private static IEnumerable<TestCaseData> Statements()
     {
         return StatementTypes().Select(type =>
@@ -85,13 +71,8 @@ public class HeldSlotTests
         }
     }
 
-    /// <summary>
-    /// And that a named slot can actually be redirected. A slot declares how to read
-    /// and how to write one place; a setter that writes the wrong one would report
-    /// the value and then fail to move it, which is the same bug seen from the other
-    /// side. The slots that are not named are checked to hold still, because that is
-    /// what being written out again at the branch means.
-    /// </summary>
+    // A named slot's setter must write the place its getter reads; unnamed slots
+    // are written out again and must not move.
     [TestCaseSource(nameof(StatementsToRedirect))]
     public void ANamedSlotIsRedirectedAndOthersHoldStill(Type type)
     {
@@ -126,10 +107,7 @@ public class HeldSlotTests
         }
     }
 
-    /// <summary>
-    /// A switch's labels hang off its cases rather than off the switch, so they are
-    /// reached through the one slot that projects them and are checked here instead.
-    /// </summary>
+    // Labels hang off the cases, so the reflection tests above miss them.
     [Test]
     public void ASwitchHoldsItsCaseLabels()
     {
@@ -142,14 +120,8 @@ public class HeldSlotTests
         Assert.That(switchStatement.NamedHeldNodes.Contains(label), Is.False);
     }
 
-    /// <summary>
-    /// The members that hold a node or a run of them. A dictionary of register keys
-    /// is a map and not a slot, and anything else is not a node at all.
-    ///
-    /// Auto-properties only, since a sentinel goes in through the backing field. A
-    /// statement that held a node behind a hand-written property would go unchecked;
-    /// none does, and a plain property is the shape the parser builds anyway.
-    /// </summary>
+    // Auto-properties only (the sentinel goes in via the backing field); a node
+    // behind a hand-written property would go unchecked.
     private static IEnumerable<PropertyInfo> NodeProperties(Type type)
     {
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -164,16 +136,8 @@ public class HeldSlotTests
             : property.PropertyType;
     }
 
-    /// <summary>
-    /// A statement with no constructor run, its lists empty and nothing else set.
-    /// The slots read the properties they were given and nothing else, so this is
-    /// enough to ask them what they hold - and it is the only way to reach the
-    /// statements whose constructors want a shader's worth of context.
-    ///
-    /// The lists do have to be there: a switch reaches its labels through its cases,
-    /// and a slot projecting over a null list would throw rather than report
-    /// nothing.
-    /// </summary>
+    // No constructor run (some need a whole shader); lists are created empty so
+    // slots projecting over them do not throw.
     private static IStatement Empty(Type type)
     {
         var statement = (IStatement)RuntimeHelpers.GetUninitializedObject(type);
@@ -208,9 +172,7 @@ public class HeldSlotTests
         SetField(statement, property, one);
     }
 
-    // Through the backing field: most of these are read-only or init-only, which is
-    // right for a statement the parser builds once and says nothing about whether a
-    // slot reports them.
+    // Via the backing field: most are read-only or init-only.
     private static void SetField(IStatement statement, PropertyInfo property, object value)
     {
         BackingField(statement.GetType(), property).SetValue(statement, value);

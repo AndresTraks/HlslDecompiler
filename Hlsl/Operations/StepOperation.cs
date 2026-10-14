@@ -1,8 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// step(edge, x), which is `x >= edge ? 1 : 0`. Shader model 3 has the
-// instruction under the name sge; shader model 4 writes the comparison and
-// then picks between the two constants.
+// step(edge, x) = `x >= edge ? 1 : 0` (SM3 sge).
 public class StepOperation : Operation
 {
     public StepOperation(HlslTreeNode edge, HlslTreeNode value)

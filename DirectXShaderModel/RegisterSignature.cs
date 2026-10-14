@@ -21,26 +21,14 @@ public class RegisterSignature
         ReadWriteMask = readWriteMask;
     }
 
-    /// <summary>
-    /// Whether this element describes a patch constant - one of the values computed
-    /// once for the whole patch. The chunk that holds them is the same in both
-    /// shaders that touch them, so it says nothing about direction: the hull shader
-    /// writes them and the domain shader reads them.
-    /// </summary>
     public bool IsPatchConstant { get; init; }
 
-    /// <summary>
-    /// Which output stream the element belongs to. Shader model 5 lets a geometry
-    /// shader write up to four, each with a signature of its own, and the stream is
-    /// the only thing telling two elements at the same register apart.
-    /// </summary>
+    /// <summary>A geometry shader output stream; tells apart elements at one register.</summary>
     public int Stream { get; init; }
 
     /// <summary>
-    /// The same element keyed as an output register, which is what a hull shader's
-    /// phases write it as. Read from the chunk it is keyed as a domain shader's
-    /// input, and left that way a fork phase's `dcl_output_siv o0.x` found whatever
-    /// the control point output signature had at register zero instead.
+    /// A patch constant keyed as an output, as a hull shader's phases write it;
+    /// PCSG keys it as a domain shader input.
     /// </summary>
     public RegisterSignature AsOutput()
     {

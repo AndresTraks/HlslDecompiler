@@ -11,10 +11,8 @@ public class D3D10RegisterKey : RegisterKey
     }
 
     /// <summary>
-    /// An output of one stream of a geometry shader that writes several. Both streams
-    /// call their registers o0 upwards and mean different things by them, so the stream
-    /// is part of which register this is - the way the vertex is, for an input read
-    /// across a primitive. Null everywhere else, which is every shader with one stream.
+    /// An output of one stream of a multi-stream geometry shader. Each stream numbers
+    /// its own o0 upwards, so the stream is part of the key; null with one stream.
     /// </summary>
     public D3D10RegisterKey(OperandType operandType, int registerNumber, int? stream, bool onStream)
         : this(operandType, registerNumber)
@@ -54,10 +52,8 @@ public class D3D10RegisterKey : RegisterKey
     }
 
     /// <summary>
-    /// A register of one of the control points a hull shader's control point phase
-    /// wrote, read back by its patch constant phase: `vocp[2][0]` is point 2's o0.
-    /// Shaped like a vertex input, and kept apart from one by its operand type,
-    /// since the patch constant phase can read the patch it was handed too.
+    /// A control point output read back by the patch constant phase (`vocp[2][0]`).
+    /// The operand type keeps it apart from the input patch, which is also readable.
     /// </summary>
     public static D3D10RegisterKey CreateControlPointOutput(int attribute, int point)
     {
@@ -70,11 +66,7 @@ public class D3D10RegisterKey : RegisterKey
         return new D3D10RegisterKey(OperandType, Number) { GSVertex = vertex };
     }
 
-    /// <summary>
-    /// An attribute of one vertex or control point of the ones a shader is handed,
-    /// keyed the way another register of the same shader already is: a geometry
-    /// shader's as an input, a hull shader phase's as a control point.
-    /// </summary>
+    /// <summary>Another attribute of the same vertex or control point.</summary>
     public D3D10RegisterKey WithAttribute(int attribute)
     {
         return new D3D10RegisterKey(OperandType, attribute) { GSVertex = GSVertex };
@@ -89,17 +81,13 @@ public class D3D10RegisterKey : RegisterKey
     public int? GSVertex { get; private init; }
 
     public bool IsTempRegister => OperandType == OperandType.Temp;
-    // oDepth is written like any other output; it just names no register. Leaving
-    // it out here dropped the depth write from the shader entirely.
+    // Depth, coverage and stencil ref are outputs too, though they name no register.
     public bool IsOutput =>
         OperandType == OperandType.Output ||
         OperandType == OperandType.OutputDepth ||
         OperandType == OperandType.OutputDepthGreaterEqual ||
         OperandType == OperandType.OutputDepthLessEqual ||
         OperandType == OperandType.OutputCoverageMask ||
-        // And so is the stencil reference - left out, the ftou that writes
-        // it went missing and fxc answered X4580 for a system value no path
-        // assigned.
         OperandType == OperandType.OutputStencilRef;
     public bool IsConstant =>
         OperandType == OperandType.ConstantBuffer ||
@@ -152,9 +140,6 @@ public class D3D10RegisterKey : RegisterKey
                 }
             }
         }
-        // Two d() immediates are one value when both doubles are. Reading only
-        // the operand type, every pair of them compared equal - and a dictionary
-        // keyed by registers merged two literals into one entry.
         if (other.ImmediateDouble == null)
         {
             if (ImmediateDouble != null)

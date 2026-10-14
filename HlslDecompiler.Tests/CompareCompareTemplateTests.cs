@@ -6,20 +6,13 @@ using NUnit.Framework;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// <see cref="CompareCompareTemplate"/> rewrites a branch on a cmp result into a
-/// branch on what the cmp tested: `(v >= 0 ? 1 : 0) != 0` is just `v >= 0`.
-///
-/// None of the shader fixtures reach it. fxc branches on the original value rather
-/// than on a cmp result, so the shape only turns up in bytecode it did not produce,
-/// which leaves these the only tests it has.
+/// <see cref="CompareCompareTemplate"/>: `(v >= 0 ? 1 : 0) != 0` is `v >= 0`.
+/// fxc never emits this shape, so no fixture reaches it.
 /// </summary>
 [TestFixture]
 public class CompareCompareTemplateTests
 {
-    /// <summary>
-    /// `cmp dst, src0, src1, src2` writes src1 when src0 >= 0 and src2 when it is
-    /// negative, which is the order <see cref="Hlsl.NodeCompiler"/> emits.
-    /// </summary>
+    // cmp writes src1 when src0 >= 0, else src2.
     private static CompareOperation Cmp(HlslTreeNode value, float whenGreaterEqual, float whenLess)
     {
         return new CompareOperation(value,
@@ -49,11 +42,7 @@ public class CompareCompareTemplateTests
         });
     }
 
-    /// <summary>
-    /// Equality reads the same either way round, so the mirrored form reduces to the
-    /// same comparison. In a full reduction it rarely arrives here - a constant on the
-    /// left is what CompareConstantTemplate swaps, and it is registered earlier.
-    /// </summary>
+    // Usually CompareConstantTemplate swaps a left constant first.
     [TestCase(IfComparison.EQ, 1f, IfComparison.GE)]
     [TestCase(IfComparison.EQ, 0f, IfComparison.LT)]
     [TestCase(IfComparison.NE, 0f, IfComparison.GE)]
@@ -76,10 +65,6 @@ public class CompareCompareTemplateTests
         });
     }
 
-    /// <summary>
-    /// Both branches carrying the same value makes the comparison a tautology, which
-    /// says nothing about the value the cmp tested.
-    /// </summary>
     [Test]
     public void DoesNotMatchACmpWithTwoEqualBranches()
     {
@@ -89,7 +74,6 @@ public class CompareCompareTemplateTests
         Assert.That(new CompareCompareTemplate().Match(node), Is.False);
     }
 
-    /// <summary>A cmp whose result does not decide the comparison is left alone.</summary>
     [Test]
     public void DoesNotMatchAConstantNeitherBranchProduces()
     {

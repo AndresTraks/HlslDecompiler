@@ -9,9 +9,6 @@ public abstract class Instruction
 
     public abstract float[] GetParamSingle(int index);
     
-    // An integer immediate is an integer. Returning it as a float printed the
-    // sign mask as -2.1474836E+09, and in whatever the machine's decimal separator
-    // happened to be.
     public abstract int GetParamInt(int index);
 
     public abstract RegisterKey GetParamRegisterKey(int index);
@@ -27,8 +24,7 @@ public abstract class Instruction
         return FormatWriteMask(GetDestinationWriteMask(), destinationLength);
     }
 
-    /// <summary>The write mask of one named destination, for the two-destination
-    /// instructions where the first is not the only one.</summary>
+    /// <summary>For two-destination instructions.</summary>
     public virtual string GetWriteMaskName(int operandIndex, int destinationLength)
     {
         return GetDestinationWriteMaskName(destinationLength);
@@ -53,7 +49,7 @@ public abstract class Instruction
         return writeMaskName;
     }
 
-    // Length of ".yw" = 2
+    // Component count: ".yw" is 2.
     public int GetDestinationMaskLength()
     {
         int writeMask = GetDestinationWriteMask();

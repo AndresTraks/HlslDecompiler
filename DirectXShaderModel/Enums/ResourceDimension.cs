@@ -14,8 +14,7 @@ public enum ResourceDimension
     Texture2DArray,
     Texture2DmsArray,
     TextureCubeArray,
-    // Shader model 5 tells the two kinds of buffer apart where an instruction
-    // reads one, though a declaration names them by opcode instead.
+    // Only in SM5 instruction extended tokens; declarations use opcodes.
     RawBuffer,
     StructuredBuffer
 }

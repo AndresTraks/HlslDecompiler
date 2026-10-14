@@ -8,19 +8,12 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// An expression an effect evaluates, as HLSL: the instructions it was compiled
-/// to, run over the names of their operands rather than over values. What is
-/// written is what the instructions do, so it compiles back to them, if not always
-/// in the words it was written in.
-///
-/// The effect compiler uses the preshader's program for these - an fx_2_0 state
-/// set from uniforms, or the index of `shaders[i]` in any effect - and an
-/// expression is the program's output: one component, or as many as the state
-/// takes, a matrix's sixteen.
+/// Writes an effect's preshader program (an fx_2_0 state set from uniforms, or the
+/// index in `shaders[i]`) as an HLSL expression per output component, by
+/// symbolically running its instructions over operand names.
 /// </summary>
 public static class PreshaderExpression
 {
-    /// <returns>The expression for each of the first <paramref name="components"/> components of the output.</returns>
     public static string[] Write(Preshader expression, int components)
     {
         var values = new Dictionary<(PreshaderRegisterTable, int), string>();
@@ -84,16 +77,14 @@ public static class PreshaderExpression
         return [.. Enumerable.Range(0, components).Select(c => Unbracketed(values[(PreshaderRegisterTable.Output, c)]))];
     }
 
-    /// <summary>The one value an expression computes - an index, a scalar state.</summary>
     public static string Write(Preshader expression)
     {
         return Write(expression, 1)[0];
     }
 
     /// <summary>
-    /// The uniform an expression reads, by the component of its table it is at: a
-    /// scalar or a vector by name, an element of an array by its subscript, a
-    /// component of a matrix by its row and column, whichever way it was packed.
+    /// The uniform at a component offset in the input table, with array subscript,
+    /// matrix row/column (per packing) or vector swizzle.
     /// </summary>
     public static string InputName(ConstantTable inputs, int offset)
     {

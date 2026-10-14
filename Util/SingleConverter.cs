@@ -5,19 +5,9 @@ using System.Globalization;
 
 namespace HlslDecompiler.Util;
 
-/// <summary>
-/// A class to allow the conversion of floats to string representations of
-/// their exact decimal values. The implementation aims for readability over
-/// efficiency.
-/// </summary>
+/// <summary>Converts floats to their exact decimal values.</summary>
 public class SingleConverter
 {
-    /// <summary>
-    /// Converts the given double to a string representation of its
-    /// exact decimal value.
-    /// </summary>
-    /// <param name="s">The float to convert.</param>
-    /// <returns>A string representation of the double's exact decimal value.</return>
     public static string ToExactString(float s)
     {
         if (double.IsPositiveInfinity(s))
@@ -27,29 +17,22 @@ public class SingleConverter
         if (double.IsNaN(s))
             return "NaN";
 
-        // Translate the double into sign, exponent and mantissa.
         int bits = BitConverter.SingleToInt32Bits(s);
-        // Note that the shift is sign-extended, hence the test against -1 not 1
         bool negative = (bits < 0);
         int exponent = (int)((bits >> 23) & 0xffL);
         long mantissa = bits & 0x7fffffL;
 
-        // Subnormal numbers; exponent is effectively one higher,
-        // but there's no extra normalisation bit in the mantissa
+        // Subnormals: exponent one higher, no implicit leading bit.
         if (exponent == 0)
         {
             exponent++;
         }
-        // Normal numbers; leave exponent as it is but add extra
-        // bit to the front of the mantissa
         else
         {
             mantissa |= (1L << 23);
         }
 
-        // Bias the exponent. It's actually biased by 127, but we're
-        // treating the mantissa as m.0 rather than 0.m, so we need
-        // to subtract another 23 from it.
+        // Bias 127, plus 23 for treating the mantissa as an integer.
         exponent -= 150;
 
         if (mantissa == 0)
@@ -57,33 +40,27 @@ public class SingleConverter
             return "0";
         }
 
-        /* Normalize */
         while ((mantissa & 1) == 0)
-        {    /*  i.e., Mantissa is even */
+        {
             mantissa >>= 1;
             exponent++;
         }
 
-        /// Construct a new decimal expansion with the mantissa
         ArbitraryDecimal ad = new ArbitraryDecimal(mantissa);
 
-        // If the exponent is less than 0, we need to repeatedly
-        // divide by 2 - which is the equivalent of multiplying
-        // by 5 and dividing by 10.
+        // Dividing by 2 is multiplying by 5 and shifting one decimal place.
         if (exponent < 0)
         {
             for (int i = 0; i < -exponent; i++)
                 ad.MultiplyBy(5);
             ad.Shift(-exponent);
         }
-        // Otherwise, we need to repeatedly multiply by 2
         else
         {
             for (int i = 0; i < exponent; i++)
                 ad.MultiplyBy(2);
         }
 
-        // Finally, return the string with an appropriate sign
         if (negative)
         {
             return "-" + ad.ToString();
@@ -91,20 +68,14 @@ public class SingleConverter
         return ad.ToString();
     }
 
-    /// <summary>Private class used for manipulating
     class ArbitraryDecimal
     {
-        /// <summary>Digits in the decimal expansion, one byte per digit
+        // One byte per digit.
         byte[] digits;
-        /// <summary> 
-        /// How many digits are *after* the decimal point
-        /// </summary>
+        // How many digits are after the decimal point.
         int decimalPoint = 0;
 
-        /// <summary> 
-        /// Constructs an arbitrary decimal expansion from the given long.
-        /// The long must not be negative.
-        /// </summary>
+        // x must not be negative.
         internal ArbitraryDecimal(long x)
         {
             string tmp = x.ToString(CultureInfo.InvariantCulture);
@@ -114,10 +85,7 @@ public class SingleConverter
             Normalize();
         }
 
-        /// <summary>
-        /// Multiplies the current expansion by the given amount, which should
-        /// only be 2 or 5.
-        /// </summary>
+        // amount must be 2 or 5.
         internal void MultiplyBy(int amount)
         {
             byte[] result = new byte[digits.Length + 1];
@@ -138,20 +106,12 @@ public class SingleConverter
             Normalize();
         }
 
-        /// <summary>
-        /// Shifts the decimal point; a negative value makes
-        /// the decimal expansion bigger (as fewer digits come after the
-        /// decimal place) and a positive value makes the decimal
-        /// expansion smaller.
-        /// </summary>
+        // A positive amount makes the value smaller.
         internal void Shift(int amount)
         {
             decimalPoint += amount;
         }
 
-        /// <summary>
-        /// Removes leading/trailing zeroes from the expansion.
-        /// </summary>
         internal void Normalize()
         {
             int first;
@@ -174,31 +134,26 @@ public class SingleConverter
             digits = tmp;
         }
 
-        /// <summary>
-        /// Converts the value to a proper decimal string representation.
-        /// </summary>
         public override string ToString()
         {
             char[] digitString = new char[digits.Length];
             for (int i = 0; i < digits.Length; i++)
                 digitString[i] = (char)(digits[i] + '0');
 
-            // Simplest case - nothing after the decimal point,
-            // and last real digit is non-zero, eg value=35
+            // 35
             if (decimalPoint == 0)
             {
                 return new string(digitString);
             }
 
-            // Fairly simple case - nothing after the decimal
-            // point, but some 0s to add, eg value=350
+            // 350
             if (decimalPoint < 0)
             {
                 return new string(digitString) +
                        new string('0', -decimalPoint);
             }
 
-            // Nothing before the decimal point, eg 0.035
+            // 0.035
             if (decimalPoint >= digitString.Length)
             {
                 return "0." +
@@ -206,9 +161,7 @@ public class SingleConverter
                     new string(digitString);
             }
 
-            // Most complicated case - part of the string comes
-            // before the decimal point, part comes after it,
-            // eg 3.5
+            // 3.5
             return new string(digitString, 0,
                                digitString.Length - decimalPoint) +
                 "." +

@@ -2,10 +2,7 @@
 
 namespace HlslDecompiler.Util;
 
-/// <summary>
-/// The command line, parsed or refused. A parse that fails carries the reason in
-/// <see cref="Error"/> and nothing else is to be trusted.
-/// </summary>
+/// <summary>If <see cref="Error"/> is set, nothing else is to be trusted.</summary>
 public class CommandLineOptions
 {
     public const string Usage =

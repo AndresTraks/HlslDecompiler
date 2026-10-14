@@ -4,15 +4,9 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// The arithmetic half of D3D9 assembly that fxc compiles nothing into: it expands
-// a matrix product into dp4s, a cross() into mul and mad, sign() into comparisons,
-// and has no syntax at all for the partial-precision exp and log or for cnd. Every
-// one of them is still a legal instruction that a shader assembled by hand - or by
-// an older compiler - can hold, and the reader and the interpreter already carry
-// them, so the disassembler is the only writer they are missing. The expected text
-// below is fxc's own, from `fxc /dumpbin` over the same assembled bytes, except
-// where this writer names the components an operand reads instead of eliding a
-// full-width swizzle the way fxc does.
+// D3D9 instructions fxc never emits from HLSL but that hand-assembled shaders can
+// hold. Expected text is `fxc /dumpbin` output, except this writer spells out
+// swizzles fxc elides.
 public class AssemblyOnlyInstructionTests
 {
     [Test]
@@ -37,8 +31,7 @@ public class AssemblyOnlyInstructionTests
                 Source(RegisterType.Input, 0), Source(RegisterType.Const, 0)),
             Instruction(Opcode.Crs, Destination(RegisterType.Temp, 5, 0x7),
                 Source(RegisterType.Temp, 0, SourceModifier.Negate), Source(RegisterType.Temp, 2)),
-            // sgn names two scratch registers after the value, which is what makes
-            // it the only three-source instruction here.
+            // sgn takes two scratch registers after the value.
             Instruction(Opcode.Sgn, Destination(RegisterType.Temp, 6, 0x3),
                 Source(RegisterType.Temp, 1), Source(RegisterType.Temp, 3), Source(RegisterType.Temp, 4)),
             Instruction(Opcode.ExpP, Destination(RegisterType.Temp, 7, 0x1),
@@ -72,12 +65,8 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
-    // The ps_1_x texture addressing set, which no profile fxc still knows can
-    // reach: d3dcompiler_47 answers X3539 for a ps_1_x target. Shader model 1 is
-    // also the one that carries no length field in the instruction token, so the
-    // reader takes each operand count from the opcode - and until it knew these,
-    // a ps_1_x pixel shader threw in the READER and no writer saw it at all. The
-    // expected text is fxc's own, from /dumpbin over the same assembled bytes.
+    // d3dcompiler_47 rejects ps_1_x (X3539). SM1 tokens carry no length, so the
+    // reader must know each opcode's operand count.
     [Test]
     public void DisassemblesTheTextureAddressingSetOfShaderModel1()
     {
@@ -133,11 +122,7 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
-    // What ps_1_x says about an operand and a result that later models do not: the
-    // source modifiers _bias, _bx2 and 1-x, a result scale from _x8 down to _d8
-    // that fxc writes before _sat, and the + of a co-issued pair. The expected text
-    // is fxc's own, from /dumpbin over the same assembled bytes, but for the
-    // swizzle this writer narrows to the components read.
+    // _bias, _bx2, 1-x, result scales _x8.._d8 (written before _sat), co-issue +.
     [Test]
     public void DisassemblesTheModifiersOfShaderModel1()
     {
@@ -179,8 +164,7 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
-    // A ps_1_x result scale, as a power of two: the four bits above the result
-    // modifier, signed.
+    // Signed power-of-two shift in the four bits above the result modifier.
     private static uint Scale(int shift)
     {
         return (uint)(shift & 0xF) << 24;
@@ -192,10 +176,7 @@ public class AssemblyOnlyInstructionTests
         return instruction;
     }
 
-    // ps_1_4 renamed two instructions and gave each the register the older one
-    // implied, and added a phase to split the shader in two. texld is NOT the
-    // ps_2_0 one: it names no sampler, which is the operand a ps_2_0 texld reads
-    // third and this one does not have.
+    // ps_1_4 texcrd/texld/phase. This texld has no sampler operand, unlike ps_2_0's.
     [Test]
     public void DisassemblesWhatShaderModel1_4Renamed()
     {
@@ -216,8 +197,7 @@ public class AssemblyOnlyInstructionTests
             FixedSizeInstruction(Opcode.End),
         ]);
 
-        // fxc writes `bem r0.xy, r0, r1`, eliding a full width swizzle where this
-        // writer names the two components the instruction reads.
+        // fxc writes `bem r0.xy, r0, r1`.
         Assert.That(WriteAsm(shader), Is.EqualTo("""
             ps_1_4
             def c0, 1, 2, 3, 4
@@ -238,12 +218,8 @@ public class AssemblyOnlyInstructionTests
             Source(RegisterType.Texture, 0));
     }
 
-    // Subroutines and predication. fxc inlines every function call at every D3D9
-    // profile and there is no noinline to ask it not to, and it knows neither
-    // ps_2_x nor vs_2_x, where predication belonged - so none of these reaches a
-    // golden either. Two of them are not spelled the way the opcode is named:
-    // D3DSIO_BREAKP disassembles as `break p0`, and its predicate is a destination
-    // token, which is how fxc tells `break p0` from `break p0.z`.
+    // fxc always inlines calls and lacks the _2_x profiles, so no golden reaches
+    // these. D3DSIO_BREAKP prints as `break p0`; its predicate is a destination token.
     [Test]
     public void DisassemblesSubroutinesAndPredication()
     {
@@ -301,9 +277,7 @@ public class AssemblyOnlyInstructionTests
             """));
     }
 
-    // m3x2 writes two components and reads three, so the destination mask is no
-    // guide to how wide its operands are. Writing `m3x2 r0.xy, v0.xy, c0.xy` would
-    // name a vector a third shorter than the one the instruction multiplies.
+    // m3x2 writes two components but reads three.
     [Test]
     public void AMatrixProductReadsTheWholeVectorHoweverFewRowsItWrites()
     {
@@ -319,10 +293,7 @@ public class AssemblyOnlyInstructionTests
         Assert.That(WriteAsm(shader), Does.Contain("m3x2 o0.xy, v0.xyz, c0.xyz"));
     }
 
-    // fxc writes -v0_abs.z: the sign in front of the whole operand, the modifier
-    // against the register, and the swizzle selecting out of what the modifier
-    // produced. The corpus holds this shape wherever a modified source carries a
-    // swizzle - ps_3_0/negate_absolute is the same instruction.
+    // fxc's order: sign, register, modifier, then swizzle.
     [Test]
     public void ASourceModifierBindsToTheRegisterAndTheSwizzleFollowsIt()
     {

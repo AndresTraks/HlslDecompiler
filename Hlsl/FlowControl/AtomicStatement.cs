@@ -5,37 +5,26 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.FlowControl;
 
 /// <summary>
-/// An atomic read-modify-write that keeps nothing: `atomic_iadd u0, r0.x, l(1)`,
-/// which HLSL writes as `buffer.InterlockedAdd(offset, value)` on a byte address
-/// buffer and as `InterlockedAdd(buffer[i], value)` on everything else.
-///
-/// A statement rather than a node, the way a store is: it has an effect and no
-/// value, and the order it runs in relative to the loads around it is the whole
-/// point of it.
+/// An atomic read-modify-write: `buffer.InterlockedAdd(offset, value)` on a byte
+/// address buffer, `InterlockedAdd(buffer[i], value)` on everything else. A
+/// statement because its order relative to the loads around it matters.
 /// </summary>
 public class AtomicStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
     public HlslTreeNode Address { get; set; }
     /// <summary>
-    /// The coordinate naming the texel, for an operation over a typed texture: as
-    /// many components as the texture has dimensions. Null for the buffers and the
-    /// groupshared memory, which are addressed by the single <see cref="Address"/>.
-    /// Its first component is that node as well.
+    /// The texel coordinate on a typed texture, one component per dimension, the
+    /// first being <see cref="Address"/>. Null for buffers and groupshared memory.
     /// </summary>
     public HlslTreeNode[] Coordinates { get; set; }
-    // The element byte offset, which a structured resource carries in the second
-    // component of the address operand and a byte address one does not have.
+    // Second component of the address operand on a structured resource.
     public HlslTreeNode ElementByteOffset { get; init; }
-    // InterlockedCompareStore alone takes a value to compare against; everything
-    // else leaves this null.
+    // Set only for InterlockedCompareStore.
     public HlslTreeNode Compare { get; set; }
     public HlslTreeNode Value { get; set; }
     /// <summary>
-    /// The variable the value the resource held before this goes into, for the
-    /// imm_ forms, and null for the ones that keep nothing. HLSL spells it as the
-    /// out parameter after the value - and InterlockedExchange and
-    /// InterlockedCompareExchange have no form without it.
+    /// The out variable receiving the old value for the imm_ forms, else null.
     /// </summary>
     public TempVariableNode Original { get; init; }
     public string MethodName { get; }
@@ -58,11 +47,8 @@ public class AtomicStatement : IStatement
     }
 
     /// <summary>
-    /// The address, the coordinate it may also be spelled as, and the operands.
-    /// Not the element byte offset: a structured resource carries it in the address
-    /// operand and the writer reads it as the number it is, to name the member the
-    /// atomic is on, rather than compiling it as a value. Not the variable the old
-    /// value goes into either - that one is an output and is in the map.
+    /// Not the element byte offset, which the writer reads as a number to name the
+    /// member, nor <see cref="Original"/>, which is an output.
     /// </summary>
     public IEnumerable<HeldSlot> HeldSlots =>
     [

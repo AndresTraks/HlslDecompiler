@@ -10,41 +10,18 @@ using System.Linq;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// Decompiles, recompiles, and counts what fxc made of it.
-///
-/// Recompiling proves the output is valid HLSL, not that it means the same thing.
-/// A decompiler can turn one instruction into four and still compile - the
-/// components of a cmp all read the register as it was before it, and writing them
-/// as separate statements makes each later one read what the earlier one wrote.
-/// That is invisible to every other test here.
-///
-/// Comparing the assembly outright does not work: fxc allocates registers and
-/// orders commutative operands as it likes, and the decompiled source is higher
-/// level than what it was built from, so it often compiles to something different
-/// and just as good. What does carry meaning is the instruction count going up.
+/// Decompiles, recompiles, and fails if fxc's instruction count goes up. The
+/// assembly itself cannot be compared: fxc reallocates and reorders freely.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it reads one .fxc, writes its output under a path
-// named after its profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class RoundTripCostTests
 {
     /// <summary>
-    /// Shaders that cost more after a round trip than before, and why. The number is
-    /// what it costs today: a change either way fails, so an improvement is noticed
-    /// rather than quietly absorbed.
-    /// </summary>
-    /// <summary>
-    /// Shaders that cost more after a round trip, with what is known about why. The
-    /// number is what it costs today, and failing either way means an improvement is
-    /// noticed rather than absorbed.
-    ///
-    /// Costing more is not the same as being wrong. fxc is compiling source that is
-    /// higher level than what it was built from, and it often picks a different
-    /// instruction mix - it unrolls a counted loop, or declines a trick the original
-    /// used. Each entry below says which of the two it is, because a reason inferred
-    /// from the number alone is worse than no reason.
+    /// The cost today; a change either way fails, so improvements are noticed. Each
+    /// reason says whether the decompiler or fxc is responsible.
     /// </summary>
     internal static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
@@ -89,7 +66,7 @@ public class RoundTripCostTests
             + "under the original - wants a struct typed variable and a declaration "
             + "of a kind the writer has not got."),
 
-        // fxc's doing: the output is right and it compiles it differently.
+        // fxc's doing.
         ["cs_5_0/group_shared_tile"] = (23,
             "Eight instructions, and the price of having no spelling for the "
             + "declaration. The original keeps a float4 and a uint2 in raw "
@@ -175,12 +152,7 @@ public class RoundTripCostTests
             + "is behind it, as it was behind ps_3_0/temp_assignment - but that one "
             + "was an addend, which the grouper puts back, and this is a multiplier "
             + "in a mad, which it does not."),
-        // fxc's doing.
-        // ps_1_x, assembled by hand because fxc no longer compiles it, and compiled
-        // back as ps_2_0 - which has none of ps_1_x's free modifiers. _bias, _bx2,
-        // 1-x and a result scale are each part of the instruction that reads or
-        // writes them there and an instruction of their own here, and cnd is a
-        // subtraction and a cmp.
+        // ps_1_x recompiled as ps_2_0, where its free modifiers cost instructions.
         ["ps_1_1/detail_modulate"] = (6,
             "Five instructions, and the sixth is the _x2 on the detail modulate: "
             + "ps_2_0 scales a result with an add of it to itself."),
@@ -212,9 +184,7 @@ public class RoundTripCostTests
             + "r5.g is 0, is a reciprocal, a mul, a square to test for zero and a "
             + "cmp; and fxc pads the clip() of a float3 with two movs to fill the "
             + "w its texkill reads."),
-        // The ps_1_x texture addressing instructions, which are a texture read and
-        // the arithmetic that finds where in one instruction, and which ps_2_0
-        // spells as that arithmetic and a texld.
+        // ps_1_x texture addressing: arithmetic plus a texld in ps_2_0.
         ["ps_1_1/bump_env"] = (17,
             "Six instructions. Each texbem's offset is mul(du/dv, bumpEnvMat#), "
             + "which fxc compiles to two dp2adds, with a mov of the zero they add "
@@ -256,9 +226,7 @@ public class RoundTripCostTests
             + "instruction there, and mul(du/dv, bumpEnvMat2) plus the coordinate "
             + "is two dp2adds, the mov of their zero and an add here. fxc fuses the "
             + "mul and add at the end into a mad, which gives one of them back."),
-        // Instructions fxc has no spelling for, so a round trip cannot keep their
-        // count: the shaders were assembled by hand, and what comes back is what
-        // fxc writes instead of them.
+        // Hand-assembled instructions fxc never emits.
         ["vs_3_0/matrix_product_rows"] = (8,
             "Seven instructions: rows of three matrix products against def'd "
             + "constants - a 4x3, a 3x4 and a 3x2 - mixed into two outputs by two "
@@ -286,8 +254,7 @@ public class RoundTripCostTests
             + "which costs two more than sgn. Neither instruction is one fxc emits."),
     };
 
-    // Its own names. Taking RecompileTests.Shaders() as it stands reports these as
-    // Recompile(...), which is the third test to have done that.
+    // Renamed so failures are not reported as Recompile(...).
     public static IEnumerable<TestCaseData> Shaders()
     {
         foreach (TestCaseData data in RecompileTests.Shaders())

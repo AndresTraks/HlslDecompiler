@@ -8,77 +8,35 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Rewrites a ps_1_1 to ps_1_4 pixel shader as the ps_2_0 one that computes the
-/// same, so that the writers - which know ps_2_0 - decompile it. Nothing compiles
-/// HLSL to ps_1_x any more, and the HLSL a ps_1_x shader decompiles to is HLSL
-/// for ps_2_0 anyway.
+/// Rewrites a ps_1_1 to ps_1_4 pixel shader as an equivalent ps_2_0 one, which the
+/// writers know how to decompile.
 ///
-/// What ps_1_1 to ps_1_3 say that ps_2_0 cannot:
-/// - A texture register is both the coordinate set and the result: `tex t0`
-///   samples stage 0 at texture coordinate 0 and leaves the colour in t0, and
-///   `texcoord t1` leaves texture coordinate 1 there, clamped to [0, 1] and with an
-///   alpha of 1. ps_2_0 texture registers are read only, so each t# a shader
-///   writes becomes a temp of its own, r8 for t0 to r11 for t3, and the input it
-///   was read from is declared. texkill reads the coordinate, not the colour.
-/// - No declarations: v0 and v1 are the diffuse and specular colours, and stage #
-///   samples sampler # - a 2D texture unless the constant table says otherwise.
-/// - Source modifiers ps_2_0 does not have, applied after the swizzle: _bias
-///   (x - 0.5), _bx2 (2x - 1), 1-x, and their negations. Each becomes an
-///   instruction of its own into a scratch temp, r2 to r6.
-/// - A result scale, _x2 to _x8 and _d2 to _d8, applied before the saturate. The
-///   instruction writes a scratch temp and a mul applies the scale.
-/// - sub, which nothing past ps_1_x is compiled into: an add of the negation.
-/// - cnd, which picks its second source where the first is over a half. ps_2_0
-///   has cmp, which picks where the first is at least zero, so the first becomes
-///   0.5 - x and the other two swap.
-/// - A co-issued pair, which runs as one: neither instruction sees what the other
-///   writes. Where the second reads the register the first writes, the first is
-///   held in r7 until the second has run.
-/// - r0 is the colour the shader returns.
+/// ps_1_1 to ps_1_3:
+/// - t# is both coordinate and result (`tex t0`, `texcoord t1` saturated, alpha 1);
+///   each written t# becomes a stand-in temp r8 to r11. texkill reads the coordinate.
+/// - No declarations: v0/v1 are diffuse/specular, stage # samples sampler #, 2D
+///   unless the constant table says otherwise.
+/// - Source modifiers (_bias, _bx2, 1-x, negated) become instructions into scratch
+///   temps r2 to r6; result scales (_x2 to _d8) apply before the saturate.
+/// - sub is an add of the negation; cnd (first > 0.5) becomes cmp on 0.5 - x with
+///   the other two sources swapped.
+/// - A co-issued pair sees neither's writes: the first is held in r7 if needed.
+/// - r0 is the returned colour.
 ///
-/// ps_1_4 keeps the modifiers, the scales, cnd and co-issue, and changes the rest:
-/// - t# is a texture coordinate and only that, read only, so nothing stands in
-///   for it. r0 to r5 are all temps, so the scratch temps are r6 to r10 and a
-///   co-issued first half is held in r11.
-/// - `texld r#, src` samples stage # - the register it writes - at a coordinate
-///   that is a t#, or in the second phase an r# the first phase computed. A
-///   coordinate may be swizzled .xyw, and projected: _dz divides x and y by the
-///   third component it selects and _dw by the fourth. ps_2_0 reads a texld
-///   coordinate whole, so a swizzled or projected one is computed into a scratch
-///   temp first.
-/// - `texcrd r#, t#` is the coordinate itself, unclamped. ps_1_4 says nothing of
-///   the alpha it would write, or of the blue of a projected one, so a texcrd that
-///   writes either is refused rather than guessed at.
-/// - _x2 doubles a source, like the other modifiers an instruction of its own.
-/// - `texdepth r5` writes r5.r / r5.g as the pixel's depth, and 1 where r5.g is 0.
-/// - phase separates the two halves and does nothing to what they compute. The
-///   registers the first half wrote are what the second reads.
+/// ps_1_4 keeps modifiers, scales, cnd and co-issue, but:
+/// - t# is a read-only coordinate; r0 to r5 are temps, scratch is r6 to r10, the
+///   co-issue hold r11.
+/// - `texld r#, src` samples stage #; a swizzled (.xyw) or projected (_dz, _dw)
+///   coordinate is computed into a scratch temp, since ps_2_0 reads it whole.
+/// - `texcrd` is the unclamped coordinate; writing alpha, or blue when projected,
+///   is undefined and refused.
+/// - `texdepth r5` writes r5.r / r5.g as depth, 1 where r5.g is 0.
 ///
-/// The texture addressing instructions of ps_1_1 to ps_1_3, each of which reads
-/// texture n - an earlier stage's colour - to compute where stage m samples:
-/// - texreg2ar, texreg2gb and texreg2rgb sample at its (a, r), (g, b) or (r, g, b).
-/// - texm3x2pad and texm3x3pad dot it with texture coordinate m, a row of a
-///   matrix each, into the stand-in of the first pad; texm3x2tex and texm3x3tex
-///   add the last row and sample at the vector, texm3x3 is the vector with an
-///   alpha of 1, texm3x2depth divides its first component by its second into the
-///   depth, and texm3x3spec and texm3x3vspec sample at the eye ray reflected about
-///   it - the eye a constant for one, the fourth components of the three
-///   coordinates for the other. texdp3 is one such dot product, and texdp3tex
-///   samples at (dot, 0).
-/// - texbem offsets coordinate m by the bump environment matrix of stage m
-///   applied to texture n's red and green, and texbeml then scales the colour by
-///   a luminance from its blue, clamped to [0, 1]. ps_1_4's bem is the same offset
-///   applied to two registers. The matrix and the luminance scale and offset are
-///   texture stage state, set by the application and in no register of the
-///   shader, so the decompilation declares them as uniforms it reads instead,
-///   in a constant table of their own: bumpEnvMat# a float2x2 whose rows are
-///   (M00, M01) and (M10, M11), so the offset is mul(float2(du, dv), it), laid
-///   out column-major from c8 two registers a stage, as fxc lays one out; and
-///   bumpEnvLum# a float2 of the scale and offset from c20. Whoever runs the
-///   decompiled shader sets them where the stage state was set.
-///
-/// The helper constants it needs - 0.5, 1, 2, -1, the scales and a zero - go in
-/// c29 to c31, which ps_1_x cannot reach: it has eight constants.
+/// texbem/texbeml/bem read the bump matrix and luminance from texture stage state,
+/// so a constant table of their own declares them as uniforms: bumpEnvMat# a
+/// column-major float2x2 from c8, two registers a stage (offset is
+/// mul(float2(du, dv), it)), and bumpEnvLum# a float2 (scale, offset) from c20.
+/// Helper constants go in c29 to c31, out of reach of ps_1_x's eight.
 /// </summary>
 public static class PixelShader1Lowering
 {
@@ -123,13 +81,12 @@ public static class PixelShader1Lowering
         private readonly SortedSet<int> _bumpMatrices = [];
         private readonly SortedSet<int> _bumpLuminances = [];
 
-        // A texm3x2 or texm3x3 under way: the stage of its first pad, whose stand-in
-        // collects the rows, and how many rows it has so far.
+        // A texm3x2/texm3x3 under way: its first pad's stage (whose stand-in collects
+        // the rows) and rows so far.
         private int _matrixBase = -1;
         private int _matrixRows;
 
-        // ps_1_4 has six temps of its own and reads t# as the coordinates they
-        // are; the earlier versions have two, and write t#.
+        // ps_1_4 has six temps; earlier versions have two.
         private bool IsVersion14 => shader.MinorVersion >= 4;
         private int FirstScratch => IsVersion14 ? 6 : 2;
         private int LastScratch => IsVersion14 ? 10 : 6;
@@ -146,8 +103,7 @@ public static class PixelShader1Lowering
                     : null;
                 if (coIssued != null && ReadsRegisterWrittenBy(coIssued, instruction))
                 {
-                    // Run as one: the second must not see what the first wrote, so
-                    // the first is held aside until the second has read its sources.
+                    // The second must not see the first's write: hold it aside.
                     uint destination = Destination(instruction);
                     Lower(instruction, holdIn: CoIssueHold);
                     Lower(coIssued, holdIn: null);
@@ -159,7 +115,6 @@ public static class PixelShader1Lowering
                 Lower(instruction, holdIn: null);
             }
 
-            // The colour a ps_1_x shader returns is whatever r0 ends up holding.
             Emit(Opcode.Mov, DestinationToken(RegisterType.ColorOut, 0, 0xF),
                 Source(RegisterType.Temp, 0, Identity));
 
@@ -198,8 +153,6 @@ public static class PixelShader1Lowering
                     return;
                 case Opcode.TexKill when IsVersion14:
                     {
-                        // A coordinate or a temp, as it is named, and its first three
-                        // components.
                         RegisterType type = instruction.GetParamRegisterType(0);
                         int number = instruction.GetParamRegisterNumber(0);
                         if (type == RegisterType.Texture)
@@ -211,8 +164,7 @@ public static class PixelShader1Lowering
                     }
                 case Opcode.TexKill:
                     {
-                        // The coordinate set, not what a tex left in the register, and
-                        // its first three components only.
+                        // The coordinate, not the stand-in a tex wrote.
                         int stage = instruction.GetParamRegisterNumber(0);
                         UseCoordinate(stage, 0x7);
                         Emit(Opcode.TexKill, DestinationToken(RegisterType.Texture, stage, 0x7));
@@ -363,16 +315,12 @@ public static class PixelShader1Lowering
                 coordinate);
         }
 
-        /// <summary>
-        /// r5.r / r5.g as the pixel's depth, and 1 where r5.g is 0: 1 / g into x,
-        /// r / g into y, |g| into z, and the choice into w.
-        /// </summary>
         private void LowerTexDepth(D3D9Instruction instruction)
         {
             EmitDepth(instruction.GetParamRegisterNumber(0));
         }
 
-        // The depth a temp's x over its y gives, and 1 where its y is 0.
+        // Depth = x / y, or 1 where y is 0.
         private void EmitDepth(int ratio)
         {
             int depth = TakeScratch();
@@ -391,10 +339,8 @@ public static class PixelShader1Lowering
                 Source(RegisterType.Temp, depth, ReplicateW));
         }
 
-        // What a ps_1_1 to ps_1_3 texture instruction left in texture n - its
-        // stand-in - as the addressing instruction reads it: through _bx2, say,
-        // where texture n is a normal map stored in [0, 1]. Only the components in
-        // `read` are what it reads, and a modifier is computed for those alone.
+        // Texture n's stand-in as an addressing instruction reads it, modifier
+        // included (e.g. _bx2 on a normal map).
         private uint TextureColour(D3D9Instruction instruction, int index, int read) =>
             LowerSource(instruction, index, read);
 
@@ -422,7 +368,6 @@ public static class PixelShader1Lowering
                 Sample(stage, TextureColour(instruction, 1, 0x7));
                 return;
             }
-            // The two components the swizzle takes, as a mask: (a, r) reads w and x.
             int read = (1 << (swizzle & 0x3)) | (1 << ((swizzle >> 2) & 0x3));
             int coordinate = TakeScratch();
             Emit(Opcode.Mov, DestinationToken(RegisterType.Temp, coordinate, 0x3),
@@ -431,10 +376,8 @@ public static class PixelShader1Lowering
         }
 
         /// <summary>
-        /// One row of a texm3x2 or texm3x3: texture coordinate m dotted with texture
-        /// n, into the component of the first pad's stand-in that is the row's. The
-        /// rows come in order on consecutive stages, the last being the instruction
-        /// that uses them; the stand-in holding the vector is returned with it.
+        /// One texm3x2/texm3x3 row: coordinate m dotted with texture n, into the first
+        /// pad's stand-in. Rows must be on consecutive stages; returns the stand-in.
         /// </summary>
         private int MatrixRow(D3D9Instruction instruction, bool finalRow, int rows)
         {
@@ -462,10 +405,8 @@ public static class PixelShader1Lowering
         }
 
         /// <summary>
-        /// texm3x3spec and texm3x3vspec: the eye ray E reflected about the normal N
-        /// the matrix gives, 2N(N.E)/(N.N) - E, and stage m sampled there. The eye
-        /// is a constant for texm3x3spec, and the fourth components of the three
-        /// texture coordinates for texm3x3vspec.
+        /// Samples at 2N(N.E)/(N.N) - E. E is a constant for texm3x3spec, the three
+        /// coordinates' w for texm3x3vspec.
         /// </summary>
         private void LowerTexM3x3Spec(D3D9Instruction instruction)
         {
@@ -505,11 +446,8 @@ public static class PixelShader1Lowering
         }
 
         /// <summary>
-        /// mul(float2(r, g), bumpEnvMat) of a value's red and green - (M00 r + M10 g,
-        /// M01 r + M11 g) - into the x and y of a scratch temp: the offset texbem
-        /// and bem add. Spelled as fxc compiles that mul, a dp2add against each
-        /// column of the matrix, which is the shape the decompiler reads back as
-        /// the mul it is.
+        /// mul(float2(r, g), bumpEnvMat) into a scratch .xy, as fxc compiles it (a
+        /// dp2add per column) so it decompiles back to the mul.
         /// </summary>
         private int BumpOffset(int stage, uint value)
         {
@@ -540,7 +478,7 @@ public static class PixelShader1Lowering
                 return;
             }
 
-            // The colour scaled by a luminance from texture n's blue.
+            // texbeml: scale by a luminance from texture n's blue.
             _bumpLuminances.Add(stage);
             int luminance = TakeScratch();
             Emit(Opcode.Mad, DestinationToken(RegisterType.Temp, luminance, 0x1, ResultModifier.Saturate),
@@ -553,8 +491,7 @@ public static class PixelShader1Lowering
                 Source(RegisterType.Temp, luminance, ReplicateX));
         }
 
-        // ps_1_4: bem dst.rg, src0, src1 is src0 plus the bump offset of src1, by the
-        // matrix of the stage dst is numbered for.
+        // bem dst.rg, src0, src1: src0 + bump offset of src1, by stage dst's matrix.
         private void LowerBem(D3D9Instruction instruction)
         {
             if (instruction.GetDestinationResultShift() != 0)
@@ -572,11 +509,8 @@ public static class PixelShader1Lowering
             instruction.GetSourceModifier(index) is SourceModifier.DivideByZ or SourceModifier.DivideByW;
 
         /// <summary>
-        /// The coordinate a ps_1_4 texld or texcrd reads, as a register ps_2_0 reads
-        /// whole: the t# or r# as it is where nothing is done to it, and otherwise
-        /// the swizzled and projected value in a scratch temp. Only the components
-        /// in <paramref name="used"/> are what the instruction goes on to read, so
-        /// only those are computed, and only what they come from is declared.
+        /// A ps_1_4 texld/texcrd coordinate as a register read whole: as is, or
+        /// swizzled/projected into a scratch temp, computing only <paramref name="used"/>.
         /// </summary>
         private uint Coordinate(D3D9Instruction instruction, int index, int used)
         {
@@ -615,8 +549,7 @@ public static class PixelShader1Lowering
                 return Source(RegisterType.Temp, swizzled, Identity);
             }
 
-            // The reciprocal of the divisor goes in w, which neither a texld nor a
-            // texcrd reads: a texcrd that writes alpha is refused above.
+            // The reciprocal goes in w, which nothing reads (texcrd to alpha is refused).
             int projected = TakeScratch();
             Emit(Opcode.Rcp, DestinationToken(RegisterType.Temp, projected, 0x8),
                 WithSwizzle(plain, Replicate(divisor)));
@@ -629,11 +562,8 @@ public static class PixelShader1Lowering
         {
             Opcode opcode = instruction.Opcode;
 
-            // The components of each source the instruction reads: a dot product
-            // reads three or four whatever it writes, anything else the ones it
-            // writes. A modifier is computed for those alone - computed for all four,
-            // a 1-x on an .rgb read kept the alpha of what it complemented alive in
-            // the decompilation, as a variable nothing read.
+            // Modifiers are computed only for the components read, or unread lanes
+            // stay alive in the decompilation.
             int read = opcode switch
             {
                 Opcode.Dp3 => 0x7,
@@ -647,8 +577,6 @@ public static class PixelShader1Lowering
                 sources[i] = LowerSource(instruction, i + 1, read);
             }
 
-            // fxc writes no sub at ps_2_0 or later, so nothing reads one: it is the
-            // add of the second source negated.
             if (opcode == Opcode.Sub)
             {
                 opcode = Opcode.Add;
@@ -657,8 +585,7 @@ public static class PixelShader1Lowering
 
             if (opcode == Opcode.Cnd)
             {
-                // cnd d, a, b, c is a > 0.5 ? b : c, and cmp d, x, c, b is
-                // x >= 0 ? c : b - so x is 0.5 - a.
+                // cnd: a > 0.5 ? b : c; cmp: x >= 0 ? c : b, so x = 0.5 - a.
                 int condition = TakeScratch();
                 Emit(Opcode.Add, DestinationToken(RegisterType.Temp, condition, read),
                     Negate(sources[0]), Helper(ReplicateX));
@@ -679,8 +606,7 @@ public static class PixelShader1Lowering
                 return;
             }
 
-            // The scale comes before the saturate, so the instruction writes the
-            // unscaled value aside and the mul that scales it saturates.
+            // Scale before saturate: the mul that scales carries the saturate.
             int unscaled = TakeScratch();
             Emit(opcode, [Retarget(ClearResultModifiers(destination), RegisterType.Temp, unscaled),
                 .. sources]);
@@ -688,10 +614,8 @@ public static class PixelShader1Lowering
         }
 
         /// <summary>
-        /// A source as ps_2_0 can read it: a texture register as the temp that
-        /// stands in for it, and a modifier ps_2_0 lacks applied by an instruction
-        /// of its own into a scratch temp, which is then read unswizzled. Only the
-        /// components in <paramref name="read"/> are computed there.
+        /// A source ps_2_0 can read: t# as its stand-in, and a modifier ps_2_0 lacks
+        /// applied into a scratch temp (only <paramref name="read"/> computed).
         /// </summary>
         private uint LowerSource(D3D9Instruction instruction, int index, int read)
         {
@@ -748,7 +672,6 @@ public static class PixelShader1Lowering
             return Source(RegisterType.Temp, scratch, Identity);
         }
 
-        // The destination as ps_2_0 writes it: a texture register as its stand-in.
         private uint Destination(D3D9Instruction instruction)
         {
             uint token = instruction.Params[0] & ~0x0F000000u; // the shift is lowered apart
@@ -918,11 +841,8 @@ public static class PixelShader1Lowering
         }
 
         /// <summary>
-        /// A constant table, as a comment of its own beside the shader's, declaring
-        /// the texture stage state the shader reads as the uniforms the decompilation
-        /// reads it from: a float4 bumpEnvMat# and a float2 bumpEnvLum# per stage.
-        /// The layout is D3DXSHADER_CONSTANTTABLE's, offsets counted from the start
-        /// of the table.
+        /// A separate CTAB comment declaring the bump stage state as uniforms, in
+        /// D3DXSHADER_CONSTANTTABLE layout (offsets from the table start).
         /// </summary>
         private uint[] StageStateTable()
         {
@@ -970,8 +890,6 @@ public static class PixelShader1Lowering
                     writer.Write(typesStart + i * TypeInfoSize);
                     writer.Write(0); // no default
                 }
-                // A float2x2 bump matrix is two rows of two, in a register per
-                // column; the luminance is one row of two.
                 foreach ((_, _, int rows, ParameterClass parameterClass) in constants)
                 {
                     writer.Write((short)parameterClass);
@@ -1038,14 +956,12 @@ public static class PixelShader1Lowering
 
     private static uint ClearResultModifiers(uint destination) => destination & ~0x00F00000u;
 
-    // One component of what a source reads, read into all four.
     private static uint SelectComponent(uint source, int component) =>
         WithSwizzle(source, Replicate((int)((source >> (16 + 2 * component)) & 0x3)));
 
     private static uint WithSwizzle(uint source, byte swizzle) =>
         (source & ~0x00FF0000u) | ((uint)swizzle << 16);
 
-    // Every component read from the one: x is 0x00, w is 0xFF.
     private static byte Replicate(int component) =>
         (byte)(component | component << 2 | component << 4 | component << 6);
 

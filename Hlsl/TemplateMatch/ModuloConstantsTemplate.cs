@@ -1,9 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
-// The remainder of two integer constants is a constant. An instanced fork phase
-// unrolled into a copy per run indexes the patch by `(id + 1) % 3`, and with the
-// id settled each copy read `patch[1 % 3]`, `patch[3 % 3]`. udiv is unsigned, and
-// so is the remainder taken here.
+// Folds `%` of two integer constants (e.g. unrolled fork phases' `patch[3 % 3]`).
+// Unsigned, as udiv is.
 public class ModuloConstantsTemplate : NodeTemplate<ModuloOperation>
 {
     public override bool Match(HlslTreeNode node)

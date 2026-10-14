@@ -14,10 +14,7 @@ public static class AssociativityTester
         }
     }
 
-    // Operators that bind more loosely than the arithmetic they sit inside, so they
-    // need parentheses wherever they appear as an operand. Without them
-    // `a + (c ? 1 : 0)` prints as `a + c ? 1 : 0`, which groups the addition into
-    // the condition and computes something else entirely.
+    // Operators binding looser than arithmetic, e.g. `a + (c ? 1 : 0)`.
     public static bool NeedsParenthesesAsOperand(HlslTreeNode node)
     {
         switch (node)

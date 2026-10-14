@@ -14,10 +14,8 @@ public enum EvaluateAttributeAt
 }
 
 /// <summary>
-/// An attribute evaluated somewhere other than where the pixel shader is being
-/// run. All three read an input register that has already been interpolated and
-/// interpolate it again elsewhere, so the value is the input's; the two that take
-/// a place have it in the operands after it.
+/// An input attribute re-interpolated elsewhere; the location, if any, follows
+/// the input operand.
 /// </summary>
 public class EvaluateAttributeOperation : Operation
 {

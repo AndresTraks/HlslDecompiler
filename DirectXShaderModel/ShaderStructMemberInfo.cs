@@ -5,9 +5,7 @@ public class ShaderStructMemberInfo
     public string Name { get; }
     public ShaderTypeInfo TypeInfo { get; }
 
-    /// <summary>Where the member starts within the structure. A load from a
-    /// structured buffer names a byte offset, and this is what says which member
-    /// that offset is in.</summary>
+    /// <summary>Maps a structured buffer load's byte offset to a member.</summary>
     public int ByteOffset { get; }
 
     public ShaderStructMemberInfo(string name, ShaderTypeInfo typeInfo, int byteOffset = 0)

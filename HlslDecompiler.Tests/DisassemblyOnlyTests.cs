@@ -6,15 +6,8 @@ using System.Linq;
 
 namespace HlslDecompiler.Tests;
 
-// Shaders the disassembler reads and the HLSL writers do not yet, kept out of
-// CompiledShaders because everything in there is run through every tier and these
-// would fail the ones that decompile. The listing is still worth pinning: it is
-// what says the reader took the instruction apart correctly, and for a construct
-// no golden can reach it is the only thing holding the operand layout in place.
-//
-// Each .fxc here was built by fxc from HLSL, so `fxc /nologo /dumpbin` over the
-// same file is the check on the .asm beside it - the differences that remain are
-// this writer's own conventions, which the rest of the corpus shares.
+// Shaders the HLSL writers cannot handle yet, kept out of CompiledShaders (which
+// runs every tier). Their .asm can be checked with `fxc /nologo /dumpbin`.
 public class DisassemblyOnlyTests
 {
     public static IEnumerable<TestCaseData> Shaders()

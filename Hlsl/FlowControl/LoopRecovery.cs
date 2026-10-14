@@ -5,20 +5,8 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.FlowControl;
 
 /// <summary>
-/// Turns the shape a bytecode loop actually has
-///
-/// <code>
-/// t = init;
-/// while (true) {
-///     if (t &gt;= limit) { break; }
-///     ...
-///     t = t + step;
-/// }
-/// </code>
-///
-/// back into the <c>for</c> loop it was written as. Only unbounded loops are
-/// considered - a D3D9 <c>rep</c> already carries its own trip count, and folding a
-/// second condition into it would not be an improvement.
+/// Turns <c>t = init; while (true) { if (t &gt;= limit) break; ...; t += step; }</c>
+/// back into a <c>for</c> loop. Only unbounded loops: a <c>rep</c> has its own count.
 /// </summary>
 public static class LoopRecovery
 {
@@ -56,15 +44,13 @@ public static class LoopRecovery
             return;
         }
 
-        // In a for loop `continue` runs the increment; in the bytecode it jumps past
-        // it. Rewriting a loop that contains one would change what it computes.
+        // A for loop's `continue` runs the increment; the bytecode's skips it.
         if (ContainsContinue(loop.Body))
         {
             return;
         }
 
-        // The guard is the first statement that branches. Assignments may precede it -
-        // they compute the comparison, which becomes part of the for condition.
+        // Assignments before the guard compute its comparison.
         int guardIndex = 0;
         while (guardIndex < loop.Body.Count && loop.Body[guardIndex] is AssignmentStatement)
         {
@@ -76,8 +62,7 @@ public static class LoopRecovery
             return;
         }
 
-        // Work this out before anything is moved: not every comparison can be
-        // inverted, and the statements must not be left half-rewritten.
+        // Before anything moves: not every comparison inverts.
         ComparisonNode continueCondition = breakCondition.Inverted();
         if (continueCondition == null)
         {
@@ -89,9 +74,7 @@ public static class LoopRecovery
             return;
         }
 
-        // The increment must be `v = v + step` on a variable the break tests - or a
-        // step by a shift or a multiply, `stride >>= 1`, which is a for loop just the
-        // same, and one fxc closes with a breakc rather than an if around a break.
+        // `v = v op const` (add, shift or multiply) on a variable the break tests.
         var increment = lastStatement.Outputs
             .Where(o => o.Value is TempAssignmentNode assignment
                 && assignment.Value is AddOperation or ShiftRightOperation or ShiftLeftOperation or MultiplyOperation
@@ -99,20 +82,14 @@ public static class LoopRecovery
                 && assignment.Value.Inputs.Any(a => a is ConstantNode))
             .Select(o => (Key: o.Key, Assignment: (TempAssignmentNode)o.Value))
             .FirstOrDefault(o => IsTestedBy(o.Assignment.TempVariable, breakCondition));
-        // fxc can work the step out early and copy it in at the end. Where it fuses
-        // the increment with another add of the counter - `iadd r0.yz, r0.xxxx,
-        // l(0, 3, 1, 0)` is an index and the next counter in one instruction - the
-        // body ends on `v = w` with `w = v + 1` above it. That is the same for loop
-        // with one register more, and written as the while it looks like, it costs
-        // the instructions fxc had saved.
+        // fxc may compute the step early (`w = v + 1`, fused into another iadd) and
+        // end the body on `v = w`; that is still a for loop.
         AssignmentStatement stepStatement = null;
         RegisterComponentKey stepKey = default;
         if (increment.Assignment == null)
         {
             foreach (var copy in lastStatement.Outputs)
             {
-                // The copy is a mov, which is a move of the variable rather than
-                // the variable itself.
                 if (copy.Value is not TempAssignmentNode copied
                     || CopiedVariable(copied.Value) is not TempVariableNode stepVariable
                     || !IsTestedBy(copied.TempVariable, breakCondition))
@@ -121,9 +98,7 @@ public static class LoopRecovery
                 }
                 foreach (IStatement statement in loop.Body)
                 {
-                    // The step can be worked out in the same statement the copy ends
-                    // on - fxc writes both registers with the one iadd - so this is
-                    // not looking above the copy but beside it as well.
+                    // The step can be in the copy's own statement (one iadd writes both).
                     if (statement is not AssignmentStatement step)
                     {
                         continue;
@@ -142,13 +117,10 @@ public static class LoopRecovery
                     {
                         continue;
                     }
-                    // The counter takes the step itself, rather than the register fxc
-                    // worked it out in: that register goes with the write that made it.
+                    // The counter takes the step expression; the temp register goes.
                     increment = (copy.Key, new TempAssignmentNode(
                         copied.TempVariable, ((TempAssignmentNode)stepped.Value).Value)
                     {
-                        // The counter is declared by the initializer in the
-                        // header; this one steps it.
                         IsReassignment = true,
                     });
                     stepStatement = step;
@@ -168,9 +140,8 @@ public static class LoopRecovery
 
         TempVariableNode inductionVariable = increment.Assignment.TempVariable;
 
-        // The initial value has to be an assignment to the same variable immediately
-        // before the loop, and nothing after the loop may still read it - moving the
-        // declaration into the for header narrows its scope to the loop.
+        // Initialized right before the loop and unread after it: the for header
+        // narrows its scope.
         if (statements[index - 1] is not AssignmentStatement initializerStatement
             || !initializerStatement.Outputs.TryGetValue(increment.Key, out var initialValue)
             || initialValue is not TempAssignmentNode initializer
@@ -188,7 +159,6 @@ public static class LoopRecovery
         loop.ContinueCondition = continueCondition;
         loop.Increment = increment.Assignment;
 
-        // Those three now live in the for header rather than in the body.
         initializerStatement.Outputs.Remove(increment.Key);
         lastStatement.Outputs.Remove(increment.Key);
         stepStatement?.Outputs.Remove(stepKey);
@@ -196,10 +166,7 @@ public static class LoopRecovery
     }
 
     /// <summary>
-    /// The condition under which a statement leaves the loop, or null if it is not a
-    /// guard. Bytecode spells this either as a conditional break (<c>breakc</c>) or
-    /// as an <c>if</c> wrapping an unconditional one, depending on how it was
-    /// compiled.
+    /// The exit condition of a <c>breakc</c> or an <c>if</c> around a <c>break</c>.
     /// </summary>
     private static HlslTreeNode TryGetBreakCondition(IStatement statement)
     {
@@ -241,8 +208,6 @@ public static class LoopRecovery
 
 
 
-    /// <summary>The variable a copy reads, whether it reads it through a move or
-    /// stands as the variable itself.</summary>
     private static TempVariableNode CopiedVariable(HlslTreeNode value)
     {
         return value switch
@@ -254,9 +219,7 @@ public static class LoopRecovery
     }
 
     /// <summary>
-    /// Whether anything but the copy at the end of the body reads the register the
-    /// step was worked out in. Where something else does, that register carries more
-    /// than the counter and cannot be taken away with it.
+    /// Whether anything but the copy reads the step's register, which must then stay.
     /// </summary>
     private static bool IsReadElsewhere(
         IList<IStatement> body, TempVariableNode variable, TempAssignmentNode copy)

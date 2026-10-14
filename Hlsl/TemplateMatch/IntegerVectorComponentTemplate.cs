@@ -7,35 +7,22 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// An integer vector read at a computed component. A float vector is dotted with a
-/// row of an identity (see VectorComponentNode), but a dot is no use on integers,
-/// so fxc masks each component with a test of the index and ors them together:
-/// `blendindices[i]` became
-/// `((i < 3) == 0 ? w : 0) | ((i < 2 ? 0 : i - 3) & z) | ((i < 2 ? -i : 0) & y) | ((i < 1) & x)`,
-/// each mask all ones for its own component and zero for the rest.
-///
-/// The masks are fxc's to choose and differ from component to component, so they
-/// are not matched by shape. The or is worked out instead for each index the
-/// vector has, with its components standing for values that cannot be mistaken
-/// for one another, and is the subscript where every index gives back the
-/// component it names - which is what the subscript is, over the indices that
-/// read anything.
+/// An integer vector read at a computed index (`v[i]`), which fxc writes as an
+/// or of per-component masks derived from i. The masks vary, so instead of
+/// matching shape the or is evaluated for every index with stand-in component
+/// values; it is the subscript if each index yields its own component.
 /// </summary>
 public class IntegerVectorComponentTemplate : NodeTemplate<BitwiseOrOperation>
 {
-    // Two sets, so that a mask agreeing with one by chance is not taken for a
-    // selection.
+    // Two sets, so a mask agreeing with one by chance is not taken for a selection.
     private static readonly int[][] StandIns =
     [
         [0x13579BDF, 0x2468ACE0, 0x0F1E2D3C, 0x7A6B5C4D],
         [unchecked((int)0xFEDCBA98), 0x01234567, 0x55AA33CC, unchecked((int)0x8001F00F)],
     ];
 
-    // The whole of the or, and not a part of it. The templates reduce from the
-    // leaves up, and `(y & m1) | (x & m0)` is x and y picked by an index of 0 or 1
-    // - and zero past them, where `blendindices.xy[i]` reads out of range. Only the
-    // or with all of the vector in it agrees with the subscript wherever it is
-    // defined.
+    // Only the outermost or: a partial or (`(y & m1) | (x & m0)`) would match as
+    // a subscript of a shorter vector, which differs out of range.
     public override bool Match(HlslTreeNode node)
     {
         return node is BitwiseOrOperation
@@ -94,9 +81,8 @@ public class IntegerVectorComponentTemplate : NodeTemplate<BitwiseOrOperation>
         return (vector, index);
     }
 
-    // The values the expression is made of: reads of an input or a constant, and the
-    // one value that is not - the index. False where something in it cannot be
-    // worked out at all.
+    // Leaves: input/constant buffer reads, and others (the index). False where
+    // something cannot be evaluated.
     private static bool CollectLeaves(HlslTreeNode node, List<RegisterInputNode> reads,
         List<HlslTreeNode> others, HashSet<HlslTreeNode> seen)
     {
@@ -144,8 +130,7 @@ public class IntegerVectorComponentTemplate : NodeTemplate<BitwiseOrOperation>
         return constant.Value == (int)constant.Value ? (int)constant.Value : null;
     }
 
-    // The 32 bits the expression leaves, as the integer instructions it came from
-    // would: a comparison is a mask, a movc tests its condition for any bit set.
+    // Integer semantics: a comparison is a mask, movc tests for any bit set.
     private static int? Evaluate(HlslTreeNode node, Func<HlslTreeNode, int?> leaf)
     {
         if (leaf(node) is int value)

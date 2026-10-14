@@ -16,9 +16,7 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterComponentKey> _floatReadRegisters;
     private HashSet<RegisterComponentKey> _floatMovedRegisters;
 
-    /// <summary>How many moves a value is followed through before giving up. Real
-    /// chains are one or two; the bound is there so a shader full of them cannot
-    /// make the search exponential.</summary>
+    /// <summary>How many moves a value is followed through; bounds the search.</summary>
     private const int MaximumCarryDepth = 8;
     private readonly ShaderModel _shader;
 
@@ -34,19 +32,14 @@ public sealed class IntegerOperandAnalysis
             return true;
         }
 
-        // A raw store writes bits. Every dword it is handed is a uint whatever the
-        // value was before it was stored - that is what makes the buffer raw - and
-        // fxc prints them as integers. Left to the float rule, `b.Store(0, 7)`
-        // disassembled as l(0.000000), which is the denormal those bits are.
+        // A raw store writes bits; every dword is a uint whatever it was before.
         if (instruction.Opcode == D3D10Opcode.StoreRaw)
         {
             return true;
         }
 
-        // A coverage mask is a uint whatever writes it. The move rule below cannot
-        // say so - a movc carries its sources rather than typing them, and what
-        // usually settles one is whatever reads the register afterwards, which for
-        // oMask is nothing.
+        // A coverage mask is a uint whatever writes it; nothing reads oMask
+        // afterwards to settle a move into it.
         int? coverageDestination = instruction.GetDestinationParamIndex();
         if (coverageDestination != null
             && instruction.GetOperandType(coverageDestination.Value) == OperandType.OutputCoverageMask)
@@ -58,8 +51,7 @@ public sealed class IntegerOperandAnalysis
         return IsIntegerMove(instruction);
     }
 
-    // Whether a register component only ever holds an integer, so that a temp
-    // standing for it can be declared as one.
+    // Whether a register component only ever holds an integer.
     public bool IsIntegerRegister(RegisterComponentKey registerComponent)
     {
         _integerRegisters ??= FindIntegerRegisters(_shader);
@@ -67,11 +59,8 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether a register component holds a double - the lower of the two components
-    /// one takes, which is where the value is keyed. Unlike the integer question this
-    /// is not asked of the readers: a double is a double because a double instruction
-    /// wrote it or read it, and the arithmetic in between is the same addition and
-    /// multiplication whatever its operands are made of.
+    /// Whether a register component holds a double, keyed on the lower of its two
+    /// components. Only double instructions writing or reading it say so.
     /// </summary>
     public bool IsDoubleRegister(RegisterComponentKey registerComponent)
     {
@@ -93,9 +82,8 @@ public sealed class IntegerOperandAnalysis
                 AddDoublePairs(doubleRegisters, d3d10, destination,
                     d3d10.GetDestinationWriteMask());
             }
-            // The sources as well as the destination: a double a load left in a
-            // register is one before any double instruction writes it, and the pair
-            // an operand names is what says so.
+            // Sources too: a double a load left in a register is never written by a
+            // double instruction.
             for (int operand = 1; operand <= 3; operand++)
             {
                 if (!d3d10.IsDoubleOperand(operand))
@@ -130,15 +118,10 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// How the instruction writer keeps a temp register component. Registers are
-    /// declared once each, and fxc reuses them freely, so one component can carry
-    /// a loop counter, a comparison mask and a float in turn. A register any of
-    /// whose components ever holds bits is declared int, and the floats in it are
-    /// held as their bits - asfloat to read one, asint to write one. The other way
-    /// about does not survive fxc: it does not read asfloat as a reinterpretation
-    /// but as producing a float, and flushes a denormal to zero, so the bits of a
-    /// small integer put through one come back as zero. A float's bits put through
-    /// an asfloat are the float, which is a number fxc keeps.
+    /// How the instruction writer keeps a temp register component. A register any
+    /// of whose components holds bits is declared int, its floats held as bits
+    /// (asfloat/asint). Not the other way about: fxc flushes a denormal through
+    /// asfloat to zero, losing a small integer's bits.
     /// </summary>
     public ComponentStorage GetStorage(RegisterComponentKey registerComponent)
     {
@@ -153,9 +136,7 @@ public sealed class IntegerOperandAnalysis
 
     /// <summary>
     /// Whether the component carries bits rather than a number: a bitwise operator
-    /// reads or writes it, or a comparison wrote the mask into it and it is not an
-    /// integer's otherwise. A mask that only tests, branches and integer arithmetic
-    /// read is -1 or 0 as a number just as well.
+    /// touches it, or it is a comparison mask not otherwise an integer.
     /// </summary>
     private bool HoldsBits(RegisterComponentKey registerComponent)
     {
@@ -164,14 +145,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether an int register's component holds a float, which it can only hold as
-    /// the float's bits: written by a float instruction, converted into one by an
-    /// itof, or read by one, which says as much about what is there as writing it
-    /// does and covers a load whose element type is a mix. A float instruction
-    /// reading such a component wants the float those bits are, and not the number
-    /// they make. An integer the shader takes apart bitwise is not this: bits are
-    /// what an int variable holds anyway, and a loop counter sharing the register
-    /// with both is a plain number too.
+    /// Whether an int register's component holds a float as its bits: a float
+    /// instruction writes or reads it, an itof writes it, or a mov carries a float
+    /// in. A float reader then wants asfloat, not a conversion.
     /// </summary>
     public bool HoldsFloatBits(RegisterComponentKey registerComponent)
     {
@@ -184,9 +160,7 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether a mov carries a float into the component. A mov says nothing about
-    /// what it carries, so what it came from has to: a float register, a float
-    /// input or constant, or another component a float reached the same way.
+    /// Whether a mov carries a float into the component, judged by its source.
     /// </summary>
     private bool IsFloatMoved(RegisterComponentKey registerComponent)
     {
@@ -222,11 +196,7 @@ public sealed class IntegerOperandAnalysis
                     {
                         if (instruction.GetOperandType(operand) == OperandType.Immediate32)
                         {
-                            // An immediate carries no type of its own, but the
-                            // readers it reaches give it one: where they want
-                            // floats, the float's bits are what landed in the
-                            // register - `movc r0.y, c, l(0), l(1)` feeding a float
-                            // output holds the bits of 1.0f, not the number 1.
+                            // An immediate is typed by its readers.
                             if (GetImmediateKindByReaders(instruction) == ValueKind.Float)
                             {
                                 changed |= moved.Add(destination);
@@ -258,7 +228,6 @@ public sealed class IntegerOperandAnalysis
         return moved;
     }
 
-    /// <summary>Whether a float instruction reads the component.</summary>
     private bool IsFloatRead(RegisterComponentKey registerComponent)
     {
         _floatReadRegisters ??= FindFloatReadRegisters();
@@ -286,7 +255,6 @@ public sealed class IntegerOperandAnalysis
         return read;
     }
 
-    /// <summary>Whether a comparison writes the component.</summary>
     private bool IsMask(RegisterComponentKey registerComponent)
     {
         _maskRegisters ??= FindMaskRegisters();
@@ -307,35 +275,32 @@ public sealed class IntegerOperandAnalysis
         return masks;
     }
 
-    /// <summary>Whether a temp register is declared int: every component any
-    /// instruction writes is an integer that no float instruction touches.</summary>
+    /// <summary>Whether a temp register is declared int: all its written components
+    /// are float-free integers, or any holds bits.</summary>
     public bool IsIntegerDeclaredRegister(RegisterKey registerKey)
     {
         _integerDeclaredRegisters ??= FindIntegerDeclaredRegisters();
         return _integerDeclaredRegisters.Contains(registerKey);
     }
 
-    /// <summary>Whether a float instruction reads or writes the component, directly
-    /// or through a move.</summary>
+    /// <summary>Whether a float instruction writes the component, directly or
+    /// through a move.</summary>
     public bool IsFloatTouched(RegisterComponentKey registerComponent)
     {
         _floatRegisters ??= FindTouchedRegisters(ValueKind.Float);
         return _floatRegisters.Contains(registerComponent);
     }
 
-    /// <summary>Whether a bitwise operator reads or writes the component, or a
-    /// move brings in a value from one that does - the one kind of reader for
-    /// which a value's bits, and not its number, are what matters.</summary>
+    /// <summary>Whether a bitwise operator reads or writes the component, directly
+    /// or through a move.</summary>
     public bool IsBitsTouched(RegisterComponentKey registerComponent)
     {
         _bitsRegisters ??= FindTouchedRegisters(ValueKind.Bits);
         return _bitsRegisters.Contains(registerComponent);
     }
 
-    /// <summary>
-    /// What ld_structured reads or store_structured writes: the element type the
-    /// reflection data gives the buffer, or nothing for groupshared memory.
-    /// </summary>
+    /// <summary>What ld_structured reads or store_structured writes, by the
+    /// buffer's reflected element type.</summary>
     public ValueKind GetStructuredElementKind(D3D10Instruction instruction)
     {
         return LoadedElementType(instruction) switch
@@ -347,10 +312,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether the output signature types a register component as an integer.
-    /// IsIntegerRegister answers the same question of the instructions as well,
-    /// and an integer instruction writing a float output is exactly the case that
-    /// has to be told apart: what it writes there is a float's bits.
+    /// Whether the output signature alone types a component as an integer. Unlike
+    /// IsIntegerRegister, an integer instruction writing a float output does not
+    /// count: it writes a float's bits.
     /// </summary>
     public bool IsIntegerOutputSignature(RegisterComponentKey registerComponent)
     {
@@ -381,14 +345,11 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// What ld and ldms read: a texel of the type the resource was declared with,
-    /// which for a Texture2D&lt;uint4&gt; is an integer and not the float a texel
-    /// usually is. A G-buffer packs bits into such a texture, and reading them as
-    /// floats loses them.
+    /// What ld and ldms read: a texel of the resource's declared type, an integer
+    /// for a Texture2D&lt;uint4&gt;.
     /// </summary>
     public ValueKind GetTypedLoadKind(D3D10Instruction load)
     {
-        // The resource is the operand after the address.
         const int ResourceIndex = 2;
         ResourceDefinition definition = _shader.ResourceDefinitions?
             .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.Texture
@@ -397,12 +358,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// What a typed store writes: a texel of the type the view was declared with,
-    /// the same answer the load of one gets. Read as the float a texel usually is,
-    /// the integer an RWTexture2D&lt;uint&gt; takes was wrapped in asfloat() - and
-    /// HLSL converts a float into an integer texel by value, so the store wrote the
-    /// number those bits spell rather than the bits, which for every texel below
-    /// 2^-126 is zero.
+    /// What a typed store writes: a texel of the view's declared type. HLSL
+    /// converts a float stored into an integer texel by value, so this must not
+    /// default to float.
     /// </summary>
     public ValueKind GetTypedStoreKind(D3D10Instruction store)
     {
@@ -412,9 +370,8 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// What the immediate a mov or movc writes is, by the instructions that go on
-    /// to read the register components it writes - the mov itself says nothing.
-    /// Unknown where the components' readers disagree, or there are none.
+    /// The kind of the immediate a mov or movc writes, by the readers of its
+    /// destination. Unknown where they disagree or there are none.
     /// </summary>
     public ValueKind GetImmediateKindByReaders(D3D10Instruction instruction)
     {
@@ -435,11 +392,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// The same, one answer per component of the destination register - `mov
-    /// r0.xy, l(0, 0)` can start a float accumulator and an integer counter at
-    /// once. A forward scan, stopping for a component once it is written again at
-    /// the same or a shallower nesting level; a write deeper inside an if or a
-    /// loop leaves a read after it possible, so the scan looks past it.
+    /// The same, per destination component. Scans forward until a component is
+    /// rewritten at the same or a shallower nesting level; a deeper write may be
+    /// skipped at run time, so the scan looks past it.
     /// </summary>
     public ValueKind[] GetImmediateKindsByReaders(D3D10Instruction instruction)
     {
@@ -482,10 +437,8 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
-            // An instruction reads its sources before it writes its destination, so
-            // what it overwrites is taken away only once its own reads are counted:
-            // `movc r1.xy, c, r1.wz, r1.xy` reads r1.y and writes it, and killing
-            // the component first lost the read.
+            // Sources are read before the destination is written, so kill
+            // overwritten components only after counting this instruction's reads.
             int overwritten = 0;
             for (int operand = 0; operand < reader.OperandTokens.OperandCount; operand++)
             {
@@ -507,19 +460,12 @@ public sealed class IntegerOperandAnalysis
                 {
                     consumed = GetStructuredElementKind(reader);
                 }
-                // An immediate a branch tests for zero is a flag - the 0 or -1 fxc
-                // moves into a register to carry a condition past an else - and a
-                // flag is an integer. Read as bits it typed nothing, and where the
-                // register also held a float elsewhere, the -1 printed as NaN.
+                // An immediate a branch tests is a 0/-1 flag: an integer.
                 if (reader.Opcode.HasBooleanTest())
                 {
                     consumed = ValueKind.Integer;
                 }
-                // What a bitwise operator reads it reads as bits, which is what an
-                // int variable holds - the reading StoredValueType already takes
-                // of what one writes. A half float's bits moved toward an `and`
-                // typed nothing before, and l(31743) printed as the denormal those
-                // bits are: l(0.000000).
+                // A bitwise operator reads bits, which an int variable holds.
                 if (reader.Opcode is D3D10Opcode.And or D3D10Opcode.Or
                     or D3D10Opcode.Xor or D3D10Opcode.Not)
                 {
@@ -527,14 +473,8 @@ public sealed class IntegerOperandAnalysis
                 }
                 if (consumed != ValueKind.Integer && consumed != ValueKind.Float)
                 {
-                    // A mov or a movc reads nothing of its own; it carries the
-                    // value on, and what the value is comes from whatever reads
-                    // the register it lands in. Stopping here left the constants
-                    // of `movc r2.xy, c, l(8, 12), l(0, 4)` typed as floats, where
-                    // the iadd that reads them through a second movc says they are
-                    // integers - and 8 as a float is a denormal that prints as 0.
-                    // A movc's first source is the condition it tests, not a value
-                    // it carries.
+                    // A mov or movc carries the value on; its own readers type it.
+                    // A movc's first source is its condition, not a carried value.
                     if (reader.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC
                         && !(reader.Opcode == D3D10Opcode.MovC && operand == 1))
                     {
@@ -542,11 +482,7 @@ public sealed class IntegerOperandAnalysis
                         if (readerDestination != null
                             && reader.GetOperandType(readerDestination.Value) != OperandType.Temp)
                         {
-                            // A move into an output carries the value no further: the
-                            // output signature says what it is, and a move converts
-                            // nothing - what reaches a float output through int
-                            // registers is the float's bits, and what reaches an
-                            // integer output the number.
+                            // A move into an output is typed by the output signature.
                             RegisterKey outputRegister =
                                 reader.GetParamRegisterKey(readerDestination.Value);
                             foreach (byte component in reader.GetSourceSwizzleComponents(operand).Distinct())
@@ -595,9 +531,7 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Takes what reads the destination of a carrying move and applies it to the
-    /// components that move reads, so an immediate two moves away from the
-    /// instruction that gives it a type still gets one.
+    /// Types the components a carrying move reads by the readers of its destination.
     /// </summary>
     private void CarryKindsOnward(
         D3D10Instruction move,
@@ -615,8 +549,8 @@ public sealed class IntegerOperandAnalysis
         {
             return;
         }
-        // The set is the path and not everything seen: a move carries each of its
-        // sources on, and leaving it in would let the first of them stop the rest.
+        // The set is the current path, not everything seen, so each source of a
+        // move is carried on.
         ValueKind[] onward;
         try
         {
@@ -658,8 +592,6 @@ public sealed class IntegerOperandAnalysis
             .Select(r => r.Key)];
     }
 
-    /// <summary>Every temp register any instruction writes, with the components
-    /// written.</summary>
     private Dictionary<RegisterKey, HashSet<RegisterComponentKey>> FindWrittenTempComponents()
     {
         var written = new Dictionary<RegisterKey, HashSet<RegisterComponentKey>>();
@@ -696,16 +628,8 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether a component holds bits and nothing else. Kept in a float register
-    /// and reinterpreted at every use, bits do not survive recompilation at all:
-    /// fxc reads asfloat as producing a float and flushes a denormal to zero, so a
-    /// mask of the low bits of anything - every step of its own f32tof16, a packed
-    /// G-buffer, an index anded with 1 - comes back as zero. In an int variable
-    /// there is no asfloat to flush.
-    ///
-    /// A register with such a component is declared int whatever its other
-    /// components hold; this says which of them are only ever bits, for the
-    /// declaration rule that has nothing else to go on.
+    /// Whether a component holds bits and nothing else. Bits kept in a float
+    /// register do not survive fxc, which flushes denormals through asfloat.
     /// </summary>
     private bool IsBitsOnly(RegisterComponentKey registerComponent)
     {
@@ -716,10 +640,8 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether itof or utof writes the component. Those are left out of the float
-    /// instructions on purpose - an integer register holds the whole number they
-    /// write without loss - but what they write is a number and not bits, so a
-    /// component they write is not one of these.
+    /// Whether itof or utof writes the component. They are not float-touching (an
+    /// int register holds their whole number), but they write a number, not bits.
     /// </summary>
     private bool IsConvertedToFloat(RegisterComponentKey registerComponent)
     {
@@ -742,12 +664,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     // The components a float instruction writes, or a bitwise operator reads or
-    // writes, followed forward through the moves that carry them on. Writes rather than reads: an int register read by a float
-    // instruction converts its value on the way, which is right, where one
-    // written by a float instruction truncates it. itof and utof write a float
-    // that is a whole number, which an int register holds without loss, and
-    // counting them would turn every integer register that is ever converted into
-    // a float one. A moved immediate counts as whatever reads it afterwards.
+    // writes, followed forward through moves. Float writes, not reads: a float
+    // read of an int register converts correctly, a float write truncates. itof
+    // and utof are excluded; a moved immediate counts as whatever reads it.
     private HashSet<RegisterComponentKey> FindTouchedRegisters(ValueKind kind)
     {
         var touched = new HashSet<RegisterComponentKey>();
@@ -876,10 +795,8 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether an indexable temp holds integers: every store into it is an integer
-    /// instruction or a move of a register component known to be one. Its elements
-    /// share one key, so the register rule cannot answer for it - one element
-    /// written from an index would make every element an integer.
+    /// Whether an indexable temp holds integers. Its elements share one key, so
+    /// the register rule cannot answer for it.
     /// </summary>
     public bool IsIntegerIndexableTemp(int register)
     {
@@ -888,29 +805,9 @@ public sealed class IntegerOperandAnalysis
     }
 
     /// <summary>
-    /// Whether a groupshared array holds integers. The register rule cannot answer:
-    /// the value a store writes usually sits in a register that also carried the
-    /// element index a moment before, and that alone would make every array an
-    /// integer. So each store is traced back to the instruction that last wrote the
-    /// value it stores - an integer operation, a float one, or a load whose buffer
-    /// the reflection data types. Integer only when some store says so and none
-    /// says float.
-    /// </summary>
-    /// <summary>
-    /// Whether the integers a groupshared array holds are unsigned. Nothing declares
-    /// the type of groupshared memory the way reflection data declares a buffer's
-    /// element, so the writer picks one.
-    ///
-    /// For a min or a max the pick decides the answer: HLSL chooses between the
-    /// signed and the unsigned interlocked operation from the type it is given, so
-    /// an array fxc minimises with atomic_umin has to be declared uint and one it
-    /// minimises with atomic_imin int, whatever else is stored. Every other atomic
-    /// is the same operation either way.
-    ///
-    /// Otherwise it is what is stored: uint where some store's value is unsigned and
-    /// none is signed. An array of `ushr(x, 16) ^ x` over a StructuredBuffer of
-    /// uints was declared int, and every value read back out of it - into nothing
-    /// but unsigned arithmetic - was declared uint against the array it came from.
+    /// Whether the integers a groupshared array holds are unsigned. An atomic
+    /// min/max decides it (HLSL picks umin or imin from the declared type);
+    /// otherwise uint where some store is unsigned and none signed.
     /// </summary>
     public bool IsUnsignedThreadGroupSharedMemory(int register)
     {
@@ -947,16 +844,11 @@ public sealed class IntegerOperandAnalysis
     [System.Flags]
     private enum Signedness { Unknown = 0, Unsigned = 1, Signed = 2 }
 
-    // How deep the trace through sign-neutral arithmetic goes. A stored value is
-    // a few instructions from what made it; past that the answer is not worth the
-    // walk.
     private const int SignednessDepth = 8;
 
-    // What the operand of the instruction at index says about sign, by the
-    // instructions that made it: those that read or make a sign answer, and those
-    // that are the same instruction either way - a move, an add, a bitwise
-    // operator - pass the question on to their operands. Straight-line order, as
-    // StoredValueType.
+    // The operand's sign, by the instructions that made it. Sign-neutral ones (a
+    // move, an add, a bitwise operator) pass the question to their operands.
+    // Straight-line order, as StoredValueType.
     private Signedness StoredSignedness(List<D3D10Instruction> instructions, int index,
         int operandIndex, int depth)
     {
@@ -1015,8 +907,7 @@ public sealed class IntegerOperandAnalysis
         return Signedness.Unknown;
     }
 
-    // An input or a constant, by its declaration: a thread id is a uint, a
-    // signature component or a constant buffer variable is what it says it is.
+    // An input or a constant's sign, by its declaration.
     private Signedness DeclaredSignedness(D3D10Instruction reader, int operandIndex)
     {
         OperandType type = reader.GetOperandType(operandIndex);
@@ -1054,8 +945,7 @@ public sealed class IntegerOperandAnalysis
         return Signedness.Unknown;
     }
 
-    // What a structured load reads, by the element type the reflection data gives
-    // its buffer. Nothing for groupshared memory, which is the question being asked.
+    // Nothing for groupshared memory, which is the question being asked.
     private Signedness LoadedElementSignedness(D3D10Instruction load)
     {
         const int ResourceIndex = 3;
@@ -1082,8 +972,7 @@ public sealed class IntegerOperandAnalysis
         };
     }
 
-    // Which operand an atomic names its destination in: the imm_ forms keep the old
-    // value in a register of their own, in front of everything else.
+    // The imm_ forms put the returned old value first, so the memory is operand 1.
     private static bool IsThreadGroupSharedAtomicOn(D3D10Instruction instruction, int register)
     {
         int destination = instruction.Opcode.IsAtomic() ? 0 : 1;
@@ -1095,21 +984,14 @@ public sealed class IntegerOperandAnalysis
     {
         const int ValueIndex = 3;
         var instructions = _shader.Instructions.OfType<D3D10Instruction>().ToList();
-        // Raw shared memory holds bits and says nothing about what they mean: a
-        // float stored into it goes in as the integer its bits are, so no store can
-        // be traced back to a type the way a structured one can. Declared as what
-        // it is - a uint - a float read out of it asks for asfloat, where a float
-        // declaration would have converted the value instead of reinterpreting it.
+        // Raw shared memory holds bits: declared uint, a float read asks for asfloat.
         if (instructions.Any(instruction =>
             instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryRaw
             && instruction.GetParamRegisterNumber(0) == register))
         {
             return true;
         }
-        // An interlocked operation over the array settles it on its own: there is no
-        // atomic over a float, so an array one reaches holds integers whatever the
-        // stores into it look like. A histogram's bins are cleared with a store of
-        // l(0), whose bits say nothing either way.
+        // Any atomic over the array settles it: there is no float atomic.
         if (instructions.Any(instruction =>
             (instruction.Opcode.IsAtomic() || instruction.Opcode.IsImmediateAtomic())
             && instruction.GetOperandType(instruction.Opcode.IsAtomic() ? 0 : 1)
@@ -1140,11 +1022,8 @@ public sealed class IntegerOperandAnalysis
         return anyInteger;
     }
 
-    /// <summary>
-    /// The operand types that are an unsigned integer by definition - the ids a
-    /// compute or geometry shader is given and the coverage masks - whatever
-    /// register they are movd into.
-    /// </summary>
+    /// <summary>Operand types that are a uint by definition: thread ids and
+    /// coverage masks.</summary>
     private static bool IsIntegerSystemValue(OperandType type)
     {
         return type is OperandType.InputThreadID or OperandType.InputThreadGroupID
@@ -1156,54 +1035,34 @@ public sealed class IntegerOperandAnalysis
 
     private enum StoredType { Unknown, Integer, Float }
 
-    // Bits whose exponent is all zeroes and are not zero, or all ones: as a float
-    // a denormal or an infinity or NaN, none of which a shader writes as a literal.
+    // A denormal, infinity or NaN: bits no shader writes as a float literal.
     public static bool IsDenormalOrNaN(uint bits)
     {
         uint exponent = (bits >> 23) & 0xFF;
         return (exponent == 0 && (bits & 0x7FFFFFFF) != 0) || exponent == 0xFF;
     }
 
-    // What the operand of the instruction at index holds, by the instruction that
-    // last wrote it. Straight-line order only; a value written in one branch and
-    // read after the join reads as whichever write comes last in the listing, which
-    // is as much as the bytecode says without a flow graph.
+    // What the operand holds, by the instruction that last wrote it in listing
+    // order (no flow graph: after a join, the last write in the listing wins).
     private StoredType StoredValueType(List<D3D10Instruction> instructions, int index, int operandIndex)
     {
         D3D10Instruction reader = instructions[index];
         OperandType type = reader.GetOperandType(operandIndex);
         if (type == OperandType.Immediate32)
         {
-            // The bits say what they can: an immediate whose float is a denormal,
-            // an infinity or a NaN was not written as a float - HLSL spells no
-            // literal with those bits, and fxc folds a float spelled through
-            // asfloat's bits into the flushed or rounded float (probed:
-            // asfloat(3) stores 0, asfloat(0x40000001) stores 2.0). Such bits
-            // reach memory only through an integer store, and the array has to be
-            // typed integer to keep them: stored into a traced float the
-            // immediate printed 0.000000 - the denormal's bits as zero. Any other
-            // immediate stays silent, as before.
+            // Denormal/NaN bits cannot come from a float (fxc flushes even
+            // asfloat(3) to 0), so they mark an integer store. Others say nothing.
             return IsDenormalOrNaN((uint)reader.GetParamInt(operandIndex, 0))
                 ? StoredType.Integer
                 : StoredType.Unknown;
         }
         if (type != OperandType.Temp)
         {
-            // A thread id, a group id, a coverage mask: these are uints by what they
-            // are, and no instruction converts them, so nothing downstream says so
-            // either. A tiled light list movs the flattened group index into a
-            // register and stores it into groupshared memory as the light's index;
-            // read as Unknown the array was declared float, the store went in as
-            // asfloat of the index and the load back out *converted* those bits to a
-            // uint rather than reinterpreting them - every light index came back 0.
-            // The loop's own `iadd` would have said integer, but it sits after the
-            // store in the listing and this walk only goes backwards.
+            // Thread ids and coverage masks are uints, and nothing else says so.
             if (IsIntegerSystemValue(type))
             {
                 return StoredType.Integer;
             }
-            // An input or a constant, typed by its own declaration; not worth
-            // chasing for this.
             return _integerRegisters != null && IsIntegerRegister(
                 new RegisterComponentKey(reader.GetParamRegisterKey(operandIndex), reader.GetSourceSwizzleComponents(operandIndex)[0]))
                 ? StoredType.Integer
@@ -1225,12 +1084,8 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
-            // A typed load reads an integer address and says nothing about the
-            // texel, so the view's return type is what answers. Before the
-            // IsInteger test, which counts ld and ldms among the instructions whose
-            // operands are integers - taken for what they produce, a float4 texel
-            // cached in groupshared memory declared the array int4, and the store
-            // into it converted while the load back out converted again.
+            // A typed load is typed by the view's return type. Must precede the
+            // IsInteger test, which counts ld/ldms as integer by their address.
             if (writer.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS
                 or D3D10Opcode.LdUAVTyped)
             {
@@ -1240,8 +1095,7 @@ public sealed class IntegerOperandAnalysis
             {
                 return StoredType.Integer;
             }
-            // A bitwise operator says nothing about what went into it and everything
-            // about what came out: bits, which is what an int variable holds.
+            // A bitwise operator writes bits, which an int variable holds.
             if (writer.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
                 or D3D10Opcode.Not)
             {
@@ -1265,18 +1119,13 @@ public sealed class IntegerOperandAnalysis
         return StoredType.Unknown;
     }
 
-    // What ld_structured reads: the element type the reflection data gives the
-    // buffer, or nothing for groupshared memory, which has none.
+    // The element type a load reads or a store writes, by reflection data.
     private StoredType LoadedElementType(D3D10Instruction load)
     {
-        // A typed view stores what its element type is, which the reflection data
-        // gives as a return type; there is no struct to ask. Its resource is the
-        // first operand, and asking for a fourth read off the end.
+        // A typed view or texture is typed by its return type.
         if (load.Opcode is D3D10Opcode.StoreUAVTyped or D3D10Opcode.LdUAVTyped
             or D3D10Opcode.LD or D3D10Opcode.LDMS)
         {
-            // A typed load off a texture names its resource where a writable view's
-            // load does, and binds as a texture rather than as a view.
             bool isTexture = load.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS;
             int typedIndex = load.Opcode == D3D10Opcode.StoreUAVTyped ? 0 : 2;
             ResourceDefinition view = _shader.ResourceDefinitions?
@@ -1295,8 +1144,7 @@ public sealed class IntegerOperandAnalysis
         // The resource is the last operand of a load and the first of a store.
         int ResourceIndex = load.Opcode == D3D10Opcode.StoreStructured ? 0 : 3;
         OperandType type = load.GetOperandType(ResourceIndex);
-        // Groupshared memory has no reflection data; the stores into it say what it
-        // holds, and the same rule declares the array.
+        // Groupshared memory has no reflection data; the declaration rule answers.
         if (type == OperandType.ThreadGroupSharedMemory)
         {
             return IsIntegerThreadGroupSharedMemory(load.GetParamRegisterNumber(ResourceIndex))
@@ -1306,11 +1154,7 @@ public sealed class IntegerOperandAnalysis
         D3DShaderInputType[] inputTypes = type switch
         {
             OperandType.Resource => [D3DShaderInputType.Structured],
-            // An append buffer and a consume buffer are structured buffers that bind
-            // as their own kinds, and what their element holds is the same question.
-            // Asked of the read-write kind alone, a ConsumeStructuredBuffer answered
-            // that nothing was known about its element, and the uint it holds was
-            // taken for a number wherever the bits of a float were what was there.
+            // Append and consume buffers bind as their own kinds.
             OperandType.UnorderedAccessView =>
             [
                 D3DShaderInputType.UavRWStructured,
@@ -1326,10 +1170,7 @@ public sealed class IntegerOperandAnalysis
         {
             return StoredType.Unknown;
         }
-        // A struct is whatever the members the instruction reaches are, where they
-        // agree. Asked of the struct as a whole, a position and a life beside a
-        // flags word were nothing in particular, and the instruction writer loaded
-        // the two floats into an int register as the integers nearest them.
+        // A struct is typed by the members the instruction reaches.
         if (definition.ElementType.MemberInfo is { Count: > 0 } members)
         {
             return ReachedMembersType(load, members);
@@ -1342,10 +1183,8 @@ public sealed class IntegerOperandAnalysis
         };
     }
 
-    // The type of the struct members a structured load or store reaches: the
-    // dword each component it names sits in, by its byte offset, and the member
-    // holding that dword. Unknown where they disagree, where the offset is not an
-    // immediate, or where a member is not a plain number.
+    // The type of the struct members a structured load or store reaches. Unknown
+    // where they disagree, the offset is not an immediate, or a member is not scalar.
     private static StoredType ReachedMembersType(D3D10Instruction instruction, IList<ShaderStructMemberInfo> members)
     {
         const int OffsetIndex = 2;
@@ -1435,14 +1274,8 @@ public sealed class IntegerOperandAnalysis
                     continue;
                 }
                 var sourceComponent = new RegisterComponentKey(source, swizzle[component]);
-                // Integer, and not float as well. Which registers hold integers is a
-                // question asked of the whole shader at once, so a component used for
-                // an integer anywhere counts as one everywhere - and fxc reuses a
-                // register freely. A local array filled from a float buffer, whose
-                // addresses fxc worked out in the same register the loads came back
-                // in, was declared int4 on the strength of the addresses: every value
-                // stored into it was truncated on the way in and converted back on the
-                // way out, eight ftoi instructions and the wrong numbers.
+                // Integer and not float as well: integer registers are shader-wide,
+                // and fxc reuses a register for an address and a float.
                 if (!integerRegisters.Contains(sourceComponent)
                     || IsFloatTouched(sourceComponent))
                 {
@@ -1457,14 +1290,10 @@ public sealed class IntegerOperandAnalysis
     {
         var integerRegisters = new HashSet<RegisterComponentKey>();
 
-        // An input the signature types as an integer holds one before any
-        // instruction touches it. Geometry shader inputs are keyed by vertex as
-        // well, so they are left to the instructions that read them.
+        // Signature-typed integer inputs and outputs. Geometry shader inputs are
+        // keyed by vertex too, so they are left to their readers.
         const int UInt32ComponentType = 1;
         const int SInt32ComponentType = 2;
-        // An output the signature types as an integer - a viewport or render
-        // target index - holds one whatever is moved into it: `mov o1.x, l(1)`
-        // is the integer 1, and as a float it is a denormal that prints as 0.
         IEnumerable<RegisterSignature> typedSignatures = shader.Type != ShaderType.Geometry
             ? shader.InputSignatures.Concat(shader.OutputSignatures)
             : shader.OutputSignatures;
@@ -1485,10 +1314,7 @@ public sealed class IntegerOperandAnalysis
             }
         }
 
-        // A constant buffer variable declared int, uint or bool holds an integer,
-        // and says so in the reflection data. Without this an `and` over a uint
-        // flags word and an immediate had nothing to type it by, and the immediate
-        // came out as the denormal float its bits spell: `flags & 0.000000`.
+        // Constant buffer variables declared int, uint or bool.
         foreach (D3D10ConstantDeclaration constant in shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>())
         {
             if (constant.TypeInfo.ParameterType is not (ParameterType.Int or ParameterType.Uint or ParameterType.Bool))
@@ -1502,13 +1328,9 @@ public sealed class IntegerOperandAnalysis
             }
         }
 
-        // The registers a shader is given rather than declared - thread and group
-        // indices, the primitive id - are unsigned integers by definition, whatever
-        // reads them: `and r0.xyz, vPrim, l(3, 1, 2, 0)` says nothing about its
-        // operands' type, and would have left the id a float. A coverage mask is
-        // one of them for a different reason: the signature does type it uint, but
-        // keys it to register -1, which matches no operand, so the mask a
-        // `mov oMask, r0.y` carries out was cast to float on the way.
+        // Thread and group ids and the primitive id are uints by definition. So is
+        // a coverage mask, whose signature entry is keyed to register -1 and
+        // matches no operand.
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
             for (int operand = 0; operand < instruction.OperandTokens.Count; operand++)
@@ -1531,47 +1353,32 @@ public sealed class IntegerOperandAnalysis
         {
             if (instruction.Opcode != D3D10Opcode.IToF
                 && instruction.Opcode != D3D10Opcode.UTof
-                // f16tof32 unpacks a half float into a float, so what it writes is
-                // no more an integer than what itof writes.
+                // f16tof32 writes a float, like itof.
                 && instruction.Opcode != D3D10Opcode.F16ToF32
                 && GetSourceCount(instruction.Opcode) != 0)
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
-            // resinfo_uint writes the dimensions as integers; its mip level source
-            // is one too, but an immediate or a register the shader already treats
-            // as one, so only the destination is worth recording.
+            // resinfo_uint writes integer dimensions.
             if (instruction.Opcode == D3D10Opcode.ResInfo
                 && instruction.ResInfoReturnType == D3D10ResInfoReturnType.Uint)
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
-            // A texel fetched out of a Texture2D<uint> is an integer, which the
-            // reflection data says and the instruction does not. Without this a
-            // stencil mask anded with 4 had the 4 typed by nothing, and it came
-            // out as the denormal its bits spell.
+            // A texel of a Texture2D<uint>, typed only by reflection data.
             if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS
                 && LoadsIntegerTexels(shader, instruction))
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
-            // A raw buffer holds dwords and nothing else - Load, Load2 and Load4
-            // all answer uint - so what one is read into is an integer however the
-            // shader goes on to read it. Without this, a register a raw load fills
-            // and raw stores empty, with nothing else in it to say what it is, was
-            // declared float: the dwords were converted to the floats nearest their
-            // values on the way in and back on the way out, and what was stored was
-            // not what was loaded.
+            // A raw load returns uint dwords.
             if (instruction.Opcode == D3D10Opcode.LdRaw)
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
-            // ftoi and ftou read floats and write integers, so the destination is
-            // an integer component but the source is not.
+            // ftoi, ftou and f32tof16 read floats.
             if (instruction.Opcode != D3D10Opcode.Ftoi
                 && instruction.Opcode != D3D10Opcode.Ftou
-                // f32tof16 packs a float into a half float, so what it reads is a
-                // float the way what ftou reads is.
                 && instruction.Opcode != D3D10Opcode.F32ToF16
                 && GetSourceCount(instruction.Opcode) != 0)
             {
@@ -1581,9 +1388,8 @@ public sealed class IntegerOperandAnalysis
             AddIndexableTempIndexComponents(instruction, integerRegisters);
         }
 
-        // mov, and, or and xor take their type from what they touch, so a register
-        // they write is only known to be integer once one they touch is. `xor` feeding
-        // an `or` whose result reaches `utof` needs two rounds to settle.
+        // mov, and, or and xor take their type from what they touch; iterate to a
+        // fixed point.
         bool changed;
         do
         {
@@ -1595,9 +1401,7 @@ public sealed class IntegerOperandAnalysis
                 {
                     continue;
                 }
-                // Per component, not per instruction: `mov r0.xy, l(0,0,0,0)` can
-                // write a float accumulator and an integer counter at once, and one
-                // says nothing about the other.
+                // Per component: one mov can start a float and an integer at once.
                 foreach (HashSet<RegisterComponentKey> group in GetComponentGroups(instruction, sourceCount))
                 {
                     if (!group.Overlaps(integerRegisters))
@@ -1606,12 +1410,8 @@ public sealed class IntegerOperandAnalysis
                     }
                     foreach (RegisterComponentKey component in group)
                     {
-                        // Not an input or a constant: those are typed by their
-                        // declarations, seeded above, and a float input moved into
-                        // a register that holds integers elsewhere is still a
-                        // float. Typed as an integer by the move, the move looked
-                        // like a carry between two integer registers and lost the
-                        // asint that puts a float into one.
+                        // Inputs and constants are typed by their declarations
+                        // only; a float input moved into an int register stays float.
                         if (component.RegisterKey is D3D10RegisterKey
                             { OperandType: OperandType.Input or OperandType.ConstantBuffer })
                         {
@@ -1624,8 +1424,8 @@ public sealed class IntegerOperandAnalysis
         }
         while (changed);
 
-        // A register read out of an integer array is an integer. The array's type
-        // is decided from the registers written into it, so it comes after them.
+        // A register read out of an integer array is an integer. Must come after
+        // the fixed point, which types the array.
         var integerArrays = new HashSet<int>();
         foreach (D3D10Instruction instruction in shader.Instructions.OfType<D3D10Instruction>())
         {
@@ -1658,11 +1458,8 @@ public sealed class IntegerOperandAnalysis
             yield break;
         }
 
-        // An indexable temp is memory whose elements all share one key, so a mov
-        // through it would tie every element to whatever register touched any of
-        // them - an integer index moved into x0[3] would make x0[0] an integer too,
-        // and then whatever reads x0[0]. Only an integer instruction writing it
-        // says anything about it.
+        // An indexable temp's elements share one key; a mov through it would tie
+        // every element to any register touching one.
         if (instruction.GetOperandType(destinationIndex.Value) == OperandType.IndexableTemp)
         {
             yield break;
@@ -1694,8 +1491,7 @@ public sealed class IntegerOperandAnalysis
         }
     }
 
-    // Opcodes whose operand type is decided by their neighbours rather than by the
-    // opcode itself, with how many sources each takes.
+    // Opcodes typed by their neighbours, with their source counts.
     private static int GetPolymorphicSourceCount(D3D10Opcode opcode)
     {
         return opcode switch
@@ -1706,10 +1502,8 @@ public sealed class IntegerOperandAnalysis
         };
     }
 
-    // mov carries whatever it is given, and and/or/xor are bitwise on integers but
-    // logical on comparison results - `and r1, r1, l(1.0)` selects a float. None of
-    // them can be judged by opcode alone, so they are judged by the registers they
-    // touch, which the unambiguous integer opcodes establish.
+    // mov carries anything, and and/or/xor can select a float (`and r1, r1,
+    // l(1.0)`), so these are judged by the registers they touch.
     private bool IsIntegerMove(D3D10Instruction instruction)
     {
         if (_integerRegisters.Count == 0)
@@ -1814,9 +1608,8 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
             case D3D10Opcode.INeg:
-            // The bit instructions read an integer and write one. f32tof16 and
-            // f16tof32 are here for the half they touch, and are kept off the wrong
-            // side of the conversion by the two tests below, the way ftou is.
+            // f32tof16/f16tof32 count for their integer side only; the callers
+            // exclude the float side, as for ftou.
             case D3D10Opcode.CountBits:
             case D3D10Opcode.FirstBitLo:
             case D3D10Opcode.FirstBitHi:
@@ -1825,8 +1618,6 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
                 return 1;
-            // bufinfo reads a resource and writes a count; there is no source
-            // operand of its own to type.
             case D3D10Opcode.BufInfo:
                 return 0;
             case D3D10Opcode.IAdd:
@@ -1842,11 +1633,7 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMul:
             case D3D10Opcode.Ine:
-            // An interlocked operation reads an address and a value, both integers.
-            // Without these the uint a structured buffer load put in a register was
-            // not known to be one, and the register was declared float: the value
-            // went into the atomic through a conversion each way and came out as the
-            // float its bits spell.
+            // An atomic's address and value are integers.
             case D3D10Opcode.AtomicIAdd:
             case D3D10Opcode.AtomicAnd:
             case D3D10Opcode.AtomicOr:
@@ -1856,11 +1643,7 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.AtomicUMax:
             case D3D10Opcode.AtomicUMin:
                 return 2;
-            // The immediate forms keep the old value in a register in front of the
-            // resource, so every operand is one further along: the resource, the
-            // address and the value, where the typed forms have only the last two
-            // inside the source range. Counted as two with them, the value went
-            // untyped - and an atomic takes an integer on either side of it.
+            // The imm_ forms have the old value first, shifting every operand by one.
             case D3D10Opcode.ImmAtomicAnd:
             case D3D10Opcode.ImmAtomicOr:
             case D3D10Opcode.ImmAtomicXor:
@@ -1878,10 +1661,7 @@ public sealed class IntegerOperandAnalysis
             // The width, the offset and the value.
             case D3D10Opcode.UBFE:
             case D3D10Opcode.IBFE:
-            // The reference, the windows and the accumulator. Missing here, an msad
-            // typed none of them: a register holding a window fxc had moved a literal
-            // into was known to be an integer nowhere, so the instruction writer
-            // declared it float4 and `r0.w >> 8` did not compile.
+            // The reference, the windows and the accumulator.
             case D3D10Opcode.MSAD:
                 return 3;
             // And the bits going in.
@@ -1893,13 +1673,11 @@ public sealed class IntegerOperandAnalysis
     }
 }
 
-/// <summary>How the instruction writer keeps a register component. See
-/// <see cref="IntegerOperandAnalysis.GetStorage"/>.</summary>
+/// <summary>See <see cref="IntegerOperandAnalysis.GetStorage"/>.</summary>
 public enum ComponentStorage
 {
-    /// <summary>In a register declared int: integers as themselves, floats as their
-    /// bits, with asfloat to read one and asint to write one.</summary>
+    /// <summary>In an int register; floats held as their bits.</summary>
     Integer,
-    /// <summary>In a float register, as its value: an integer as the float equal to it.</summary>
+    /// <summary>In a float register, by value.</summary>
     Numeric,
 }

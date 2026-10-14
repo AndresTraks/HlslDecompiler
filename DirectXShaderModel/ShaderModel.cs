@@ -10,10 +10,8 @@ public class ShaderModel
     public int MinorVersion { get; }
     public ShaderType Type { get; }
 
-    /// <summary>The fxc target this was compiled for, vs_3_0 or cs_5_0.</summary>
     public string Profile => $"{Stage}_{MajorVersion}_{MinorVersion}";
 
-    /// <summary>The two letters a profile starts with.</summary>
     public string Stage => Type switch
     {
         ShaderType.Vertex => "vs",
@@ -32,17 +30,12 @@ public class ShaderModel
     public IList<D3D10ConstantDeclaration> ConstantDeclarations { get; }
     public IList<ResourceDefinition> ResourceDefinitions { get; }
 
-    /// <summary>
-    /// The classes dynamic linkage can bind and which table each one fills, from
-    /// the IFCE chunk. Null when the shader has none.
-    /// </summary>
+    /// <summary>Null when the shader has no IFCE chunk.</summary>
     public ShaderInterfaces Interfaces { get; init; }
 
     /// <summary>
-    /// The points a hull shader's control point phase writes, for its patch
-    /// constant phase: that phase's outputs are the patch constants, and the
-    /// control points it reads back are described nowhere else. Null on anything
-    /// else.
+    /// A hull shader's control point outputs, which its patch constant phase reads
+    /// and nothing else describes. Null otherwise.
     /// </summary>
     public IList<RegisterSignature> ControlPointSignatures { get; init; }
 

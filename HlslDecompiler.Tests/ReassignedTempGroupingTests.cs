@@ -7,18 +7,10 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// The two writes of one register are two statements, never two lanes of one
-// variable: a value built on a named candidate is that candidate read again, not
-// a sibling component - and grouping the pair anyway computes the second lane
-// from the first at the first reader, gluing both assignment statements inside a
-// float2 constructor and leaving the variable undeclared. X3000 at that
-// constructor and X3004 at every read of the temp after. fxc folds this shape
-// away from HLSL - a register's double write is a scheduling artefact - so no
-// golden can hold one: assembled by hand. The dp3 is worth naming - over an
-// expression too big to write out twice, and read twice itself - and its double
-// is written over it with what compiles to a constant times it, which is the
-// folded factor the grouper looks through to the component it is. The double is
-// read twice too, so both are candidates in one round.
+// Two writes of one register are two statements, never two lanes of one variable;
+// grouping them gives X3000/X3004. Hand-assembled: fxc folds the shape away. The
+// dp3 and its in-place double are both read twice, so both are naming candidates
+// in one round.
 public class ReassignedTempGroupingTests
 {
     private const uint X = 0x00;    // .x replicated
@@ -79,18 +71,9 @@ public class ReassignedTempGroupingTests
         });
     }
 
-    // A lane whose value is built on another lane's new value is no write beside
-    // it, whatever the shapes say: the record the lowering left names exactly
-    // that, and the grouper asks it against every member of the group it is
-    // about to extend - the first of them included. A vertex shader's
-    // texture unpack wrote ch1, ch2 and ch3 into one register, ch3 built on ch1
-    // through a rest of its own; ch1 and ch3 were two adds of a product and
-    // grouped into one `t4.zx = float2(...)`, the fraction between them keeping
-    // ch1 the group's first lane - and the pair read a value the one statement
-    // had yet to write, the variable they shared declared below the read of ch1.
-    // Asked at node level: fxc only schedules a chain this deep in a register it
-    // met in the wild, and the naming passes above the grouper inline the whole
-    // of a hand-assembled one.
+    // A lane built on another lane's new value (DependsOnNewValueOf) is not grouped
+    // with it, even with the group's first lane. Tested at node level: naming
+    // passes inline a hand-assembled chain before it reaches the grouper.
     [Test]
     public void DoesNotGroupALaneWithTheFirstLaneWhoseValueItReads()
     {
@@ -108,8 +91,7 @@ public class ReassignedTempGroupingTests
         {
             DeclarationIndex = index, ComponentIndex = component, VariableSize = 1,
         };
-        // Two adds of reads' rows group on their shapes alone - the pair below
-        // is the same with a record between them.
+        // Control: without the record the same pair groups.
         var shapes = grouper.GroupComponents([
             new TempAssignmentNode(Lane(2), new AddOperation(Read(1, 0), Read(2, 0))),
             new TempAssignmentNode(Lane(0), new AddOperation(Read(1, 2), Read(2, 2))),

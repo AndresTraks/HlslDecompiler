@@ -21,9 +21,8 @@ public sealed class ConstantDeclarationCompiler
         SetStructOrder(declaration.TypeInfo);
     }
 
-    // A structured buffer's element type is named after the buffer it holds -
-    // SrcElement, not struct1 - so the type itself is not ordered, but a member
-    // of it that is a struct is declared like any other and has to be.
+    // A structured buffer's element type is named after the buffer, so only its
+    // struct members are ordered.
     public void SetMemberStructOrder(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.MemberInfo == null)
@@ -36,8 +35,7 @@ public sealed class ConstantDeclarationCompiler
         }
     }
 
-    // A member can be a struct too, and it has to be declared before the struct
-    // holding it, so members are ordered first.
+    // Members first: a struct must be declared before the struct holding it.
     private void SetStructOrder(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.MemberInfo == null)
@@ -55,9 +53,6 @@ public sealed class ConstantDeclarationCompiler
         }
     }
 
-    // A member is an array the same way a variable is, and it is read as one -
-    // `g_s.weights[2]`. Declared without the bound it is a field the struct does
-    // not have, and nothing that names an element of it compiles.
     public string Compile(ShaderStructMemberInfo member)
     {
         string typeName = GetTypeName(member.TypeInfo);
@@ -74,10 +69,8 @@ public sealed class ConstantDeclarationCompiler
         return $"{typeName} {declaration.Name}{GetArrayCountSpecifier(declaration.TypeInfo)};";
     }
 
-    // Elements is the array length straight from the constant table, and a
-    // non-array reports 0 or 1. RegisterCount cannot stand in for it: `float4
-    // floats[8]` takes 8 registers but each element is one register, not four
-    // components, so dividing by the component count gave [2].
+    // A non-array reports 0 or 1. RegisterCount is no substitute: an element can
+    // take one register or several.
     private static string GetArrayCountSpecifier(ShaderTypeInfo typeInfo)
     {
         int arrayCount = Math.Max(typeInfo.NumElements, 1);
@@ -106,7 +99,6 @@ public sealed class ConstantDeclarationCompiler
             + $"{GetArrayCountSpecifier(declaration.TypeInfo)}{registerSpecifier};";
     }
 
-    // bool, int, uint, float and so on, which the enum already spells.
     private static string GetScalarTypeName(ParameterType parameterType)
     {
         return parameterType.ToString().ToLower();
@@ -119,15 +111,10 @@ public sealed class ConstantDeclarationCompiler
             case ParameterClass.Scalar:
                 return GetScalarTypeName(typeInfo.ParameterType);
             case ParameterClass.Vector:
-                // int4 and uint4 are as ordinary as float4, and a cbuffer holding
-                // one used to throw rather than be named.
                 return GetScalarTypeName(typeInfo.ParameterType) + typeInfo.Columns;
             case ParameterClass.MatrixColumns:
                 return $"{GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}";
-            // The constant table records which way a matrix was packed and HLSL
-            // packs column major unless told otherwise, so a row major one has to
-            // say so. Declared without it, the registers holding its rows are read
-            // back as columns and every use of it is transposed.
+            // HLSL defaults to column major; without the keyword every use transposes.
             case ParameterClass.MatrixRows:
                 return $"row_major {GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}";
             case ParameterClass.Object:

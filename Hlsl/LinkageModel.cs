@@ -6,37 +6,24 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Dynamic linkage as the bytecode declares it: which function bodies a table holds,
-/// which tables an interface could be filled by, and where in the instruction stream
-/// each body lives - the interface's shape, seen from the outside.
-///
-/// fxc compiles a body at the call site it belongs to: it reads the caller's argument
-/// registers directly and writes its result to the register the caller reads. So the
-/// registers a body reads before writing it are the method's parameters, and the one
-/// register it writes is the method's result. A body that reads a register it never
-/// writes is reading what HLSL passed in as an argument.
-///
-/// The names come from the reflection data: the interface variables and the
-/// interface each was declared as from RDEF, the classes and which table each fills
-/// from IFCE. A host binds a class instance by its class name and finds the
-/// interface by its variable name, so those are kept. Without both chunks every
-/// interface instance gets an interface of its own and every table a class.
+/// Dynamic linkage as declared: function bodies, tables, interfaces, and where each
+/// body lives. A body reads the caller's registers directly, so registers it reads
+/// before writing are the method's parameters and the one it writes is the result.
+/// Names come from RDEF (interface variables) and IFCE (classes); without both,
+/// every interface instance gets its own interface and every table its own class.
 /// </summary>
 public class LinkageModel
 {
     public class FunctionBodyInfo
     {
-        /// <summary>The fb number the label names this body by.</summary>
         public int Number { get; init; }
 
-        /// <summary>Where the body's instructions run to, past its label and its ret.</summary>
+        /// <summary>Instruction range after the label, up to the next label.</summary>
         public int First { get; set; }
         public int Last { get; set; }
 
-        /// <summary>The registers it reads before writing them: the method's arguments.</summary>
         public List<RegisterKey> Parameters { get; } = [];
 
-        /// <summary>The one register it writes: the method's result.</summary>
         public RegisterKey ReturnRegister { get; set; }
     }
 
@@ -46,10 +33,7 @@ public class LinkageModel
         public int[] Bodies { get; init; }
     }
 
-    /// <summary>
-    /// One interface instance as declared: an fp, its variable, the tables a class
-    /// bound to it fills, and the class each table belongs to.
-    /// </summary>
+    /// <summary>One declared interface instance (fp).</summary>
     public class InterfaceInfo
     {
         public int Number { get; init; }
@@ -61,10 +45,10 @@ public class LinkageModel
         public bool IsArray { get; set; }
         public InterfaceTypeInfo Type { get; set; }
 
-        /// <summary>The class filling each table, in the order of <see cref="Tables"/>.</summary>
+        /// <summary>Parallel to <see cref="Tables"/>.</summary>
         public ClassInfo[] TableClasses { get; set; }
 
-        /// <summary>The method called through each function index of this instance.</summary>
+        /// <summary>Indexed by function index.</summary>
         public MethodInfo[] Methods { get; set; }
 
         public string InstanceExpression(int instance) =>
@@ -72,10 +56,8 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// A method of an interface: what one function index of one interface instance
-    /// calls. Every class's body for it has to hand back the same register - the
-    /// call site reads one - and the parameters are every register any of them
-    /// reads, since the call site passes the same arguments whichever runs.
+    /// One function index of one interface instance. All bodies must return the same
+    /// register; the parameters are the union of what any body reads.
     /// </summary>
     public class MethodInfo
     {
@@ -97,12 +79,11 @@ public class LinkageModel
     {
         public string Name { get; init; }
 
-        /// <summary>The class type ID, where IFCE gave one.</summary>
+        /// <summary>The IFCE class type ID, or the table number without IFCE.</summary>
         public int TypeId { get; init; }
 
         public List<InterfaceTypeInfo> Implements { get; } = [];
 
-        /// <summary>The body this class runs for each method of what it implements.</summary>
         public Dictionary<MethodInfo, FunctionBodyInfo> Bodies { get; } = [];
     }
 
@@ -112,10 +93,7 @@ public class LinkageModel
     public List<InterfaceTypeInfo> InterfaceTypes { get; } = [];
     public List<ClassInfo> Classes { get; } = [];
 
-    /// <summary>
-    /// How many instructions the main program holds: everything before the first
-    /// label, which is where the first body starts.
-    /// </summary>
+    /// <summary>Instructions before the first label.</summary>
     public int MainInstructionCount { get; private set; }
 
     public bool HasLinkage => Bodies.Count != 0;
@@ -138,8 +116,7 @@ public class LinkageModel
             return model;
         }
 
-        // The three declarations carry plain dwords where every other instruction
-        // carries operands - the same layout AsmWriter reads them with.
+        // These declarations carry plain dwords, not operands (as in AsmWriter).
         var labels = new List<(int Number, int Index)>();
         for (int i = 0; i < shader.Instructions.Count; i++)
         {
@@ -212,10 +189,8 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// The registers the body reads before writing them, and the one it writes. A read
-    /// of a constant buffer, a sampler, a resource or the rasterizer is a read of
-    /// something HLSL declares outside the method too, and not a parameter; anything
-    /// else the body reads without first writing it came in as an argument.
+    /// Parameters are registers read before written, excluding globals (cbuffers,
+    /// resources, samplers...); the result is the one register written.
     /// </summary>
     private static void ReadSignature(ShaderModel shader, FunctionBodyInfo body)
     {
@@ -280,16 +255,9 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// The names the reflection data keeps. The fps take the interface slots in
-    /// order, as many each as the array declares, and an interface variable's offset
-    /// in $ThisPointer is the first slot it takes - so g_many at offset 1 is fp1
-    /// when g_one before it takes slot 0. The slot record covering that slot says
-    /// which class type fills which of the fp's tables. Every interface that has
-    /// the same declared type is one interface, and every table of one class type
-    /// one class, however many instances it was bound through.
-    ///
-    /// False, with nothing named, when either chunk is missing or the two do not
-    /// account for every fp and every table.
+    /// fps take interface slots in order, one per array element; a variable's
+    /// $ThisPointer offset is its first slot, and that slot's record maps tables to
+    /// class types. False, naming nothing, if the chunks don't cover every fp/table.
     /// </summary>
     private static bool ReadNames(LinkageModel model, ShaderModel shader)
     {
@@ -357,10 +325,6 @@ public class LinkageModel
         return true;
     }
 
-    /// <summary>
-    /// Names for a shader whose reflection data is gone: each fp an interface of its
-    /// own with a global of its own, and each of its tables a class implementing it.
-    /// </summary>
     private static void NameByNumber(LinkageModel model)
     {
         foreach (InterfaceInfo iface in model.Interfaces)
@@ -377,10 +341,8 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// One method per function index of each fp, numbered across the shader so that
-    /// two interfaces one class implements never declare the same name. Two fps of
-    /// one interface may be calling one method or two, and nothing in the bytecode
-    /// says which - each gets its own, which compiles to the same tables.
+    /// Numbered across the shader so a class implementing two interfaces gets no
+    /// clash. Two fps of one interface get separate methods; the bytecode can't tell.
     /// </summary>
     private static void ReadMethods(LinkageModel model)
     {
@@ -426,14 +388,8 @@ public class LinkageModel
     }
 
     /// <summary>
-    /// Each class with the interfaces it implements and the body it runs for every
-    /// method of them. A class bound through one instance of an interface and not
-    /// through another of the same interface has no body for half its methods, and
-    /// says so.
-    ///
-    /// The order is fxc's: it numbers the classes of one interface last declared
-    /// first, so declaring them by descending type ID within each interface gives
-    /// them back the IDs they had.
+    /// Descending type ID within each interface: fxc numbers a class declared later
+    /// lower, so this order reproduces the IDs.
     /// </summary>
     private static void ReadClasses(LinkageModel model)
     {

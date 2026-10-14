@@ -15,8 +15,7 @@ public class D3D10OperandTokenCollection
         _opcode = opcode;
     }
 
-    // How many operands the tokens hold. Not for a declaration whose tokens are
-    // plain dwords rather than operands.
+    // Not for a declaration whose tokens are plain dwords.
     public int OperandCount
     {
         get
@@ -47,8 +46,7 @@ public class D3D10OperandTokenCollection
         return new Span<uint>(Tokens, 0, 1);
     }
 
-    // One index of an operand: cb0[2] carries an immediate, cb0[r0.x] a nested
-    // operand, and cb0[r0.x + 2] both.
+    // cb0[2], cb0[r0.x] or cb0[r0.x + 2].
     public readonly struct OperandIndex
     {
         public D3D10OperandIndexRepresentation Representation { get; init; }
@@ -144,9 +142,7 @@ public class D3D10OperandTokenCollection
         return 0;
     }
 
-    // Returns the index just past the operand starting at i. Operands are variable
-    // length: an immediate carries its values inline, and a relatively addressed one
-    // - cb0[r0.x + 2] - encodes its index as a nested operand, hence the recursion.
+    // The index just past the operand at i. Relative indices are nested operands.
     private int SkipOperand(int i)
     {
         uint token = Tokens[i];
@@ -179,14 +175,8 @@ public class D3D10OperandTokenCollection
         else if (operandType == OperandType.Immediate64
             && (D3D10OperandNumComponents)(token & 3) == D3D10OperandNumComponents.Operand4Component)
         {
-            // Two doubles, not one: four dwords, the halves of each number in
-            // order. Left at the two the name suggests, every operand after the
-            // immediate was read from the middle of it. The component selection
-            // says so because a real one always carries the four: the dword a
-            // typed UAV declares its return type with decodes as this operand
-            // type too - (float, float, float, float) is 0x5555, whose type
-            // field is 5 - and skipping its imaginary dwords overran the
-            // instruction.
+            // Two doubles in four dwords. The component check excludes a typed
+            // UAV's return-type dword (0x5555), which also decodes as this type.
             i += 4;
         }
 

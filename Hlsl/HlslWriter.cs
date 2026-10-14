@@ -20,10 +20,8 @@ public abstract class HlslWriter
     protected RegisterState _registers;
 
     /// <summary>
-    /// Which of a hull shader's two functions is being written. A hull shader is the
-    /// one shader whose bytecode is more than one program, and the two differ in what
-    /// they return and in what their output registers mean, so which one is in hand
-    /// has to be part of the writer's state rather than read off the shader.
+    /// Which of a hull shader's two functions is being written; they differ in
+    /// return type and in what their output registers mean.
     /// </summary>
     protected enum HullFunction
     {
@@ -35,36 +33,26 @@ public abstract class HlslWriter
     protected HullFunction _hullFunction = HullFunction.None;
 
     /// <summary>
-    /// The bytecode being written: the whole shader, or one phase of a hull shader
-    /// with the declarations it shares. The instruction writer works through this
-    /// rather than through the shader, so that a phase writes only its own body.
+    /// The bytecode being written: the whole shader, or one hull shader phase with
+    /// the shared declarations, so a phase writes only its own body.
     /// </summary>
     protected ShaderModel _phaseShader;
 
     /// <summary>
-    /// Whether every if the bytecode branches at is written [branch], and every loop
-    /// it loops at [loop]. Off, an attribute is written only where fxc will not
-    /// compile the shader without it, which reads better and leaves fxc free to
-    /// flatten an if and unroll a loop it can count - so the shader it compiles
-    /// computes the same and need not branch or loop where the original did. On,
-    /// it does: ps_3_0/loop_counter_reuse recompiles to its own 26 instructions
-    /// rather than 53 unrolled.
+    /// Whether every bytecode if/loop is written [branch]/[loop]. Off, an attribute
+    /// is written only where fxc needs it, leaving fxc free to flatten and unroll.
     /// </summary>
     public bool WritesFlowAttributes { get; init; }
 
     public HlslWriter(ShaderModel shader)
     {
-        // A ps_1_x shader is written as the ps_2_0 one that computes the same:
-        // ps_2_0 is what its HLSL compiles to, and what both writers know.
+        // A ps_1_x shader is written as the equivalent ps_2_0 one.
         _shader = PixelShader1Lowering.Lower(shader);
     }
 
     /// <summary>
-    /// What the shader is written as when it is one of several in an effect: a
-    /// function of this name rather than main, with its structs named after it so
-    /// that two vertex shaders' VS_IN do not collide, and without the uniforms and
-    /// resources, which the effect declares once for all of its shaders. Null for a
-    /// shader written on its own.
+    /// Set for a shader inside an effect: the function name replacing main and
+    /// prefixing its structs; uniforms and resources are left to the effect.
     /// </summary>
     public string FunctionName { get; init; }
 
@@ -78,27 +66,15 @@ public abstract class HlslWriter
     protected string StreamStructureName(int? stream) => Named(_registers.StreamStructureName(stream));
 
     /// <summary>
-    /// The type each resource the shader reads is declared as, which an effect
-    /// declaring it once for all its shaders needs: Texture2D&lt;uint4&gt; and
-    /// RWTexture2D&lt;float4&gt; are in the shader's declarations and nowhere in the
-    /// effect's own types, which say Texture2D and RWTexture2D.
+    /// Each resource's declared type, for the effect: its own types lack the
+    /// element type (Texture2D, not Texture2D&lt;uint4&gt;).
     /// </summary>
     public Dictionary<string, string> ResourceTypeNames { get; } = [];
 
     /// <summary>
-    /// The inputs a shader has, read or not, where they come from the stage before
-    /// it: a pixel, geometry, hull or domain shader's. That stage writes each into a
-    /// register, and this one is linked to it by register - in a pass, where fxc
-    /// checks it, and at run time beside the application's own vertex shader, where
-    /// nothing does. A shader that declared only what it read lost an SV_Position
-    /// nothing read and moved the TEXCOORD after it from v1 to v0: an effect's pass
-    /// failed to compile, and a decompiled pixel shader on its own read the wrong
-    /// interpolator. The signature has every element where it was, so what the
-    /// declarations lack is taken from it.
-    ///
-    /// The stages after the vertex shader read a primitive's vertices or a patch's
-    /// control points, each input an array of them, keyed by vertex; a field of the
-    /// struct is one register across all of them, so one vertex's is enough.
+    /// Declares every input signature element, read or not, for stages linked to
+    /// the previous one by register; dropping an unread one shifts later registers.
+    /// Per-vertex inputs are declared from one vertex's key.
     /// </summary>
     private void DeclareWholeInputSignature()
     {
@@ -117,8 +93,7 @@ public abstract class HlslWriter
 
         foreach (RegisterSignature signature in _shader.InputSignatures)
         {
-            // What the stage is given once, rather than per vertex, is a parameter
-            // of its own and not a field.
+            // Per-primitive values are parameters, not fields.
             if (isPerVertex && signature.Name.ToUpperInvariant() is "SV_PRIMITIVEID" or "SV_GSINSTANCEID"
                 or "SV_OUTPUTCONTROLPOINTID" or "SV_DOMAINLOCATION")
             {
@@ -140,8 +115,7 @@ public abstract class HlslWriter
             var keyed = new RegisterSignature(key, signature.Name, signature.Index, signature.Mask,
                 signature.ValueType, signature.ComponentType, signature.ReadWriteMask);
             RegisterDeclaration declaration = FromSignature(keyed);
-            // A register it shares with an element that is declared holds the two
-            // side by side, each as wide as its own components.
+            // A register shared with a declared element holds both, each its own width.
             if (_registers.MethodInputRegisters.FirstOrDefault(d => IsInput(d) && Register(d) == register)
                 is RegisterDeclaration neighbour)
             {
@@ -152,9 +126,7 @@ public abstract class HlslWriter
             _registers.RegisterDeclarations.TryAdd(key, declaration);
         }
 
-        // In the order of the registers, which is the order fxc lays a struct out
-        // in. What is not an input - a thread or a control point id - keeps its
-        // place after them.
+        // Register order is fxc's struct layout; non-inputs (ids) go after.
         List<RegisterDeclaration> ordered = [.. _registers.MethodInputRegisters
             .OrderBy(d => IsInput(d) ? 0 : 1)
             .ThenBy(d => IsInput(d) ? Register(d) : 0)
@@ -167,9 +139,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// The type each uniform is read as, from the shader model 3 constant tables -
-    /// the shader's and its preshader's. Which way a matrix is packed is in them and
-    /// not in an fx_2_0 effect's own parameters, which call every matrix rows.
+    /// Each uniform's type from the SM3 constant tables; an fx_2_0 effect's own
+    /// parameters call every matrix row_major.
     /// </summary>
     public Dictionary<string, ShaderTypeInfo> ConstantTypes { get; } = [];
 
@@ -198,28 +169,20 @@ public abstract class HlslWriter
         {
             D3DShaderInputType.TBuffer => null,
             D3DShaderInputType.Texture => resource.TypeName,
-            // SampleCmp and SampleCmpLevelZero only take the comparison kind,
-            // which the reflection data flags.
             D3DShaderInputType.Sampler => resource.Flags.HasFlag(D3DShaderInputFlags.ComparisonSampler)
                 ? "SamplerComparisonState"
                 : "SamplerState",
             D3DShaderInputType.Structured => $"StructuredBuffer<{GetStructuredElementType(resource)}>",
             D3DShaderInputType.UavRWStructured => $"RWStructuredBuffer<{GetStructuredElementType(resource)}>",
             D3DShaderInputType.ByteAddress => "ByteAddressBuffer",
-            // An append or consume buffer declares itself the same way a
-            // structured one does and is bound with a counter beside it, which
-            // is what the reflection data calls it and the only place it is
-            // said: the bytecode declares dcl_uav_structured for all three.
+            // Only reflection tells these apart: the bytecode says
+            // dcl_uav_structured for all three.
             D3DShaderInputType.UavAppendStructured => $"AppendStructuredBuffer<{GetStructuredElementType(resource)}>",
             D3DShaderInputType.UavConsumeStructured => $"ConsumeStructuredBuffer<{GetStructuredElementType(resource)}>",
             D3DShaderInputType.UavRWStucturedWithCounter => $"RWStructuredBuffer<{GetStructuredElementType(resource)}>",
             D3DShaderInputType.UavRWByteAddress => "RWByteAddressBuffer",
-            // A typed unordered access view is the texture type it would be as a
-            // resource, written RW - and it always names its element type, where
-            // a read only texture names one only when it holds integers: there is
-            // no bare RWTexture2D that means RWTexture2D<float4>. Written by an
-            // interlocked operation, its element is the scalar that operation
-            // needs, which the source must have had.
+            // A typed UAV always names its element type; an interlocked target's
+            // element is the scalar the operation needs.
             D3DShaderInputType.UavRWTyped => _registers.IsAtomicTarget(resource)
                 ? resource.ReadWriteAtomicTypeName
                 : resource.ReadWriteTypeName,
@@ -234,9 +197,8 @@ public abstract class HlslWriter
     protected abstract void WriteMethodBody();
 
     /// <summary>
-    /// Whether this writer mirrors the instructions one by one rather than writing
-    /// the value graph. It names whatever an instruction named, so a declaration the
-    /// graph no longer needs is still one of its own.
+    /// Whether this writer mirrors instructions one by one rather than the value
+    /// graph, so it still needs declarations the graph dropped.
     /// </summary>
     protected virtual bool WritesInstructions => false;
 
@@ -247,8 +209,7 @@ public abstract class HlslWriter
 
     protected void WriteLine(string value)
     {
-        // A compiled statement can be two lines - a declaration and the call that
-        // fills it - and each wants the indent.
+        // A compiled statement can be two lines; each gets the indent.
         foreach (string line in value.Split("\r\n"))
         {
             internalWriter.Write(indent);
@@ -271,8 +232,7 @@ public abstract class HlslWriter
 
     public void Write(TextWriter writer)
     {
-        // HLSL output always uses Windows line endings, regardless of host OS,
-        // so decompiled shaders and their fxc round-trip are reproducible everywhere.
+        // Always CRLF, so output is the same on every host.
         writer.NewLine = "\r\n";
         internalWriter = writer;
         WriteInternal();
@@ -296,8 +256,7 @@ public abstract class HlslWriter
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
 
-        // The geometry shader signature always names the input struct, so it has to
-        // be declared even when it holds a single register.
+        // GS/DS signatures name the input struct even for one register.
         if (_registers.MethodInputRegisters.Count > 1
             || _shader.Type == ShaderType.Geometry
             || _shader.Type == ShaderType.Domain)
@@ -320,8 +279,6 @@ public abstract class HlslWriter
             WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
         }
 
-        // A geometry shader run more than once per primitive, each run knowing
-        // which it is.
         if (_registers.GSInstanceCount != null)
         {
             WriteLine("[instance({0})]", _registers.GSInstanceCount);
@@ -361,10 +318,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What dynamic linkage declares, in the spelling HLSL wants: the interfaces with
-    /// their methods, the classes implementing them, and the globals the fcalls call
-    /// through. HLSL insists on that order - a class names the interface it
-    /// implements, and the global names an interface's type.
+    /// Writes dynamic linkage declarations in the order HLSL requires: interfaces,
+    /// classes implementing them, then the interface globals fcalls go through.
     /// </summary>
     private void WriteLinkageDeclarations()
     {
@@ -401,9 +356,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// The classes, each with a method for every method of what it implements, run
-    /// by the body its tables hold. Each writer fills the bodies its own way - one
-    /// from the value graph, one from the instructions.
+    /// The classes, each implementing every interface method with the body its
+    /// tables hold; each writer fills the bodies its own way.
     /// </summary>
     protected void WriteLinkageClasses()
     {
@@ -454,11 +408,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What the method hands back. A body computes its result the way the shader
-    /// computes anything, and the register it lands in is typed by the same rules -
-    /// but a body that computes integers in it is not something the writers can
-    /// name yet, and says so rather than returning floats from an int4. Asked of
-    /// every class's body, since any one of them can be the one that runs.
+    /// Always float4; a body of any class computing an integer result throws
+    /// rather than returning floats from an int4.
     /// </summary>
     private string LinkageReturnTypeName(LinkageModel.MethodInfo method)
     {
@@ -480,21 +431,15 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// A hull shader, which HLSL writes as two functions: the one that runs per
-    /// output control point, and the one that computes the constants of the whole
-    /// patch. The bytecode runs them as phases under one name, so the declarations
-    /// they share are written once, from the phase that has the whole patch in view,
-    /// and each function is then written from its own phase's parse.
+    /// Writes a hull shader as its control point and patch constant functions,
+    /// with the shared declarations written once.
     /// </summary>
     private void WriteHullShader()
     {
         HullShaderAst hull = InstructionParser.ParseHullShader(_shader);
 
-        // The control point phase declares the whole of the patch it reads and the
-        // whole of the point it writes; the patch constant phases declare only the
-        // control point registers they happen to touch. So the structs come from it,
-        // where there is one - and so do the declarations both phases share, which
-        // either has in full.
+        // Structs come from the control point phase: patch constant phases
+        // declare only the control point registers they touch.
         EnterPhase(HullFunction.ControlPoint, hull.ControlPoint ?? hull.PatchConstant);
         RecordResourceTypeNames();
         if (hull.ControlPoint != null)
@@ -510,8 +455,7 @@ public abstract class HlslWriter
         }
         else
         {
-            // Nothing declared the patch, so the signatures are all there is to go
-            // on. They say the whole of it, which is what the missing phase means.
+            // No control point phase: the signatures describe the whole patch.
             WriteSignatureStructure(GetInputStructureName(), _shader.InputSignatures);
             WriteSignatureStructure(GetOutputStructureName(), _shader.OutputSignatures);
         }
@@ -545,10 +489,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// A control point phase fxc left out, because the shader's was a copy: every
-    /// point came out as it went in. Nothing in the bytecode says so - there is no
-    /// phase to read - so it is the two signatures agreeing that says it, and the
-    /// copy is written back out a field at a time.
+    /// The pass-through control point function fxc omits from the bytecode,
+    /// rebuilt from the matching input and output signatures.
     /// </summary>
     private void WritePassThroughControlPoint()
     {
@@ -572,9 +514,7 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// Which control point this run computes. Where a phase declares it the
-    /// declaration comes from the dcl; where there is no phase it is still a
-    /// parameter of main, and this is what it would have said.
+    /// The SV_OutputControlPointID parameter, for when no phase declares it.
     /// </summary>
     private static RegisterDeclaration ControlPointIdDeclaration()
     {
@@ -589,9 +529,7 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// A struct written from a signature chunk rather than from what the shader
-    /// declared. The chunk names every element and says how wide it is, which is all
-    /// a field needs, and it is there whether any phase read the register or not.
+    /// A struct written from a signature chunk rather than from declarations.
     /// </summary>
     private void WriteSignatureStructure(string name, IList<RegisterSignature> signatures)
     {
@@ -618,7 +556,6 @@ public abstract class HlslWriter
         };
     }
 
-    /// <summary>The signature line, the braces, and the body between them.</summary>
     private void WriteFunction(string signature, Action writeBody)
     {
         WriteLine(signature);
@@ -638,7 +575,7 @@ public abstract class HlslWriter
         NameLocals();
     }
 
-    // In an effect, the names a shader makes up for itself are its function's.
+    // In an effect, locals are prefixed with the function name.
     private void NameLocals()
     {
         if (IsEffectFunction)
@@ -648,13 +585,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What the tessellator is to do, which only a hull shader says: what it divides,
-    /// how it cuts an edge, what it makes of the result, how many points come out,
-    /// which function computes the factors, and the bound they keep to. The bound
-    /// is a float to fxc: [maxtessfactor(32)] is refused with X3554 and ignored, and
-    /// written that way it looked as though no attribute brought
-    /// dcl_hs_max_tessfactor back. [maxtessfactor(32.0)] does, at no cost - fxc
-    /// keeps the clamp the decompilation already carries as a min.
+    /// The hull shader's tessellator attributes. maxtessfactor must be a float
+    /// literal: fxc ignores [maxtessfactor(32)] with X3554.
     /// </summary>
     private void WriteTessellatorAttributes()
     {
@@ -697,7 +629,6 @@ public abstract class HlslWriter
         }
     }
 
-    // The resources whose element is a struct of its own, in declaration order.
     private IEnumerable<ResourceDefinition> StructuredElementTypes()
     {
         if (_registers.ResourceDefinitions == null)
@@ -710,20 +641,15 @@ public abstract class HlslWriter
 
     private void WriteConstantDeclarations()
     {
-        // In an effect the uniforms and the resources are the effect's, declared
-        // once. What stays with the function is what is its own: literal arrays.
+        // In an effect only literal arrays are the function's own.
         if (IsEffectFunction)
         {
             WriteStaticConstants();
             return;
         }
 
-        // One compiler for the uniforms and for the structured buffer elements
-        // alike: a struct-typed member is declared once, as struct1, struct2 and
-        // so on, and whichever of the two holds it names that one declaration.
-        // With a compiler each, both numbered from 1, a shader with a struct on
-        // both sides had two different structs both called struct1 - and one
-        // with a struct only in a buffer element declared it nowhere at all.
+        // One compiler for uniforms and structured buffer elements, so structN
+        // numbering is shared and each struct is declared once.
         var compiler = new ConstantDeclarationCompiler();
         foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
         {
@@ -751,16 +677,12 @@ public abstract class HlslWriter
 
         if (_registers.ConstantDeclarations.Count != 0)
         {
-            // One variable can occupy a register in more than one set - an int used
-            // both as a loop bound and in float arithmetic lands in i# and c# alike -
-            // and the constant table lists it once per register. It is still one
-            // declaration.
+            // The constant table lists a variable once per register set (i# and c#).
             var declaredNames = new HashSet<string>();
             int written = 0;
             foreach (ConstantDeclaration declaration in _registers.ConstantDeclarations)
             {
-                // A texture buffer's variables keep their block, below, and so do
-                // a named constant buffer's.
+                // Written in their blocks below.
                 if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true }
                     || IsNamedBuffer(declaration))
                 {
@@ -777,11 +699,7 @@ public abstract class HlslWriter
                 WriteLine();
             }
 
-            // The globals are flattened - they bind to the one register the
-            // compiler gives them either way - but a buffer the shader named binds
-            // where it was declared, and with two of them which is which is the
-            // difference between the world matrix and the view projection. So a
-            // named buffer keeps its block and its slot.
+            // A named buffer keeps its block and slot; globals are flattened.
             foreach (var buffer in _registers.ConstantDeclarations
                 .OfType<D3D10ConstantDeclaration>()
                 .Where(IsNamedBuffer)
@@ -806,10 +724,7 @@ public abstract class HlslWriter
                 WriteLine();
             }
 
-            // A cbuffer is flattened into globals - they bind to the same register
-            // and are read the same way - but a texture buffer binds to a t register
-            // and is read with ld, so the block and its name are what make the
-            // shader the one it was.
+            // A tbuffer binds to a t register and is read with ld, so it keeps its block.
             foreach (var textureBuffer in _registers.ConstantDeclarations
                 .OfType<D3D10ConstantDeclaration>()
                 .Where(d => d.IsTextureBuffer)
@@ -818,9 +733,7 @@ public abstract class HlslWriter
                 WriteLine($"tbuffer {textureBuffer.Key}");
                 WriteLine("{");
                 indent = "\t";
-                // Once per variable, the way the globals above are: the constant
-                // table lists one variable once per register it occupies, and
-                // written straight out an array came out declared twice.
+                // Once per variable: the table lists one per register it occupies.
                 var declaredMembers = new HashSet<string>();
                 foreach (D3D10ConstantDeclaration member in textureBuffer
                     .Where(m => declaredMembers.Add(m.Name)))
@@ -839,19 +752,13 @@ public abstract class HlslWriter
 
     private void WriteStaticConstants()
     {
-        // Emitted after the uniforms so that a subscript reading one is already in
-        // scope, though nothing in a literal array can reference anything anyway.
-        // Only while something still reads it. A buffer whose every read was a row of
-        // an identity dotted with a vector is a subscript of that vector now, and the
-        // identity it was spelled with names nothing - though the listing that writes
-        // the dot product out as the instruction it was still reads the rows.
+        // Only while something reads it: identity-row reads may have become
+        // vector subscripts, though the instruction writer still reads the rows.
         if (_registers.ImmediateConstantBuffer.Count != 0
             && (WritesInstructions || _registers.IsImmediateConstantBufferRead))
         {
-            // One declaration per array in it. Written as one array of every row,
-            // the second array's reads carried the offset of its first row -
-            // `icb[i + 3]` - and fxc, given an index it has to work out, spends an
-            // instruction on it where the original folded the row into the read.
+            // One declaration per array, so reads need no row offset (`icb[i + 3]`),
+            // which would cost fxc an instruction.
             foreach ((string name, int start, int length) in
                 _registers.ImmediateConstantBufferArrays())
             {
@@ -892,13 +799,10 @@ public abstract class HlslWriter
     {
         if (_registers.ResourceDefinitions != null && _registers.ResourceDefinitions.Count != 0)
         {
-            // A structured buffer whose element is a struct needs that struct named
-            // before the buffer that holds it. The reflection data has the members
-            // but no name for the type, so one is made from the buffer's.
+            // Struct element types are declared before their buffers, once each.
             HashSet<string> declaredStructs = [];
             foreach (ResourceDefinition resource in StructuredElementTypes())
             {
-                // Two buffers of one struct declare it once.
                 if (!declaredStructs.Add(GetStructuredElementTypeName(resource)))
                 {
                     continue;
@@ -916,11 +820,8 @@ public abstract class HlslWriter
             }
 
             int declared = 0;
-            // fxc binds a texture or a sampler declared without a register to the
-            // next free slot in declaration order, so one declared with a gap
-            // before it - stencil at t1, scene at t3 - has to say where it goes,
-            // or it comes back bound elsewhere: a different texture, and the app
-            // none the wiser.
+            // fxc binds an unregistered texture or sampler to the next free slot, so
+            // one after a gap must name its register.
             int nextTexture = 0;
             int nextSampler = 0;
             var definitions = _registers.ResourceDefinitions.ToList();
@@ -928,17 +829,13 @@ public abstract class HlslWriter
             {
                 var resource = definitions[r];
                 string typeName = ResourceTypeName(resource);
-                // A texture buffer is declared by its block, with the constants,
-                // and not as a resource of its own.
+                // A texture buffer is declared by its block, with the constants.
                 if (typeName == null)
                 {
                     continue;
                 }
-                // An array of resources is listed an element at a time - layers[0],
-                // layers[1], layers[2] - and declared as those it was three
-                // declarations of a name with a subscript in it, which is not HLSL.
-                // The elements in a run, the same kind in consecutive slots, are the
-                // one array, and the reads already name them by subscript.
+                // Reflection lists a resource array per element (layers[0], layers[1]);
+                // a run of them in consecutive slots is declared as one array.
                 string name = resource.Name;
                 int count = 1;
                 var element = System.Text.RegularExpressions.Regex.Match(name, @"^(\w+)\[0\]$");
@@ -981,19 +878,16 @@ public abstract class HlslWriter
         }
     }
 
-    /// <summary>
-    /// Declares a compute shader's groupshared arrays, g0[64] and so on, at file
-    /// scope where HLSL wants them. The stride gives the element width; the type is
-    /// float unless every store into the array is an integer, the same rule as an
-    /// indexable temp. Nothing in the bytecode names them, so they keep the register.
-    /// </summary>
-    // A constant buffer the shader declared and named, as against the $Globals
-    // fxc gathers the loose variables into.
+    // A named constant buffer, as against $Globals.
     private static bool IsNamedBuffer(ConstantDeclaration declaration)
     {
         return declaration is D3D10ConstantDeclaration { IsTextureBuffer: false, BufferName: not null and not "$Globals" };
     }
 
+    /// <summary>
+    /// Declares groupshared arrays (g0[64], ...). The type is float unless every
+    /// store into the array is an integer.
+    /// </summary>
     private void WriteThreadGroupSharedMemoryDeclarations()
     {
         if (_registers.ThreadGroupSharedMemory.Count == 0)
@@ -1007,19 +901,15 @@ public abstract class HlslWriter
             {
                 throw new NotImplementedException($"groupshared element stride {stride}");
             }
-            // uint where an unsigned min or max reaches it: HLSL picks between the
-            // two interlocked forms from the type, so an array fxc minimises
-            // unsigned comes back minimised signed unless the declaration says so.
+            // uint where an unsigned interlocked min/max reaches it: HLSL picks
+            // the signed or unsigned form from the type.
             string type = integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(register)
                 ? integerOperandAnalysis.IsUnsignedThreadGroupSharedMemory(register)
                     ? "uint"
                     : "int"
                 : "float";
             int components = stride / sizeof(float);
-            // Wider than one register, so the element is written as a struct of them:
-            // a stride of twenty bytes is a four wide member and a scalar, which is
-            // the only shape that fits any stride at all. Refusing it left a
-            // groupshared array of anything bigger than a float4 undecompilable.
+            // Wider than a float4: a struct of four-wide members plus the remainder.
             if (components > 4)
             {
                 string elementType = RegisterState.ThreadGroupSharedElementType(register);
@@ -1039,10 +929,8 @@ public abstract class HlslWriter
                 continue;
             }
             string size = components == 1 ? "" : components.ToString(CultureInfo.InvariantCulture);
-            // Without a subscript where fxc declared it raw, which is what it does
-            // for a groupshared variable that is not an array. Declared as an array
-            // of one it comes back structured, which is a different declaration of
-            // the same four bytes.
+            // No subscript where fxc declared it raw: an array of one comes back
+            // as a structured declaration.
             string bounds = _registers.IsGroupSharedScalar(register)
                 ? ""
                 : $"[{elements}]";
@@ -1052,15 +940,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What one element holds. The reflection data says outright where it is there;
-    /// failing that the width comes from the declaration stride and the type is
-    /// assumed float, which is what a StructuredBuffer usually holds.
-    /// </summary>
-    /// <summary>
-    /// Declares the shader's indexable temps, x0[4] and so on, as local arrays. An
-    /// element is a float4 unless every write to the array is an integer
-    /// instruction - an array that carries both has to stay float, the same as a
-    /// register that does.
+    /// Declares indexable temps (x0[4], ...) as local arrays; float unless every
+    /// write to the array is an integer instruction.
     /// </summary>
     protected void WriteIndexableTempDeclarations(IntegerOperandAnalysis integerOperandAnalysis)
     {
@@ -1073,10 +954,8 @@ public abstract class HlslWriter
         }
     }
 
-    /// <summary>The name given to a structured buffer's struct element: its own,
-    /// where shader model 5's reflection data has it, and otherwise one made from
-    /// the buffer's. Not a name the writer's own structs could have, and not one
-    /// another buffer's different struct already has.</summary>
+    /// <summary>A structured buffer element's struct name: its reflected one if
+    /// valid and unclashing, else one made from the buffer's name.</summary>
     protected string GetStructuredElementTypeName(ResourceDefinition resource)
     {
         string own = resource.ElementType?.Name;
@@ -1098,6 +977,10 @@ public abstract class HlslWriter
                 && a.MemberInfo.Zip(b.MemberInfo).All(pair => pair.First.Name == pair.Second.Name));
     }
 
+    /// <summary>
+    /// The element type: from reflection where present, else float of the
+    /// declared stride's width.
+    /// </summary>
     protected string GetStructuredElementType(ResourceDefinition resource)
     {
         if (resource.ElementType?.MemberInfo != null && resource.ElementType.MemberInfo.Count != 0)
@@ -1108,10 +991,6 @@ public abstract class HlslWriter
         {
             string scalar = resource.ElementType.ParameterType.ToString().ToLower();
             int width = resource.ElementType.Columns;
-            // A buffer of transforms holds matrices, and a matrix has rows as well
-            // as columns. Taking the columns alone made a StructuredBuffer<float4x4>
-            // of instance transforms into one of float4, where the stride says the
-            // element is four times that.
             if (resource.ElementType.Rows > 1)
             {
                 return $"{scalar}{resource.ElementType.Rows}x{width}";
@@ -1124,8 +1003,6 @@ public abstract class HlslWriter
         return components > 1 ? "float" + components : "float";
     }
 
-    // A compute shader takes its thread and group indices the way any other shader
-    // takes its inputs, and more than one of them needs a structure to hold them.
     private string GetInputStructureName()
     {
         return Named(_shader.Type switch
@@ -1141,9 +1018,7 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What the shader returns when it returns a struct. A hull shader has two, one
-    /// per function: the control point it computes, and the constants of the whole
-    /// patch.
+    /// The output struct name; a hull shader's patch constant function has its own.
     /// </summary>
     protected string GetOutputStructureName()
     {
@@ -1169,13 +1044,8 @@ public abstract class HlslWriter
         WriteLine("{");
         indent = "\t";
         ICollection<RegisterDeclaration> inputs = _registers.MethodInputRegisters;
-        // A domain shader reads a patch, which is an array of vertices the way a
-        // geometry shader's input is: one declaration per register, not one per
-        // control point. Its struct is the control point, so the domain location -
-        // which is per run rather than per point - is not a field of it.
-        // A hull shader's control point phase reads the same patch the same way,
-        // and which control point it is computing is a parameter rather than a
-        // field of the point.
+        // The struct is one control point; the domain location and control point
+        // id are parameters, not fields.
         if (_shader.Type is ShaderType.Domain or ShaderType.Hull)
         {
             inputs = [.. inputs
@@ -1185,12 +1055,8 @@ public abstract class HlslWriter
         }
         if (_shader.Type is ShaderType.Geometry or ShaderType.Domain or ShaderType.Hull)
         {
-            // One member per register across the vertices - and per semantic
-            // within a register, where two are packed into one. Grouping a patch's
-            // registers by the register alone, as the domain and hull shaders did,
-            // lost the packed semantic: `float3 position; float thickness;` is
-            // v[2][0].xyz and v[2][0].w, and the struct came out holding the
-            // position alone.
+            // One member per register and semantic: two semantics can share a
+            // register (v[2][0].xyz and v[2][0].w).
             inputs = inputs
                 .GroupBy(r => ((r.RegisterKey as D3D10RegisterKey).GetGSBaseKey(), r.Semantic))
                 .Select(g => g.First())
@@ -1206,11 +1072,9 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// What the hull shader computed once for the patch. The signature chunk holds
-    /// all of it, read or not, which is what is wanted: fxc refuses a domain shader
-    /// whose signature leaves the tessellation factors out even when nothing touches
-    /// them. Older bytecode without the chunk falls back to the factors the domain
-    /// implies, which is the least that will compile.
+    /// The patch constant struct, from the signature chunk: fxc refuses a domain
+    /// shader missing the tessellation factors even when unread. Without the chunk,
+    /// the factors the domain implies.
     /// </summary>
     private void WritePatchConstantStructureDeclaration()
     {
@@ -1257,18 +1121,12 @@ public abstract class HlslWriter
 
     private void WriteOutputStructureDeclaration()
     {
-        // A domain shader among them: it answers a vertex, and a vertex is a
-        // position and whatever else travels with it. Left out, one that answers
-        // anything beyond a bare position had no struct to return and no name for
-        // one, and threw rather than decompiling.
         if (_shader.Type is not (ShaderType.Pixel or ShaderType.Vertex
             or ShaderType.Geometry or ShaderType.Hull or ShaderType.Domain))
         {
             return;
         }
-        // A geometry shader writing several streams has a vertex of its own for each,
-        // and both call their registers o0 upwards: one struct apiece, or the fields of
-        // the two came out in the one struct with the same names twice over.
+        // One struct per stream: each stream numbers its registers from o0.
         if (_registers.HasSeveralStreams)
         {
             foreach (int stream in _registers.Streams)
@@ -1292,11 +1150,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// The outputs in the order the output struct declares them. Shader model 3
-    /// declares its outputs, so the order they were found in is the order the shader
-    /// wrote them down. Before that the output registers are fixed ones - oPos, oT0,
-    /// oFog - and are never declared, so a field's place in the struct would
-    /// otherwise be whichever of them fxc happened to write to first.
+    /// The outputs in struct order: declaration order from SM3, by semantic before
+    /// that, where fixed output registers (oPos, oT0) are never declared.
     /// </summary>
     protected IList<RegisterDeclaration> OutputsInStructOrder()
     {
@@ -1325,9 +1180,7 @@ public abstract class HlslWriter
         {
             return "void";
         }
-        // The patch constant function returns the struct however few registers it
-        // fills: its fields are the tessellation factors, and those are an array
-        // across registers rather than one value with one semantic.
+        // Always a struct: the tessellation factors span registers.
         if (_hullFunction == HullFunction.PatchConstant)
         {
             return GetOutputStructureName();
@@ -1341,9 +1194,8 @@ public abstract class HlslWriter
     }
 
     /// <summary>
-    /// Whether the outputs are written through a struct rather than returned as the
-    /// one expression. A geometry shader always is: it writes its vertices through
-    /// the stream, so the body says `o.member` however few members there are.
+    /// Whether outputs go through a struct; always for a geometry shader, which
+    /// writes vertices through the stream.
     /// </summary>
     protected bool HasOutputStruct =>
         _registers.MethodOutputRegisters.Count > 1
@@ -1352,9 +1204,7 @@ public abstract class HlslWriter
 
     private string GetMethodSemantic()
     {
-        // `void main(...) : SV_Position` is an error - X3076, a void function cannot
-        // have a semantic - and a geometry or compute shader returns void whatever
-        // its one output register might have suggested.
+        // A void function cannot have a semantic (X3076).
         if (GetMethodReturnType() != "void" && !HasOutputStruct
             && _registers.MethodOutputRegisters.Count == 1)
         {
@@ -1385,16 +1235,11 @@ public abstract class HlslWriter
         }
         if (_shader.Type == ShaderType.Hull)
         {
-            // Both functions are handed the patch the tessellator is about to divide.
-            // The control point phase is told which point it is computing as well;
-            // the patch constant function is run once for the patch and is not.
             var parameters = new List<string>
             {
                 $"InputPatch<{GetInputStructureName()}, {_registers.InputControlPointCount}> patch",
             };
-            // The patch constant function can read back the points the control
-            // point phase wrote as well, through a patch of its own - of the
-            // struct main returns, which is not this function's output struct.
+            // The patch constant function reads main's outputs as an OutputPatch of HS_OUT.
             if (_registers.ControlPointOutputRegisters.Count != 0)
             {
                 parameters.Add($"OutputPatch<{Named("HS_OUT")}, "
@@ -1415,11 +1260,6 @@ public abstract class HlslWriter
         }
         if (_shader.Type == ShaderType.Domain)
         {
-            // The patch is an array of control points and the domain location says
-            // where in it this run is. Everything else the patch carries - the
-            // tessellation factors the hull shader computed - is read through the
-            // constant parameter, which this shader does not touch unless it says
-            // so.
             RegisterDeclaration location = _registers.MethodInputRegisters
                 .FirstOrDefault(r => r.RegisterKey is D3D10RegisterKey
                     { OperandType: OperandType.InputDomainPoint });
@@ -1443,15 +1283,9 @@ public abstract class HlslWriter
         return GetInputStructureName() + " i";
     }
 
-    // A geometry shader can only emit strips, so the declared topology names the
-    // stream type outright.
     /// <summary>
-    /// Whether the buffer's variables sit where declaring them in this order would
-    /// put them. A packoffset moves one, or leaves a register empty in front of it,
-    /// and the declaration alone then says something the shader did not: the buffer
-    /// it is handed is laid out one way and the registers it reads are another.
-    /// Where the two agree - which is every buffer fxc packed itself - nothing is
-    /// said, and the declaration stays the one the shader was written with.
+    /// Whether the members sit anywhere other than where default packing in this
+    /// order would put them, so the declaration needs packoffsets.
     /// </summary>
     private static bool NeedsPackOffset(IEnumerable<D3D10ConstantDeclaration> members)
     {
@@ -1460,9 +1294,8 @@ public abstract class HlslWriter
         foreach (D3D10ConstantDeclaration member in members)
         {
             int size = member.VariableSize;
-            // An array, a matrix and a struct begin a register of their own; a
-            // scalar or a vector packs in beside what is already there unless it
-            // would run over the end of the register, which none of them may do.
+            // Arrays, matrices and structs start a register; a scalar or vector
+            // packs in unless it would cross a register boundary.
             bool beginsARegister = member.TypeInfo.NumElements > 1
                 || member.TypeInfo.Rows > 1
                 || member.TypeInfo.MemberInfo != null;
@@ -1492,6 +1325,7 @@ public abstract class HlslWriter
         return $"packoffset(c{offset / 16}{component})";
     }
 
+    // A geometry shader emits only strips, so the topology names the stream type.
     private static string GetStreamType(D3D10PrimitiveTopology? topology)
     {
         return topology switch

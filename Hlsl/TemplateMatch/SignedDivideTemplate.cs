@@ -1,18 +1,11 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts a signed divide or remainder back together.
-///
-/// The hardware divides unsigned, so a signed / or % compiles to the division of
-/// the absolute values with the sign put back afterwards: negate the result when
-/// the operands disagree in sign for a divide, or when the dividend is negative
-/// for a remainder. Recovering that correction as source is right but unhelpful -
-/// it reads as five operations instead of one, and fxc applies its own correction
-/// around the / and % it then sees, so the shader pays for it twice.
+/// Recovers signed / and %, which compile to an unsigned divide of absolute
+/// values with the result negated by sign (of x ^ y for /, of x for %).
 /// </summary>
 public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
 {
-    /// <summary>The sign bit, which is what the correction tests.</summary>
     private const int SignBit = unchecked((int)0x80000000);
 
     public override bool Match(HlslTreeNode node)
@@ -51,7 +44,7 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
         return null;
     }
 
-    /// <returns>What the sign bit was taken of, or null if this is not that test.</returns>
+    /// <returns>x in `x &amp; 0x80000000`, or null.</returns>
     private static HlslTreeNode TryGetSignTest(HlslTreeNode condition)
     {
         if (condition is not BitwiseAndOperation and)
@@ -71,10 +64,8 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
     }
 
     /// <summary>
-    /// Rebuilds the signed operation, but only when the correction is the one that
-    /// belongs to it: a divide is negated when the operands disagree in sign, which
-    /// is the sign of their exclusive or, and a remainder follows the dividend
-    /// alone. A shader correcting by anything else is doing something of its own.
+    /// Rebuilds the signed operation only if the test is its own: x ^ y for a
+    /// divide, x for a remainder.
     /// </summary>
     private static HlslTreeNode TryRebuild(
         HlslTreeNode tested,
@@ -134,9 +125,7 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
                 && IsSameValue(exclusiveOr.Inputs[1], left));
     }
 
-    // The same node, or two constants that say the same thing. A constant divisor
-    // reaches the division and the sign test as separate nodes, so the test would
-    // not be recognised by identity alone.
+    // Constants compare by value: a constant divisor is a separate node at each use.
     private static bool IsSameValue(HlslTreeNode left, HlslTreeNode right)
     {
         if (ReferenceEquals(left, right))

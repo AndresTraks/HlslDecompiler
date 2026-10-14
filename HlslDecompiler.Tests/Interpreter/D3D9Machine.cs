@@ -6,20 +6,13 @@ using System.Linq;
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// Runs a shader model 1 to 3 shader, so that two decompilations of one shader can
-/// be compared by what they compute and not only by whether they compile.
-///
-/// Register numbers do not survive a round trip - fxc allocates its own - so
-/// everything crossing the boundary is named instead: constants by their
-/// declaration, inputs and outputs by their semantic.
+/// Runs a shader model 1 to 3 shader so two decompilations can be compared by what
+/// they compute. fxc reallocates registers, so constants are named by declaration
+/// and inputs and outputs by semantic.
 /// </summary>
 public class D3D9Machine
 {
-    /// <summary>
-    /// Thrown for anything not modelled. The caller skips the shader rather than
-    /// reporting a difference, since an instruction that did not run is not
-    /// evidence either way.
-    /// </summary>
+    // The caller skips the shader: an instruction that did not run is no evidence.
     public class UnsupportedException(string message) : Exception(message);
 
     private readonly ShaderModel _shader;
@@ -36,7 +29,6 @@ public class D3D9Machine
     private readonly int _trial;
     private int _loopCounter;
 
-    /// <summary>Set by texkill: the pixel is discarded, whatever was written.</summary>
     public bool Killed { get; private set; }
 
     private D3D9Machine(ShaderModel shader, int trial)
@@ -66,10 +58,7 @@ public class D3D9Machine
     }
 
     /// <summary>
-    /// Runs the shader and returns what it wrote, by semantic. A shader that
-    /// kills the pixel returns no results. Every constant and input is derived
-    /// from its own name and the trial number, so that two programs holding the
-    /// same value in different registers still agree on it.
+    /// Returns the outputs by semantic, or none if the pixel was killed.
     /// </summary>
     public static Dictionary<string, float[]> Run(ShaderModel shader, int trial)
     {
@@ -90,18 +79,14 @@ public class D3D9Machine
     }
 
     /// <summary>
-    /// ps_1_1 to ps_1_4, run as the specification has it rather than through the
-    /// decompiler's rewrite of it into ps_2_0, so that the two are checked against
-    /// each other. No declarations: v0 and v1 are the diffuse and specular
-    /// colours, texture register # is texture coordinate # - until a texture
-    /// instruction writes it, before ps_1_4, and for good in ps_1_4, where t# is
-    /// read only - and r0 is the colour the pixel gets.
+    /// ps_1_x, run per the spec rather than via the decompiler's ps_2_0 rewrite, so
+    /// the two check each other. v0/v1 are diffuse/specular, t# starts as texcoord #
+    /// (read only in ps_1_4), and r0 is the output colour.
     /// </summary>
     private bool IsShaderModel1Pixel =>
         _shader.Type == ShaderType.Pixel && _shader.MajorVersion == 1;
 
-    // The coordinate sets, which a ps_1_x texture instruction reads by the number of
-    // the register it writes.
+    // Indexed by the number of the register a ps_1_x texture instruction writes.
     private readonly float[][] _coordinates = NewFile(8);
 
     private bool IsShaderModel14Pixel => IsShaderModel1Pixel && _shader.MinorVersion >= 4;
@@ -121,11 +106,7 @@ public class D3D9Machine
         }
     }
 
-    /// <summary>
-    /// A pixel shader's colour inputs are colours: the vertex pipeline clamps
-    /// them to [0, 1] before they are interpolated. The same in either program,
-    /// so a ps_1_x shader and its ps_2_0 decompilation read the same colour.
-    /// </summary>
+    // Colour inputs are in [0, 1]: the vertex pipeline clamps them.
     private static float[] PixelColour(float[] value) =>
         [.. value.Select(v => (v + 2) / 4)];
 
@@ -145,8 +126,7 @@ public class D3D9Machine
                     case RegisterSet.Int4:
                         for (int c = 0; c < 4; c++)
                         {
-                            // Whole numbers in a small range. A loop count taken
-                            // from a pseudo-random float would run for ever.
+                            // Small, so a loop count terminates.
                             _constInt[register][c] = (int)Math.Abs(value[c] * 4) % 4;
                         }
                         break;
@@ -157,8 +137,7 @@ public class D3D9Machine
             }
         }
 
-        // What an fx_2_0 effect computes before the shader runs, into the registers
-        // the shader's own table does not name.
+        // An fx_2_0 preshader fills registers the shader's table does not name.
         if (Preshader.Find(_shader) is Preshader preshader)
         {
             foreach (((PreshaderRegisterTable table, int offset), double value) in PreshaderMachine.Run(preshader, Named))
@@ -215,9 +194,7 @@ public class D3D9Machine
                     {
                         string semantic = instruction.GetDeclSemantic();
                         float[] value = Named(semantic);
-                        // A blend index is only ever a whole number, and a shader
-                        // that rounds it into the address register and one that
-                        // truncates it agree on nothing else.
+                        // Integral, so rounding and truncating into a0 agree.
                         if (semantic.StartsWith("BLENDINDICES", StringComparison.OrdinalIgnoreCase))
                         {
                             value = [.. value.Select(v => (float)((int)Math.Abs(v * 4) % 8))];
@@ -247,8 +224,6 @@ public class D3D9Machine
         }
     }
 
-    // The same name gives the same value in either program, whichever register it
-    // happened to land in there.
     private float[] Named(string name)
     {
         return PseudoRandom.Vector(name, _trial);
@@ -330,15 +305,13 @@ public class D3D9Machine
                         : pc + 1;
                     continue;
                 case Opcode.TexKill:
-                    // ps_1_x kills on the coordinate set the register is named for,
-                    // not on what a tex left in it.
+                    // ps_1_x tests the coordinate set, not what a tex left in t#.
                     Killed |= (IsShaderModel1Pixel && !IsShaderModel14Pixel
                         ? _coordinates[instruction.GetParamRegisterNumber(0)]
                         : Source(instruction, 0)).Take(3).Any(c => c < 0);
                     pc++;
                     continue;
-                // ps_1_4: texld samples the stage its destination is numbered for,
-                // at the coordinate it reads; texcrd is the coordinate.
+                // ps_1_4: texld samples the stage its destination is numbered for.
                 case Opcode.Tex when IsShaderModel14Pixel:
                     {
                         int stage = instruction.GetParamRegisterNumber(0);
@@ -381,8 +354,7 @@ public class D3D9Machine
                     }
             }
 
-            // A co-issued pair runs as one: both read their sources before either
-            // writes.
+            // A co-issued pair reads both sources before either writes.
             if (pc + 1 < instructions.Count && instructions[pc + 1].CoIssue)
             {
                 float[] first = Evaluate(instruction);
@@ -598,8 +570,7 @@ public class D3D9Machine
                 }
             case Opcode.Bem:
                 {
-                    // ps_1_4: the first source plus the bump offset of the second, by
-                    // the matrix of the stage the destination is numbered for.
+                    // ps_1_4: uses the bump matrix of the destination's stage.
                     float[] value = Source(instruction, 1);
                     float[] offset = BumpOffset(instruction.GetParamRegisterNumber(0), Source(instruction, 2));
                     return
@@ -622,8 +593,7 @@ public class D3D9Machine
                 return Multiply(instruction, 3, 2);
             case Opcode.DSX:
             case Opcode.DSY:
-                // No neighbouring pixel to difference against. Both programs get
-                // zero, so a shader using one is compared on everything else.
+                // No neighbouring pixels: zero.
                 return [0, 0, 0, 0];
             case Opcode.Tex:
             case Opcode.TexLDL:
@@ -643,25 +613,19 @@ public class D3D9Machine
             float scale = Reciprocal(coordinates[3]);
             coordinates = [coordinates[0] * scale, coordinates[1] * scale, coordinates[2] * scale, 1];
         }
-        // A bias or an explicit level changes which mip is read, and there are no
-        // mips here. Both programs read the same one.
+        // No mips, so bias and explicit level are ignored.
         return Texture.Sample(sampler, coordinates, _samplerDimensions.GetValueOrDefault(sampler, 4));
     }
 
-    // How many coordinates each sampler reads, from its dcl.
     private readonly Dictionary<int, int> _samplerDimensions = [];
 
-    // A texm3x2 or texm3x3 under way: the rows its pads have computed so far.
+    // Rows computed so far by texm3x2pad/texm3x3pad.
     private readonly List<float> _matrixRows = [];
 
     /// <summary>
-    /// The ps_1_1 to ps_1_3 texture addressing instructions, each of which reads
-    /// texture n - what an earlier texture instruction left in t(n), through its
-    /// modifier, _bx2 for a normal map stored in [0, 1] - to find where stage m
-    /// samples, and leaves the colour in t(m). The bump environment
-    /// matrix and luminance are texture stage state; they are named here as the
-    /// uniforms the decompilation declares for them, so the two programs read the
-    /// same values. False for anything else.
+    /// ps_1_1-1_3 texture addressing: reads t(n) to find where stage m samples and
+    /// writes t(m). Bump matrix and luminance are named as the uniforms the
+    /// decompilation declares. False for any other opcode.
     /// </summary>
     private bool AddressTexture(D3D9Instruction instruction)
     {
@@ -760,10 +724,8 @@ public class D3D9Machine
     }
 
     /// <summary>
-    /// The bump environment matrix of a stage applied to a value's red and green:
-    /// (M00 r + M10 g, M01 r + M11 g). The matrix is named as the float2x2 the
-    /// decompilation declares it as, column-major, so a register per column -
-    /// bumpEnvMat#[0] holding (M00, M10) and bumpEnvMat#[1] holding (M01, M11).
+    /// (M00 r + M10 g, M01 r + M11 g). Named as the decompilation's column-major
+    /// float2x2: bumpEnvMat#[0] = (M00, M10), bumpEnvMat#[1] = (M01, M11).
     /// </summary>
     private float[] BumpOffset(int stage, float[] value)
     {
@@ -782,7 +744,6 @@ public class D3D9Machine
         return Dot(_coordinates[instruction.GetParamRegisterNumber(0)], Source(instruction, 1), 3);
     }
 
-    // The two pads' rows and this instruction's: the vector a texm3x3 computes.
     private float[] MatrixVector(D3D9Instruction instruction)
     {
         float[] vector = [_matrixRows[0], _matrixRows[1], MatrixRow(instruction)];
@@ -861,19 +822,13 @@ public class D3D9Machine
         return [.. Source(instruction, 1).Select(transform)];
     }
 
-    /// <summary>
-    /// One source operand, swizzled and with its modifier applied, always four
-    /// components wide.
-    /// </summary>
     private float[] Source(D3D9Instruction instruction, int index)
     {
         RegisterType type = instruction.GetParamRegisterType(index);
         int number = instruction.GetParamRegisterNumber(index);
         if (instruction.Params.HasRelativeAddressing(index))
         {
-            // A real index is in range because the shader put it there; one made
-            // up here need not be. Both programs derive it from the same named
-            // value, so clamping keeps them reading the same element.
+            // Made up indices may be out of range; both programs clamp alike.
             number = Math.Clamp(number + RelativeOffset(instruction, index), 0, 255);
         }
 
@@ -920,8 +875,7 @@ public class D3D9Machine
             case SourceModifier.X2AndNegate:
                 value = [.. value.Select(v => -2 * v)];
                 break;
-            // A ps_1_4 texture coordinate, projected: x and y divided by the third
-            // or the fourth component the swizzle selects.
+            // ps_1_4 _dz/_dw projection.
             case SourceModifier.DivideByZ:
                 value = [value[0] / value[2], value[1] / value[2], value[2], value[3]];
                 break;
@@ -965,10 +919,7 @@ public class D3D9Machine
             case RegisterType.Loop:
                 return Broadcast(_loopCounter);
             case RegisterType.MiscType:
-                // vPos carries a pixel position in two components; vFace is one
-                // value the hardware broadcasts. Giving either four independent
-                // components made a four wide cmp on vFace disagree with a one
-                // wide one, which is a difference this machine invented.
+                // vPos has two components; vFace is one value, broadcast.
                 float[] misc = Named(number == 0 ? "VPOS" : "VFACE");
                 return number == 0
                     ? [misc[0], misc[1], 0, 0]
@@ -1004,8 +955,7 @@ public class D3D9Machine
         int number = instruction.GetParamRegisterNumber(destinationIndex.Value);
         if (instruction.Opcode == Opcode.MovA)
         {
-            // The address register rounds to nearest, which is what makes c[a0.x]
-            // land on a row rather than between two.
+            // The address register rounds to nearest.
             value = [.. value.Select(v => MathF.Round(v, MidpointRounding.AwayFromZero))];
         }
 
@@ -1049,8 +999,7 @@ public class D3D9Machine
         }
     }
 
-    // Output registers of different kinds share one file here, keyed by the name
-    // they are reported under.
+    // All output register kinds share one file.
     private int OutputSlot(RegisterType type, int number)
     {
         return type switch

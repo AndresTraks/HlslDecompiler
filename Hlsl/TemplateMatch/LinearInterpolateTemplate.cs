@@ -1,12 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts `lerp` back together.
-///
-/// Shader model 3 has an lrp instruction and the parser builds this node from it
-/// directly; DXBC has none, so fxc writes `lerp(a, b, s)` as `s * (b - a) + a` -
-/// a subtract and a mad. That is the definition HLSL gives, and written out it is
-/// three operations the reader has to put back together to see one.
+/// Recovers lerp(a, b, s) from DXBC's `s * (b - a) + a` (SM3 has lrp).
 /// </summary>
 public class LinearInterpolateTemplate : NodeTemplate<AddOperation>
 {

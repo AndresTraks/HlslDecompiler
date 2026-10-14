@@ -6,20 +6,17 @@ using System.Linq;
 namespace HlslDecompiler.DirectXShaderModel;
 
 /// <summary>
-/// Where a preshader operand is read from or written to. Every register is four
-/// components, and an operand names a component rather than a register.
+/// Where a preshader operand lives. An operand names a component, not a register.
 /// </summary>
 public enum PreshaderRegisterTable
 {
-    /// <summary>The literals, doubles listed in the CLIT block.</summary>
+    /// <summary>The CLIT literals.</summary>
     Literal = 1,
-    /// <summary>The uniforms, laid out as the preshader's own constant table says.</summary>
+    /// <summary>The uniforms, laid out by the preshader's own constant table.</summary>
     Input = 2,
     /// <summary>The shader's float constant registers.</summary>
     Output = 4,
-    /// <summary>The shader's bool constant registers.</summary>
     OutputBool = 5,
-    /// <summary>The shader's int constant registers.</summary>
     OutputInt = 6,
     Temp = 7,
 }
@@ -54,10 +51,7 @@ public enum PreshaderOpcode
     DotSwiz8 = 0x70F,
 }
 
-/// <summary>
-/// One operand: a component of a table, and if it is indexed, the component the
-/// index is read from.
-/// </summary>
+/// <summary>A table component, and the component an index is read from, if any.</summary>
 public sealed record PreshaderOperand(
     PreshaderRegisterTable Table,
     int Offset,
@@ -68,10 +62,8 @@ public sealed record PreshaderOperand(
 }
 
 /// <summary>
-/// An instruction works on ComponentCount components at once, each input and the
-/// output advancing a component at a time from where its operand starts - except
-/// the first input of a scalar instruction, which is one component read for all of
-/// them, and dot, whose output is the one component its inputs sum to.
+/// Works on ComponentCount consecutive components per operand, except a scalar
+/// instruction's first input (one component for all) and dot's single output.
 /// </summary>
 public sealed record PreshaderInstruction(
     PreshaderOpcode Opcode,
@@ -81,15 +73,9 @@ public sealed record PreshaderInstruction(
     PreshaderOperand Output);
 
 /// <summary>
-/// A program the fx_2_0 effect compiler moves out of a shader and runs on the CPU
-/// instead, whenever the uniforms it reads change: arithmetic on uniforms alone,
-/// which is the same for every vertex or pixel. Its inputs are the uniforms and its
-/// outputs are the shader's constant registers, which the shader then reads as if
-/// they were uniforms themselves.
-///
-/// It is stored in a PRES comment beside the shader's constant table, as a token
-/// stream of its own - a version, then comments: a constant table of its inputs,
-/// the literals it reads (CLIT), and the instructions (FXLC).
+/// Uniform-only arithmetic the fx_2_0 compiler moves to the CPU. It reads the
+/// uniforms and writes the shader's constant registers. Stored in a PRES comment
+/// as a token stream: a version, then CTAB, CLIT and FXLC comments.
 /// </summary>
 public sealed class Preshader
 {
@@ -104,7 +90,6 @@ public sealed class Preshader
         Instructions = instructions;
     }
 
-    /// <returns>The preshader in a shader, or null if it has none.</returns>
     public static Preshader Find(ShaderModel shader)
     {
         D3D9Instruction comment = shader.Instructions
@@ -113,7 +98,6 @@ public sealed class Preshader
         return comment == null ? null : Read(comment);
     }
 
-    /// <summary>The preshader in a PRES comment.</summary>
     public static Preshader Read(D3D9Instruction comment)
     {
         uint[] tokens = [.. Enumerable.Range(0, comment.Params.Count).Select(i => comment.Params[i])];
@@ -123,9 +107,8 @@ public sealed class Preshader
     }
 
     /// <summary>
-    /// An expression an fx_2_0 effect evaluates for a state, or to pick an element
-    /// of an array: the same program as a preshader, stored as a token stream of its
-    /// own - its version, then its comments - rather than inside a shader's.
+    /// An fx_2_0 state or array-index expression: a preshader as a standalone token
+    /// stream.
     /// </summary>
     public static Preshader ReadTokenStream(byte[] data)
     {
@@ -174,11 +157,8 @@ public sealed class Preshader
     }
 
     /// <summary>
-    /// An expression a Direct3D 10 or 11 effect evaluates when it applies a pass -
-    /// the index of `shaders[mode]`, or a state set from uniforms. It is the same
-    /// program as an fx_2_0 preshader, stored in a DXBC container instead: chunks of
-    /// its constant table, its literals - single precision here, CLI4 - and its
-    /// instructions. Its one output is the value.
+    /// A D3D10/11 effect expression (e.g. the index of `shaders[mode]`): a preshader
+    /// in a DXBC container, with single-precision literals (CLI4).
     /// </summary>
     public static Preshader ReadExpression(byte[] container)
     {
@@ -193,8 +173,7 @@ public sealed class Preshader
             int chunk = (int)Read(32 + i * 4);
             string type = FourCC.Decode((int)Read(chunk));
             int size = (int)Read(chunk + 4);
-            // The chunk as the token stream's comments have it: its FOURCC, then
-            // its contents.
+            // Shaped like a token stream comment: FOURCC, then contents.
             uint[] payload = [.. Enumerable.Range(0, size / 4 + 1).Select(t => Read(chunk + 4 + t * 4))];
             payload[0] = Read(chunk);
             switch (type)

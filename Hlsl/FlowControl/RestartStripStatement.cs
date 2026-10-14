@@ -18,6 +18,5 @@ public class RestartStripStatement : IStatement
         Outputs = inputs.ToDictionary();
     }
 
-    /// <summary>Nothing: this statement holds no value of its own.</summary>
     public IEnumerable<HeldSlot> HeldSlots => [];
 }

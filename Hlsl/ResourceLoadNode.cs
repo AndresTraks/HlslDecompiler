@@ -3,9 +3,8 @@ using System.Linq;
 
 namespace HlslDecompiler.Hlsl;
 
-// A typed resource load: Texture2D.Load(int3(x, y, mip)). Unlike a sample it takes
-// no sampler - it reads the texel directly - so it does not fit
-// TextureLoadOutputNode, whose operand layout is built around having one.
+// A typed resource load, Texture2D.Load(int3(x, y, mip)); no sampler, unlike
+// TextureLoadOutputNode.
 public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
 {
     private readonly int _addressLength;
@@ -30,8 +29,7 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
     public RegisterInputNode Resource => (RegisterInputNode)Inputs[0];
     public IEnumerable<HlslTreeNode> Address => Inputs.Skip(1).Take(_addressLength);
 
-    // A multisampled load - Texture2DMS.Load(int2, sampleIndex) - reads one sample
-    // of the texel, which it names as an argument after the address.
+    // Texture2DMS.Load(int2, sampleIndex).
     public bool HasSampleIndex { get; }
     public HlslTreeNode SampleIndex => HasSampleIndex ? Inputs[1 + _addressLength] : null;
     public int ComponentIndex { get; }
@@ -39,13 +37,8 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
     // The texel offsets of ld_aoffimmi, or null when the load has none.
     public int[] SampleOffsets { get; set; }
 
-    // Whether the texel is an integer, from the view's return type the way a
-    // structured load answers from its element type. A load says nothing about what
-    // it makes through the instruction alone - what it reads is an address, which is
-    // an integer whatever the texels are - so a float texel feeding an integer
-    // operation looked like a number rather than the bits it is, and the variable
-    // holding it converted where the shader reinterpreted. Null where the view has
-    // no declaration to ask.
+    // From the view's declared return type, since the instruction does not say;
+    // null where there is no declaration.
     public bool? IsIntegerTexel { get; init; }
 
     public override string ToString()

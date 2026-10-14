@@ -24,16 +24,9 @@ public class DotProductContext : IGroupContext
     public int Dimension => Value1.Length;
 
     /// <summary>
-    /// The match, unless one side of it is one value over and over and the other is
-    /// not a vector at all. `a*x + a*y` is a dot product of (a, a) with (x, y) as far
-    /// as the arithmetic goes, and a common factor as far as anyone writing it goes:
-    /// `tint * t1 + tint * k` came back as four `dot(tint.xx, float2(t1.x, k))`, one
-    /// per component, where the products and their sum say what it is.
-    ///
-    /// Against a vector it is a dot product however it is written - `dot(weight.xxx,
-    /// normal)` is a dp3 in the shader and attribute_snapped's source says so - and
-    /// so are two sides of one value each, `dot(v.ww, v.xx)`, which is what
-    /// dot_product2_add_scalar's source says.
+    /// Rejects a common factor: one side one repeated value (`a*x + a*y`) and the
+    /// other not a vector. Against a vector (`dot(w.xxx, n)`), or both sides
+    /// repeated, it stays a dot.
     /// </summary>
     public static DotProductContext UnlessFactored(DotProductContext context, TemplateMatcher templateMatcher)
     {
@@ -58,9 +51,8 @@ public class DotProductContext : IGroupContext
         return Enumerable.Range(1, group.Length - 1).All(i => IsSameValue(group[0], group[i]));
     }
 
-    // The same value, and not merely the same expression of other components - which
-    // is what NodeGrouper.AreNodesEquivalent asks, for grouping: the x and y of one
-    // matrix product are equivalent to it and are not one value.
+    // Stricter than NodeGrouper.AreNodesEquivalent, under which the x and y of one
+    // matrix product are equivalent.
     private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
     {
         if (ReferenceEquals(a, b))

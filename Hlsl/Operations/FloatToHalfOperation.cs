@@ -1,7 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// f32tof16: a float as the bits of the half float nearest it, in the low sixteen
-// bits of an integer. f16tof32 is the other way round.
+// f32tof16: the nearest half's bits in the low 16 bits of an integer.
 public class FloatToHalfOperation : ConsumerOperation
 {
     public FloatToHalfOperation(HlslTreeNode value)

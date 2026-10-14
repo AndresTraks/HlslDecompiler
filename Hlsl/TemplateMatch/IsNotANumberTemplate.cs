@@ -3,13 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// A NaN is the only float that is not equal to itself, so fxc asks whether a
-/// value is one by comparing it with itself - `ne r0.x, r0.x, r0.x` - and needs
-/// no constant to do it. Nothing else is written that way: for every other float
-/// the comparison is false, so a shader that meant it would be writing a zero.
-///
-/// Only of floats. Two integers compared that way are never unequal, and the
-/// bits test an if_z carries is no comparison of a value with anything.
+/// isnan from `x != x` (`ne r0.x, r0.x, r0.x`). Float comparisons only, not
+/// integer ones or if_z bit tests.
 /// </summary>
 public class IsNotANumberTemplate : NodeTemplate<ComparisonNode>
 {

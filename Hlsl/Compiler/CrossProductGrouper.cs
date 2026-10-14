@@ -3,9 +3,7 @@
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Three components that are a cross product: `a.yzx * b.zxy - a.zxy * b.yzx`,
-/// which is how fxc writes cross(a, b) - a mul and a mad with a negated addend,
-/// and after the templates three subtracts of two products each.
+/// Three components that are cross(a, b) = `a.yzx * b.zxy - a.zxy * b.yzx`.
 /// </summary>
 public class CrossProductGrouper
 {
@@ -30,10 +28,8 @@ public class CrossProductGrouper
             products[i] = ([first.Factor1, first.Factor2], [second.Factor1, second.Factor2]);
         }
 
-        // Component i is a[j] * b[k] - a[k] * b[j], j and k the components after it.
-        // Which factor of the first two products is a's decides the rest: b[0] is
-        // what a[2] is multiplied by in component 1, and a[0] what b[2] is, and the
-        // last component is checked against all of it.
+        // Component i is a[j] * b[k] - a[k] * b[j]. Choosing a's factor in the
+        // first product fixes the rest; the last component is checked against it.
         foreach (int firstA in new[] { 0, 1 })
         {
             foreach (int secondA in new[] { 0, 1 })
@@ -59,8 +55,6 @@ public class CrossProductGrouper
         return null;
     }
 
-    // The factor a product multiplies the given node by, or null where the node is
-    // not one of its factors.
     private static HlslTreeNode OtherFactor(HlslTreeNode[] factors, HlslTreeNode node)
     {
         if (NodeGrouper.AreNodesEquivalent(factors[0], node))

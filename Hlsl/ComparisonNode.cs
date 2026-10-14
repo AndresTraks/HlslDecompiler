@@ -22,30 +22,22 @@ public class ComparisonNode : HlslTreeNode
     public HlslTreeNode Right => Inputs[1];
     public IfComparison Comparison { get; }
 
-    /// <summary>
-    /// Whether the two sides were compared as integers. ilt and lt both read as
-    /// `a &lt; b`, so without this the mask a comparison writes cannot be told
-    /// apart from the bits of a float.
-    /// </summary>
+    /// <summary>Compared as integers (ilt, not lt).</summary>
     public bool IsInteger { get; }
 
     /// <summary>
-    /// Whether they were compared as unsigned integers. ult and ilt both read as
-    /// `a &lt; b`, and HLSL takes the signedness from the operands rather than from
-    /// the operator, so the unsigned form has to say so at one of them.
+    /// Compared as unsigned (ult); HLSL takes signedness from the operands, so one
+    /// must be cast.
     /// </summary>
     public bool IsUnsigned { get; }
 
     /// <summary>
-    /// Whether this is an if_z or if_nz over a register that is no comparison - a
-    /// test of the bits for zero. It says nothing about what those bits are, so it
-    /// types nothing: taken as a float comparison, the -1 a branch moved into a
-    /// mask register was retyped as the NaN its bits are.
+    /// An if_z/if_nz bit test for zero, not a comparison; it must not type its
+    /// operand as float.
     /// </summary>
     public bool IsBitsTest { get; init; }
 
-    /// <summary>The same comparison with the opposite outcome, or null for one
-    /// that has none - a stale loop counter test, say.</summary>
+    /// <summary>The opposite comparison, or null if there is none.</summary>
     public ComparisonNode Inverted()
     {
         IfComparison inverted = Comparison switch

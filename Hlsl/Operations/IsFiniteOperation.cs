@@ -1,9 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// isfinite(x). A float is finite unless its exponent is all ones, which is what
-/// both an infinity and a NaN have, so fxc keeps the exponent field alone and
-/// asks whether it is anything else.
+/// isfinite(x): exponent field not all ones.
 /// </summary>
 public class IsFiniteOperation : ConsumerOperation
 {

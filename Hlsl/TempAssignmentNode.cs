@@ -18,10 +18,8 @@ public class TempAssignmentNode : HlslTreeNode, IHasComponentIndex
     public bool IsReassignment { get; set; } = false;
     
     /// <summary>
-    /// The variables whose value this assignment wants as this statement computes
-    /// it, rather than as the register held it before. Recorded before lowering,
-    /// which is the only moment the two are distinguishable: a value that feeds
-    /// this one is a node inside it then, and a variable name afterwards.
+    /// Assignments whose new value this one reads, rather than the register's old
+    /// value. Recorded before lowering, the only time the two are distinguishable.
     /// </summary>
     public List<TempAssignmentNode> DependsOnNewValueOf { get; } = [];
 

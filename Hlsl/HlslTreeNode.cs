@@ -10,50 +10,37 @@ public class HlslTreeNode
     public IList<HlslTreeNode> Outputs { get; } = [];
 
     /// <summary>
-    /// Whether the instruction this node came from reads its operands as integers
-    /// (iadd, itof, ld), as floats (add, mad, sample, ftoi), or says nothing about
-    /// them - a mov passes its bits along, and and/or/xor work on bits as bits.
-    /// A value that could be either, the immediate a mov writes, is typed by the
-    /// nodes that go on to read it, which is what this is for.
+    /// Whether the source instruction reads its operands as integers (iadd, ld), as
+    /// floats (add, sample), or neither (mov, and/or/xor). Types ambiguous values
+    /// such as a mov'd immediate by their readers.
     /// </summary>
     public bool? ConsumesInteger { get; set; }
 
     /// <summary>
-    /// Which instruction made this value, as its position in the shader. The
-    /// components of one instruction share it, and that is the only question it is
-    /// there to answer: four loads into one register are four instructions and the
-    /// four components of one load are one. Zero where nothing set it - a node a
-    /// template built, or an operand read rather than computed - and zero is never
-    /// the same instruction as anything, including another zero.
+    /// Position of the instruction that made this value, shared by its components.
+    /// Zero where unset (template-built, operand reads); zero never matches anything.
     /// </summary>
     public int SourceInstruction { get; set; }
 
     /// <summary>
-    /// Which component of that instruction's destination this value is, so that
-    /// the components of one instruction can be put back in the order it wrote
-    /// them. Meaningless where <see cref="SourceInstruction"/> is zero.
+    /// Destination component within <see cref="SourceInstruction"/>.
     /// </summary>
     public int SourceComponent { get; set; }
 
     /// <summary>
-    /// What this value is, worked out once while every reader of it was still
-    /// there to ask - see <see cref="ValueTypes.Record"/>. Null for a value made
-    /// after that and not handed facts by what made it, which is then asked live.
+    /// Facts recorded while all readers still existed (<see cref="ValueTypes.Record"/>).
+    /// Null for later values, which are then asked live.
     /// </summary>
     internal TypeFacts Types { get; set; }
 
     /// <summary>
-    /// What this node reads its operands as: the recorded answer where there is
-    /// one, which a template hands on to what it builds, and the parse's
-    /// <see cref="ConsumesInteger"/> otherwise. Asked instead of the flag by
-    /// everything after the parse - a node a template built has no flag of its
-    /// own, and a variable it read was then typed as if nothing read it.
+    /// Use this after the parse, not <see cref="ConsumesInteger"/>: template-built
+    /// nodes have no flag of their own.
     /// </summary>
     internal bool? ReadsIntegers => Types != null ? Types.Reads : ConsumesInteger;
 
     /// <summary>
-    /// Whether two values were made by one instruction, which is what makes them
-    /// components of one thing rather than two that share a register.
+    /// Made by one instruction, so components of one value rather than register mates.
     /// </summary>
     public static bool IsSameInstruction(HlslTreeNode a, HlslTreeNode b)
     {
@@ -62,8 +49,7 @@ public class HlslTreeNode
 
     public void Replace(HlslTreeNode with)
     {
-        // Replacing a node with itself would drop its own back-references and then
-        // append to the very list being enumerated.
+        // Self-replacement would modify the list being enumerated.
         if (ReferenceEquals(this, with))
         {
             return;
@@ -115,8 +101,7 @@ public class HlslTreeNode
         {
             return true;
         }
-        // Memoizing on reference identity both terminates on loop-carried values
-        // and keeps shared subexpressions from being walked repeatedly.
+        // Terminates on loop-carried values and skips shared subexpressions.
         if (!visited.Add(node))
         {
             return false;
@@ -132,9 +117,8 @@ public class HlslTreeNode
     }
 
     /// <summary>
-    /// Inputs that expression traversals may descend into. A phi's operands describe
-    /// how a loop-carried variable is updated, not how its value is composed, so the
-    /// phi is a leaf to everything that walks expressions.
+    /// Inputs expression walks descend into. A phi is a leaf: its operands describe
+    /// a loop-carried update, not its value's composition.
     /// </summary>
     public static IEnumerable<HlslTreeNode> TraversableInputs(HlslTreeNode node)
     {
@@ -158,10 +142,8 @@ public class HlslTreeNode
     }
 
     /// <summary>
-    /// Adds an input without the acyclic check. Only a loop backedge may use this:
-    /// the value flowing back is by definition derived from the node it feeds, so
-    /// the cycle is intended. Expression traversals treat a phi as a leaf, so the
-    /// cycle is never walked - see <see cref="TraversableInputs"/>.
+    /// Adds an input without the acyclic check; only for a loop backedge. The cycle
+    /// is never walked (<see cref="TraversableInputs"/>).
     /// </summary>
     protected void AddBackedgeInput(HlslTreeNode node)
     {

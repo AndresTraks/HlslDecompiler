@@ -4,8 +4,7 @@ using System.Collections.Generic;
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// Where each block ends, and which case a switch jumps to, so that the machine
-/// does not rescan to find out.
+/// Where each block ends, and which case a switch jumps to.
 /// </summary>
 public class D3D10ControlFlow
 {

@@ -3,17 +3,9 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts sign back together.
-///
-/// There is no sign instruction, so fxc writes it as the difference of two
-/// comparisons against zero - and a comparison writes all ones, so the difference
-/// of the two masks is -1, 0 or 1 exactly. Recovered as source it reads as
-/// `(t &lt; 0 ? -1 : 0) - (t &gt; 0 ? -1 : 0)`, which is what the shader does but
-/// not what it says, and fxc does not recognise it as its own expansion coming
-/// back, so it emits the selects rather than folding them away.
-///
-/// Shader model 3 has no comparison that writes a mask, so there it is two slt's,
-/// which write one: `slt(-t, t) - slt(t, -t)`, the positive test first.
+/// Recovers sign from fxc's difference of two comparison masks,
+/// `(t &lt; 0) - (t &gt; 0)` with all-ones masks, or SM3's
+/// `slt(-t, t) - slt(t, -t)`.
 /// </summary>
 public class SignTemplate : NodeTemplate<SubtractOperation>
 {
@@ -30,12 +22,8 @@ public class SignTemplate : NodeTemplate<SubtractOperation>
     }
 
     /// <summary>
-    /// What the sign is of, and whether the masks are the other way round. The
-    /// difference the other way is -sign of the same value: a shader that negates
-    /// the sign at the use - `-sign(octa) * abs(octa.yx)`, folding an octahedral
-    /// normal back - leaves fxc nothing to negate but the order of the two
-    /// comparisons, and the subtraction that comes out is the expansion reversed
-    /// rather than any expansion of its own.
+    /// The value, and whether the masks are reversed: fxc writes `-sign(t)` by
+    /// swapping the comparisons.
     /// </summary>
     private static (HlslTreeNode Value, bool Negated)? TryGetValue(SubtractOperation subtract)
     {
@@ -83,10 +71,7 @@ public class SignTemplate : NodeTemplate<SubtractOperation>
         return node is NegateOperation negate && ReferenceEquals(negate.Value, value);
     }
 
-    /// <returns>
-    /// What is being compared, when it is compared with zero the given way round.
-    /// Either side may hold the zero, so `0 &lt; t` counts as `t &gt; 0`.
-    /// </returns>
+    /// <returns>t in `t op 0`, also accepting `0 reverse(op) t`.</returns>
     private static HlslTreeNode TryGetComparisonWithZero(HlslTreeNode node, IfComparison comparison)
     {
         if (node is not ComparisonNode compare)

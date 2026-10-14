@@ -1,11 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// One component of an msad4 result. The four components are the sums of absolute
-// differences of the reference's four bytes against four windows sliding along an
-// eight byte source, so - like lit - the destination component decides which value
-// this is rather than which part of the source is read. The source is the two words
-// the intrinsic takes; fxc builds the windows out of them in front of the
-// instruction, and the parser reads them back off that.
+// One component of msad4; like lit, the destination component picks the window.
+// The source is the intrinsic's two words, which the parser recovers from the
+// window-building code fxc emits before the instruction.
 public class Msad4Node : HlslTreeNode, IHasComponentIndex
 {
     public Msad4Node(HlslTreeNode reference, HlslTreeNode sourceLow, HlslTreeNode sourceHigh,

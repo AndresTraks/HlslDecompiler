@@ -41,65 +41,44 @@ public class D3D10Instruction : Instruction
     private D3D10GlobalFlags _globalFlags;
     private D3D10Primitive _primitive;
     private D3D10PrimitiveTopology _primitiveTopology;
-    // See DxbcReader: a geometry shader's and a hull shader's input registers are
-    // indexed by vertex as well as by register.
+    // GS and HS inputs are indexed by vertex as well as by register.
     private bool _inputsAreVertexArrays;
 
     public D3D10Opcode Opcode { get; }
 
-    // Destination saturate modifier: the result is clamped to [0, 1]. Encoded in
-    // the opcode token rather than in an operand, so the reader sets it.
+    // Opcode-token fields below are set by the reader.
     public bool Saturate { get; set; }
 
-    // Whether if, breakc and the rest take the branch when the tested register is
-    // non-zero, which is the _nz form, or when it is zero, which is _z. In the
-    // opcode token rather than in an operand, so the reader sets it.
+    // _nz (true) or _z.
     public bool TestNonZero { get; set; } = true;
 
-    // Whether a structured UAV keeps a counter whose order is preserved, which
-    // IncrementCounter and DecrementCounter need and an append or a consume
-    // buffer has of its own. In the opcode token of the declaration rather than
-    // in an operand, so the reader sets it; fxc writes the declaration _opc.
+    // _opc: the structured UAV has an order-preserving counter.
     public bool HasOrderPreservingCounter { get; set; }
 
-    // The texel offsets of sample_aoffimmi, or null when the sample has none.
+    // The texel offsets of sample_aoffimmi, or null.
     public int[] SampleOffsets { get; set; }
 
-    // What shader model 5 says about the resource at the instruction that reads it,
-    // in extended opcode tokens of its own: its dimension, the stride of a
-    // structured buffer, and the four return types. The declaration says the same,
-    // so nothing here needs them to decompile - but fxc writes them into the
-    // mnemonic, `ld_indexable(texture2d)(float,float,float,float)`, and the
-    // listing follows it. Null where the instruction carries none.
+    // SM5 extended opcode tokens repeating the declaration, kept only for the
+    // listing: `ld_indexable(texture2d)(float,float,float,float)`.
     public ResourceDimension? IndexableResourceDimension { get; set; }
     public int IndexableResourceStride { get; set; }
     public int? IndexableResourceReturnTypeToken { get; set; }
 
-    // How resinfo reports what it measures: as floats, as their reciprocals, or as
-    // the integers GetDimensions' uint overloads take. In the opcode token, so the
-    // reader sets it.
     public D3D10ResInfoReturnType ResInfoReturnType { get; set; }
 
-    // What a sync waits on: the threads of the group, group shared memory, or UAV
-    // memory. In the opcode token, so the reader sets it.
     public D3D10SyncFlags SyncFlags { get; set; }
     public D3D10OperandTokenCollection OperandTokens { get; }
 
-    // dcl_indexableTemp carries no operand tokens: three plain dwords name the x#
-    // register, how many elements it has, and how many components each holds.
+    // dcl_indexableTemp has no operand tokens: three dwords (register, element
+    // count, component count).
     public int IndexableTempRegister => (int)OperandTokens.Tokens[0];
     public int IndexableTempElementCount => (int)OperandTokens.Tokens[1];
     public int IndexableTempComponentCount => (int)OperandTokens.Tokens[2];
 
-    // dcl_indexrange carries one operand - the first register of the run, with the
-    // mask the run is indexed over - and then a plain dword for how many registers
-    // the run covers. It sits after the operand's tokens, however many those are.
+    // dcl_indexrange: one operand, then a plain dword with the register count.
     public int IndexRangeCount => (int)OperandTokens.Tokens[OperandTokens.GetSpan(0).Length];
 
-    /// <summary>
-    /// The payload of a customdata instruction, which is not operand tokens - an
-    /// immediate constant buffer is four floats per row.
-    /// </summary>
+    /// <summary>The raw customdata payload, e.g. an immediate constant buffer.</summary>
     public uint[] CustomData { get; private set; }
 
     public static D3D10Instruction CreateCustomData(uint[] customData, bool inputsAreVertexArrays)
@@ -149,31 +128,21 @@ public class D3D10Instruction : Instruction
     /// <summary>The sample count a dcl_resource_texture2dms declares, or 0.</summary>
     public int ResourceSampleCount { get; set; }
 
-    /// <summary>
-    /// Whether a declared constant buffer is read at an index a register holds
-    /// rather than at an immediate one. It is one bit of the opcode token, and it
-    /// says what the shader does with the buffer.
-    /// </summary>
+    /// <summary>A constant buffer declared as indexed by a register.</summary>
     public bool IsDynamicallyIndexed { get; set; }
 
-    /// <summary>What a tessellator subdivides: a triangle, a quad or a line.</summary>
     public D3D10TessellatorDomain TessellatorDomain { get; set; }
 
-    /// <summary>How many control points a patch has, in or out.</summary>
     public int ControlPointCount { get; set; }
 
     /// <summary>
-    /// The output stream this instruction belongs to, in a geometry shader that writes
-    /// more than one: the stream a declaration was declared under, or the one the emit
-    /// after a write sends it to. Null in every shader with a single stream, which
-    /// leaves those keyed exactly as they always were.
+    /// The geometry shader output stream of a declaration or write; null with one
+    /// stream.
     /// </summary>
     public int? Stream { get; set; }
 
-    /// <summary>How the tessellator cuts an edge it has a factor for.</summary>
     public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
 
-    /// <summary>What the tessellator makes of a subdivided patch.</summary>
     public D3D10TessellatorOutputPrimitive TessellatorOutputPrimitive { get; set; }
 
     public D3D10GlobalFlags GetGlobalFlags()
@@ -214,11 +183,6 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DerivRtyCoarse:
                 case D3D10Opcode.DerivRtyFine:
                 case D3D10Opcode.Rcp:
-                // The double precision arithmetic, which writes a register the way
-                // any other does - two of its components for each double. Left out,
-                // the destination was formatted as a source: it took a source
-                // swizzle, so `dmul r1.xy` printed as `dmul r1`, and every operand
-                // beside it was read four components wide.
                 case D3D10Opcode.DAdd:
                 case D3D10Opcode.DMul:
                 case D3D10Opcode.DDiv:
@@ -238,10 +202,7 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.DToU:
                 case D3D10Opcode.IToD:
                 case D3D10Opcode.UToD:
-                // Two destinations is still destinations. Saying they had none
-                // left both operands looking like sources, so they took source
-                // swizzles and the sources were read four components wide - a udiv
-                // by l(3, 3, 0, 0) then divides by the zeroes as well.
+                // Two destinations each.
                 case D3D10Opcode.Udiv:
                 case D3D10Opcode.IMul:
                 case D3D10Opcode.UMul:
@@ -271,7 +232,6 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.MSAD:
                 case D3D10Opcode.IMad:
                 case D3D10Opcode.IMax:
-                // The unsigned arithmetic writes a destination like the signed.
                 case D3D10Opcode.UMax:
                 case D3D10Opcode.UMin:
                 case D3D10Opcode.Umad:
@@ -369,11 +329,7 @@ public class D3D10Instruction : Instruction
         {
             return null;
         }
-        // udiv, imul and sincos write two destinations and a shader wanting only
-        // one of the two leaves the other null. A null carries no write mask, so
-        // taking it as the destination said the instruction writes nothing - and
-        // `udiv null, r0.zw, r0.zzzw, l(0, 0, 7, 7)` then read the divisor from the
-        // first two components, which are the 0 of a division by zero.
+        // With two destinations, a null first one has no mask; use the second.
         if (GetOperandType(0) == OperandType.Null && HasSecondDestination())
         {
             return 1;
@@ -381,11 +337,7 @@ public class D3D10Instruction : Instruction
         return 0;
     }
 
-    /// <summary>
-    /// Whether this operand is written rather than read. udiv, imul and sincos
-    /// write two, and treating the second as a source gave it a source swizzle
-    /// where it wanted its write mask.
-    /// </summary>
+    /// <summary>Whether this operand is written; udiv, imul and sincos write two.</summary>
     public bool IsDestinationOperand(int operandIndex)
     {
         if (operandIndex == GetDestinationParamIndex())
@@ -423,9 +375,8 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// The same over part of what the instruction writes. One instruction can write
-    /// two things that have to be said separately - two output semantics packed
-    /// into one register - and each statement names only its own components.
+    /// The write mask for part of the destination, e.g. one of two output
+    /// semantics packed into one register.
     /// </summary>
     public string GetWriteMaskName(int operandIndex, int destinationLength, int mask)
     {
@@ -454,12 +405,8 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// Whether the destination holds doubles, two register components to each. A
-    /// double precision instruction answers a pair for every value it computes, so
-    /// its write mask counts twice as many components as there are values and the
-    /// value belongs to the lower component of each pair - .xy is one double, .xyzw
-    /// two. False for the double instructions that answer something else: a
-    /// comparison's bool and a conversion's float or integer are single components.
+    /// Whether the destination holds doubles, a component pair each (.xy is one).
+    /// False for double comparisons and conversions to float/int.
     /// </summary>
     public bool WritesDoubles => Opcode is
         D3D10Opcode.DAdd or D3D10Opcode.DMul or D3D10Opcode.DDiv or
@@ -467,11 +414,7 @@ public class D3D10Instruction : Instruction
         D3D10Opcode.DMovC or D3D10Opcode.DFMA or D3D10Opcode.DRCP or
         D3D10Opcode.FToD or D3D10Opcode.IToD or D3D10Opcode.UToD;
 
-    /// <summary>
-    /// Whether a source operand holds doubles. The condition of a dmovc is the one
-    /// operand of a double instruction that does not: it answers a pair with a
-    /// single bool, the way a double comparison does the other way about.
-    /// </summary>
+    /// <summary>Whether a source operand holds doubles (not a dmovc condition).</summary>
     public bool IsDoubleOperand(int operandIndex) => Opcode switch
     {
         D3D10Opcode.DAdd or D3D10Opcode.DMul or D3D10Opcode.DDiv or
@@ -486,26 +429,14 @@ public class D3D10Instruction : Instruction
     };
 
     /// <summary>
-    /// Whether doubles pass through the instruction at all, on either side of it.
-    /// Where they do, the operands are read by which value of the instruction is
-    /// wanted rather than by which component, because the two stop being the same
-    /// thing as soon as one value takes two components.
+    /// Whether doubles appear on either side. Operands are then read by value
+    /// ordinal rather than by component.
     /// </summary>
     public bool HasDoubleOperands => WritesDoubles || IsDoubleOperand(1);
 
     /// <summary>
-    /// Which value of the instruction a destination component is: its position among
-    /// the components the destination writes. fxc writes a double operand with its
-    /// pair repeated across the four swizzle slots - .xyxy for the double at x, and
-    /// .xyzw for the two of a double2 - so the nth double of an operand is at slot
-    /// 2n where the nth single value is at slot n, and neither is the component the
-    /// destination is being written at.
-    /// </summary>
-    /// <summary>
-    /// How many values the instruction computes: one for each double where it writes
-    /// doubles, and one for each component otherwise. A double comparison of a double2
-    /// answers two bools from four components of operand, and the width of everything
-    /// beside the destination is counted from this rather than from the mask.
+    /// How many values the instruction computes: one per double where it writes
+    /// doubles, else one per component. Operand widths derive from this.
     /// </summary>
     public int ValueCount
     {
@@ -529,10 +460,8 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// Which operand pair the instruction's nth value reads: where it writes
-    /// doubles, the pair of the register it is written at - the double at .zw
-    /// is the operand's second double, first value or no - and otherwise its
-    /// position among the values, a comparison answering one for each.
+    /// Which operand pair the nth value reads. For double writes it is the
+    /// destination's pair (.zw is pair 1 even as the first value).
     /// </summary>
     public int GetValuePair(int valueOrdinal)
     {
@@ -556,6 +485,10 @@ public class D3D10Instruction : Instruction
         return valueOrdinal;
     }
 
+    /// <summary>
+    /// A destination component's position among the written values. fxc repeats a
+    /// double operand's pair across the swizzle (.xyxy), so the nth double is at slot 2n.
+    /// </summary>
     public int GetValueOrdinal(int destinationComponent)
     {
         int mask = GetDestinationWriteMask();
@@ -575,18 +508,12 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// Which run of an instanced hull phase this instruction belongs to, or null
-    /// where the phase runs once. fxc collapses tessellation factors that are all
-    /// computed the same way into one phase run once per factor, telling the runs
-    /// apart by vForkInstanceID; the phase is unrolled into a copy per run, and this
-    /// is what each copy reads that register as.
+    /// The vForkInstanceID value of this copy of an unrolled instanced hull phase,
+    /// or null where the phase runs once.
     /// </summary>
     public int? ForkInstance { get; private set; }
 
-    // The same tokens, only knowing which run of the phase they are. A memberwise
-    // copy because an instruction carries more than its operands - a resource
-    // dimension, an interpolation mode, the stream it writes - and a copy that lost
-    // any of them would decompile as a different instruction.
+    // Memberwise, so opcode-token state (dimension, interpolation, stream) is kept.
     public D3D10Instruction ForInstance(int instance)
     {
         var copy = (D3D10Instruction)MemberwiseClone();
@@ -599,8 +526,6 @@ public class D3D10Instruction : Instruction
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(operandIndex);
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
-            // A one-component operand - oDepth, say - has the one component and no
-            // mask to spell it out with.
             return 1;
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
@@ -635,21 +560,14 @@ public class D3D10Instruction : Instruction
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand0Component)
         {
-            // dcl_input vThreadIDInGroupFlattened declares SV_GroupIndex with no
-            // components at all - it is a scalar, and every read of it is .x. So is
-            // oMask, which fxc writes bare for the same reason; an empty mask left
-            // the instruction writer with no component to ask the type of, and it
-            // cast a uint coverage mask to float.
+            // Zero-component scalars (vThreadIDInGroupFlattened, oMask, ...) still
+            // write .x; an empty mask leaves no component to type.
             OperandType operandType = GetOperandType(operandIndex);
             return IsThreadRegister(operandType)
                 || operandType == OperandType.OutputCoverageMask
                 || operandType == OperandType.InputCoverageMask
                 || operandType == OperandType.OutputStencilRef
                 || operandType == OperandType.InputInnerCoverage
-                // And so is the control point id a hull shader's control point phase
-                // is given: `dcl_input vOutputControlPointID` declares one number,
-                // and with no component the declaration seeded no value for it, so
-                // the mov that reads it found nothing.
                 || operandType == OperandType.OutputControlPointID
                 ? 1
                 : 0;
@@ -682,13 +600,9 @@ public class D3D10Instruction : Instruction
         }
     }
 
-    // The mode lives in the opcode token, not the operand token this used to read,
-    // so every input declared as linear whatever it really was. The reader keeps it,
-    // the way it keeps the saturate bit.
+    // In the opcode token, not the operand token; set by the reader.
     public D3D10InterpolationMode InterpolationMode { get; set; }
 
-    // How dcl_sampler declares the sampler. In the opcode token rather than in an
-    // operand, so the reader sets it.
     public D3D10SamplerMode SamplerMode { get; set; }
 
     public D3D10InterpolationMode GetInterpolationMode()
@@ -761,8 +675,7 @@ public class D3D10Instruction : Instruction
 
     public override string GetSourceSwizzleName(int srcIndex, int? destinationLength = null)
     {
-        // A one component operand - vPrim - is a scalar, and fxc writes it bare;
-        // the identity swizzle it decodes to would read .xyz off a scalar.
+        // Scalar operands (vPrim) are written bare.
         if (GetOperandComponentSelection(srcIndex) is D3D10OperandNumComponents.Operand0Component
             or D3D10OperandNumComponents.Operand1Component)
         {
@@ -800,31 +713,18 @@ public class D3D10Instruction : Instruction
                     destinationMask = 15;
                     destinationLength = 4;
                 }
-                // lod writes one component and reads a coordinate as wide as the
-                // resource, so its destination says nothing about how wide its
-                // sources are. Narrowed by it, a 2D lookup read `v0.x` where the
-                // coordinate is `v0.xyxx`.
+                // lod's destination width says nothing about its coordinate's.
                 else if (Opcode == D3D10Opcode.Lod)
                 {
                     destinationMask = 15;
                     destinationLength = 4;
                 }
-                // Every operand of a double instruction is as wide as the values the
-                // instruction computes, twice over where the operand is doubles
-                // itself. The destination says neither: a comparison answers one
-                // component for a pair and a conversion one for two, or two for one
-                // the other way about. Narrowed by the destination instead, `dlt
-                // r0.z, r0.xyxy, r1.xyxy` read r0.x against r1.x - half of each
-                // number, which is a different question - `ftod r0.xy, r0.x` printed
-                // r0.xx, which is the float twice over, and the condition of a dmovc
-                // over one double came out r0.xx, which is the same bool twice.
+                // Double operands are as wide as the value count (doubled for a
+                // double operand); the destination mask does not say so, e.g.
+                // `dlt r0.z, r0.xyxy, r1.xyxy`.
                 else if (HasDoubleOperands)
                 {
-                    // A value of a double-writing instruction reads the operand
-                    // pair its destination pair is at, so the swizzle has to be
-                    // shown up to the highest pair written: the double at .zw is
-                    // the operand's second pair, and one pair of swizzle printed
-                    // r0.zw where the operand read was r0.zwzw.
+                    // Show up to the highest pair written: .zw reads r0.zwzw.
                     destinationLength = IsDoubleOperand(srcIndex)
                         ? WritesDoubles
                             ? (GetValuePair(ValueCount - 1) + 1) * 2
@@ -832,10 +732,7 @@ public class D3D10Instruction : Instruction
                         : ValueCount;
                     destinationMask = (1 << destinationLength.Value) - 1;
                 }
-                // The address of an interlocked operation is a whole operand too.
-                // fxc writes it as it is stored - the coordinate of a texel, or the
-                // element and the byte offset within one - whatever the width of the
-                // single value the operation keeps.
+                // An atomic's address is printed full width, as stored.
                 else if ((Opcode.IsAtomic() && srcIndex == 1)
                     || (Opcode.IsImmediateAtomic() && srcIndex == 2))
                 {
@@ -884,10 +781,8 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// Whether an operand says where in a buffer this reads or writes: an element
-    /// index, a byte offset, an address. Integers whatever the data is - a load of a
-    /// float from groupshared memory at l(1) read the 1 as the denormal its bits
-    /// make, and wrote `g0[0.000000]`.
+    /// Whether an operand is a buffer address (element index or byte offset),
+    /// which is an integer whatever the data type.
     /// </summary>
     public bool IsAddressOperand(int index)
     {
@@ -932,25 +827,14 @@ public class D3D10Instruction : Instruction
             OperandType.OutputDepthGreaterEqual => "SV_DepthGreaterEqual",
             OperandType.OutputDepthLessEqual => "SV_DepthLessEqual",
             OperandType.OutputCoverageMask => "SV_Coverage",
-            // The coverage the rasterizer handed this pixel, read where an order-
-            // independent pass wants to weight a fragment by it. Same name as the
-            // mask written out, and - like it - it names no register to index.
             OperandType.InputCoverageMask => "SV_Coverage",
-            // The stencil reference the pixel writes, and whether the
-            // rasterizer covered the whole pixel rather than part of it.
-            // Both name one number and no register to index.
             OperandType.OutputStencilRef => "SV_StencilRef",
             OperandType.InputInnerCoverage => "SV_InnerCoverage",
             _ => throw new NotImplementedException(operandType.ToString())
         };
         // These name no register, so there is no index to append.
-        // A domain location names one register and no number, the way the thread
-        // ids do - but it is a float where they are uints, so it is not one of
-        // them.
         if (!IsThreadRegister(operandType)
             && operandType != OperandType.InputDomainPoint
-            // The control point id names one register and no number, the way a
-            // domain location does.
             && operandType != OperandType.OutputControlPointID
             && operandType != OperandType.OutputDepth
             && operandType != OperandType.OutputDepthGreaterEqual
@@ -972,8 +856,7 @@ public class D3D10Instruction : Instruction
     {
         Span<uint> span = OperandTokens.GetSpan(index);
         uint value;
-        // A bare count rather than an operand: the dword after the opcode token is
-        // the number itself, with no operand token in front of it to describe it.
+        // A bare dword count with no operand token.
         if (Opcode == D3D10Opcode.DclTemps || Opcode == D3D10Opcode.DclGSMaxOutputVertexCount
             || Opcode == D3D10Opcode.DclGSInstanceCount
             || Opcode == D3D10Opcode.DclHSMaxTessFactor
@@ -1031,13 +914,10 @@ public class D3D10Instruction : Instruction
         return BitConverter.ToInt32(GetOperandValueBytes(index, componentIndex), 0);
     }
 
-    // The nth double of a d() operand: its two dwords, low half first. The operand
-    // carries two doubles, and a double instruction reads the pair its swizzle
-    // names rather than the single component a register read would take.
+    // The nth double of a d() operand: two dwords after the operand token, low first.
     public double GetParamDouble(int index, int doubleIndex)
     {
         Span<uint> span = OperandTokens.GetSpan(index);
-        // The operand token, then the halves of each double beside it.
         uint low = span[1 + doubleIndex * 2];
         uint high = span[2 + doubleIndex * 2];
         return BitConverter.Int64BitsToDouble((long)high << 32 | low);
@@ -1068,10 +948,8 @@ public class D3D10Instruction : Instruction
         {
             if (Opcode.IsInteger())
             {
-                // As wide as the operand, the same as the float case below: taking
-                // only the first component read l(1, 2, 0, 0) - a texel address - as 1.
-                // Written as arrays rather than collections: the constructor's
-                // element type is now one of two, and an integer reads as either.
+                // Explicit float[]: a collection expression of ints is ambiguous
+                // between the float[] and double[] constructors.
                 return GetOperandComponentSelection(index) == D3D10OperandNumComponents.Operand1Component
                     ? new D3D10RegisterKey(new float[] { GetParamInt(index) })
                     : new D3D10RegisterKey(new float[]
@@ -1086,8 +964,6 @@ public class D3D10Instruction : Instruction
         }
         else if (operandType == OperandType.Immediate64)
         {
-            // The whole operand is the value: two doubles, whatever the
-            // instruction reads from them.
             return new D3D10RegisterKey([
                 GetParamDouble(index, 0),
                 GetParamDouble(index, 1)
@@ -1099,17 +975,13 @@ public class D3D10Instruction : Instruction
         }
         else if (operandType == OperandType.IndexableTemp)
         {
-            // x0[3] and x0[r0.x + 1] are one register: the first index names it and
-            // the second, immediate or not, picks the element. The key is the whole
-            // array, and the element is modelled by whoever reads the operand.
+            // Keyed by the whole x# array; the element index is left to the reader.
             return new D3D10RegisterKey(
                 operandType,
                 (int)OperandTokens.GetOperandIndices(index)[0].Immediate);
         }
         if ((_inputsAreVertexArrays && operandType == OperandType.Input)
-            // vicp[2][0] is the same shape: which control point, then which
-            // register of it. The patch is an array of vertices the way a
-            // geometry shader's input is.
+            // vicp[point][register], shaped like a GS input.
             || operandType == OperandType.InputControlPoint)
         {
             return D3D10RegisterKey.CreateGSInput(
@@ -1130,9 +1002,8 @@ public class D3D10Instruction : Instruction
     }
 
     /// <summary>
-    /// The registers a shader is given rather than declared: a compute shader's
-    /// thread and group indices, and a geometry shader's primitive id. None of
-    /// them names a register number of its own.
+    /// System-provided uint registers with no register number: thread/group ids,
+    /// primitive id and GS instance id.
     /// </summary>
     public static bool IsThreadRegister(OperandType operandType)
     {
@@ -1141,8 +1012,6 @@ public class D3D10Instruction : Instruction
             or OperandType.InputThreadIDInGroup
             or OperandType.InputThreadIDInGroupFlattened
             or OperandType.InputPrimitiveID
-            // A geometry shader instance is numbered the way a primitive is: one
-            // register, no number, and an unsigned integer.
             or OperandType.InputGSInstanceID;
     }
 
@@ -1162,9 +1031,7 @@ public class D3D10Instruction : Instruction
         return (int) GetParamIndexImmediate32(index, 1);
     }
 
-    // The element index of a constant buffer operand. Zero when the operand is
-    // addressed relatively - cb0[r0.x] carries no constant part - so callers that
-    // care must ask GetIndexRepresentation as well.
+    // Zero for a relative index (cb0[r0.x]); check GetIndexRepresentation.
     public int GetParamConstantBufferOffset(int index)
     {
         return IsRelativelyAddressed(index, ConstantBufferElementIndex)
@@ -1172,8 +1039,6 @@ public class D3D10Instruction : Instruction
             : (int)GetParamIndexImmediate32(index, 2);
     }
 
-    // How an operand encodes one of its indices. A relative index is a nested
-    // operand - cb0[r0.x] - rather than a literal number.
     public D3D10OperandIndexRepresentation GetIndexRepresentation(int operandIndex, int index)
     {
         Span<uint> span = OperandTokens.GetSpan(operandIndex);
@@ -1190,10 +1055,8 @@ public class D3D10Instruction : Instruction
 
     public int GetResourceReturnTypeToken()
     {
-        // The dword after the operand, either way. A texture's operand token says it
-        // carries two indices and the return type is read as the second of them; a
-        // typed UAV's says one, so the dword falls outside the operand and is
-        // counted as another of its own.
+        // The dword after the operand: a texture operand has two indices so it
+        // reads as index 2; a typed UAV's has one, so it parses as operand 1.
         return Opcode == D3D10Opcode.DclUnorderedAccessViewTyped
             ? (int)GetParamIndexImmediate32(1, 0)
             : (int)GetParamIndexImmediate32(0, 2);
@@ -1204,8 +1067,7 @@ public class D3D10Instruction : Instruction
         return GetParamIndexImmediate32(1, 0);
     }
 
-    // dcl_tgsm_structured g0, stride, count: the g# operand is followed by two plain
-    // dwords, the element stride in bytes and the element count.
+    // dcl_tgsm_structured g0, stride, count: two plain dwords after the operand.
     public uint GetThreadGroupSharedMemoryStride()
     {
         return GetParamIndexImmediate32(1, 0);

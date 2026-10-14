@@ -1,10 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// A constant times a negated value is the negated constant times the value:
-/// `0.01 * -length(d)` is `-0.01 * length(d)`. fxc puts the sign on whichever
-/// operand of the mad it likes, so the text followed it from one compile to the
-/// next; with the sign on the constant, it says the same either way.
+/// `k * -x` as `-k * x`, so output does not depend on which mad operand fxc
+/// put the sign on.
 /// </summary>
 public class MultiplyNegatedTemplate : NodeTemplate<MultiplyOperation>
 {

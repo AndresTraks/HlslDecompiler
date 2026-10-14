@@ -4,18 +4,10 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.FlowControl;
 
 /// <summary>
-/// Which variables are live after each statement: read on some path from there
-/// before being assigned again. Worked out backwards over the statement tree -
-/// an if joins what its branches need, a loop is iterated until what its head
-/// needs stops growing, a break and a continue need what follows the loop and
-/// what starts its next pass.
-///
-/// Every answer errs towards live. What asks this is whether two variables can
-/// be one, and a variable taken for live only keeps the two apart, where one
-/// taken for dead could merge two values that are both still wanted. So a
-/// statement's own reads count as live after it even where it writes the
-/// variable first, and a switch - whose breaks leave the switch rather than a
-/// loop - is not modelled at all: whatever is inside one answers "unknown".
+/// Backward liveness of variables after each statement over the statement tree.
+/// Errs towards live, since a false "dead" could merge two wanted values: a
+/// statement's own reads count as live after it, and a switch is not modelled
+/// (everything inside answers unknown).
 /// </summary>
 internal sealed class VariableLiveness
 {
@@ -23,9 +15,6 @@ internal sealed class VariableLiveness
         new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<IStatement> _unknown = new(ReferenceEqualityComparer.Instance);
 
-    // Whether a statement reading a value it assigns itself reads the variable.
-    // By default it does, which errs towards live; exact, it reads the new value
-    // and not the variable's old one.
     private readonly bool _exact;
 
     private VariableLiveness(bool exact)
@@ -34,10 +23,8 @@ internal sealed class VariableLiveness
     }
 
     /// <param name="exact">
-    /// Leave out of a statement's reads the assignments it performs itself: `t1 =
-    /// g0[i]; t6 = g0[t6] + t1;` as one statement reads the t1 it has just written,
-    /// not what t1 held before. For asking whether a value is carried in from
-    /// before - not for merging two variables, which wants the default.
+    /// A read of a variable the same statement assigns first is of the new value,
+    /// not live-in. For carried-value questions, not for merging variables.
     /// </param>
     public static VariableLiveness Analyze(IList<IStatement> statements, bool exact = false)
     {
@@ -47,8 +34,7 @@ internal sealed class VariableLiveness
     }
 
     /// <summary>
-    /// Whether the variable may be read after the statement before it is assigned
-    /// again - or the statement is one this does not model, which answers yes.
+    /// Live after the statement, counting its own reads; true if unmodelled.
     /// </summary>
     public bool MayBeLiveAfter(TempVariableNode variable, IStatement statement)
     {
@@ -59,9 +45,7 @@ internal sealed class VariableLiveness
     }
 
     /// <summary>
-    /// Whether the variable may be read by a statement after this one, leaving out
-    /// the statement's own reads - which is what is live on entry to the statement
-    /// that follows it.
+    /// Like <see cref="MayBeLiveAfter"/> without the statement's own reads.
     /// </summary>
     public bool MayBeReadAfter(TempVariableNode variable, IStatement statement)
     {
@@ -115,10 +99,7 @@ internal sealed class VariableLiveness
                             endOfPass.UnionWith(Variables([loop.Increment.Value]));
                         }
                         HashSet<TempVariableNode> start = Body(loop.Body, endOfPass, liveOut, endOfPass);
-                        // The test at the head may leave the loop, and a loop with no
-                        // test is left by its breaks, which Body has already joined -
-                        // what follows the loop is added either way, which only errs
-                        // towards live.
+                        // The head test may exit; adding liveOut regardless errs live.
                         start.UnionWith(liveOut);
                         start.UnionWith(Variables([loop.ContinueCondition, loop.RepeatCountNode]));
                         if (start.IsSubsetOf(head))
@@ -137,8 +118,7 @@ internal sealed class VariableLiveness
                 }
             case SwitchStatement switchStatement:
                 {
-                    // Not modelled: everything inside answers unknown, and the switch
-                    // itself kills nothing and needs everything it reads.
+                    // Not modelled: kills nothing, needs everything read inside.
                     HashSet<TempVariableNode> live = NewSet(liveOut);
                     new StatementVisitor([switchStatement]).Visit(inner =>
                     {
@@ -179,10 +159,8 @@ internal sealed class VariableLiveness
     }
 
     /// <summary>
-    /// The variables a statement assigns: the assignments it performs - an output
-    /// that is not the value the register came in with - and the old value an
-    /// interlocked operation writes back. A compound statement assigns nothing of
-    /// its own; its bodies do.
+    /// Performed (not carried) assignments and an atomic's old-value variable.
+    /// Compound statements assign nothing themselves.
     /// </summary>
     public static HashSet<TempVariableNode> Writes(IStatement statement)
     {
@@ -203,8 +181,7 @@ internal sealed class VariableLiveness
     }
 
     /// <summary>
-    /// The variables a statement reads: in what it assigns, in the registers it
-    /// writes, and in everything it holds - a condition, a stored value, a clause.
+    /// Variables read by what it assigns and by everything it holds.
     /// </summary>
     public static HashSet<TempVariableNode> Reads(IStatement statement)
     {
@@ -217,8 +194,7 @@ internal sealed class VariableLiveness
         return Variables(roots);
     }
 
-    // The variables a statement reads the earlier value of: its reads, but not
-    // through an assignment it performs itself.
+    // Reads of earlier values only, not through its own assignments.
     private static HashSet<TempVariableNode> ReadsBeforeWrites(IStatement statement)
     {
         HashSet<HlslTreeNode> own = HlslTreeNode.NewNodeSet();
@@ -234,8 +210,7 @@ internal sealed class VariableLiveness
                 reads.UnionWith(Variables([value], own));
                 continue;
             }
-            // Read by name, a variable is the new value where the assignment says
-            // it wants that - an assignment this statement performs first.
+            // A wanted new value from this statement is not a read of the old one.
             HashSet<TempVariableNode> read = Variables([assignment.Value], own);
             foreach (TempAssignmentNode earlier in assignment.DependsOnNewValueOf)
             {
@@ -258,8 +233,7 @@ internal sealed class VariableLiveness
             .Select(output => output.Value);
     }
 
-    // The variables an expression reads: the variables in it, and the variable of
-    // an assignment it reads the value of.
+    // An assignment node read counts as a read of its variable.
     private static HashSet<TempVariableNode> Variables(IEnumerable<HlslTreeNode> roots,
         HashSet<HlslTreeNode> own = null)
     {

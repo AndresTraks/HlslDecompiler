@@ -8,17 +8,11 @@ using System.Linq;
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// The shader model 4 counterpart of <see cref="D3D9Machine"/>: runs a vertex or
-/// pixel shader so that two decompilations of it can be compared by what they
-/// compute.
-///
-/// A register here is four untyped 32 bit words. Whether a word is a float, an int
-/// or a uint is the instruction's business, not the register's, which is why the
-/// file is unsigned and every operation reinterprets.
+/// The shader model 4+ counterpart of <see cref="D3D9Machine"/>. A register is four
+/// untyped 32 bit words; each instruction reinterprets them as float, int or uint.
 /// </summary>
 public class D3D10Machine
 {
-    /// <summary>Thrown for anything not modelled, so the caller can say so.</summary>
     public class UnsupportedException(string message) : Exception(message);
 
     private const int ConstantRegisterSizeInBytes = 16;
@@ -28,16 +22,10 @@ public class D3D10Machine
     private readonly uint[][] _temp = NewFile(64);
     // x# registers: each a small array of 4-component elements, sized by its dcl.
     private readonly Dictionary<int, uint[][]> _indexableTemps = [];
-    // g# registers: groupshared memory, one dword per 4 bytes of the declared
-    // stride times count, zero until the shader writes it. One thread runs here, so
-    // what it reads back is what it stored itself, and a sync has nothing to wait
-    // for - the same for the original and the decompiled shader.
+    // g# registers. One thread runs, so a sync has nothing to wait for.
     private readonly Dictionary<int, (int Stride, uint[] Words)> _threadGroupSharedMemory = [];
 
-    // Raw groupshared memory addresses bytes where the structured form addresses an
-    // element and an offset within it, so an access to one has to be read the other
-    // way round. Declared with a stride of four so that everything below can treat
-    // the word it names as an element.
+    // Raw g# registers address bytes, not element+offset; declared with stride 4.
     private readonly HashSet<int> _rawThreadGroupSharedMemory = [];
     private readonly uint[][] _input = NewFile(64);
     private readonly uint[][] _output = NewFile(64);
@@ -49,8 +37,7 @@ public class D3D10Machine
     private readonly Dictionary<string, uint[]> _results = [];
     private uint[] _depth = new uint[4];
     private readonly uint[] _coverage = new uint[4];
-    // What a geometry shader put on its stream and what a compute shader wrote,
-    // which are the results those two have instead of a return value.
+    // The results of a geometry shader's stream and a compute shader's stores.
     private readonly List<KeyValuePair<string, uint[]>> _emitted = [];
     private readonly List<KeyValuePair<string, uint[]>> _stored = [];
     private bool _wroteDepth;
@@ -58,7 +45,6 @@ public class D3D10Machine
     private readonly uint[] _stencilRef = new uint[4];
     private bool _wroteStencilRef;
 
-    /// <summary>Set by discard: the pixel is thrown away, whatever was written.</summary>
     public bool Discarded { get; private set; }
 
     private D3D10Machine(ShaderModel shader, int trial)
@@ -78,18 +64,13 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// Runs the shader and returns what it wrote, by semantic. Constants and inputs
-    /// are derived from their own names and the trial number, so that two programs
-    /// holding one value in different registers still agree on it.
+    /// Runs the shader and returns its outputs by semantic. Constants and inputs are
+    /// derived from their names, so register allocation does not affect them.
     /// </summary>
     public static Dictionary<string, float[]> Run(ShaderModel shader, int trial)
     {
-        // A hull shader is two programs, and the results of both are what it
-        // computes: the control point it writes and the constants of the patch. Run
-        // as one program it would stop at the first ret - the end of the control
-        // point phase - and the tessellation factors would never be reached.
-        // Each phase names its outputs from its own signature, so the two sets of
-        // results do not collide.
+        // A hull shader runs as two programs: as one it would stop at the control
+        // point phase's ret and never reach the patch constants.
         if (shader.Type == ShaderType.Hull)
         {
             (ShaderModel controlPoint, ShaderModel patchConstant) =
@@ -113,10 +94,8 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// One program: the whole of a shader, or one phase of a hull shader. Kept apart
-    /// from Run because a phase is still a hull shader by type, and running it
-    /// through the split again found no phases in it and returned nothing at all -
-    /// which the equivalence check read as two shaders agreeing.
+    /// A whole shader or one hull shader phase. Separate from Run because a phase
+    /// is still typed Hull, and splitting it again would return nothing.
     /// </summary>
     private static Dictionary<string, float[]> RunProgram(ShaderModel shader, int trial)
     {
@@ -136,15 +115,12 @@ public class D3D10Machine
         {
             results["DEPTH"] = machine._depth.Select(BitConverter.UInt32BitsToSingle).ToArray();
         }
-        // The mask as the number it is rather than as the float its bits make. A
-        // mask of 15 read as a float is a denormal, and the comparison holds two
-        // values within a thousandth of each other to be the same, so every mask
-        // would have equalled every other and the check would have proved nothing.
+        // Converted, not bit-cast: a mask as a float is a denormal, and the
+        // comparison's tolerance would make every mask equal.
         if (machine._wroteCoverage)
         {
             results["COVERAGE"] = [.. machine._coverage.Select(bits => (float)bits)];
         }
-        // And the stencil reference as the number it is, for the same reason.
         if (machine._wroteStencilRef)
         {
             results["STENCILREF"] = [.. machine._stencilRef.Select(bits => (float)bits)];
@@ -162,9 +138,8 @@ public class D3D10Machine
             in _shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>())
         {
             uint[][] buffer = Buffer(declaration.RegisterIndex);
-            // A variable occupies a run of bytes in the buffer. Filling it a word at
-            // a time, named by its position inside the variable, survives the buffer
-            // being packed differently on the other side.
+            // Each word named by its position in the variable, so a different
+            // buffer packing still gets the same values.
             int words = Math.Max(declaration.VariableSize / 4, 1);
             for (int word = 0; word < words; word++)
             {
@@ -180,9 +155,8 @@ public class D3D10Machine
         }
     }
 
-    // What a constant word holds depends on the type it was declared with. A float
-    // bit pattern read as a uint is an enormous number, and a loop counting up to
-    // one of those does not finish.
+    // Integer constants are small and non-negative: float bits read as a uint would
+    // make a loop bound that never finishes.
     private static uint ConstantWord(D3D10ConstantDeclaration declaration, float value)
     {
         switch (declaration.TypeInfo.ParameterType)
@@ -191,8 +165,6 @@ public class D3D10Machine
             case ParameterType.Uint:
             case ParameterType.Uint8:
             case ParameterType.Bool:
-                // Small and whole, and never negative: a negative loop bound read
-                // as unsigned is the same problem again.
                 return (uint)Math.Abs(value * 2) % 4;
             default:
                 return BitConverter.SingleToUInt32Bits(value);
@@ -214,8 +186,7 @@ public class D3D10Machine
         foreach (RegisterSignature signature in _shader.InputSignatures)
         {
             int number = signature.RegisterKey.Number;
-            // A system value the shader is given rather than declared - the
-            // primitive id - has no register at all, and the signature says -1.
+            // A system value with no register (the primitive id) has number -1.
             if (number < 0 || number >= _input.Length)
             {
                 continue;
@@ -235,8 +206,7 @@ public class D3D10Machine
         }
     }
 
-    // One value per vertex per register, named by the semantic so that two
-    // programs agree on it however they number their inputs.
+    // Named by semantic so that input register numbering does not matter.
     private uint[] VertexInput(int vertex, int register)
     {
         if (!_vertexInputs.TryGetValue((vertex, register), out uint[] value))
@@ -255,7 +225,6 @@ public class D3D10Machine
         return PseudoRandom.Vector(name, _trial);
     }
 
-    // How many control points come out of the patch, which the declarations say.
     private int ControlPointCount =>
         _shader.Instructions.OfType<D3D10Instruction>()
             .FirstOrDefault(i => i.Opcode == D3D10Opcode.DclOutputControlPointCount)
@@ -265,8 +234,7 @@ public class D3D10Machine
     {
         List<D3D10Instruction> instructions = [.. _shader.Instructions.OfType<D3D10Instruction>()];
         D3D10ControlFlow flow = D3D10ControlFlow.Match(instructions);
-        // break leaves the innermost loop or switch, whichever it is inside, so
-        // the two share one stack.
+        // break leaves the innermost loop or switch, so both share one stack.
         var breakable = new Stack<int>();
         int pc = 0;
         int steps = 0;
@@ -291,12 +259,8 @@ public class D3D10Machine
                     pc++;
                     continue;
                 case D3D10Opcode.InterfaceCall:
-                    // Said out loud rather than run as the first table's body: which
-                    // class an interface instance holds is bound when the shader is
-                    // set up, and nothing in the bytecode says. Any body this picked
-                    // it could pick, and the shader's decompilation recompiled would
-                    // be free to mean something else by it - fxc is under no promise
-                    // to keep the tables in the order it was given.
+                    // The bound class is set at runtime, and fxc may reorder the
+                    // tables, so no body can be picked for both sides.
                     throw new UnsupportedException(
                         "a call through an interface, which class being bound decides");
                 case D3D10Opcode.Discard:
@@ -348,9 +312,7 @@ public class D3D10Machine
                     breakable.Push(pc);
                     pc = flow.SwitchTarget(pc, Source(instruction, 0)[0]);
                     continue;
-                // The stream forms shader model 5 writes, which name the stream
-                // the model 4 ones left implicit. One stream, so they are the same
-                // instruction.
+                // Only one stream is modelled, so the _stream forms are the same.
                 case D3D10Opcode.Emit:
                 case D3D10Opcode.EmitStream:
                 case D3D10Opcode.EmitThenCut:
@@ -409,8 +371,7 @@ public class D3D10Machine
                     LoadImmediateConstantBuffer(instruction);
                     pc++;
                     continue;
-                // The seam a hull shader was cut along. The phase it opened is what
-                // is being run; the marker itself does nothing.
+                // Phase markers; the phase being run was already split out.
                 case D3D10Opcode.HsDecls:
                 case D3D10Opcode.HsControlPointPhase:
                 case D3D10Opcode.HsForkPhase:
@@ -468,8 +429,7 @@ public class D3D10Machine
         }
     }
 
-    // continue belongs to the innermost loop, so a switch between it and that loop
-    // is passed over rather than continued.
+    // continue skips any switch between it and the innermost loop.
     private static int LoopOf(Stack<int> breakable, D3D10ControlFlow flow)
     {
         foreach (int block in breakable)
@@ -482,8 +442,7 @@ public class D3D10Machine
         throw new UnsupportedException("continue outside a loop");
     }
 
-    // udiv writes the quotient to its first destination and the remainder to its
-    // second, and a shader wanting only one of the two leaves the other null.
+    // udiv quotient, remainder; either destination may be null.
     private void Divide(D3D10Instruction instruction)
     {
         const int QuotientIndex = 0;
@@ -506,10 +465,7 @@ public class D3D10Machine
         }
     }
 
-    /// <summary>
-    /// A geometry shader appends the output registers to its stream. What it emits
-    /// is its result, so each vertex is reported under its own name.
-    /// </summary>
+    // Each emitted vertex is a result under its own name.
     private void Emit()
     {
         int vertex = _emitted.Count;
@@ -528,10 +484,8 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// store_structured is what a compute shader has instead of an output register,
-    /// so the writes are the result. Named by where they went rather than by the
-    /// order they happened in, since two programs may order them differently and
-    /// still agree.
+    /// store_structured: writes are results named by address, not by order, since
+    /// two equivalent programs may order them differently.
     /// </summary>
     private void Store(D3D10Instruction instruction)
     {
@@ -545,8 +499,6 @@ public class D3D10Machine
         uint[] value = Source(instruction, ValueIndex);
         if (instruction.GetOperandType(UnorderedAccessIndex) == OperandType.ThreadGroupSharedMemory)
         {
-            // Into memory rather than out of the shader: the components the mask
-            // names, at the element, from the byte offset on.
             (int stride, uint[] words) = _threadGroupSharedMemory[resource];
             int writeMask = instruction.GetDestinationWriteMask();
             int word = SharedMemoryWord(stride, words, element, offset);
@@ -563,11 +515,7 @@ public class D3D10Machine
             }
             return;
         }
-        // Each dword by where it went, the way store_raw beside this one is
-        // recorded, and for the same reason: one store of four components and four
-        // stores of one are the same writes, and comparing whole registers made
-        // them differ on components the shader never wrote. A structured buffer of
-        // a struct is written a member at a time, so that is the ordinary case.
+        // Per dword, so one 4-component store equals four 1-component stores.
         int uavWriteMask = instruction.GetDestinationWriteMask();
         for (int component = 0, written = 0; component < 4; component++)
         {
@@ -580,13 +528,8 @@ public class D3D10Machine
         }
     }
 
-    /// <summary>
-    /// store_uav_typed u0, coordinate, value: a texel rather than an element and a
-    /// byte offset within one. Recorded the way the other stores are - each
-    /// component by where it went, so that what the shader never wrote is never
-    /// compared - with the whole coordinate in the name, there being no one number
-    /// that addresses a texel.
-    /// </summary>
+    // store_uav_typed: recorded per written component, named by the full texel
+    // coordinate.
     private void StoreTyped(D3D10Instruction instruction)
     {
         const int UnorderedAccessIndex = 0;
@@ -608,20 +551,12 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// An interlocked operation that keeps no result. One thread is being run, so
-    /// there is nothing to serialise and the operation is its arithmetic.
-    ///
-    /// Groupshared memory is a real array here and the shader reads it back, so the
-    /// operation is applied to it. A UAV is not - a store into one is recorded by
-    /// where it went rather than kept - so an atomic over one is recorded the same
-    /// way: two programs that perform the same operations at the same addresses with
-    /// the same values have done the same thing, which is what the comparison is
-    /// about.
+    /// An atomic on one thread is plain arithmetic. Applied to groupshared memory,
+    /// which is modelled; on a UAV it is recorded by address like a store.
     /// </summary>
     private void Atomic(D3D10Instruction instruction)
     {
-        // The imm_ forms keep what the resource held, in a register that goes in
-        // front of the resource - so every operand is one further along.
+        // imm_ forms put the result register first, shifting every operand by one.
         bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
         int resourceIndex = keepsOriginal ? 1 : 0;
         int addressIndex = resourceIndex + 1;
@@ -635,8 +570,6 @@ public class D3D10Machine
         if (instruction.GetOperandType(resourceIndex) == OperandType.ThreadGroupSharedMemory)
         {
             (int stride, uint[] words) = _threadGroupSharedMemory[resource];
-            // One address and it counts bytes where the memory is raw, against the
-            // element and offset pair a structured declaration is addressed by.
             int word = _rawThreadGroupSharedMemory.Contains(resource)
                 ? SharedMemoryWord(stride, words, address[0] / 4, 0)
                 : SharedMemoryWord(stride, words, address[0], address[1]);
@@ -656,24 +589,14 @@ public class D3D10Machine
             [value, compare, 0, 0]));
         if (keepsOriginal)
         {
-            // A buffer is not modelled - only the effects on it are recorded - so
-            // there is nothing to have held. A stand-in, fixed by where it is read,
-            // is the same on both sides of the comparison just as zero was, and
-            // unlike zero it is changed by a decompilation that converts the value
-            // it carries instead of keeping its bits: an asfloat() into an integer
-            // texel reads every old value below 2^-126 as the denormal its bits
-            // spell and stores the zero that conversion makes - which is the one
-            // number zero itself came back as, so the tier agreed.
+            // A non-zero stand-in, so a decompilation that converts instead of
+            // bit-casting the old value is caught (zero survives both).
             uint held = HeldValue(resource, address);
             Store(instruction, 0, [held, held, held, held]);
         }
     }
 
-    /// <summary>
-    /// What an unmodelled buffer is taken to hold at one address. Small, so that a
-    /// shader doing float arithmetic on it stays in the range the comparison's
-    /// tolerance was written for, and never zero, so that losing it shows.
-    /// </summary>
+    // Small, to stay within the comparison's tolerance; never zero, so losing it shows.
     private static uint HeldValue(int resource, int[] address)
     {
         uint hash = 2166136261;
@@ -711,18 +634,14 @@ public class D3D10Machine
         };
     }
 
-    // store_raw u0.xy, byteOffset, value: the dwords the mask names, from the byte
-    // offset on, each a result of its own named by where it went, so that a Store2
-    // and two Stores of the same words compare the same.
+    // Per dword by byte address, so a Store2 equals two Stores.
     private void StoreRaw(D3D10Instruction instruction)
     {
         int resource = instruction.GetParamRegisterNumber(0);
         int offset = Ints(instruction, 1)[0];
         uint[] value = Source(instruction, 2);
         int writeMask = instruction.GetDestinationWriteMask();
-        // Groupshared memory is held rather than recorded, so a raw store into it
-        // writes the words it names - the next read is the shader's own, and
-        // recording it instead compared nothing.
+        // Groupshared memory is written, not recorded: the shader reads it back.
         bool shared = instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory;
         uint[] words = shared ? _threadGroupSharedMemory[resource].Words : null;
         for (int component = 0, written = 0; component < 4; component++)
@@ -745,7 +664,6 @@ public class D3D10Machine
         }
     }
 
-    // The four dwords a raw groupshared read takes, from the byte address on.
     private uint[] ReadSharedWords(int resource, int byteOffset)
     {
         uint[] words = _threadGroupSharedMemory[resource].Words;
@@ -758,9 +676,7 @@ public class D3D10Machine
         return read;
     }
 
-    // The word an element and byte offset address, clamped into the array the way
-    // an out of range index is elsewhere - both programs derive the index from the
-    // same named values, so they clamp to the same word.
+    // Clamped into the array; both programs clamp alike.
     private static int SharedMemoryWord(int stride, uint[] words, int element, int offset)
     {
         int elements = words.Length / (stride / 4);
@@ -768,9 +684,7 @@ public class D3D10Machine
         return element * (stride / 4) + Math.Clamp(offset, 0, stride - 4) / 4;
     }
 
-    // imul writes the high half of the product to its first destination and the
-    // low half to its second; a shader wanting an ordinary 32 bit multiply leaves
-    // the high one null.
+    // imul high, low; a plain 32 bit multiply leaves high null.
     private void Multiply(D3D10Instruction instruction)
     {
         const int HighIndex = 0;
@@ -789,8 +703,7 @@ public class D3D10Machine
         }
     }
 
-    // sincos writes the sine to its first destination and the cosine to its second,
-    // either of which may be null.
+    // sincos sin, cos; either may be null.
     private void SineCosine(D3D10Instruction instruction)
     {
         const int SineIndex = 0;
@@ -815,10 +728,7 @@ public class D3D10Machine
         }
     }
 
-    /// <summary>
-    /// The condition of if, breakc and the rest. The test is on the bits, not on a
-    /// number: a comparison writes all ones or all zeroes.
-    /// </summary>
+    // Tests bits, not a number: a comparison writes all ones or all zeroes.
     private bool Test(D3D10Instruction instruction)
     {
         bool nonZero = Source(instruction, 0)[0] != 0;
@@ -838,11 +748,7 @@ public class D3D10Machine
                     uint[] whenClear = Source(instruction, 3);
                     return [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? whenSet[i] : whenClear[i])];
                 }
-            // The masked sum of absolute differences: for each of the four windows,
-            // the four bytes of the reference against the four of that window, added to
-            // what the instruction is given. Masked because a reference byte of zero
-            // contributes nothing at all - which is the whole point of it, and the one
-            // part of the rule that is not simply arithmetic.
+            // Masked sum of absolute byte differences; a zero reference byte is skipped.
             case D3D10Opcode.MSAD:
                 {
                     uint[] reference = Source(instruction, 1);
@@ -902,8 +808,7 @@ public class D3D10Machine
                 }
             case D3D10Opcode.DMovC:
                 {
-                    // The condition is one word for each pair, not one for each
-                    // component: it is read by which value is wanted.
+                    // One condition word per double, not per component.
                     uint[] condition = Source(instruction, 1);
                     double[] whenSet = Doubles(instruction, 2);
                     double[] whenClear = Doubles(instruction, 3);
@@ -1007,9 +912,8 @@ public class D3D10Machine
             case D3D10Opcode.UBFE:
             case D3D10Opcode.IBFE:
                 {
-                    // The low five bits of the width and offset count; a zero width
-                    // is zero; a field running off the top is what is left above the
-                    // offset. ibfe fills the top with the field's own sign.
+                    // Width and offset use their low five bits; a zero width gives 0;
+                    // a field past bit 31 is truncated. ibfe sign-extends.
                     uint[] width = Source(instruction, 1);
                     uint[] offset = Source(instruction, 2);
                     uint[] value = Source(instruction, 3);
@@ -1064,16 +968,12 @@ public class D3D10Machine
             case D3D10Opcode.CountBits:
                 return MapUInt(instruction, v => (uint)BitOperations.PopCount(v));
             case D3D10Opcode.FirstBitLo:
-                // 0xffffffff where no bit is set, which is what the instruction
-                // answers and what TrailingZeroCount does not.
+                // 0xffffffff for zero, unlike TrailingZeroCount.
                 return MapUInt(instruction, v => v == 0 ? 0xFFFFFFFF : (uint)BitOperations.TrailingZeroCount(v));
             case D3D10Opcode.FirstBitHi:
                 return MapUInt(instruction, v => v == 0 ? 0xFFFFFFFF : (uint)BitOperations.LeadingZeroCount(v));
             case D3D10Opcode.FirstBitSHi:
-                // The bits above the highest one that is not the sign, so a word
-                // that is all sign - 0 and -1 - has none and answers 0xffffffff.
-                // Counting them over the inverse of a negative word is counting the
-                // zeroes above its highest one.
+                // The highest bit differing from the sign; 0 and -1 give 0xffffffff.
                 return MapUInt(instruction, v => v == 0 || v == 0xFFFFFFFF
                     ? 0xFFFFFFFF
                     : (uint)BitOperations.LeadingZeroCount((int)v < 0 ? ~v : v));
@@ -1126,10 +1026,7 @@ public class D3D10Machine
                 return SampleTexture(instruction);
             case D3D10Opcode.Gather4:
                 return GatherTexture(instruction);
-            // A gather whose offset is a register rather than part of the mnemonic.
-            // Every operand after the offset is one further along, and the offset is
-            // added to the coordinate the way an immediate one is - in texels, which
-            // here are the hundredths this machine samples in.
+            // A register offset shifts later operands by one; a texel is 0.01 here.
             case D3D10Opcode.Gather4Po:
             case D3D10Opcode.Gather4PoC:
                 {
@@ -1144,8 +1041,6 @@ public class D3D10Machine
                     ];
                     float[] sampled = Texture.Sample(
                         instruction.GetParamRegisterNumber(3), offsetCoordinates);
-                    // The channel gathered is the sampler's swizzle, one further
-                    // along than it is without the offset operand.
                     int channel = instruction.GetSourceSwizzleComponents(4)[0];
                     if (instruction.Opcode == D3D10Opcode.Gather4PoC)
                     {
@@ -1155,11 +1050,7 @@ public class D3D10Machine
                 }
             case D3D10Opcode.SampleC:
             case D3D10Opcode.SampleCLZ:
-            // A gather compares the four texels around the coordinate, which are
-            // not modelled - the texture here is a function rather than a grid - so
-            // it answers the one comparison a sample does, in all four components.
-            // Both programs read the same texel and compare it the same way, which
-            // is what the tier is asking about.
+            // The texture is a function, not a grid, so a gather compares one texel.
             case D3D10Opcode.Gather4C:
                 return CompareSample(instruction);
             case D3D10Opcode.LD:
@@ -1172,10 +1063,7 @@ public class D3D10Machine
                 return ResourceInfo(instruction);
             case D3D10Opcode.BufInfo:
                 return BufferInfo(instruction);
-            // The slot an append takes or a consume gives back. The buffer is not
-            // modelled, so the counter is: it starts where a fresh one does and both
-            // programs move it the same way, which is what makes the elements they
-            // store comparable.
+            // Append/consume: only the buffer's counter is modelled.
             case D3D10Opcode.ImmAtomicAlloc:
             case D3D10Opcode.ImmAtomicConsume:
                 {
@@ -1189,10 +1077,7 @@ public class D3D10Machine
                         : slot;
                     return [slot, slot, slot, slot];
                 }
-            // An attribute evaluated at a sample or at an offset. One pixel is being
-            // run and nothing here is multisampled, so there is no other place for
-            // it to have a different value at: the attribute as it stands, which
-            // both programs read the same.
+            // Nothing is multisampled, so an attribute has one value everywhere.
             case D3D10Opcode.EvalSampleIndex:
             case D3D10Opcode.EvalSnapped:
             case D3D10Opcode.EvalCentroid:
@@ -1201,13 +1086,8 @@ public class D3D10Machine
                 return SampleCount(instruction);
             case D3D10Opcode.SamplePos:
                 {
-                    // Where a sample sits inside the pixel. Made up, but made up the
-                    // same way for both programs, which is what is being compared.
-                    // The name carries which sample of what: named after the resource
-                    // alone, every sample of it answered alike, so a decompilation
-                    // that asked for the wrong one - or asked the render target where
-                    // the shader asked a texture - read the same made up position and
-                    // was agreed with.
+                    // Made up, but named by resource and sample index so that asking
+                    // for the wrong sample or resource is caught.
                     string asked = instruction.GetOperandType(1) == OperandType.Rasterizer
                         ? "rasterizer"
                         : $"t{instruction.GetParamRegisterNumber(1)}";
@@ -1217,14 +1097,11 @@ public class D3D10Machine
                 return LevelOfDetail(instruction);
             case D3D10Opcode.LdStructured:
                 {
-                    // Element and byte offset, named so that both programs read the
-                    // same element of the same buffer whatever register it is in.
                     int element = Ints(instruction, 1)[0];
                     int offset = Ints(instruction, 2)[0];
                     int resource = instruction.GetParamRegisterNumber(3);
                     if (instruction.GetOperandType(3) == OperandType.ThreadGroupSharedMemory)
                     {
-                        // Groupshared memory is read back rather than made up.
                         (int stride, uint[] words) = _threadGroupSharedMemory[resource];
                         int word = SharedMemoryWord(stride, words, element, offset);
                         var read = new uint[4];
@@ -1233,17 +1110,11 @@ public class D3D10Machine
                             int index = word + component;
                             read[component] = index < words.Length && component < stride / 4 ? words[index] : 0;
                         }
-                        // The resource operand's swizzle picks the components, the
-                        // way it does for a buffer.
                         byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
                         return [read[swizzle[0]], read[swizzle[1]], read[swizzle[2]], read[swizzle[3]]];
                     }
-                    // A dword at a time, named by where it is in the element rather
-                    // than by the offset the load names. Read the other way, the
-                    // fourth dword of a load at offset zero and a load at offset
-                    // twelve were two different made up numbers, so a shader reading
-                    // a struct member at a time disagreed with one reading four at
-                    // once - and a struct member at a time is how it reads now.
+                    // Each dword named by its byte offset in the element, so reading a
+                    // member at a time equals reading four at once.
                     var element4 = new float[4];
                     for (int component = 0; component < 4; component++)
                     {
@@ -1257,9 +1128,7 @@ public class D3D10Machine
                 }
             case D3D10Opcode.LdRaw:
                 {
-                    // Each dword is a value of its byte address, so that a Load2 and
-                    // two Loads of the same words agree; the resource operand's
-                    // swizzle then picks which of the four read go where.
+                    // Each dword named by byte address, so a Load2 equals two Loads.
                     int offset = Ints(instruction, 1)[0];
                     int resource = instruction.GetParamRegisterNumber(2);
                     uint[] read = instruction.GetOperandType(2) == OperandType.ThreadGroupSharedMemory
@@ -1275,8 +1144,7 @@ public class D3D10Machine
             case D3D10Opcode.DerivRtxFine:
             case D3D10Opcode.DerivRtyCoarse:
             case D3D10Opcode.DerivRtyFine:
-                // No neighbouring pixel to difference against. Both programs get
-                // zero, so the shader is still compared on everything else.
+                // No neighbouring pixels: zero.
                 return [0, 0, 0, 0];
             case D3D10Opcode.Rcp:
                 return Pack([.. Floats(instruction, 1).Select(v => 1f / v)]);
@@ -1293,12 +1161,8 @@ public class D3D10Machine
         return Pack(ResourceSwizzle(instruction, sampled));
     }
 
-    // A gather reads one channel of the four texels around the coordinate. This
-    // machine has a texture that is a function rather than a grid, so it answers
-    // with the one texel a sample reads, of the channel the sampler operand's
-    // swizzle names - `s0.w` the alpha one - in every component. Ignoring the
-    // channel left this machine unable to see a decompilation that gathered green
-    // where the shader said alpha.
+    // One texel (the texture is a function, not a grid), of the channel the
+    // sampler swizzle names (`s0.w` is alpha), broadcast.
     private uint[] GatherTexture(D3D10Instruction instruction)
     {
         float[] coordinates = WithOffsets(instruction, Floats(instruction, 1));
@@ -1308,8 +1172,7 @@ public class D3D10Machine
         return BroadcastFloat(sampled[channel]);
     }
 
-    // How many coordinates a texture reads, from its dcl_resource; four where
-    // there is none, which reads the whole register as before.
+    // Coordinate count from dcl_resource; four without one.
     private int TextureDimensions(int resource)
     {
         D3D10Instruction declaration = _shader.Instructions.OfType<D3D10Instruction>()
@@ -1326,10 +1189,7 @@ public class D3D10Machine
         };
     }
 
-    // The resource operand carries a swizzle that says which channel of the texture
-    // each component of the result comes from: `sample r0, v0.xyxx, t2.yzxw, s0`
-    // puts the green channel in x. Ignoring it would leave this machine unable to
-    // see a decompilation that ignored it too.
+    // `sample r0, v0.xyxx, t2.yzxw, s0` puts the green channel in x.
     private static float[] ResourceSwizzle(D3D10Instruction instruction, float[] sampled)
     {
         byte[] swizzle = instruction.GetSourceSwizzleComponents(2);
@@ -1341,19 +1201,15 @@ public class D3D10Machine
         float[] coordinates = WithOffsets(instruction, Floats(instruction, 1));
         float reference = Floats(instruction, 4)[0];
         float[] sampled = Texture.Sample(instruction.GetParamRegisterNumber(2), coordinates);
-        // A comparison gather tests the channel it gathers, which the sampler's
-        // swizzle names; a comparison sample tests the channel it samples.
+        // A comparison gather tests the channel the sampler swizzle names.
         int channel = instruction.Opcode == D3D10Opcode.Gather4C
             ? instruction.GetSourceSwizzleComponents(3)[0]
             : 0;
         return BroadcastFloat(sampled[channel] >= reference ? 1 : 0);
     }
 
-    // A texture's size is whatever both programs agree it is: one made up per
-    // resource slot, halved per mip level, with a mip count in w. z, the depth or
-    // array size, is zero for a 2D texture. The return type is the instruction's:
-    // the dimensions as floats, as their reciprocals, or as the integers the uint
-    // overloads of GetDimensions take.
+    // A made up size per slot, halved per mip, mip count in w, z zero. Returned as
+    // float, reciprocal or uint per the instruction's return type.
     private uint[] ResourceInfo(D3D10Instruction instruction)
     {
         int slot = instruction.GetParamRegisterNumber(2);
@@ -1370,27 +1226,16 @@ public class D3D10Machine
             : Pack(swizzled);
     }
 
-    /// <summary>
-    /// How many elements a buffer holds. There is no buffer here to ask, so it
-    /// answers by its slot - a number both programs get the same, which is what the
-    /// comparison is about. Every component, the way the instruction fills the ones
-    /// its mask names.
-    /// </summary>
-    // Where each append buffer's counter has got to.
     private readonly Dictionary<int, uint> _appendCounters = [];
 
+    // A made up element count derived from the slot.
     private uint[] BufferInfo(D3D10Instruction instruction)
     {
         uint count = (uint)(64 + 8 * instruction.GetParamRegisterNumber(1));
         return [count, count, count, count];
     }
 
-    /// <summary>
-    /// How many samples a multisampled resource has. There is no resource here to
-    /// ask, so every one answers the same small power of two: what the comparison
-    /// needs is that both programs get the same number, and a shader that indexes
-    /// samples with it needs that number small and positive.
-    /// </summary>
+    // Small and positive, since shaders index samples with it.
     private static uint[] SampleCount(D3D10Instruction instruction)
     {
         const uint samples = 4;
@@ -1401,13 +1246,8 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// The level of detail a sample of the resource would use. There are no
-    /// gradients here and no mip chain to have one over, so it is a number derived
-    /// from the coordinate - the same for both programs, and different between the
-    /// two forms the instruction has. The resource swizzle picks them: x is the
-    /// level clamped to the mips that exist, y the level before clamping, which is
-    /// what makes a decompilation that takes the wrong one show up here rather than
-    /// only in the golden text.
+    /// A made up level derived from the coordinate. Swizzle x is clamped, y is
+    /// unclamped, and the two differ so that picking the wrong one shows.
     /// </summary>
     private uint[] LevelOfDetail(D3D10Instruction instruction)
     {
@@ -1422,30 +1262,17 @@ public class D3D10Machine
 
     private uint[] LoadTexel(D3D10Instruction instruction)
     {
-        // The address is in texels rather than in the [0, 1] a sample takes, so it
-        // is scaled before being handed to the same function. Both programs scale
-        // it the same way; what matters is that they address the same texel.
+        // Texel addresses scaled to sample coordinates.
         int[] address = [.. Ints(instruction, 1)];
         float[] coordinates = WithOffsets(instruction,
             [address[0] * 0.01f, address[1] * 0.01f, address[2] * 0.01f, 0]);
-        // As many coordinates as the texture has, the way a sample reads: the
-        // component after them is the mip level, which the two programs need not
-        // agree on the way they put it in a register.
+        // Only the texture's own coordinates: the next component is the mip level.
         int resource = instruction.GetParamRegisterNumber(2);
-        // Through the resource swizzle, the same as a sample: a load carries one
-        // too, and reading the texel without it put the channels of the texture in
-        // whichever components the register allocator happened to use.
         return Pack(ResourceSwizzle(instruction,
             Texture.Sample(resource, coordinates, TextureDimensions(resource))));
     }
 
-    /// <summary>
-    /// A texel of a writable view. What one holds is whatever ran before, which is
-    /// not modelled - the stores into it are recorded rather than kept - so the read
-    /// answers the same stand-in a texture read does. Two programs reading the same
-    /// texel of it agree, which is the question the comparison asks; the address has
-    /// no mip, a view having the one level.
-    /// </summary>
+    // UAV contents are not modelled, so a read returns the texture stand-in. No mip.
     private uint[] LoadViewTexel(D3D10Instruction instruction)
     {
         int[] address = [.. Ints(instruction, 1)];
@@ -1454,10 +1281,7 @@ public class D3D10Machine
             [address[0] * 0.01f, address[1] * 0.01f, 0, 0])));
     }
 
-    // One sample of a multisampled texel. The address has no mip and only its xy
-    // matter - whatever the register carries in zw is not read - and the sample
-    // index takes the third coordinate, so different samples of one texel differ
-    // and the same sample read by two programs agrees.
+    // Only xy of the address is read; the sample index becomes the third coordinate.
     private uint[] LoadSample(D3D10Instruction instruction)
     {
         int[] address = [.. Ints(instruction, 1)];
@@ -1475,8 +1299,6 @@ public class D3D10Machine
             return coordinates;
         }
 
-        // A texel offset moves the read. Scaled like the load address above, so that
-        // dropping it shows up as a different result.
         return
         [
             coordinates[0] + instruction.SampleOffsets[0] * 0.01f,
@@ -1544,8 +1366,7 @@ public class D3D10Machine
         return [.. Ints(instruction, 1).Select(v => unchecked((uint)transform(v)))];
     }
 
-    // A comparison writes all ones for true and all zeroes for false, which is what
-    // makes `and` with a comparison a mask rather than a boolean.
+    // All ones for true, so `and` with a comparison is a mask.
     private uint[] CompareFloat(D3D10Instruction instruction, Func<float, float, bool> compare)
     {
         float[] a = Floats(instruction, 1);
@@ -1573,10 +1394,8 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// The doubles a source operand holds, in the order the instruction computes its
-    /// values. A double is two words of a register, the low half first, and fxc
-    /// repeats the pair across the swizzle so that the nth of them is at slot 2n -
-    /// .xyxy for one double and .xyzw for the two of a double2.
+    /// A double is two words, low first; the nth double is at slot 2n (.xyxy for
+    /// one double, .xyzw for a double2).
     /// </summary>
     private double[] Doubles(D3D10Instruction instruction, int index)
     {
@@ -1594,11 +1413,7 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// Which component of the destination each value the instruction computes is
-    /// written at: one per component where it writes singles, and one per pair where
-    /// it writes doubles. The results are laid out over the register by this rather
-    /// than one to a slot, a double at .zw being the third and fourth words however
-    /// few of them the instruction answers.
+    /// Lays the nth computed value at the nth written component, or pair for doubles.
     /// </summary>
     private static uint[] PackValues(D3D10Instruction instruction, Func<int, uint[]> value)
     {
@@ -1624,10 +1439,8 @@ public class D3D10Machine
         return words;
     }
 
-    // A double precision operation over the pairs its operands hold. A value
-    // reads the pair it is written at, not its own position: the double at .zw
-    // is the operand's second double even when it is the instruction's first
-    // value, and a d() immediate carries its numbers by pair for this.
+    // A value reads the pair it is written at: a double at .zw is the operand's
+    // second even when it is the first value.
     private uint[] Double(D3D10Instruction instruction, Func<double, double, double> combine)
     {
         double[] a = Doubles(instruction, 1);
@@ -1636,8 +1449,7 @@ public class D3D10Machine
             combine(a[instruction.GetValuePair(n)], b[instruction.GetValuePair(n)])));
     }
 
-    // A double comparison, which answers one word of all ones or all zeroes for
-    // each pair it is given.
+    // One result word per pair.
     private uint[] DoubleComparison(D3D10Instruction instruction, Func<double, double, bool> compare)
     {
         double[] a = Doubles(instruction, 1);
@@ -1662,10 +1474,8 @@ public class D3D10Machine
     }
 
     /// <summary>
-    /// One source operand, swizzled and with its modifier applied. The modifier is
-    /// arithmetic rather than bitwise - negate on an integer operand of an integer
-    /// instruction is an integer negate - so it is applied in the domain the opcode
-    /// reads the operand in.
+    /// Swizzled, with the modifier applied in the opcode's domain: negate on an
+    /// integer instruction is an integer negate.
     /// </summary>
     private uint[] Source(D3D10Instruction instruction, int index)
     {
@@ -1723,9 +1533,7 @@ public class D3D10Machine
         {
             case OperandType.Immediate32:
             case OperandType.Immediate64:
-                // A double immediate is read by the pairs its doubles fill, and
-                // Doubles() puts the halves back together - the four words are
-                // already what a register of two would hold.
+                // A double immediate's four words already form two doubles.
                 return
                 [
                     unchecked((uint)instruction.GetParamInt(index, 0)),
@@ -1739,22 +1547,14 @@ public class D3D10Machine
                 return IndexableTempElement(instruction, index);
             case OperandType.Input:
                 {
-                    // A geometry shader reads v[vertex][register], so the register
-                    // number is the second index and the first says which vertex of
-                    // the primitive. Every vertex gets its own value.
-                    // Only a geometry shader indexes by vertex; elsewhere a two
-                    // index input is something else and the register number stands.
+                    // Geometry and hull shaders read v[vertex][register]; elsewhere
+                    // a two-index input is something else.
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
-                    // A hull shader's control point phase reads the patch the same
-                    // way, and indexes it by the control point it is computing:
-                    // v[r0.x + 0][0].
                     if (indices.Length < 2
                         || _shader.Type is not (ShaderType.Geometry or ShaderType.Hull))
                     {
-                        // A vertex shader reads a run declared by dcl_indexrange as
-                        // `v[r0.x + 0]`: the register is the immediate plus whatever
-                        // the index register holds, and GetParamRegisterNumber has
-                        // no index to add and reads off the end.
+                        // `v[r0.x + 0]` over a dcl_indexrange, which
+                        // GetParamRegisterNumber cannot resolve.
                         if (indices.Length == 1 && indices[0].IsRelative)
                         {
                             int element = (int)indices[0].Immediate
@@ -1763,10 +1563,8 @@ public class D3D10Machine
                         }
                         return _input[instruction.GetParamRegisterNumber(index)];
                     }
-                    // GetOperandIndices, not GetParamIndexImmediate32: the latter
-                    // counts a token per index from the operand token onwards, which
-                    // is neither the right place to start nor right for a nested
-                    // operand. It gave vertex numbers in the millions.
+                    // Not GetParamIndexImmediate32, which miscounts tokens with a
+                    // nested relative operand.
                     int vertex = (int)indices[0].Immediate
                         + RelativeIndex(instruction, index, 0);
                     int register = (int)indices[1].Immediate;
@@ -1774,47 +1572,30 @@ public class D3D10Machine
                 }
             case OperandType.InputControlPoint:
                 {
-                    // vicp[point][register] is shaped like a geometry shader's
-                    // v[vertex][register] and named the same way, so a control point
-                    // of the patch gets the value that vertex of the primitive would.
-                    // The point plus whatever its index register holds, as a geometry
-                    // shader's vertex is: `vicp[r0.x + 1]` in a fork phase run once per
-                    // edge read point 1 for every edge, and an original and its
-                    // decompilation that indexed the patch differently disagreed for
-                    // a reason neither of them had.
+                    // Named like a geometry shader's v[vertex][register]; the point
+                    // includes its relative index (`vicp[r0.x + 1]`).
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
                     return VertexInput(point, (int)indices[1].Immediate);
                 }
             case OperandType.OutputControlPoint:
                 {
-                    // A point the control point phase wrote, read back by a patch
-                    // constant phase. The phases run as programs of their own here,
-                    // so the point is a made up value, named by the point and the
-                    // register: both programs read the same one and agree on it.
+                    // Phases run separately, so this is a made up value.
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
                     int register = (int)indices[1].Immediate;
                     return [.. Named($"OUTPUTPOINT{register}[{point}]").Select(BitConverter.SingleToUInt32Bits)];
                 }
             case OperandType.InputPatchConstant:
-                // A hull shader is reading back what it wrote: a join phase's vpc0 is
-                // what a fork phase put in o0 a few lines up, and the phases run in
-                // one program here. Read as a made up value instead, the original and
-                // its decompilation were computing their factors from different
-                // numbers, and disagreed for a reason neither of them had.
+                // In a hull shader, a join phase's vpc# is what a fork phase wrote
+                // to o#; fork and join run in one program.
                 if (_shader.Type == ShaderType.Hull)
                 {
                     return _output[instruction.GetParamRegisterNumber(index)];
                 }
-                // A domain shader is handed them, and one made up value per register
-                // is enough: both programs read the same register and get the same
-                // float, whichever field of the struct it holds.
                 return [.. Named($"vpc{instruction.GetParamRegisterNumber(index)}")
                     .Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.InputDomainPoint:
-                // Where in the patch this run is: a float, unlike the thread ids,
-                // and read as one.
                 return [.. Named("vDomain").Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.Output:
                 return _output[instruction.GetParamRegisterNumber(index)];
@@ -1839,30 +1620,18 @@ public class D3D10Machine
             case OperandType.InputThreadIDInGroupFlattened:
             case OperandType.InputPrimitiveID:
             case OperandType.InputGSInstanceID:
-                // Small whole numbers: a thread index taken from float bits would
-                // address somewhere no buffer reaches.
+                // Small integers: float bits as an index reach no buffer.
                 return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];
             case OperandType.OutputControlPointID:
-                // Which control point of the patch this run computes. One point is
-                // run, the same one on both sides because it is named, and it has to
-                // be one the patch has: it subscripts the patch.
+                // Must be within the patch, since it subscripts it.
                 return [.. Named("vOutputControlPointID")
                     .Select(v => (uint)Math.Abs(v * 4) % (uint)Math.Max(ControlPointCount, 1))];
             case OperandType.InputCoverageMask:
-                // The mask the rasterizer handed this pixel. It is independent of any
-                // mask the shader writes out, so it reads a value of its own - the
-                // same one for a given trial, which is what lets the original and its
-                // recompilation agree on it. A sample mask reaches a few bits at most.
+                // Independent of the output mask; a few bits at most.
                 return [.. Named("COVERAGEINPUT").Select(v => (uint)Math.Abs(v * 4) % 16)];
             case OperandType.InputInnerCoverage:
-                // Whether the rasterizer covered the whole pixel rather than
-                // part of it: one bit, and a value of its own for the same
-                // reason the mask above has one.
                 return [.. Named("INNERCOVERAGE").Select(v => (uint)Math.Abs(v * 4) % 2)];
-            // Which run of an instanced hull phase this is. The phase was unrolled
-            // into a copy of its body per run before it reached here, so each copy
-            // reads its own run's number - the same number the decompilation wrote
-            // into the factor it assigns, which is what lets the two agree.
+            // The phase was unrolled per instance; each copy carries its number.
             case OperandType.InputForkInstanceID:
                 {
                     uint instance = (uint)(instruction.ForkInstance ?? 0);
@@ -1877,9 +1646,7 @@ public class D3D10Machine
         }
     }
 
-    // x0[3], x0[r0.x + 1]: the first index names the array, the second the element,
-    // clamped like a constant buffer's - both programs derive it from the same
-    // named values, so they clamp to the same one.
+    // x0[r0.x + 1]: array, then element, clamped like a constant buffer index.
     private uint[] IndexableTempElement(D3D10Instruction instruction, int operandIndex)
     {
         var indices = instruction.OperandTokens.GetOperandIndices(operandIndex);
@@ -1888,9 +1655,8 @@ public class D3D10Machine
         return array[Math.Clamp(element, 0, array.Length - 1)];
     }
 
-    // cb0[r0.x + 4] adds a register to the immediate. A made up index need not be
-    // in range the way a real one is, so the caller clamps; both programs derive it
-    // from the same named values, so they clamp to the same element.
+    // The register part of cb0[r0.x + 4]. Made up values may be out of range, so
+    // callers clamp.
     private int RelativeIndex(D3D10Instruction instruction, int operandIndex, int index)
     {
         if (!instruction.IsRelativelyAddressed(operandIndex, index))
@@ -1926,11 +1692,8 @@ public class D3D10Machine
 
         OperandType type = instruction.GetOperandType(destinationIndex);
         int number = instruction.GetParamRegisterNumber(destinationIndex);
-        // An output written through an index range - `mov o[vForkInstanceID.x + 0].x`,
-        // which is how fxc writes the factors of a patch that are all computed the
-        // same way. The register number decoded from a relative index is meaningless,
-        // and the run's own number past the first of the range is the register: the
-        // phase was unrolled into a copy per run, and this is the copy's.
+        // `mov o[vForkInstanceID.x + 0].x` in an unrolled fork phase: the register
+        // is the range start plus this copy's instance.
         if (type == OperandType.Output && instruction.ForkInstance is int instance
             && instruction.OperandTokens.GetOperandIndices(destinationIndex)
                 is [{ IsRelative: true } first, ..])
@@ -1973,8 +1736,7 @@ public class D3D10Machine
                 throw new UnsupportedException($"writing operand type {type}");
         }
 
-        // Named rather than taken from the first destination: udiv has two, and
-        // the first may be the null one.
+        // By index: udiv has two destinations, and the first may be null.
         int writeMask = instruction.GetWriteMask(destinationIndex);
         for (int i = 0; i < 4; i++)
         {

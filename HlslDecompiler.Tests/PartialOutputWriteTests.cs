@@ -4,13 +4,9 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// A statement that writes part of an output register has to say so. Assigning a
-// scalar or a short vector to the whole member broadcasts it over the components
-// the write leaves alone, and packs the components it did write into the register's
-// first slots. The binary this fixture is built from writes one output across two
-// statements - the position's xyz in one and its w after the loop - and the latest
-// fxc never reproduces that split when recompiling HLSL, so no golden can hold one.
-// Assembled by hand: the branch writes only .xy of the position.
+// A partial output write must name its components, or assigning to the whole
+// member broadcasts and misplaces them. fxc never splits an output write like this,
+// so it is hand-assembled: the branch writes only .xy of the position.
 public class PartialOutputWriteTests
 {
     [Test]

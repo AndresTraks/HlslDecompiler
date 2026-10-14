@@ -1,9 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// isinf(x). An infinity is an exponent of all ones over a zero fraction, and
-/// fxc asks for it by masking the sign away and comparing what is left with the
-/// one bit pattern that means it.
+/// isinf(x): `(x &amp; 0x7fffffff) == 0x7f800000`.
 /// </summary>
 public class IsInfiniteOperation : ConsumerOperation
 {

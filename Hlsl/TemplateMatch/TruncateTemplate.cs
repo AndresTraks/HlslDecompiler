@@ -1,28 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts trunc back together, which is what a cast to int is.
-///
-/// Shader model 3 has no truncation instruction, and rounding towards zero is not
-/// what the address register does either - a move into it rounds to nearest - so
-/// fxc writes `(int)x` out in full: the floor, plus one where the number is
-/// negative and had a fraction to lose. Four instructions and two of them
-/// comparisons:
-///
-///     slt r0.x, v0.x, -v0.x      x &lt; 0
-///     frc r0.y, v0.x             frac(x)
-///     add r0.z, -r0.y, v0.x      x - frac(x), which FloorTemplate reads as floor
-///     slt r0.y, -r0.y, r0.y      frac(x) &gt; 0
-///     mad r0.x, r0.x, r0.y, r0.z
-///
-/// Recovered as source that reads `((x &lt; -x) ? 1 : 0) * ((-frac(x) &lt;
-/// frac(x)) ? 1 : 0) + floor(x)`, which is exactly what the shader does and
-/// nothing like what it says - and the thing it usually says is `bones[(int)i]`.
-///
-/// floor plus the negative correction is trunc for every finite number: for x at
-/// or above zero the correction is nought and both are floor, and below it the
-/// floor is one too low wherever there is a fraction to lose, which is where the
-/// correction is one.
+/// Recovers trunc (a cast to int) from SM3's expansion
+/// `(x &lt; 0) * (frac(x) &gt; 0) + floor(x)`, the comparisons as slt.
 /// </summary>
 public class TruncateTemplate : NodeTemplate<AddOperation>
 {
@@ -36,8 +16,6 @@ public class TruncateTemplate : NodeTemplate<AddOperation>
         return new TruncateOperation(TryGetValue(node));
     }
 
-    // Either way round: an add says nothing about which side fxc put the mad's
-    // product on.
     private static HlslTreeNode TryGetValue(AddOperation add)
     {
         return TryGetValue(add.Addend1, add.Addend2)
@@ -52,7 +30,6 @@ public class TruncateTemplate : NodeTemplate<AddOperation>
             return null;
         }
         HlslTreeNode value = floor.Value;
-        // And either way round again, a multiply saying no more than the add does.
         return (IsNegativeTest(multiply.Factor1, value) && IsFractionTest(multiply.Factor2, value))
             || (IsNegativeTest(multiply.Factor2, value) && IsFractionTest(multiply.Factor1, value))
             ? value
@@ -67,9 +44,7 @@ public class TruncateTemplate : NodeTemplate<AddOperation>
             && IsNegationOf(less.Inputs[1], value);
     }
 
-    /// <summary>slt(-frac(x), frac(x)), which is frac(x) &gt; 0 as one or nought.
-    /// The same frac the floor was taken with, which is the one fxc computed.
-    /// </summary>
+    /// <summary>slt(-frac(x), frac(x)), which is frac(x) &gt; 0 as one or nought.</summary>
     private static bool IsFractionTest(HlslTreeNode node, HlslTreeNode value)
     {
         return node is SignLessOperation less

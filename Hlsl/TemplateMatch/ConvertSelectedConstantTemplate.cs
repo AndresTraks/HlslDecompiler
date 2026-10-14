@@ -1,15 +1,9 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// An itof or utof of a movc choosing between two integer constants is a choice
-/// between the two floats: `(float2)(id & int2(1, 2) ? 1 : -1)` is
-/// `id & int2(1, 2) ? 1.0 : -1.0`. fxc folds the conversion into the constants
-/// when it compiles either, so the cast was the bytecode's order of operations
-/// and not anything the shader said - and written with it, the recompile came
-/// back without it.
-///
-/// Only for integers a float holds exactly, which is every one a shader picks
-/// between this way; past 2^24 the conversion rounds, and is left to say so.
+/// Folds itof/utof of a movc between integer constants into a choice between
+/// floats: `(float)(c ? 1 : -1)` is `c ? 1.0 : -1.0`. Only for exactly
+/// representable integers (below 2^24).
 /// </summary>
 public class ConvertSelectedConstantTemplate : NodeTemplate<ConvertOperation>
 {

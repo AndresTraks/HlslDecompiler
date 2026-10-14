@@ -3,14 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Removes the range reduction in front of sin and cos.
-///
-/// Shader model 3 has one sincos instruction and it wants its angle in
-/// [-pi, pi), so fxc puts a reduction in front of it: frac of the angle over two
-/// pi, shifted by a half, scaled back out. Both functions have period two pi, so
-/// that is the angle again - and leaving it in the output means fxc applies its
-/// own reduction on top of the one already written, which is five instructions
-/// for nothing.
+/// Removes the [-pi, pi) range reduction fxc puts before SM3 sincos
+/// (`frac(x / 2pi + 0.5) * 2pi - pi`); fxc would otherwise reduce twice.
 /// </summary>
 public class TrigonometricRangeReductionTemplate : INodeTemplate
 {
@@ -18,11 +12,7 @@ public class TrigonometricRangeReductionTemplate : INodeTemplate
     private const float TwoPi = 6.28318548f;
     private const float OverTwoPi = 0.159154937f;
 
-    /// <summary>
-    /// The constants are the ones fxc writes, so they are compared as written
-    /// rather than recomputed - a reduction built by hand with a rounder pi is not
-    /// this pattern and is left alone.
-    /// </summary>
+    /// <summary>Tight: a hand-written reduction with another pi is left alone.</summary>
     private const float Tolerance = 1e-6f;
 
     public bool Match(HlslTreeNode node)
@@ -62,11 +52,7 @@ public class TrigonometricRangeReductionTemplate : INodeTemplate
             return null;
         }
 
-        // One over two pi where the angle is used as it is, and a multiple of that
-        // where fxc folded a scale into the reduction: cos(x * 0.5) reduces with
-        // 0.5 over two pi, in the same mad as the sin of x beside it. Left to the
-        // exact constant, the half angle came out as the whole reduction written
-        // longhand, which fxc then reduces again.
+        // 1/2pi, or a multiple where fxc folded a scale in: cos(x * 0.5) uses 0.5/2pi.
         ConstantNode scale = inner.Factor1 as ConstantNode ?? inner.Factor2 as ConstantNode;
         if (scale == null)
         {

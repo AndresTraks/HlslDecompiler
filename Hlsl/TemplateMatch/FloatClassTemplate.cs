@@ -3,16 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// isinf and isfinite, which fxc asks of the exponent field. An infinity is that
-/// field at all ones over a zero fraction, so masking the sign away and comparing
-/// the rest with 0x7f800000 is true of an infinity and of nothing else; keeping
-/// the exponent alone and asking whether it is anything but all ones is true of
-/// everything an infinity and a NaN are not, which is what finite means.
-///
-/// Both are integer comparisons of a mask against one constant, and the two
-/// masks tell them apart: the sign stripped is 0x7fffffff, the exponent kept is
-/// 0x7f800000. Nothing else asks either question, a shader testing its own
-/// packed field having no reason to pick the exponent's own bits.
+/// isinf: `(x &amp; 0x7fffffff) == 0x7f800000`; isfinite:
+/// `(x &amp; 0x7f800000) != 0x7f800000`. The mask tells them apart.
 /// </summary>
 public class FloatClassTemplate : NodeTemplate<ComparisonNode>
 {

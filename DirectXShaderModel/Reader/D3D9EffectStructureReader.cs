@@ -7,13 +7,9 @@ using System.Text;
 namespace HlslDecompiler.DirectXShaderModel;
 
 /// <summary>
-/// The structure of an fx_2_0 effect. After the tag comes the offset of the
-/// structured data, and every offset after that counts from there: the
-/// parameters' types and values, the names, and then the structured data itself
-/// - counts, the parameters, the techniques with their passes and states - and
-/// after it the objects' data: the strings and the shaders of the parameters,
-/// then what the states set that a value cannot hold - a shader compiled in the
-/// pass, an expression, a parameter named.
+/// The structure of an fx_2_0 effect: the tag, the offset of the structured data,
+/// then types, values and names, the structured data, and the objects' data. All
+/// offsets count from just past the tag.
 /// </summary>
 internal sealed class D3D9EffectStructureReader
 {
@@ -71,8 +67,7 @@ internal sealed class D3D9EffectStructureReader
             techniques.Add(new D3D9EffectTechnique(name, annotations, passes));
         }
 
-        // The objects given data up front - strings, and the shaders of shader
-        // parameters - then what the states set that their values do not hold.
+        // Strings, then resources: shaders, expressions and parameter names.
         int stringCount = (int)ReadUInt32();
         int resourceCount = (int)ReadUInt32();
         for (int i = 0; i < stringCount; i++)
@@ -99,7 +94,6 @@ internal sealed class D3D9EffectStructureReader
         D3D9EffectState state;
         if (techniqueIndex == 0xFFFFFFFF)
         {
-            // A sampler's state: the parameter, the element of it, the state.
             D3D9EffectValue sampler = parameters[index];
             int element = elementIndex == 0xFFFFFFFF ? 0 : (int)elementIndex;
             state = (D3D9EffectState)sampler.SamplerStates[element][stateIndex];
@@ -174,7 +168,6 @@ internal sealed class D3D9EffectStructureReader
         return states;
     }
 
-    /// <summary>A type at one offset and its value at another.</summary>
     private D3D9EffectValue ReadValue(int typeOffset, int valueOffset, uint flags, IReadOnlyList<D3D9EffectValue> annotations)
     {
         int typePosition = typeOffset;
@@ -191,7 +184,6 @@ internal sealed class D3D9EffectStructureReader
         }
         else if (type.IsSampler)
         {
-            // A sampler's states are its value, each element's in turn.
             int saved = _position;
             _position = valueOffset;
             for (int i = 0; i < elements; i++)
@@ -226,8 +218,6 @@ internal sealed class D3D9EffectStructureReader
         };
     }
 
-    // A type: its D3DX type and class, name, semantic and array length, then its
-    // dimensions, or for a struct its members' types, which follow it.
     private D3D9EffectValue ReadType(ref int position)
     {
         var type = (D3DXParameterType)ReadUInt32At(ref position);
@@ -271,7 +261,7 @@ internal sealed class D3D9EffectStructureReader
         };
     }
 
-    // A name is its length, terminator included, then its characters.
+    // Length (terminator included), then characters.
     private string ReadName(int offset)
     {
         int size = (int)BitConverter.ToUInt32(_data, offset);
@@ -284,7 +274,7 @@ internal sealed class D3D9EffectStructureReader
         return Encoding.ASCII.GetString(bytes, start, (end < 0 ? start + size : end) - start);
     }
 
-    // An object's data is its length and then its bytes, padded to a dword.
+    // Length, then bytes padded to a dword.
     private byte[] ReadData()
     {
         int size = (int)ReadUInt32();

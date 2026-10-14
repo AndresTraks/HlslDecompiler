@@ -4,14 +4,9 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// A D3D9 `if_<rel>` hands the AST writer one comparison per component, but the
-// operand is usually one component read through a swizzle, so all four carry the
-// same test. When that operand is a partial-precision value - the `_pp` this binary
-// carries on the writing instruction - each component of the condition is cast to
-// `half` sized to the group, so four of them came out `(half4)`, and comparing
-// those is X3019 rather than the scalar test the instruction is. fxc folds this
-// idiom (`cmp -r,1,0` then `if_ne r,-r`) away, so no HLSL source produces it:
-// assembled by hand.
+// An `if_<rel>` on a replicated _pp component must compare a scalar, not a
+// `(half4)` (X3019). fxc folds `cmp -r,1,0` + `if_ne r,-r` away, so this is
+// hand-assembled.
 public class IfConditionPrecisionTests
 {
     [Test]
@@ -27,8 +22,7 @@ public class IfConditionPrecisionTests
                 Source(RegisterType.Input, 0)),                       // mov r0, v0
             Instruction(Opcode.Mov, Destination(RegisterType.Temp, 1),
                 Source(RegisterType.Const, 0)),                       // mov r1, c0
-            // r2.z = (half)(r0.x + r0.y) - the sum is one value read across four
-            // components, which is what used to widen the cast below.
+            // r2.z = (half)(r0.x + r0.y)
             Instruction(Opcode.Add, Destination(RegisterType.Temp, 2, 0x4, ResultModifier.PartialPrecision),
                 Source(RegisterType.Temp, 0, SourceModifier.None, X),
                 Source(RegisterType.Temp, 0, SourceModifier.None, Y)),

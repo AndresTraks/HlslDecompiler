@@ -8,40 +8,17 @@ using System.Linq;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// That an AST golden is a fixed point: compiled by fxc and decompiled again, it
-/// comes back byte for byte. A golden that does not is a decompilation of one
-/// shader that decompiles a second shader into something else, so which of the
-/// two texts the golden holds is an accident of where the fixture started.
-///
-/// The goldens only say the text has not changed since it was written, and every
-/// new fixture was checked for this by hand. The corpus as a whole had never been
-/// checked, and most of what fails here was committed that way.
-///
-/// The ps_1_x goldens are left out: they recompile as ps_2_0, and decompile from
-/// that as the ps_2_0 shader they are.
+/// An AST golden compiled by fxc and decompiled again must come back byte for
+/// byte. ps_1_x goldens are skipped: they recompile as ps_2_0.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it compiles one golden into a path named after its
-// profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class FixedPointTests
 {
-    // The goldens that were not a fixed point when this test was written, in the
-    // two classes measured then, listed in KnownNonFixedPoints.txt. Neither is a
-    // difference in what the shader computes - SecondRoundComputesTheSame holds
-    // every one of them to that.
-    //
-    // reordered: the same lines once the temporaries' names are set aside. fxc
-    // schedules the recompile its own way, and the decompiler names temporaries and
-    // orders commutative operands by where the instructions put them.
-    //
-    // reworded: the same arithmetic, spelled differently from fxc's schedule - the
-    // operands of an addition or a comparison in register order, a different
-    // component of a load named first, an idiom recovered in one round and not the
-    // next. When the list was first made, fifty-two oscillated between two texts,
-    // twenty-five settled on a second after one round, and twenty-four were still
-    // moving after two.
+    // Reason classes for KnownNonFixedPoints.txt. Neither changes what the shader
+    // computes; SecondRoundComputesTheSame checks that.
     private static readonly Dictionary<string, string> Reasons = new()
     {
         ["reordered"] = "fxc reorders the recompile, and the temporaries are named and the "
@@ -53,15 +30,10 @@ public class FixedPointTests
 
     private const string KnownFile = "KnownNonFixedPoints.txt";
 
-    /// <summary>
-    /// Goldens that are not a fixed point, and why. One that becomes one fails the
-    /// test so that its entry gets removed - or, blessing, is removed; a golden not
-    /// listed is held to being one.
-    /// </summary>
+    // A listed golden that becomes a fixed point fails, or is removed when blessing.
     private static readonly Dictionary<string, string> KnownNonFixedPoints = ReadKnownNonFixedPoints();
 
-    // The listed goldens found to be fixed points while blessing, taken off the list
-    // once every case has run.
+    // Removed from the list after all cases run.
     private static readonly ConcurrentDictionary<string, bool> BecameFixedPoints = new();
 
     private static Dictionary<string, string> ReadKnownNonFixedPoints()
@@ -153,12 +125,8 @@ public class FixedPointTests
     }
 
     /// <summary>
-    /// That where a golden is not a fixed point, the text it drifts to still means
-    /// what it does: the golden compiled, and the decompilation of that compiled
-    /// again, compute the same. The equivalence tier checks the first round, from the
-    /// fixture's own bytecode, and nothing checked the second - a groupshared word
-    /// stored as the bits of FLT_MAX came back the second time as the float itself,
-    /// stored into an integer, which converts it.
+    /// The golden compiled and its decompilation compiled compute the same: the
+    /// equivalence tier covers only the first round.
     /// </summary>
     [TestCaseSource(nameof(SecondRoundShaders))]
     public void SecondRoundComputesTheSame(string profile, string baseFilename)

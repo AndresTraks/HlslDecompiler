@@ -1,10 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// ubfe and ibfe: a run of bits out of a value, as a number. Which bits is a width
-/// and an offset, and the two instructions differ in what fills the top of the
-/// result - zeroes, or copies of the field's own top bit. HLSL has no intrinsic
-/// for either, so it is written as the shift and the mask it means.
+/// ubfe/ibfe: extract width bits at offset, zero- or sign-extended. No HLSL
+/// intrinsic, so written as shifts and a mask.
 /// </summary>
 public class BitFieldExtractOperation : Operation
 {

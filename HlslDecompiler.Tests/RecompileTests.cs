@@ -11,36 +11,26 @@ using System.Text;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// Recompiles decompiler output with fxc.
-///
-/// The golden-file tests only prove the output has not changed. These prove it is
-/// still valid HLSL, which is what stops an expected-output fixture from drifting
-/// into something that could never have been produced.
+/// Recompiles decompiler output with fxc to prove it is valid HLSL.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it reads one .fxc, writes its output under a path
-// named after its profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class RecompileTests
 {
-    /// <summary>
-    /// Shaders whose decompiled output does not compile yet, and why. A shader that
-    /// starts compiling fails the test so that it gets removed from here.
-    /// </summary>
+    // A listed shader that starts compiling fails, so its entry gets removed.
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
     };
 
     private static readonly Lazy<string> Fxc = new(FindFxc);
 
-    /// <summary>Shared with the other tests that need to run fxc.</summary>
     public static string FxcPath => Fxc.Value;
 
     public static IEnumerable<TestCaseData> InstructionShaders()
     {
-        // Its own names: sharing Shaders() gave both tests the same one, so a failure
-        // pointed at whichever you assumed it was.
+        // Distinct names from Shaders(), so failures say which writer.
         foreach ((string profile, string baseFilename) in ShaderNames())
         {
             yield return new TestCaseData(profile, baseFilename)
@@ -101,19 +91,11 @@ public class RecompileTests
             $"Decompiled output at {hlslOutputFilename} does not compile:{Environment.NewLine}{failure}");
     }
 
-    /// <summary>
-    /// Shaders whose instruction writer output does not compile yet, and why. Kept
-    /// apart from <see cref="KnownFailures"/>: the two writers fail on different
-    /// things, and a shader can round trip through one and not the other.
-    /// </summary>
+    // Separate from KnownFailures: the writers fail on different things.
     private static readonly Dictionary<string, string> KnownInstructionFailures = new()
     {
     };
 
-    /// <summary>
-    /// The same check for HlslSimpleWriter. It had none, which is how four shaders
-    /// came to be emitting output fxc rejects without anyone noticing.
-    /// </summary>
     [TestCaseSource(nameof(InstructionShaders))]
     [Category("Recompile")]
     public void InstructionOutputCompiles(string profile, string baseFilename)
@@ -172,11 +154,7 @@ public class RecompileTests
         return Recompile(profile, hlslOutputFilename, Path.ChangeExtension(hlslOutputFilename, ".fxo"));
     }
 
-    /// <summary>
-    /// fxc.exe is a Windows tool; off Windows it only runs under Wine, found on PATH
-    /// and pointed at the prefix it was set up in via the WINEPREFIX it inherits from
-    /// this process's environment.
-    /// </summary>
+    // Off Windows, runs fxc under wine (from PATH, with the inherited WINEPREFIX).
     public static ProcessStartInfo CreateFxcProcessStartInfo()
     {
         var startInfo = OperatingSystem.IsWindows()
@@ -193,18 +171,9 @@ public class RecompileTests
     }
 
     /// <summary>
-    /// A path as fxc has to be given it. Wine translates the program name in argv
-    /// and nothing else, so an absolute unix path reaches fxc as a token starting
-    /// with `/`, which it reads as an option; it then exits 1 having printed
-    /// nothing at all, so the failure reads as a broken wine install rather than a
-    /// bad argument. Mapped through Z:, which is the unix root in a wine prefix.
-    ///
-    /// Every tier that compiles a file under the test assembly passes a relative
-    /// path and so never met this. The two golden tiers read the goldens where they
-    /// are kept in the working tree, which is absolute, and all 1060 of their cases
-    /// failed on Linux the day that landed - each of them reporting that a golden
-    /// which compiles perfectly well by hand does not compile. Anything handing fxc
-    /// a path comes through here, so a new tier cannot rediscover it.
+    /// Wine does not translate arguments, so an absolute unix path reaches fxc as a
+    /// `/` option and it exits 1 silently. Mapped through Z:, the unix root in a
+    /// wine prefix. Every path handed to fxc must come through here.
     /// </summary>
     public static string AsFxcPath(string path)
     {
@@ -215,11 +184,7 @@ public class RecompileTests
         return "Z:" + Path.GetFullPath(path).Replace('/', '\\');
     }
 
-    /// <summary>
-    /// The profile a decompilation is compiled for. fxc answers X3539 for ps_1_x,
-    /// and a ps_1_x shader decompiles to the ps_2_0 one that computes the same, so
-    /// that is what its HLSL is compiled as.
-    /// </summary>
+    // fxc rejects ps_1_x (X3539); its decompilation is ps_2_0 HLSL.
     public static string CompileProfile(string profile) =>
         profile.StartsWith("ps_1_") ? "ps_2_0" : profile;
 
@@ -274,8 +239,7 @@ public class RecompileTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            // fxc.exe only runs under Wine here; there is no SDK layout to search.
-            // Point FXC_EXE at wherever it was copied from a Windows install.
+            // No SDK layout to search under Wine; FXC_EXE names the copied fxc.exe.
             string fxcExe = Environment.GetEnvironmentVariable("FXC_EXE");
             return fxcExe != null && File.Exists(fxcExe) ? fxcExe : null;
         }

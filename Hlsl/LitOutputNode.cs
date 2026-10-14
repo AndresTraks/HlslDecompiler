@@ -1,9 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// One component of a `lit` result. The four components are four different formulas
-// over the same three source components - 1, max(n.l, 0), the specular term and 1
-// again - so unlike most instructions the destination component decides the value
-// rather than which part of the source is read.
+// One component of `lit`; the destination component picks the formula
+// (1, max(n.l, 0), specular, 1), not the source component.
 public class LitOutputNode : HlslTreeNode, IHasComponentIndex
 {
     public LitOutputNode(

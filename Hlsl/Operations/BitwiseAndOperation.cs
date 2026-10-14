@@ -1,7 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// Bitwise & on integers, as opposed to the logical use of the same opcode on
-// comparison results.
+// Bitwise & on integers, not the logical use on comparison masks.
 public class BitwiseAndOperation : Operation
 {
     public BitwiseAndOperation(HlslTreeNode value1, HlslTreeNode value2)

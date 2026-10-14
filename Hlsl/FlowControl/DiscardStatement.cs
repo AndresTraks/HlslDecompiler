@@ -4,8 +4,7 @@ using System.Linq;
 
 namespace HlslDecompiler.Hlsl.FlowControl;
 
-// discard_nz <condition>: the pixel is dropped when the condition holds. HLSL clip()
-// is the narrower case of dropping it when a value is negative.
+// discard_nz: drops the pixel when the condition holds.
 public class DiscardStatement : IStatement
 {
     public HlslTreeNode Comparison { get; }

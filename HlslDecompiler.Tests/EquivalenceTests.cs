@@ -10,27 +10,16 @@ using System.Linq;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// Runs the original shader and a recompilation of each writer's output, and
-/// compares what they compute.
-///
-/// The golden files prove the output has not changed and the recompile tests prove
-/// it is valid HLSL. Neither says it is the same shader. A wrong constant, a
-/// dropped conversion or a swapped argument compiles perfectly, which is how three
-/// fixtures came to hold arithmetic that was simply wrong.
+/// Runs the original shader and each writer's recompiled output and compares what
+/// they compute; goldens and recompiling alone do not catch wrong arithmetic.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it reads one .fxc, writes its output under a path
-// named after its profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class EquivalenceTests
 {
-    /// <summary>
-    /// Shaders whose decompilation computes something else, by which writer, and
-    /// why. A writer not listed is still held to computing the same, and a listed
-    /// one that starts agreeing fails the test so that its entry gets removed from
-    /// here. Both writers can be listed, on different causes.
-    /// </summary>
+    // A listed writer that starts agreeing fails, so its entry gets removed.
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
         ["cs_4_0/particle_update"] = [("ast",
@@ -62,23 +51,12 @@ public class EquivalenceTests
             + "writer, which selects asfloat(3 * b[i] + 1), computes the same.")],
     };
 
-    /// <summary>How many sets of inputs each shader is run over.</summary>
     private const int Trials = 8;
 
-    /// <summary>
-    /// Two results count as the same within this much, relative to the larger.
-    /// fxc reassociates freely - folding a multiply and an add into a mad, or the
-    /// other way about - so the last bits are not expected to agree.
-    /// </summary>
+    // Relative to the larger; fxc reassociates (mul+add <-> mad).
     private const float Tolerance = 1e-3f;
 
-    /// <summary>
-    /// Every compiled shader there is, whatever its profile - the same set the
-    /// recompile tier runs. A fixed list of profiles here let a shader in a new
-    /// folder go uncompared, and its decompilation was wrong. Geometry and compute
-    /// shaders have no return value, so the machine reports what they put on their
-    /// stream and what they wrote to their buffers instead.
-    /// </summary>
+    // The same set the recompile tier runs, not a fixed list of profiles.
     public static IEnumerable<TestCaseData> Shaders()
     {
         foreach (TestCaseData data in RecompileTests.Shaders())
@@ -122,8 +100,7 @@ public class EquivalenceTests
             }
         }
 
-        // Said out loud rather than passed quietly: a machine that cannot run the
-        // shader has checked nothing, and a silent pass would read as coverage.
+        // Ignored, not passed: an unrun check must not read as coverage.
         if (compared == 0)
         {
             Assert.Ignore(unsupported == null
@@ -199,15 +176,8 @@ public class EquivalenceTests
     }
 
     /// <summary>
-    /// What two shaders compute differently over the trials, a sentence each, or
-    /// nothing where they agree.
-    ///
-    /// The two sides are named rather than assumed, because this answers two
-    /// questions. The test asks whether a decompilation computes what the shader it
-    /// came from computes. The cost sweep asks whether a rule changed what a shader
-    /// computes, which is the baseline against the variant - and that question needs
-    /// no view on whether either agrees with the original, so a shader already known
-    /// to differ is not noise to it.
+    /// One sentence per difference. The sides are named because the cost sweep
+    /// also uses this, to compare a baseline against a variant.
     /// </summary>
     internal static IEnumerable<string> CompareRuns(
         ShaderModel left, ShaderModel right, string leftName, string rightName)
@@ -217,9 +187,7 @@ public class EquivalenceTests
             Dictionary<string, float[]> expected = Run(left, trial);
             Dictionary<string, float[]> actual = Run(right, trial);
 
-            // A discarded pixel has no outputs to compare, so a decompilation that
-            // fails to discard where the original does - or discards where it does
-            // not - agreed with it on every output it had. Discarding is an outcome.
+            // Discarding is an outcome: a discarded pixel has no outputs to compare.
             if ((expected.Count == 0) != (actual.Count == 0))
             {
                 yield return $"differs on trial {trial}: "
@@ -229,13 +197,9 @@ public class EquivalenceTests
                 continue;
             }
 
-            // A store or an atomic is named by where it went, so one that went
-            // somewhere else is a result the other side has no key for. Comparing
-            // only the keys both sides had let a histogram bin computed as zero
-            // pass: the original wrote one bin and the decompilation another, and
-            // neither key was on both sides. The outputs proper are compared where
-            // both have them, as before - a signature can name what a side never
-            // writes.
+            // Stores are keyed by address, so a key on one side only is a store to
+            // the wrong place. Outputs are compared only where both have them: a
+            // signature can name what a side never writes.
             foreach (string name in expected.Keys.Concat(actual.Keys).Distinct()
                 .Where(n => n.StartsWith("STORE") || n.StartsWith("ATOMIC"))
                 .Where(n => !expected.ContainsKey(n) || !actual.ContainsKey(n))
@@ -265,8 +229,7 @@ public class EquivalenceTests
         }
     }
 
-    // The two instruction sets need two machines. Which one a shader wants is
-    // decided by how it was read, not by its profile name.
+    // Chosen by how the shader was read, not by profile name.
     private static Dictionary<string, float[]> Run(ShaderModel shader, int trial)
     {
         return shader.Instructions.FirstOrDefault() is D3D10Instruction
@@ -285,13 +248,8 @@ public class EquivalenceTests
             return left == right;
         }
 
-        // A value stored as bits rather than as a number - an index, a counter, a
-        // packed field - reads back as a denormal, and the tolerance has an absolute
-        // floor: every integer below 2^23 is below 2^-126 read as a float, so any
-        // two of them compared equal, and equal to zero. That is what let a texel
-        // stored through asfloat() - which converts the bits into the number they
-        // spell, and so into zero - agree with the integer the original wrote.
-        // Where either side is one, the bits have to match.
+        // An integer stored as bits reads as a denormal, which the tolerance's
+        // absolute floor would equate with zero; compare bits instead.
         uint leftBits = BitConverter.SingleToUInt32Bits(left);
         uint rightBits = BitConverter.SingleToUInt32Bits(right);
         if (IsDenormal(leftBits) || IsDenormal(rightBits))

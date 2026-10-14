@@ -6,18 +6,14 @@ using System.Collections.Generic;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// A loop-header phi is cyclic by construction: the body reads the phi, and the
-/// phi's backedge operand is derived from the body. Every traversal must terminate
-/// on that, because the failure mode is StackOverflowException - which .NET cannot
-/// catch and which takes the whole test process with it rather than failing a test.
-///
-/// <see cref="PhiNode.SetBackedgeValue"/> is the only path that may create a cycle;
-/// the ordinary <c>AddInput</c> still asserts the graph stays acyclic.
+/// A loop-header phi is cyclic, and every traversal must terminate on it: a
+/// StackOverflowException kills the whole test process.
+/// <see cref="PhiNode.SetBackedgeValue"/> is the only way to create a cycle.
 /// </summary>
 [TestFixture]
 public class CyclicGraphTests
 {
-    /// <summary>Builds `t = phi(0, t + 1)`, the shape a counter in a loop produces.</summary>
+    // t = phi(0, t + 1)
     private static PhiNode BuildLoopCarriedCounter(out HlslTreeNode backedgeValue)
     {
         var phi = new PhiNode(new ConstantNode(0));
@@ -35,7 +31,6 @@ public class CyclicGraphTests
         {
             Assert.That(phi.IsLoopHeader, Is.True);
             Assert.That(phi.BackedgeValue, Is.SameAs(backedgeValue));
-            // The cycle: the backedge value reads the phi it feeds.
             Assert.That(backedgeValue.Inputs, Does.Contain(phi));
             Assert.That(phi.Inputs, Does.Contain(backedgeValue));
         });
@@ -48,8 +43,7 @@ public class CyclicGraphTests
 
         Assert.Multiple(() =>
         {
-            // A phi is a leaf to expression traversals, so walking down from the
-            // backedge value stops at the phi rather than going round again.
+            // A phi is a leaf to expression traversals.
             Assert.That(phi.IsInputOf(backedgeValue), Is.True);
             Assert.That(backedgeValue.IsInputOf(phi), Is.False);
         });

@@ -8,23 +8,15 @@ using System.Linq;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// That with <see cref="HlslWriter.WritesFlowAttributes"/> a decompilation branches
-/// and loops where its shader did: recompiled, it holds as many ifs and as many
-/// loops as the original. Without the attributes fxc flattens an if it can and
-/// unrolls a loop it can count, which computes the same and is the shape the
-/// default output leaves it free to choose; this is what the option is for.
+/// With <see cref="HlslWriter.WritesFlowAttributes"/>, the recompile has as many
+/// ifs and loops as the original; without, fxc may flatten and unroll.
 /// </summary>
 [TestFixture]
 [Category("Recompile")]
-// Every case is independent: it reads one .fxc, writes its output under a path
-// named after its profile and shader, and shares nothing with the others.
+// Each case writes to its own path and shares nothing.
 [Parallelizable(ParallelScope.All)]
 public class FlowAttributeTests
 {
-    /// <summary>
-    /// Shaders whose recompile branches or loops otherwise even with the attributes,
-    /// by writer, and why.
-    /// </summary>
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
         ["ps_4_0/conditional_return"] = [("ast",
@@ -109,10 +101,8 @@ public class FlowAttributeTests
         yield return ("instruction", s => new HlslSimpleWriter(s) { WritesFlowAttributes = true });
     }
 
-    // The ifs and the loops in the bytecode, by the opcodes that open them. An if
-    // whose whole body is one break, continue, return or discard is a conditional
-    // jump, not a branch: fxc writes `if (c) break;` as a breakc or as if, break,
-    // endif as it likes, and inside a [loop] it picks the second.
+    // An if around a lone break/continue/ret/discard is a conditional jump, not a
+    // branch: fxc writes `if (c) break;` as breakc or as if/break/endif at will.
     private static (int Ifs, int Loops) CountFlow(ShaderModel shader)
     {
         IList<Instruction> instructions = shader.Instructions;

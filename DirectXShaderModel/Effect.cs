@@ -2,9 +2,7 @@
 
 namespace HlslDecompiler.DirectXShaderModel;
 
-// What a Direct3D 10 or 11 effect holds besides its shaders, as the effect
-// compiler records it: the layout is Microsoft's own, published with the Effects
-// 11 runtime (EffectBinaryFormat.h in FX11), and the names here follow it.
+// D3D10/11 effect structure, following EffectBinaryFormat.h in FX11.
 
 public enum EffectVariableClass
 {
@@ -107,10 +105,7 @@ public sealed class EffectType
 
 public sealed record EffectMember(string Name, string Semantic, int Offset, EffectType Type);
 
-/// <summary>
-/// An annotation's value: the strings of a string annotation, or the packed
-/// bytes of a numeric one - every component in order, without register padding.
-/// </summary>
+/// <summary>Value is packed, without register padding.</summary>
 public sealed record EffectAnnotation(string Name, EffectType Type, IReadOnlyList<string> Strings, byte[] Value);
 
 public sealed class EffectConstantBuffer
@@ -136,11 +131,7 @@ public sealed class EffectNumericVariable
     public IReadOnlyList<EffectAnnotation> Annotations { get; init; }
 }
 
-/// <summary>
-/// A shader as the effect stores it, whether a variable's or compiled in a pass:
-/// the DXBC file, null for a NULL shader, and the stream output it was built
-/// with, if any.
-/// </summary>
+/// <summary>Bytecode is null for a NULL shader.</summary>
 public sealed class EffectShader
 {
     public byte[] Bytecode { get; init; }
@@ -158,9 +149,7 @@ public sealed class EffectObjectVariable
     public IReadOnlyList<EffectAnnotation> Annotations { get; init; }
     /// <summary>A state object's assignments, per element.</summary>
     public IReadOnlyList<IReadOnlyList<EffectAssignment>> Blocks { get; init; } = [];
-    /// <summary>A shader variable's shaders, per element.</summary>
     public IReadOnlyList<EffectShader> Shaders { get; init; } = [];
-    /// <summary>A string variable's strings, per element.</summary>
     public IReadOnlyList<string> Strings { get; init; } = [];
 }
 
@@ -178,11 +167,7 @@ public enum EffectAssignmentKind
 
 public sealed record EffectConstant(EffectScalarType Type, uint Bits);
 
-/// <summary>
-/// One state set in a state object or a pass: which (an index into the runtime's
-/// table of states, see <see cref="EffectStates"/>), at which index for the ones
-/// that are arrays, and to what.
-/// </summary>
+/// <summary>A state set in a state object or pass; State indexes <see cref="EffectStates"/>.</summary>
 public sealed class EffectAssignment
 {
     public int State { get; init; }
@@ -201,7 +186,7 @@ public sealed record EffectPass(string Name, IReadOnlyList<EffectAnnotation> Ann
 
 public sealed record EffectTechnique(string Name, IReadOnlyList<EffectAnnotation> Annotations, IReadOnlyList<EffectPass> Passes);
 
-/// <summary>An fxgroup, or for an effect not written in groups, the one unnamed group its techniques are in.</summary>
+/// <summary>An fxgroup, or the one unnamed group of an effect without groups.</summary>
 public sealed record EffectGroup(string Name, IReadOnlyList<EffectAnnotation> Annotations, IReadOnlyList<EffectTechnique> Techniques);
 
 public sealed class Effect

@@ -43,11 +43,8 @@ public class DotProduct3Template : IGroupTemplate
             third = addition.Addend1;
         }
 
-        // The same folded 1 DotProduct4Template reads back: a point in the plane
-        // transformed by a matrix is float4(xy, 1, 1) against it, and both ones
-        // fold away, so the sum stops at two products and two bare matrix
-        // components. Only where the bare addend is a matrix component, so an
-        // unrelated addend is not taken for one.
+        // A bare matrix component is a product with a folded 1, as in
+        // float4(xy, 1, 1) against a matrix.
         if (third is not MultiplyOperation cz)
         {
             HlslTreeNode xThird = dot.X.Inputs[1];
@@ -93,12 +90,8 @@ public class DotProduct3Template : IGroupTemplate
                 && c is not DotProductOperation
                 && !IsTransposedGather(dot.X.Inputs[0], b, c)))
         {
-            // The other side is a matrix, or components of one register: either way
-            // this side may be arbitrary - one component built by an expression is
-            // still a component. DotProduct2Template allows the same thing, and
-            // without it here a dot product over such a vector stops after two
-            // components. A component that is itself a dot stays out, so that rows
-            // of a matrix multiply reach the multiplication grouper whole.
+            // The other side is a matrix or one register, so this side may be
+            // arbitrary, except dots: those are matrix multiply rows.
             return new DotProductContext(
                 new GroupNode(dot.X.Inputs[0], b, c),
                 new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));
@@ -106,8 +99,7 @@ public class DotProduct3Template : IGroupTemplate
         else if (NodeGrouper.AreNodesEquivalent(dot.X, dot.Y)
             && NodeGrouper.AreNodesEquivalent(cz.Factor1, cz.Factor2))
         {
-            // The same as the two component case: a dot of a vector with itself is
-            // a length squared whatever its components are, so they need not group.
+            // A length squared over any components.
             return new DotProductContext(
                 new GroupNode(dot.X.Inputs[0], b, c),
                 new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));
@@ -118,19 +110,9 @@ public class DotProduct3Template : IGroupTemplate
 
 
     /// <summary>
-    /// Whether these are one component taken from each of several values, which is a
-    /// transpose and not a vector. fxc has to move each into place before it can dot
-    /// them, an instruction apiece, so a dot over one never costs less than writing
-    /// the products out - and taking it can cost a great deal more, because the dots
-    /// it leaves behind do not group with one another. A terrain splat weighting
-    /// three layers by one splat sample came back as a dot per output component, the
-    /// lerp above them could not group over three unrelated dots, and the whole
-    /// colour was written a component at a time: eighteen instructions out, thirty
-    /// back.
-    ///
-    /// A matrix is read the other way round and is not caught by this: a row has one
-    /// byte offset and a component apiece, so its components differ in index where
-    /// these agree.
+    /// Whether these are the same component of several values: a transpose, which
+    /// fxc must gather an instruction apiece, so a dot over it never pays. A matrix
+    /// row differs in component index and is not caught.
     /// </summary>
     private static bool IsTransposedGather(params HlslTreeNode[] nodes)
     {
@@ -138,11 +120,8 @@ public class DotProduct3Template : IGroupTemplate
             && nodes.Select(node => ((IHasComponentIndex)node).ComponentIndex)
                 .Distinct().Count() == 1
             && nodes.Distinct(ReferenceEqualityComparer.Instance).Count() == nodes.Length
-            // Reads of the same kind, which is what makes them parallel rather than
-            // one value the writer happened to split. A luminance dot over a texel
-            // reaches here as the load's .x beside a float2 variable holding its
-            // .yz, and those share a component index without being a transpose at
-            // all - the components of one read, named halfway through.
+            // Same node kind: a load's .x beside a variable holding its .yz is
+            // one split value, not a transpose.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
     public HlslTreeNode Reduce(HlslTreeNode node, IGroupContext groupContext)

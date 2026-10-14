@@ -4,21 +4,11 @@ using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
 
-// A value the writer names has to be declared before the lines that read it, shared
-// lines included. A `sincos` whose results are then overwritten component by component
-// is the hard case: the cosine and the sine are each read twice more through the
-// products folded into the values built over them, so the pair comes back as one
-// shared `float2` and those built-on values are shared in their turn - and one of
-// them reads the other, so the shared line for the pair cannot simply go first.
-// fxc reassociates this shape away whenever HLSL writes it, so no golden can hold
-// one: assembled by hand from the binary that triggered it - the products of the
-// trig pair, a mad that overwrites the cosine with a value built from it, an add
-// that overwrites the sine with a dot over the pair, and each of the two built-on
-// values read twice.
+// A named value must be declared before every line that reads it. Hard case: a
+// sincos pair overwritten component by component with values built from it, all
+// shared, one reading another. Hand-assembled: fxc reassociates the shape away.
 public class TempDeclarationOrderTests
 {
-    // The swizzles both fixtures read: the four components, replicated, and the
-    // two three-wide ones a sincos pair's componentwise products with a vector.
     private const uint X = 0x00;    // .x replicated
     private const uint Y = 0x55;    // .y replicated
     private const uint Z = 0xAA;    // .z replicated
@@ -91,12 +81,8 @@ public class TempDeclarationOrderTests
         });
     }
 
-    // A binary's statement block that actually mis-ordered, boiled down to the
-    // instructions the bug needs: the trig pair, its products, the mad and add
-    // that overwrite the two results, a lerp chain reading both values built over
-    // them, a partial position write, and a loop ending the statement so the
-    // chain's reader lands in the block after it. The named shared values used to
-    // land in the wrong order: the cross product before the pair it reads.
+    // The same pair across a whole statement ended by a loop, so the lerp chain's
+    // reader lands after it; the cross product must not precede the pair.
     [Test]
     public void OrdersTheTrigPairAmongTheNamedValuesOfTheWholeStatement()
     {
@@ -115,8 +101,7 @@ public class TempDeclarationOrderTests
             Instruction(Opcode.Add, Rd(0, 0x1), V(1, W), C(0, W)),       // add r0.x, v1.w, c0.w
             Instruction(Opcode.Sge, Rd(0, 0x1),                           // sge r0.x, -r0_abs.x, r0_abs.x
                 R(0, X, SourceModifier.AbsAndNegate), R(0, X, SourceModifier.Abs)),
-            // sincos r1.xy, v1.z: r0 and r1 are each written several times below,
-            // which is what the old sort tripped on.
+            // r0 and r1 are each written several times below.
             Instruction(Opcode.SinCos, Rd(1, 0x3), V(1, Z)),              // sincos r1.xy, v1.zz
             // the products, then the two overwrites: the cross product and the dot.
             Instruction(Opcode.Mul, Rd(0, 0xE), R(1, YYX), V(1, YXY)),    // mul r0.yzw, r1.yyx, v1.yxy
@@ -124,17 +109,13 @@ public class TempDeclarationOrderTests
                 R(0, Y, SourceModifier.Negate)),
             Instruction(Opcode.Add, Rd(1, 0x2), R(0, W), R(0, Z)),        // add r1.y, r0.w, r0.z
             Instruction(Opcode.Mov, Rd(1, 0x4), C(0, X)),                 // mov r1.z, c0.x
-            // the step times the cross product, the dot and their zero, feeding
-            // the partial position write - whose .w the second statement fills.
+            // feeds the partial position write; .w is filled later.
             Instruction(Opcode.Mul, Rd(0, 0xE), R(0, X), R(1, XYZ)),     // mul r0.yzw, r0.xxx, r1.xyz
             Instruction(Opcode.Mad, Od(0, 0x7), V(0), C(0, WWZ,          // mad o0.xyz, v0.xyz, c0_abs.wwz, r0.yzw
                 SourceModifier.Abs), R(0, YZW)),
             // the lerp's operand: both built-on values read a second time.
             Instruction(Opcode.Add, Rd(1, 0x7), R(1), V(0, 0xE4, SourceModifier.Negate)), // add r1.xyz, r1.xyz, -v0.xyz
-            // The lerp ends the first statement; the loop that follows is the
-            // second, and the loop's reader of the lerp comes after it - so the
-            // shared lines of the whole statement, the pair first among them,
-            // all have to be named before the loop.
+            // The lerp ends the first statement; its reader is after the loop.
             Instruction(Opcode.Mad, Rd(0, 0x7), R(0, X), R(1), V(0)),     // mad r0.xyz, r0.xxx, r1.xyz, v0.xyz
             Instruction(Opcode.Mov, Rd(2, 0x1), C(0, X)),                 // mov r2.x, c0.x
             Instruction(Opcode.Loop, Source(RegisterType.Loop, 14),       // loop aL, i0
@@ -215,19 +196,9 @@ public class TempDeclarationOrderTests
         });
     }
 
-    // A root vector whose every lane is read again on its own is named so those
-    // reads are its components - unless naming it puts a reader of one lane inside
-    // the value of another, which is a cycle no order of statements writes. The
-    // position below is (dot + 1, dot + 2, dot + 3, d + 4), d the dot of a matrix
-    // multiply of it whose rows each read one lane: named, the multiply reads the
-    // variable whose w its own answer feeds, and the dot statement lands above the
-    // multiply it reads. The position goes back to its lanes inlined.
-    // The short lane text keeps the lanes unnamed and so the root whole; a
-    // coefficient of 1 in a row keeps the multiply's products from fusing into
-    // dots, which would read the lanes as one vector and leave the root nothing
-    // read again on its own; and the w needs a scalar output read that the fold
-    // of the full write leaves on its own - the product's own naming, which is
-    // what the cycle runs through, comes from the pass before the text one.
+    // A root vector is not named when a reader of one lane builds another lane
+    // (here w = dot of a multiply over xyz): that is a cycle no statement order
+    // can write. The row coefficients of 1 stop the products fusing into dots.
     [Test]
     public void LeavesTheRootUnnamedWhenItsLaneReadersBuildAnotherLane()
     {

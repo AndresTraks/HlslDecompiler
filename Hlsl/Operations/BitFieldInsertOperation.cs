@@ -1,9 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// bfi: a run of bits of one value put into another in place of the bits that were
-/// there. Which bits is a width and an offset. HLSL has no intrinsic for it, so it
-/// is written as the masks it means.
+/// bfi: insert width bits at offset. No HLSL intrinsic, so written as masks.
 /// </summary>
 public class BitFieldInsertOperation : Operation
 {

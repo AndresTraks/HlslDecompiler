@@ -1,7 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// clamp(x, low, high), which HLSL defines as min(max(x, low), high) - so the two
-// are the same expression and not merely close.
+// clamp(x, low, high), defined as min(max(x, low), high).
 public class ClampOperation : Operation
 {
     public ClampOperation(HlslTreeNode value, HlslTreeNode low, HlslTreeNode high)

@@ -3,18 +3,12 @@
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// What compiling a statement and throwing the text away tells the writer: the text
-/// of every subexpression it wrote, the nodes a grouper took the inside of, and the
-/// component sets the groupers matched whole.
-///
-/// One object because they are one measurement. Asking for the text and leaving the
-/// grouped set behind is how a name ended up inside a matrix multiply: the writer
-/// had the counts that said a node was written twice and not the set that said the
-/// node was a component of something written once.
+/// What a trial compile of a statement tells the writer: each subexpression's text,
+/// the nodes groupers absorbed, and the groups matched whole. Kept together so
+/// write counts are never read without the grouped set.
 /// </summary>
 public class CompileMeasurement
 {
-    /// <summary>Every group the compile wrote, with the text it wrote for it.</summary>
     public List<(HlslTreeNode[] Nodes, string Text)> Recording { get; } = [];
 
     /// <summary>See <see cref="NodeCompiler.Grouped"/>.</summary>
@@ -24,10 +18,8 @@ public class CompileMeasurement
     public List<HlslTreeNode[]> GroupMatches { get; } = [];
 
     /// <summary>
-    /// How many times the compile wrote each node. A node appears here when it is a
-    /// component of a group the compiler wrote; one a grouper absorbed - a
-    /// normalize's length, a matrix multiply's dot products - appears not at all,
-    /// however many readers it has in the graph.
+    /// How many times each node was written; nodes a grouper absorbed (a
+    /// normalize's length) are absent whatever their reader count.
     /// </summary>
     public Dictionary<HlslTreeNode, int> WrittenCounts()
     {

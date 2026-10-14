@@ -2,9 +2,8 @@
 
 namespace HlslDecompiler.DirectXShaderModel;
 
-// What an fx_2_0 effect holds besides its shaders. Microsoft never published the
-// layout; the names here are D3DX9's own (D3DXPARAMETER_TYPE and so on), and the
-// layout follows Wine's reading of it in d3dx9_36/effect.c.
+// fx_2_0 effect structure. Unpublished; names are D3DX9's, layout follows Wine's
+// d3dx9_36/effect.c.
 
 public enum D3DXParameterType
 {
@@ -41,10 +40,8 @@ public enum D3DXParameterClass
 }
 
 /// <summary>
-/// A typed value: a parameter, an annotation, a member of a struct, or the value a
-/// state is set to. The type is a D3DX type and class with its dimensions; the
-/// value is the raw data of a numeric one, the object of each element of an object
-/// one, or the states of each element of a sampler.
+/// A parameter, annotation, struct member or state value: a D3DX type, and raw
+/// data, objects or sampler states per element.
 /// </summary>
 public sealed class D3D9EffectValue
 {
@@ -56,23 +53,20 @@ public sealed class D3D9EffectValue
     public int Elements { get; init; }
     public int Rows { get; init; }
     public int Columns { get; init; }
-    /// <summary>A struct's members, as types: their values are in the struct's data.</summary>
+    /// <summary>Types only; the values are in the struct's data.</summary>
     public IReadOnlyList<D3D9EffectValue> Members { get; init; } = [];
     public uint Flags { get; init; }
     public IReadOnlyList<D3D9EffectValue> Annotations { get; init; } = [];
 
-    /// <summary>A numeric value's data, every element and member in order.</summary>
     public byte[] Data { get; init; }
-    /// <summary>An object value's objects, one per element: a string, a shader, or nothing for a texture.</summary>
+    /// <summary>One per element; a texture's has no data.</summary>
     public IReadOnlyList<D3D9EffectObject> Objects { get; init; } = [];
-    /// <summary>A sampler's states, one list per element.</summary>
     public IReadOnlyList<IReadOnlyList<D3D9EffectState>> SamplerStates { get; init; } = [];
 
     public bool IsSampler => Type is >= D3DXParameterType.Sampler and <= D3DXParameterType.SamplerCube;
     public bool IsShader => Type is D3DXParameterType.PixelShader or D3DXParameterType.VertexShader;
     public bool IsTexture => Type is >= D3DXParameterType.Texture and <= D3DXParameterType.TextureCube;
 
-    /// <summary>The size of one element's data, which a struct's members add up to.</summary>
     public int ElementSize => Class == D3DXParameterClass.Struct
         ? SumMembers()
         : Class == D3DXParameterClass.Object ? 0 : 4 * Rows * Columns;
@@ -88,10 +82,6 @@ public sealed class D3D9EffectValue
     }
 }
 
-/// <summary>
-/// The data an object is given in the effect: a string's text, a shader's
-/// bytecode, or none at all.
-/// </summary>
 public sealed class D3D9EffectObject
 {
     public int Id { get; init; }
@@ -104,7 +94,6 @@ public enum D3D9StateKind
     Constant,
     /// <summary>A shader compiled in the pass.</summary>
     Shader,
-    /// <summary>An expression the effect evaluates.</summary>
     Expression,
     /// <summary>A parameter, named: `PixelShader = (named)` or `Texture = &lt;tex&gt;`.</summary>
     Parameter,
@@ -113,9 +102,8 @@ public enum D3D9StateKind
 }
 
 /// <summary>
-/// One state set in a pass or a sampler: which (an index into D3DX's table of
-/// states, see <see cref="D3D9EffectStates"/>), at which index - the stage, the
-/// sampler, the light - and to what.
+/// A state set in a pass or sampler. Operation indexes
+/// <see cref="D3D9EffectStates"/>; Index is the stage, sampler or light.
 /// </summary>
 public sealed class D3D9EffectState
 {

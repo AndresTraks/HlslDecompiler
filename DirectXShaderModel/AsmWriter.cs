@@ -12,8 +12,7 @@ public class AsmWriter
     private ShaderModel shader;
     private StreamWriter asmWriter;
 
-    // What the line being written starts with: "+ " for the second instruction of a
-    // ps_1_x co-issued pair, the way fxc marks it.
+    // "+ " for the second instruction of a ps_1_x co-issued pair.
     private string _linePrefix = "";
     private IDictionary<RegisterKey, int> _samplerDimensions = new Dictionary<RegisterKey, int>();
     private readonly IntegerOperandAnalysis _integerOperandAnalysis;
@@ -59,8 +58,6 @@ public class AsmWriter
         if (operandType is OperandType.OutputDepth
             or OperandType.OutputCoverageMask
             or OperandType.InputCoverageMask
-            // One number each, so the one component they carry is the whole
-            // of them and fxc writes the declaration bare.
             or OperandType.OutputStencilRef
             or OperandType.InputInnerCoverage)
         {
@@ -71,10 +68,7 @@ public class AsmWriter
 
     private string GetSourceName(D3D9Instruction instruction, int srcIndex, int? destinationLength = null)
     {
-        // The modifier belongs to the register and the swizzle selects out of what
-        // the modifier produced, so fxc writes -v0_abs.z: the sign in front of the
-        // whole operand, _abs against the register, the swizzle last. Applying the
-        // modifier to the swizzled name instead spells it v0.z_abs.
+        // The modifier goes on the register, the swizzle last: -v0_abs.z.
         string sourceName = ApplyModifier(instruction.GetSourceModifier(srcIndex),
             GetParamRegisterName(instruction, srcIndex));
         sourceName += instruction.GetSourceSwizzleName(srcIndex, destinationLength);
@@ -127,8 +121,6 @@ public class AsmWriter
                 WriteLine("break_{0} {1}, {2}", instruction.Comparison.ToString().ToLower(), GetSourceName(instruction, 0),
                     GetSourceName(instruction, 1));
                 break;
-            // Subroutines. The label is an operand of both the call and the label
-            // it calls, and a vertex shader's main body ends at its first ret.
             case Opcode.Call:
                 WriteLine("call {0}", GetSourceName(instruction, 0));
                 break;
@@ -152,17 +144,14 @@ public class AsmWriter
                 WriteLine("break");
                 break;
             case Opcode.Breakp:
-                // fxc spells this one `break p0` rather than breakp, and reads the
-                // predicate as a destination token - a component mask rather than a
-                // swizzle, which is how it tells `break p0` from `break p0.z`.
+                // fxc spells it `break p0`; the predicate is a destination token,
+                // so it takes a write mask, not a swizzle.
                 WriteLine("break {0}{1}", GetParamRegisterName(instruction, 0),
                     instruction.GetDestinationWriteMaskName(4));
                 break;
             case Opcode.Dcl:
                 string dclInstruction = "dcl";
-                // ps_2_0 declares its texture coordinates as `dcl t0.xy` and its
-                // colours as `dcl v0`, with the semantic implied by the register
-                // rather than spelled out.
+                // ps_2_0 implies the semantic of t# and v#: `dcl t0.xy`, `dcl v0`.
                 bool impliedSemantic = instruction.GetParamRegisterType(1) == RegisterType.Texture
                     || (instruction.HasImpliedInputSemantics
                         && instruction.GetParamRegisterType(1) == RegisterType.Input);
@@ -282,11 +271,8 @@ public class AsmWriter
                 WriteLine("lrp{0} {1}, {2}, {3}, {4}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
-            // A matrix product is not componentwise: every row of the product
-            // reads the whole vector, so both operands are as wide as the first
-            // number in the mnemonic however few rows the destination mask keeps.
-            // crs is the same - a cross product reads three components to write
-            // any one of them.
+            // Not componentwise: operands are as wide as the mnemonic's first number,
+            // whatever the destination mask.
             case Opcode.M3x2:
                 WriteLine("m3x2{0} {1}, {2}, {3}", GetModifier(instruction), GetDestinationName(instruction),
                     GetSourceName(instruction, 1, 3), GetSourceName(instruction, 2, 3));
@@ -369,8 +355,6 @@ public class AsmWriter
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2), GetSourceName(instruction, 3));
                 break;
             case Opcode.SetP:
-                // The comparison rides in the instruction token, the way ifc and
-                // breakc carry theirs.
                 WriteLine("setp_{0} {1}, {2}, {3}", instruction.Comparison.ToString().ToLower(),
                     GetDestinationName(instruction), GetSourceName(instruction, 1),
                     GetSourceName(instruction, 2));
@@ -396,10 +380,7 @@ public class AsmWriter
                     GetSourceName(instruction, 1), GetSourceName(instruction, 2));
                 break;
             case Opcode.Bem:
-                // Not componentwise: both components of the result read both
-                // components of the perturbation, and the write mask has to be
-                // the red and green pair, so the operands are two wide whatever
-                // it says.
+                // Not componentwise: the operands are two wide whatever the mask.
                 WriteLine("bem {0}, {1}, {2}", GetDestinationName(instruction),
                     GetSourceName(instruction, 1, 2), GetSourceName(instruction, 2, 2));
                 break;
@@ -407,14 +388,10 @@ public class AsmWriter
                 WriteLine("phase");
                 break;
             case Opcode.TexCoord:
-                // ps_1_4 renamed it and gave it the coordinate register the older
-                // one took from its own destination number, the way tex became
-                // texld.
+                // ps_1_4 renamed it texcrd and gave it a coordinate operand.
                 if (shader.MajorVersion == 1 && shader.MinorVersion >= 4)
                 {
-                    // A projected coordinate reads the component it divides by as
-                    // well as the ones it writes - the third for _dz, the fourth
-                    // for _dw - so the swizzle names it: t0_dw.xyww, not t0_dw.xy.
+                    // A projected coordinate also reads its divisor: t0_dw.xyww.
                     int? width = instruction.GetSourceModifier(1) switch
                     {
                         SourceModifier.DivideByZ => 3,
@@ -454,10 +431,7 @@ public class AsmWriter
                 }
                 else if (shader.MinorVersion >= 4)
                 {
-                    // ps_1_4 renamed tex to texld and gave it the coordinate
-                    // register the older one took from its own destination
-                    // number - but not a sampler, which ps_2_0 added. Treating
-                    // it as a ps_2_0 texld read an operand that is not there.
+                    // ps_1_4 texld has a coordinate operand but no sampler.
                     WriteLine("texld {0}, {1}", GetDestinationName(instruction),
                         GetSourceName(instruction, 1));
                 }
@@ -550,9 +524,7 @@ public class AsmWriter
             case Opcode.End:
                 break;
             default:
-                // Not a diagnostic to fall back to the opcode name: it writes assembly
-                // with no operands that looks plausible enough to be recorded as a
-                // fixture, which is how `lit oPos, c0.xyzz` became `Lit`.
+                // Throw rather than print the bare opcode name, which looks plausible.
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }
     }
@@ -571,8 +543,7 @@ public class AsmWriter
                 WriteInstruction(instruction, "cut", 0);
                 break;
             case D3D10Opcode.DclConstantBuffer:
-                // fxc writes the buffer's name upper case where it is declared and
-                // lower case everywhere it is read, and the listing follows it.
+                // fxc writes CB# in the declaration and cb# elsewhere.
                 WriteLine("dcl_constantbuffer CB{0}, {1}", FormatOperand(instruction, 0).Substring(2),
                     instruction.IsDynamicallyIndexed ? "dynamicIndexed" : "immediateIndexed");
                 break;
@@ -616,18 +587,10 @@ public class AsmWriter
             case D3D10Opcode.DclOutput:
                 WriteInstruction(instruction, "dcl_output", 1);
                 break;
-            // The same names an input declaration uses, from the one listing: a
-            // second copy here had neither the tessellation factors nor fxc's
-            // spelling of sampleIndex, so a hull shader's own outputs - which are
-            // all tessellation factors - could not be written at all.
             case D3D10Opcode.DclOutputSiv:
                 WriteLine("dcl_output_siv {0}, {1}", FormatOperand(instruction, 0),
                     GetSystemValueName(instruction));
                 break;
-            // Generated rather than interpreted: the rasterizer reads a system
-            // interpreted value and acts on it, and a generated one it only carries.
-            // A geometry shader writing SV_PrimitiveID is the one the corpus can
-            // reach - the parser and the instruction writer have had it all along.
             case D3D10Opcode.DclOutputSgv:
                 WriteLine("dcl_output_sgv {0}, {1}", FormatOperand(instruction, 0),
                     GetSystemValueName(instruction));
@@ -645,8 +608,6 @@ public class AsmWriter
                         $"dcl_resource_{dimension} ({GetResourceReturnTypes(instruction)})", 1);
                 }
                 break;
-            // A typed UAV declares a dimension and an element type the way a
-            // texture does: it is a texture that can be written to.
             case D3D10Opcode.DclUnorderedAccessViewTyped:
                 WriteInstruction(instruction,
                     $"dcl_uav_typed_{GetResourceDimensionName(instruction.GetResourceDimension())}"
@@ -668,8 +629,6 @@ public class AsmWriter
             case D3D10Opcode.DclTemps:
                 WriteLine("dcl_temps {0}", instruction.GetParamInt(0));
                 break;
-            // The run of input registers a dynamic read indexes over: the first of
-            // them with its mask, and how many there are.
             case D3D10Opcode.DclIndexRange:
                 WriteLine("dcl_indexrange {0} {1}", FormatOperand(instruction, 0),
                     instruction.IndexRangeCount);
@@ -678,8 +637,6 @@ public class AsmWriter
                 WriteLine("dcl_indexableTemp x{0}[{1}], {2}", instruction.IndexableTempRegister,
                     instruction.IndexableTempElementCount, instruction.IndexableTempComponentCount);
                 break;
-            // The tessellation declarations, which say what a patch is and how the
-            // tessellator divides it.
             case D3D10Opcode.DclInputControlPointCount:
                 WriteLine("dcl_input_control_point_count {0}", instruction.ControlPointCount);
                 break;
@@ -697,9 +654,6 @@ public class AsmWriter
                             instruction.TessellatorDomain.ToString()),
                     });
                 break;
-            // A hull shader says what the tessellator does with the factors it
-            // computes, where a domain shader says only the domain: the shader that
-            // produces a factor is the one that decides how it is cut up.
             case D3D10Opcode.DclTessPartitioning:
                 WriteLine("dcl_tessellator_partitioning partitioning_{0}",
                     instruction.TessellatorPartitioning switch
@@ -724,26 +678,18 @@ public class AsmWriter
                             instruction.TessellatorOutputPrimitive.ToString()),
                     });
                 break;
-            // The bound a hull shader promises its factors keep to, which it clamps
-            // them to itself as well.
             case D3D10Opcode.DclHSMaxTessFactor:
-                // The bound is the whole of the one token, a float and not an
-                // operand: read as an operand it is a register type, and printed
-                // as one it said the letter r.
+                // The token is a raw float, not an operand.
                 WriteLine("dcl_hs_max_tessfactor l({0})", ConstantFormatter.Format(
                     BitConverter.Int32BitsToSingle(instruction.GetParamInt(0))));
                 break;
-            // How many times a phase runs, each run knowing which it is - the same
-            // thing [instance(n)] says of a geometry shader.
             case D3D10Opcode.DclHSForkPhaseInstanceCount:
                 WriteLine("dcl_hs_fork_phase_instance_count {0}", instruction.GetParamInt(0));
                 break;
             case D3D10Opcode.DclHSJoinPhaseInstanceCount:
                 WriteLine("dcl_hs_join_phase_instance_count {0}", instruction.GetParamInt(0));
                 break;
-            // A hull shader is several programs in one, and these say where each
-            // begins: the declarations they share, the one that runs per control
-            // point, and the ones that compute the patch's own constants.
+            // Hull shader phase markers.
             case D3D10Opcode.HsDecls:
                 WriteLine("hs_decls");
                 break;
@@ -764,10 +710,7 @@ public class AsmWriter
                     instruction.HasOrderPreservingCounter ? "_opc" : "",
                     FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
-            // Dynamic linkage. The three declarations carry plain dwords rather
-            // than operands - a body is one number, a table is a count and the
-            // bodies it holds, an interface a pair of lengths and the tables a
-            // class could put in it - so they are read off the tokens directly.
+            // Dynamic linkage declarations carry plain dwords, not operands.
             case D3D10Opcode.DclFunctionBody:
                 WriteLine("dcl_function_body fb{0}", instruction.OperandTokens.Tokens[0]);
                 break;
@@ -780,10 +723,7 @@ public class AsmWriter
                 }
             case D3D10Opcode.DclInterface:
                 {
-                    // fp0[3][1] = {ft2, ft3}: how many of the interface the shader
-                    // declared, then how many functions each of its tables holds -
-                    // and the tables themselves are every class that could be bound
-                    // to it, which is why there are more of them than functions.
+                    // fp0[array length][function count] = {every bindable table}.
                     uint[] tokens = instruction.OperandTokens.Tokens;
                     uint arrayLength = tokens[2] >> 16;
                     uint tableCount = tokens[2] & 0xFFFF;
@@ -794,9 +734,7 @@ public class AsmWriter
                 }
             case D3D10Opcode.InterfaceCall:
                 {
-                    // The function index comes first, as a dword of its own, and the
-                    // interface operand after it: fcall fp1[2][0] calls function 0
-                    // of whatever is bound to element 2 of interface 1.
+                    // The function index dword precedes the interface operand.
                     uint[] tokens = instruction.OperandTokens.Tokens;
                     WriteLine("fcall fp{0}[{1}][{2}]", tokens[2], tokens[3], tokens[0]);
                     break;
@@ -805,9 +743,6 @@ public class AsmWriter
                 WriteLine("label {0}", FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
-                // Raw shared memory is declared by its size in bytes alone, where
-                // the structured form names a stride and a count: a groupshared
-                // scalar is what fxc gives this shape to.
                 WriteLine("dcl_tgsm_raw {0}, {1}", FormatOperand(instruction, 0),
                     instruction.GetParamIndexImmediate32(1, 0));
                 break;
@@ -911,9 +846,6 @@ public class AsmWriter
             case D3D10Opcode.IMad:
                 WriteInstruction(instruction, "imad", 4);
                 break;
-            // The sum of absolute differences of four bytes against four, once for
-            // each of four windows, added to what it is given: a destination and
-            // three sources, all four wide.
             case D3D10Opcode.MSAD:
                 WriteInstruction(instruction, "msad", 4);
                 break;
@@ -1044,13 +976,9 @@ public class AsmWriter
             case D3D10Opcode.Gather4PoC:
                 WriteInstruction(instruction, "gather4_po_c", 6);
                 break;
-            // The same five operands: the comparison value is the fifth either way,
-            // and the difference is only which mip the comparison is made against.
             case D3D10Opcode.SampleC:
                 WriteInstruction(instruction, "sample_c", 5);
                 break;
-            // The test-boolean bit is not decoded, so the nz form is assumed, as it
-            // already is for if and discard.
             case D3D10Opcode.RetC:
                 WriteInstruction(instruction, Conditional(instruction, "retc"), 1);
                 break;
@@ -1064,8 +992,7 @@ public class AsmWriter
                 break;
             case D3D10Opcode.CustomData:
                 {
-                    // Four floats a row. fxc spreads it over a line each; one line
-                    // keeps it in step with the rest of this disassembly.
+                    // On one line, unlike fxc's one row per line.
                     uint[] data = instruction.CustomData ?? [];
                     var rows = new List<string>();
                     for (int row = 0; row + 3 < data.Length; row += 4)
@@ -1192,8 +1119,6 @@ public class AsmWriter
             case D3D10Opcode.AtomicCmpStore:
                 WriteInstruction(instruction, "atomic_cmp_store", 4);
                 break;
-            // The slot an append takes or a consume gives back: the counter, and
-            // the register it lands in.
             case D3D10Opcode.ImmAtomicAlloc:
                 WriteInstruction(instruction, "imm_atomic_alloc", 2);
                 break;
@@ -1233,8 +1158,6 @@ public class AsmWriter
             case D3D10Opcode.StoreStructured:
                 WriteInstruction(instruction, "store_structured", 4);
                 break;
-            // The resource, the coordinate and the value: a typed UAV addresses a
-            // texel rather than an element and a byte offset within one.
             case D3D10Opcode.EvalSampleIndex:
                 WriteInstruction(instruction, "eval_sample_index", 3);
                 break;
@@ -1244,9 +1167,6 @@ public class AsmWriter
             case D3D10Opcode.EvalCentroid:
                 WriteInstruction(instruction, "eval_centroid", 2);
                 break;
-            // Shader model 5 names the stream in the instruction where model 4
-            // had the one and left it out. A shader with a single stream means the
-            // same thing either way.
             case D3D10Opcode.DclStream:
                 WriteLine("dcl_stream {0}", FormatOperand(instruction, 0));
                 break;
@@ -1277,10 +1197,8 @@ public class AsmWriter
             case D3D10Opcode.Sync:
                 WriteLine("sync" + GetSyncSuffix(instruction.SyncFlags));
                 break;
-            // Double precision. A double fills two components of a register, so a
-            // dmul over r0.xy is one number and not two, and fxc writes the pair it
-            // reads as a four wide swizzle - r0.xyxy - where this writer trims it to
-            // the two it is, the way it trims every other swizzle.
+            // Double precision. fxc writes a pair's swizzle four wide (r0.xyxy);
+            // this writer trims it like any other swizzle.
             case D3D10Opcode.DAdd:
                 WriteInstruction(instruction, "dadd", 3);
                 break;
@@ -1320,8 +1238,6 @@ public class AsmWriter
             case D3D10Opcode.DRCP:
                 WriteInstruction(instruction, "drcp", 2);
                 break;
-            // The conversions, which are the one place a double meets a register
-            // component that is not half of one.
             case D3D10Opcode.DToF:
                 WriteInstruction(instruction, "dtof", 2);
                 break;
@@ -1346,10 +1262,8 @@ public class AsmWriter
     }
 
     /// <summary>
-    /// What fxc calls a global flag. Camel case with the first letter lowered covers
-    /// all but two: the shader model 11.1 extensions carry the version in the name,
-    /// which no rule derives from the enum, so those two are spelled out the way the
-    /// system value names are.
+    /// fxc's name for a global flag: the enum name with a lowered first letter,
+    /// except the two 11.1 extensions.
     /// </summary>
     private static string GetGlobalFlagName(D3D10GlobalFlags flag)
     {
@@ -1376,15 +1290,9 @@ public class AsmWriter
         return suffix;
     }
 
-    // fxc spells these with underscores - is_front_face, vertex_id - and the enum
-    // in camel case with the acronym left whole, so a capital only starts a word
-    // where it follows a lower case letter or begins one.
     /// <summary>
-    /// The name fxc writes for a system value in a declaration. There is no rule to
-    /// derive them by: the ones shader model 4 shipped with are lower case with
-    /// underscores and the ones added after it are camel case, which is why
-    /// sampleIndex sits among vertex_id and is_front_face. Spelled out rather than
-    /// computed, so the listing matches fxc's.
+    /// fxc's name for a system value. Spelled out: SM4 names use underscores and
+    /// later ones camel case, so no rule derives them.
     /// </summary>
     private static string GetSystemValueName(D3D10Instruction instruction)
     {
@@ -1417,9 +1325,7 @@ public class AsmWriter
         };
     }
 
-    // _nz takes the branch when the register is not zero and _z when it is.
-    // fxc only ever emits the _nz form - it inverts the comparison instead - but
-    // the bit is there and the disassembly should say what it finds.
+    // fxc emits only _nz, but the bit is printed as found.
     private static string Conditional(D3D10Instruction instruction, string mnemonic)
     {
         return instruction.TestNonZero ? mnemonic + "_nz" : mnemonic + "_z";
@@ -1427,11 +1333,8 @@ public class AsmWriter
 
     private void WriteInstruction(D3D10Instruction instruction, string mnemonic, int operandCount)
     {
-        // Texel offsets ride on the mnemonic, and not only on sample: ld, gather4
-        // and every other form of sample can carry them too. So does what shader
-        // model 5 says about the resource. fxc writes the words first and the
-        // brackets after, in the same order: gather4_aoffimmi_indexable(1,-1,0)
-        // (texture2d)(float,float,float,float).
+        // Suffixes first, then their arguments in the same order:
+        // gather4_aoffimmi_indexable(1,-1,0)(texture2d)(float,float,float,float).
         string arguments = "";
         if (instruction.SampleOffsets != null)
         {
@@ -1458,8 +1361,7 @@ public class AsmWriter
 
     private static string GetModifier(D3D9Instruction instruction)
     {
-        // A ps_1_x result scale comes before the saturate, as fxc writes it:
-        // add_x2_sat. The scale is applied first, too.
+        // A ps_1_x result scale precedes the saturate: add_x2_sat.
         string result = instruction.GetDestinationResultShift() switch
         {
             0 => "",
@@ -1525,9 +1427,7 @@ public class AsmWriter
         switch (registerType)
         {
             case RegisterType.Addr:
-                // Addr and Texture are the same register type number. A vertex
-                // shader means the address register, a pixel shader the texture
-                // coordinate registers that ps_2_0 and earlier read from.
+                // Addr and Texture share a number: a# in vertex, t# in pixel shaders.
                 registerTypeName = shader.Type == ShaderType.Pixel ? "t" : "a";
                 break;
             case RegisterType.AttrOut:
@@ -1564,11 +1464,7 @@ public class AsmWriter
                 registerTypeName = "p";
                 break;
             case RegisterType.Output:
-                // The texture coordinate output, which has a name of its own
-                // until a vertex shader declares its outputs: vs_1_1 and
-                // vs_2_0 write oT0 upwards, and vs_3_0 numbers the registers
-                // it declared with dcl_ instead. Only the first was spelled
-                // oT here, so a vs_2_0 wrote o1 where fxc writes oT1.
+                // oT# up to vs_2_0; vs_3_0 declares o# registers.
                 registerTypeName = shader.MajorVersion <= 2 ? "oT" : "o";
                 break;
             case RegisterType.RastOut:
@@ -1620,12 +1516,10 @@ public class AsmWriter
             RegisterType relativeType = instruction.GetRelativeParamRegisterType(index);
             switch (relativeType)
             {
-                // fxc writes the base register outside the brackets, `c0[a0.x]`,
-                // and always names it - even for c0.
+                // The base register is always named, even c0: `c0[a0.x]`.
                 case RegisterType.Loop:
                     return $"{registerTypeName}{registerNumber}[aL]";
                 case RegisterType.Addr:
-                    // One index per component: a0.y is not a0.x.
                     char component = "xyzw"[instruction.GetRelativeParamComponent(index)];
                     return $"{registerTypeName}{registerNumber}[a0.{component}]";
                 default:
@@ -1636,8 +1530,7 @@ public class AsmWriter
         return registerTypeName + registerNumber;
     }
 
-    // An index is a literal, a register read at run time, or a register plus a
-    // literal: cb0[2], cb0[r0.x], cb0[r0.x + 2].
+    // cb0[2], cb0[r0.x], cb0[r0.x + 2].
     private static string FormatOperandIndex(
         D3D10Instruction instruction, int operandIndex, int index,
         D3D10OperandTokenCollection.OperandIndex operand)
@@ -1661,9 +1554,7 @@ public class AsmWriter
             : $"{register} + {operand.Immediate}";
     }
 
-    // fxc's spelling of a double immediate: six decimals, and the suffix a
-    // literal carries on each. A number no decimal holds is spelled the way the
-    // float formatter spells its like.
+    // fxc's spelling of a double immediate: six decimals and an `l` suffix.
     private static string FormatDoubleOperand(D3D10Instruction instruction, int index, int number)
     {
         double value = instruction.GetParamDouble(index, number);
@@ -1678,10 +1569,6 @@ public class AsmWriter
         string registerNumber;
         if (operandType == OperandType.ConstantBuffer)
         {
-            // cb0[2], or cb0[r0.x + 2] where the shader indexes the buffer at run
-            // time: the second index is a register plus an immediate then, and
-            // writing only the immediate made an array read look like a read of
-            // its first element.
             D3D10OperandTokenCollection.OperandIndex[] indices =
                 instruction.OperandTokens.GetOperandIndices(index);
             registerNumber = indices[0].Immediate + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
@@ -1694,11 +1581,7 @@ public class AsmWriter
         {
             bool isInteger = _integerOperandAnalysis.IsIntegerOperand(instruction)
                 || IsIntegerIndexOperand(instruction, index);
-            // A mov or a movc uses its immediate for nothing itself, so what it is
-            // comes from whatever reads the register it lands in - the same question
-            // the HLSL writer asks of the same operand. Left to the instruction, the
-            // 1 and -1 a movc selects between printed as floats, where they are a
-            // denormal and a NaN, and fxc prints l(1,1,0,0) and l(-1,-1,0,0).
+            // A mov or movc immediate is typed by the readers of its destination.
             if (instruction.Opcode is D3D10Opcode.Mov or D3D10Opcode.MovC)
             {
                 ValueKind readAs = _integerOperandAnalysis.GetImmediateKindByReaders(instruction);
@@ -1707,9 +1590,7 @@ public class AsmWriter
                     isInteger = readAs == ValueKind.Integer;
                 }
             }
-            // A store says nothing of its value either, and groupshared memory every
-            // store fills with integers holds integers: the l(3) one stores into an
-            // int array is the 3 fxc prints, where as a float it read l(0.000000).
+            // A store into an integer groupshared array stores an integer.
             if (instruction.Opcode == D3D10Opcode.StoreStructured && index == 3
                 && instruction.GetOperandType(0) == OperandType.ThreadGroupSharedMemory
                 && _integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(
@@ -1717,9 +1598,7 @@ public class AsmWriter
             {
                 isInteger = true;
             }
-            // A bitwise operator over a float's bits: `and r0, r0, l(0x3f800000)`
-            // keeps the 1.0 it masks with. Written as the float it is, it read
-            // l(1), which is the integer 1 - a different word.
+            // A bitwise operator over a float's bits prints hex: l(0x3f800000).
             bool isBits = !isInteger && instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or
                 or D3D10Opcode.Xor or D3D10Opcode.Not;
             var componentSelection = instruction.GetOperandComponentSelection(index);
@@ -1765,14 +1644,11 @@ public class AsmWriter
         }
         else if (operandType == OperandType.Immediate64)
         {
-            // Two doubles, printed the way fxc prints them: six decimals apiece,
-            // and the suffix a literal carries on each.
             return $"d({FormatDoubleOperand(instruction, index, 0)}, {FormatDoubleOperand(instruction, index, 1)})";
         }
         else if (operandType == OperandType.IndexableTemp)
         {
-            // x0[3], x0[r0.x + 1]: the register outside the brackets, the element
-            // inside, the way fxc writes them.
+            // x0[3], x0[r0.x + 1].
             D3D10OperandTokenCollection.OperandIndex[] indices =
                 instruction.OperandTokens.GetOperandIndices(index);
             registerNumber = indices[0].Immediate + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
@@ -1802,8 +1678,6 @@ public class AsmWriter
             OperandType.Temp => "r",
             OperandType.IndexableTemp => "x",
             OperandType.ConstantBuffer => "cb",
-            // Its register number is the index into it, so the prefix carries the
-            // whole name.
             OperandType.ImmediateConstantBuffer => "icb",
             OperandType.Resource => "t",
             OperandType.Sampler => "s",
@@ -1812,10 +1686,7 @@ public class AsmWriter
             OperandType.InputThreadIDInGroup => "vThreadIDInGroup",
             OperandType.InputThreadIDInGroupFlattened => "vThreadIDInGroupFlattened",
             OperandType.InputPrimitiveID => "vPrim",
-            // Which of the instances a geometry shader was asked for this is.
             OperandType.InputGSInstanceID => "vGSInstanceID",
-            // The tessellation inputs: where in the patch the domain shader is
-            // being run, and the control points it is being run over.
             OperandType.InputDomainPoint => "vDomain",
             OperandType.InputControlPoint => "vicp",
             OperandType.OutputControlPoint => "vocp",
@@ -1824,35 +1695,24 @@ public class AsmWriter
             OperandType.InputForkInstanceID => "vForkInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
-            // Dynamic linkage: a function body, the table of bodies a class
-            // implements an interface with, and the interface a call goes through.
             OperandType.FunctionBody => "fb",
             OperandType.FunctionTable => "ft",
             OperandType.Interface => "fp",
-            // The output stream a geometry shader emits to, which shader model 5
-            // names and model 4 left implicit.
             OperandType.Stream => "m",
             // These carry no register number of their own.
             OperandType.OutputDepth => "oDepth",
             OperandType.OutputDepthGreaterEqual => "oDepthGE",
             OperandType.OutputDepthLessEqual => "oDepthLE",
             OperandType.OutputCoverageMask => "oMask",
-            // The coverage read back in, which fxc writes vCoverage - bare in its
-            // dcl, and .x where it is read.
             OperandType.InputCoverageMask => "vCoverage",
-            // Written bare in their dcl the same way.
             OperandType.OutputStencilRef => "oStencilRef",
             OperandType.InputInnerCoverage => "vInnerCoverage",
             OperandType.Null => "null",
-            // The render target rather than a resource: what sampleinfo and
-            // samplepos read when the shader asked about where it is drawing. It
-            // carries no register number, the way the depth outputs do not.
+            // The render target, as sampleinfo and samplepos read it.
             OperandType.Rasterizer => "rasterizer",
             _ => throw new NotImplementedException(operandType.ToString()),
         };
 
-        // A no-component operand - dcl_input vThreadIDInGroupFlattened - is written
-        // bare, the way fxc writes it.
         string swizzle = instruction.GetOperandComponentSelection(index) == D3D10OperandNumComponents.Operand0Component
             ? ""
             : index == instruction.GetDestinationParamIndex()
@@ -1881,22 +1741,9 @@ public class AsmWriter
         };
     }
 
-    // The return type token holds four nibbles, one per component, each a
-    // D3D_RESOURCE_RETURN_TYPE: (float,float,float,float), (uint,uint,uint,uint).
-    // The element index and the byte offset of a buffer access are addresses
-    // whatever the buffer holds, so they are integers however the instruction is
-    // typed: an offset of 28 read as a float is a denormal and printed as 0.000000
-    // where fxc prints l(28).
     /// <summary>
-    /// Operands that address something rather than carrying a value, and so hold
-    /// integers whatever the instruction around them is made of: an element and an
-    /// offset into a buffer, or the place an attribute is evaluated at.
-    /// </summary>
-    /// <summary>
-    /// Whether an operand is an integer index rather than a value: the address a
-    /// buffer is read at, and the sample an instruction is asked about. The
-    /// instruction itself is no guide - samplepos answers a float2, and its index
-    /// printed as a float came out l(0.000000), the bits of the integer 1.
+    /// Whether an operand is an integer address or sample index, whatever the
+    /// instruction's own type (samplepos returns a float2).
     /// </summary>
     private static bool IsIntegerIndexOperand(D3D10Instruction instruction, int index)
     {
@@ -1910,10 +1757,7 @@ public class AsmWriter
         };
     }
 
-    // The dimension, a structured buffer's stride, and the return types, as fxc
-    // writes them after _indexable: (structured_buffer, stride=16)(mixed,mixed,
-    // mixed,mixed). A buffer is a structured_buffer when it has a stride and a
-    // raw_buffer when it has none.
+    // (structured_buffer, stride=16)(mixed,mixed,mixed,mixed)
     private static string GetIndexableResourceArguments(D3D10Instruction instruction)
     {
         ResourceDimension dimension = instruction.IndexableResourceDimension.Value;
@@ -1935,6 +1779,7 @@ public class AsmWriter
         return GetResourceReturnTypes(instruction.GetResourceReturnTypeToken());
     }
 
+    // Four nibbles, one D3D_RESOURCE_RETURN_TYPE per component.
     private static string GetResourceReturnTypes(int token)
     {
         return string.Join(",", Enumerable.Range(0, 4).Select(i =>

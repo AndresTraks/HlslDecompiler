@@ -1,14 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// A cmp whose value is another cmp choosing between two constants asks the inner
-/// one's question again: which way the outer one goes is known for each way the
-/// inner one went. A face sign taken as `vface >= 0 ? 1 : -1` and then tested,
-/// negated, came back as `-(i.vface >= 0 ? 1 : -1) >= 0 ? b : a`, which is
-/// `i.vface >= 0 ? a : b` - and fxc compiles the second to the one cmp.
-///
-/// A NaN fails the inner test and takes its second constant, and fails the folded
-/// test the same way, so the branch it lands in is the one it landed in before.
+/// Folds a cmp over a cmp of two constants into the inner test:
+/// `-(f >= 0 ? 1 : -1) >= 0 ? b : a` is `f >= 0 ? a : b`. NaN takes the same branch.
 /// </summary>
 public class CompareSelectedConstantTemplate : NodeTemplate<CompareOperation>
 {

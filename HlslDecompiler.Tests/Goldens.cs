@@ -6,36 +6,23 @@ using System.Runtime.CompilerServices;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// The expected outputs the tests compare against, read where they are kept in
-/// the working tree rather than from copies beside the test assembly. The copies
-/// were made by the build, so a golden changed since the last build was compared
-/// against the old one: `dotnet test --no-build` reported four correct changes as
-/// failures.
-///
-/// With HLSL_BLESS=1 set, a golden that differs - or is missing - is rewritten
-/// with what the writer produced, byte for byte, and the test passes with a
-/// warning naming it. `git diff` is then the record of what a change did to the
-/// output, which is the review it needs.
+/// Goldens read from the working tree, not from build copies that may be stale.
+/// With HLSL_BLESS=1, a differing or missing golden is overwritten byte for byte
+/// and the test passes with a warning.
 /// </summary>
 public static class Goldens
 {
     public static bool Blessing { get; } =
         Environment.GetEnvironmentVariable("HLSL_BLESS") == "1";
 
-    /// <summary>The test project's folder in the working tree.</summary>
     public static string ProjectDirectory { get; } = FindProjectDirectory();
 
-    /// <summary>Where a golden, named relative to the test project, is kept.</summary>
     public static string PathOf(string relativePath)
     {
         return Path.Combine(ProjectDirectory, relativePath);
     }
 
-    /// <summary>
-    /// That the file a writer produced matches its golden - or, blessing, makes it
-    /// so. Compared as text, as the tests always have; copied as bytes, so that a
-    /// blessed golden is exactly what the writer wrote.
-    /// </summary>
+    // Compared as text, blessed as bytes.
     public static void AssertMatches(string outputFilename, string goldenRelativePath, string message)
     {
         string golden = PathOf(goldenRelativePath);
@@ -53,9 +40,7 @@ public static class Goldens
         Assert.That(actual, Is.EqualTo(File.ReadAllText(golden)), message);
     }
 
-    // From the path this file was compiled at, which is in the working tree; and
-    // where that is not there - the assembly built elsewhere - up from the test
-    // assembly to the folder holding the project file.
+    // This file's compile-time path, else up from the assembly to the .csproj.
     private static string FindProjectDirectory()
     {
         string compiledAt = Path.GetDirectoryName(ThisFile());

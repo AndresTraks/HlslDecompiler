@@ -2,8 +2,7 @@
 
 namespace HlslDecompiler.DirectXShaderModel;
 
-// What a sync instruction waits on, from bits 11-14 of its opcode token. fxc
-// spells them as suffixes, sync_uglobal_g_t, in this order.
+// Bits 11-14 of the sync opcode token.
 [Flags]
 public enum D3D10SyncFlags
 {

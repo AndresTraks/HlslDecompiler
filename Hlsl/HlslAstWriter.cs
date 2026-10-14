@@ -16,25 +16,19 @@ public class HlslAstWriter : HlslWriter
     private int _loopDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
 
-    // The numbers of the variables declared so far, for the declarations that
-    // have to know whether a name is taken whatever nodes stand under it.
+    // Declaration numbers taken so far, whatever nodes stand under them.
     private readonly HashSet<int> _declaredIndices = [];
-    // The variables each Consume call was named into, by the slot that identifies
-    // it, so that a second statement reading the same call finds them.
+    // Variables each Consume call was named into, keyed by its slot.
     private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _consumeVariables =
         new(ReferenceEqualityComparer.Instance);
-    // And the variables each double taken apart was named into, by the double, so
-    // that a statement reading one word finds the call the other was named by.
+    // Variables each split double was named into, so both words share one call.
     private readonly Dictionary<HlslTreeNode, TempVariableNode[]> _doubleBitsVariables =
         new(ReferenceEqualityComparer.Instance);
 
-    // Set while a linkage method's body is being written: a return there hands
-    // back this register rather than the shader's outputs.
+    // Set while writing a linkage body: a return hands back this register.
     private RegisterKey _linkageReturnRegister;
 
-    // The statements of the function being written - main, or one linkage
-    // method - for the questions that are about a whole function rather than
-    // about the shader.
+    // Statements of the function being written (main or one linkage method).
     private IList<IStatement> _functionStatements;
     private VariableLiveness _liveness;
 
@@ -45,11 +39,7 @@ public class HlslAstWriter : HlslWriter
 
     protected override void WriteMethodBody()
     {
-        // A hull shader is written as two functions through one writer, and what has
-        // been named is a question about the function being written: the patch
-        // constant function's t0 is not main's. Left standing, main's first variable
-        // was taken for one declared already and printed as a bare assignment, which
-        // is a name nothing declares.
+        // A hull shader writes two functions through one writer; names are per function.
         _declaredVariables.Clear();
         _declaredIndices.Clear();
         _everDeclaredVariables.Clear();
@@ -59,8 +49,7 @@ public class HlslAstWriter : HlslWriter
 
         if (HasOutputStruct)
         {
-            // One vertex variable per stream where the shader writes several: the two
-            // structs differ, and so do the registers each stream calls its own.
+            // One vertex variable per stream: each stream has its own struct.
             foreach (int? stream in _registers.HasSeveralStreams
                 ? _registers.Streams.Select(s => (int?)s)
                 : [null])
@@ -94,11 +83,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// One function, written whole: main, or a linkage method's body - the same
-    /// lowering, the same folds, and the same order of both, because a body is a
-    /// function of its own and not a subroutine main happens to share a file with.
-    /// A body hands back <paramref name="returnRegister"/> where main hands back
-    /// its outputs.
+    /// Writes one function (main or a linkage body) with the same lowering and folds.
+    /// A body returns <paramref name="returnRegister"/> instead of the outputs.
     /// </summary>
     private void WriteFunctionStatements(IList<IStatement> statements, bool hasReturnValue,
         bool hasOutputStruct, RegisterKey returnRegister)
@@ -135,10 +121,8 @@ public class HlslAstWriter : HlslWriter
             liveOut: returnRegister == null ? null : [returnRegister]);
         FindDeclaredVariables(statements);
 
-        // A fold that sees through a variable can empty a statement above the one it
-        // fires in, and what that statement named has to be gone from the output
-        // before its line is written - so every fold runs, and the names no fold
-        // leaves a reader for go, before any of the function is written.
+        // A fold can empty a statement above the one it fires in, so all folds run
+        // and unread names go before any line is written.
         TempResolver resolver = TempResolver.Build(statements);
         _templateMatcher.TempResolver = resolver;
         ReduceAll(statements);
@@ -150,9 +134,7 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// A body of the dynamic linkage, written as the method it is: the statements
-    /// the parser read off its instructions, lowered and folded the way main's
-    /// are, and returning the one register it writes.
+    /// Writes a dynamic linkage body, returning the one register it writes.
     /// </summary>
     protected override void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body)
     {
@@ -162,13 +144,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Reduce every value the way writing it will, without writing it. The rewrite
-    /// is in place and global, so the same pass at write time still finds what it
-    /// finds today in the values no fold reaches until its own line is written,
-    /// and nothing else to do. Only what writing reduces before it writes it: a
-    /// value it groups first and reduces after has to reach that grouping as the
-    /// instructions still are, or the statement is written under names no fold
-    /// asked for.
+    /// Reduces every value the way writing will, in place, ahead of writing. Only
+    /// values writing reduces before grouping: the rest must reach grouping unfolded.
     /// </summary>
     private void ReduceAll(IList<IStatement> statements)
     {
@@ -208,12 +185,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The values a statement holds that writing it reduces before it writes them,
-    /// which is everything it holds but for a loop's clauses. A loop prints those
-    /// only where it prints as a `for`: an uncounted one prints its condition from
-    /// the break still in its body, and a counted-by-register one its trip count
-    /// from the constant the bytecode named, so reducing them here would fold
-    /// values this writer never writes.
+    /// Held values writing reduces. A loop's clauses only count where it prints
+    /// as a `for`; otherwise they are never written.
     /// </summary>
     private static IEnumerable<HlslTreeNode> HeldNodesToReduce(IStatement statement)
     {
@@ -233,13 +206,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The values writing an assignment or a return reduces before it has decided
-    /// anything else about them: the temp variables it assigns, and not the ones it
-    /// merely carries forward. The output registers it names are the writer's own
-    /// work - it groups the components while they are still instructions and
-    /// reduces them only after - and folding one before that grouping would have
-    /// it group the folded value instead of the instruction, and write the
-    /// statement under names the fold never asked for.
+    /// Temps an assignment or return assigns (not ones carried forward). Output
+    /// registers are excluded: they are grouped as instructions and reduced after.
     /// </summary>
     private IEnumerable<HlslTreeNode> ReducedTemps(IStatement statement)
     {
@@ -255,14 +223,9 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Every variable some assignment declares, anywhere in the function. An
-    /// assignment to a register that held a variable's value is marked as
-    /// reassigning that variable - which is how a loop carries a value round - and
-    /// the assignment that declared it can be inlined away afterwards, leaving a
-    /// name nothing declares: `t5 = index < stride;` in a loop body, undeclared,
-    /// because the load the register held before the loop went into the dot
-    /// product that read it. A reassignment of a variable nothing declares is its
-    /// declaration.
+    /// Variables some assignment declares anywhere in the function. The declaring
+    /// assignment can be inlined away, so a reassignment of a variable nothing
+    /// declares becomes its declaration.
     /// </summary>
     private readonly HashSet<HlslTreeNode> _everDeclaredVariables = HlslTreeNode.NewNodeSet();
 
@@ -287,14 +250,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a variable holds nothing but partial precision results, which is what
-    /// lets it be declared half: `half3 t0 = saturate(x) * k;` says what
-    /// `float3 t0 = (half3)(saturate(x) * k);` was saying twice over.
-    ///
-    /// Asked of every write and of every component, because there is one declaration
-    /// for all of them. fxc writes a register at partial precision and at full
-    /// precision as it pleases - a mov_sat filling one that a mul_pp then overwrites -
-    /// and declaring that half would narrow the write that was not asking for it.
+    /// Whether every write of the variable is partial precision, so it can be
+    /// declared half. All writes count: fxc mixes _pp and full writes to a register.
     /// </summary>
     private bool AssignsOnlyPartialPrecision(HlslTreeNode[] group)
     {
@@ -324,10 +281,6 @@ public class HlslAstWriter : HlslWriter
         return node is TempAssignmentNode { Value: ConvertOperation { TargetType: "half" } };
     }
 
-    // Both kinds of variable are asked the same question: the ones a register is
-    // lowered into, and the ones the writer hoists a shared subexpression into. A
-    // hoisted one is written exactly once, which the walk above finds nothing to
-    // contradict.
     private void MarkPartialPrecision(HlslTreeNode[] group)
     {
         if (!AssignsOnlyPartialPrecision(group))
@@ -355,8 +308,7 @@ public class HlslAstWriter : HlslWriter
                 _everDeclaredVariables.Add(assignment.TempVariable);
             }
         }
-        // Declared above the block it is assigned in, or under this name already,
-        // so the assignment is a reassignment however the finalizer marked it.
+        // Declared above this block or under this name already: a reassignment.
         if (group[0] is TempAssignmentNode { IsReassignment: false } declaredAbove
             && (_declaredVariables.Contains(declaredAbove.TempVariable)
                 || (declaredAbove.TempVariable.DeclarationIndex is int declaredIndex
@@ -367,12 +319,8 @@ public class HlslAstWriter : HlslWriter
                 assignment.IsReassignment = true;
             }
         }
-        // A variable assigned a part at a time - the xy of a register by one
-        // instruction and the zw by another, and named as one - is declared once,
-        // whole, and each part is then assigned by its mask. Compiled as two
-        // declarations it was `int3 t0 = a; int3 t0 = b;`.
-        // Not the calls that fill a whole variable through out parameters, which
-        // are one assignment however wide.
+        // A variable assigned a part at a time is declared once, whole, then each
+        // part assigned by mask. Not out-parameter calls, which fill it at once.
         if (group[0] is TempAssignmentNode { IsReassignment: false } first
             && first.Value is not ConsumeNode and not ResourceInfoNode and not DoubleBitsNode
             && first.TempVariable.VariableSize is int size && group.Length < size)
@@ -397,8 +345,7 @@ public class HlslAstWriter : HlslWriter
         return compiled;
     }
 
-    // The other parts of a variable declared whole are reassignments now, whatever
-    // statement they are in.
+    // Other parts of a variable declared whole become reassignments everywhere.
     private void MarkPartsReassigned(TempVariableNode declared)
     {
         new StatementVisitor(_functionStatements).Visit(statement =>
@@ -423,7 +370,6 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    // The statement being written, for what it does to need to know where it is.
     private IStatement _currentStatement;
 
     private void WriteStatement(IStatement statement)
@@ -537,8 +483,7 @@ public class HlslAstWriter : HlslWriter
     {
         IDictionary<RegisterComponentKey, HlslTreeNode> tempComponents = statement.Outputs
                 .Where(o => {
-                    // And an output the finalizer gave a variable, so that the
-                    // branches of an if can assign it and one return follow them.
+                    // Also outputs the finalizer gave a variable (assigned in if branches).
                     if (!o.Key.RegisterKey.IsTempRegister
                         && !(o.Key.RegisterKey.IsOutput && o.Value is TempAssignmentNode))
                     {
@@ -548,8 +493,7 @@ public class HlslAstWriter : HlslWriter
                     {
                         return false;
                     }
-                    // A variable the register merely holds - an interlocked
-                    // operation's old value, written by the call - has nothing to assign.
+                    // A variable the register merely holds (e.g. an atomic's old value).
                     if (o.Value is TempVariableNode)
                     {
                         return false;
@@ -564,10 +508,8 @@ public class HlslAstWriter : HlslWriter
     {
         List<HlslTreeNode[]> tempGroups = GetTempAssignmentGroups(assignmentStatement);
 
-        // With one output register there is no struct to write into: every return
-        // compiles the live value, so writing `o.name = ...` first names something
-        // that was never declared. A geometry shader is the exception - it writes the
-        // struct and appends it rather than returning.
+        // With one output register there is no struct: the return writes the value.
+        // A geometry shader still writes its struct, which it appends.
         if (_shader.Type != ShaderType.Geometry && _registers.MethodOutputRegisters.Count <= 1)
         {
             foreach (var group in tempGroups)
@@ -577,9 +519,7 @@ public class HlslAstWriter : HlslWriter
             return;
         }
 
-        // Skip output registers the statement merely carries forward unchanged, the
-        // same way temps are filtered above. Without this every statement re-emits
-        // every output, which shows up as duplicated writes after a stream append.
+        // Skip outputs carried forward unchanged, as for temps.
         var writtenOutputs = assignmentStatement.Outputs
             .Where(o => o.Key.RegisterKey.IsOutput)
             .Where(o => !(assignmentStatement.Inputs.TryGetValue(o.Key, out var inputNode)
@@ -591,11 +531,8 @@ public class HlslAstWriter : HlslWriter
         Dictionary<RegisterComponentKey, int[]> outputComponents =
             GroupComponentMasks(writtenOutputs);
 
-        // What the outputs share among themselves and with the temps is named
-        // here, the way a return names it: a geometry shader writes its vertex
-        // through these statements and never through a return, and the corner
-        // offset a position and a texture coordinate both read was written out
-        // at each.
+        // Subexpressions shared by outputs and temps are named here, as a return
+        // does: a geometry shader writes its vertex here, never through a return.
         List<RegisterComponentKey> outputKeys = [.. outputs.Keys];
         List<HlslTreeNode[]> hoistRoots = [.. tempGroups, .. outputKeys.Select(key => outputs[key])];
         List<(HlslTreeNode[] Nodes, string Text)> hoisted = CompileSharedSubexpressions(hoistRoots);
@@ -608,16 +545,9 @@ public class HlslAstWriter : HlslWriter
             outputs[outputKeys[i]] = hoistRoots[tempGroups.Count + i];
         }
 
-        // An output that reads a temp's value as this statement computes it prints
-        // after that temp's assignment; one that reads what the register held before
-        // prints before the reassignment that overwrites it. Which of the two an
-        // output is was recorded at lowering, since afterwards both are the same
-        // variable name. Ordering temps and outputs together, rather than as two
-        // hardcoded passes, is what lets TempAssignmentOrder see either dependency.
-        // The named shared subexpressions join that sort too: one is often built
-        // from a temp this very statement declares beside it - the trig pair and
-        // the dot read out of it - and writing the shared one first would name a
-        // variable the later line has not declared yet.
+        // Temps, outputs and hoisted subexpressions are sorted together: an output
+        // reading a temp's new value goes after it, one reading the old value
+        // before (recorded at lowering), and a hoist may read a temp declared here.
         var writes = new List<(HlslTreeNode[] Nodes, TempAssignmentNode[] Wants, Action Write)>();
         foreach (var (nodes, text) in hoisted)
         {
@@ -637,10 +567,7 @@ public class HlslAstWriter : HlslWriter
                 .Distinct()];
             string outputVariable = _registers.StreamVariableName(
                 (rootGroup.Key.RegisterKey as D3D10RegisterKey)?.Stream);
-            // A statement that writes part of an output says so: assigning a scalar
-            // or a short vector to the whole member broadcasts over the components
-            // this statement does not write, and the order it writes them in is not
-            // the order of the register's components.
+            // A partial write needs its mask: a scalar assigned to the member broadcasts.
             string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
             writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name}{componentMask} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
         }
@@ -650,23 +577,16 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    /// <summary>
-    /// `buffer.Append(value);` - the slot the counter gave and the store into it,
-    /// which is all an append buffer can be asked to do.
-    /// </summary>
     private void WriteBufferAppendStatement(BufferAppendStatement append)
     {
         string destination = _registers.GetRegisterName(
             ((RegisterInputNode)append.Destination).RegisterComponentKey.RegisterKey);
         HlslTreeNode[] values = [.. append.Values.Select(Reduce)];
         WriteSharedSubexpressions([values]);
-        // An append writes the whole element, so the element itself is what says
-        // whether what goes in is an integer.
         RegisterKey appendKey = ((RegisterInputNode)append.Destination)
             .RegisterComponentKey.RegisterKey;
-        // A struct element is put together member by member in a struct of its own
-        // and that is appended: a float4 of a struct's members is not the struct,
-        // and fxc refused it (X3017).
+        // A struct element is built member by member, then appended: a float4 is
+        // not the struct (X3017).
         ResourceDefinition appended = _registers.ResourceDefinitions?.FirstOrDefault(d =>
             d.ShaderInputType == D3DShaderInputType.UavAppendStructured && d.BindPoint == appendKey.Number);
         if (appended?.ElementType?.MemberInfo is { Count: > 0 })
@@ -694,21 +614,13 @@ public class HlslAstWriter : HlslWriter
         WriteLine($"{destination}.Append({value});");
     }
 
-    /// <summary>
-    /// `destination[coordinate] = value;` - a texel of a writable view, addressed
-    /// by as many coordinates as the view has dimensions.
-    /// </summary>
+    // `destination[coordinate] = value;`
     private void WriteStoreTypedStatement(StoreTypedStatement storeTyped)
     {
-        // The view is named without a swizzle: the subscript picks the texel, and a
-        // component selection would belong after it rather than on the view.
         string destination = _registers.GetRegisterName(
             ((RegisterInputNode)storeTyped.Destination).RegisterComponentKey.RegisterKey);
-        // The coordinate is an integer one, and a vector of them says so where a
-        // constructor over the components would be typed by nothing.
         HlslTreeNode[] coordinates = [.. storeTyped.Coordinates.Select(Reduce)];
         HlslTreeNode[] values = [.. storeTyped.Values.Select(Reduce)];
-        // As above: what a store alone reads is hoisted from here.
         WriteSharedSubexpressions([values, coordinates]);
         string coordinate = _compiler.CompileAsInteger(coordinates);
         RegisterKey typedKey = ((RegisterInputNode)storeTyped.Destination)
@@ -719,46 +631,23 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The value a store writes. Integers go in as themselves; a float goes in as
-    /// the bits it is where the destination holds integers, because `buffer[i] = f`
-    /// converts f to the integer nearest it and the shader stored asuint(f). A raw
-    /// buffer's dwords say that outright, and a typed or structured view says it
-    /// through the element type it was declared with - null where there is no
-    /// declaration to ask, which leaves the value alone as before.
+    /// The value a store writes. A store copies bits, so a float into integers
+    /// goes in as asuint(f), not converted. Null means the destination type is unknown.
     /// </summary>
     private string CompileStoredValue(HlslTreeNode[] values, bool? destinationHoldsIntegers)
     {
         if (values.All(v => ValueTypes.IsIntegerValue(v) == true))
         {
-            // Into floats, a variable declared an integer goes in as the bits it
-            // holds: the store writes a register's bits, and a float sum fxc kept in
-            // a register it had used for a mask came back `g0[i] = t2.x`, the sum
-            // converted from the integer its bits make. A raw load's integer is bits
-            // by definition - it is read as a float with asfloat, and an identity
-            // fold that dropped the float operation it stood in leaves it standing
-            // here bare - and it goes in the same way, under the same wrap.
+            // Into floats, an integer variable or raw-load bits go in as asfloat.
             return destinationHoldsIntegers == false
                 && values.All(v => ValueTypes.IsReinterpretedAsFloat(v)
                     || v is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false })
                 ? $"asfloat({_compiler.CompileAsInteger(values)})"
                 : _compiler.CompileAsInteger(values);
         }
-        // Only where the graph says a value is a float. One it says nothing about is
-        // left as it was: it is already being written as whatever it is, and asuint
-        // around it would assert something the graph never said - a groupshared load
-        // of an int array came out `asuint(g1[i])` and msad4, which answers uints
-        // already, came out wrapped in it too.
-        //
-        // Where the destination is known to hold floats, the value is read as one,
-        // and the store is a float context the way a float output is: bits reaching
-        // it bare - a raw load whose `add 0.0` an identity fold just dropped - are
-        // reinterpreted there rather than converted, because the constructor the
-        // components come out as is float and HLSL converts an integer argument
-        // into it. The operations that survive the fold wrap their own operands;
-        // nothing wrapped this one, so the store has to.
-        // And into integers, a value the graph says nothing about is read as one: a
-        // select of a float's bits and an integer's is neither kind until the
-        // destination says, and compiled plainly it selected in floats.
+        // asuint only where the graph says float; an unknown value is left as is.
+        // Into floats the store is a float context, so bare bits are reinterpreted.
+        // Into integers, an untyped select is compiled as an integer select.
         return destinationHoldsIntegers == true
             && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
             ? CompileRawStoredValue(values)
@@ -769,8 +658,7 @@ public class HlslAstWriter : HlslWriter
                     : _compiler.Compile(values);
     }
 
-    // The dwords a raw store writes: each integer as it is, each float as its bits,
-    // and a mix as a uint constructor of both.
+    // Raw store dwords: integers as is, floats as their bits.
     private string CompileRawStoredValue(HlslTreeNode[] values)
     {
         if (values.All(v => ValueTypes.IsIntegerValue(v) != true))
@@ -785,29 +673,22 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteStoreStructuredStatement(StoreStructuredStatement storeStructured)
     {
-        // The buffer is named without a swizzle - the subscript selects the element,
-        // and any component selection belongs after it, not on the buffer.
         RegisterKey destinationKey =
             ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
         string compiledDestination = _registers.GetRegisterName(destinationKey);
         HlslTreeNode address = Reduce(storeStructured.Address);
         HlslTreeNode[] storedValues = [.. storeStructured.Values.Select(Reduce)];
-        // A store computes its value from here rather than through
-        // GroupAssignments, so the hoist has to happen here too - the way a return
-        // statement's does. Without it a GetDimensions whose result a store alone
-        // reads was never named, and the result of one cannot be an expression.
+        // Stores bypass GroupAssignments, so they hoist here (e.g. a GetDimensions
+        // result, which cannot be an expression).
         WriteSharedSubexpressions([storedValues, [address]]);
         string compiledAddress = _compiler.Compile(address);
-        // Into a buffer of integers as integers. A vector constructor is typed by
-        // what it is being assigned to and there is nothing else here to say so.
         bool storesIntegers = storedValues.All(v => ValueTypes.IsIntegerValue(v) == true);
         string compiledValue = storesIntegers
             ? _compiler.CompileAsInteger(storedValues)
             : _compiler.Compile(storedValues);
         if (storeStructured.IsGroupShared)
         {
-            // The element of the array raw groupshared memory is declared as. The
-            // value is stored as the bits it is, the way a raw store always does.
+            // Raw groupshared memory stores bits, like any raw store.
             if (!storesIntegers)
             {
                 compiledValue = CompileRawStoredValue(storedValues);
@@ -817,10 +698,7 @@ public class HlslAstWriter : HlslWriter
         }
         if (storeStructured.IsRaw)
         {
-            // Store, Store2, Store3 or Store4 at the byte offset, by how many dwords
-            // are written. The dwords are uints, and a float among them goes in as
-            // its bits: Store2(offset, float2(f, n)) converts f to the integer
-            // nearest it, where the shader stored asuint(f).
+            // StoreN by dword count; floats go in as asuint, not converted.
             string method = storeStructured.Values.Length == 1 ? "Store" : $"Store{storeStructured.Values.Length}";
             if (!storesIntegers)
             {
@@ -829,14 +707,9 @@ public class HlslAstWriter : HlslWriter
             WriteLine($"{compiledDestination}.{method}({compiledAddress}, {compiledValue});");
             return;
         }
-        // A struct element is written a member at a time: one store of sixteen
-        // bytes over a struct of a float3 and a float is both of them, and writing
-        // it as one assignment kept only the last.
+        // A struct element is written a member at a time: one store can span members.
         RegisterKey bufferKey = ((RegisterInputNode)storeStructured.Destination).RegisterComponentKey.RegisterKey;
-        // The element the store reaches says whether a float goes in as its bits,
-        // the same question the raw store above answers from the buffer itself.
-        // Groupshared memory has no reflection to ask, and holds what its
-        // declaration says, which the same analysis decided.
+        // Groupshared memory has no reflection; the integer analysis decides it.
         bool? holdsIntegers = bufferKey is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
             ? CreateIntegerOperandAnalysis().IsIntegerThreadGroupSharedMemory(bufferKey.Number)
             : _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset);
@@ -848,8 +721,6 @@ public class HlslAstWriter : HlslWriter
         {
             foreach ((string name, int[] values) in runs)
             {
-                // The member's own float-ness is the store's, so a run of it reads
-                // bare bits as a float the same way the whole value above does.
                 string run = storesIntegers
                     ? _compiler.CompileAsInteger(values.Select(v => storedValues[v]))
                     : holdsIntegers == false
@@ -859,18 +730,14 @@ public class HlslAstWriter : HlslWriter
             }
             return;
         }
-        // Groupshared memory wider than one register is a struct of them, and the
-        // byte offset picks which. Written as the element itself, a store of one
-        // member assigned to the whole of it - and a store of the second member
-        // overwrote the first.
+        // Groupshared memory wider than a register is a struct; the offset picks the member.
         string sharedMember = ThreadGroupSharedMemberName(bufferKey,
             storeStructured.ElementByteOffset);
         WriteLine($"{compiledDestination}[{compiledAddress}]{sharedMember} = {compiledValue};");
     }
 
     /// <summary>
-    /// The `.mN` a store into groupshared memory writes, or nothing where the element
-    /// fits in one register and is the whole of what a store reaches.
+    /// The `.mN` of a groupshared store, or "" where the element fits one register.
     /// </summary>
     private string ThreadGroupSharedMemberName(RegisterKey bufferKey, int byteOffset)
     {
@@ -892,21 +759,13 @@ public class HlslAstWriter : HlslWriter
         RegisterKey resourceKey =
             ((RegisterInputNode)atomic.Destination).RegisterComponentKey.RegisterKey;
         string resource = _registers.GetRegisterName(resourceKey);
-        // A typed texture is addressed by a coordinate, and a vector of integers says
-        // so where a constructor over the components would be typed by nothing - the
-        // same as the store into it.
         HlslTreeNode[] coordinates = atomic.Coordinates == null
             ? null
             : [.. atomic.Coordinates.Select(Reduce)];
         HlslTreeNode addressNode = coordinates != null ? null : Reduce(atomic.Address);
         HlslTreeNode valueNode = Reduce(atomic.Value);
         HlslTreeNode compareNode = atomic.Compare == null ? null : Reduce(atomic.Compare);
-        // The hoist a store needs, for the same reason it needs it: an atomic
-        // computes what it works on from here rather than through GroupAssignments,
-        // so a call whose result nothing but this statement reads is named nowhere
-        // else. A Consume is one of those - its result comes back through a method
-        // and cannot be an expression - and an atomic over a consumed element
-        // stopped the writer outright, the name never having been given.
+        // Hoisted here like a store's: e.g. a Consume result cannot be an expression.
         List<HlslTreeNode[]> held = [[valueNode]];
         if (compareNode != null)
         {
@@ -917,10 +776,7 @@ public class HlslAstWriter : HlslWriter
         string address = coordinates != null
             ? _compiler.CompileAsInteger(coordinates)
             : _compiler.Compile(addressNode);
-        // An interlocked operation works on integers, so a float reaching it is the
-        // bits it holds rather than the number they make - as unsigned where the
-        // destination is, which for groupshared memory is what the unsigned minimum
-        // and maximum over it made the declaration say.
+        // Interlocked operations take a float's bits, unsigned where the destination is.
         bool unsigned = resourceKey is D3D10RegisterKey
             {
                 OperandType: OperandType.ThreadGroupSharedMemory
@@ -932,10 +788,7 @@ public class HlslAstWriter : HlslWriter
             ? null
             : _compiler.CompileIntegerArgument(compareNode, unsigned);
 
-        // The variable the old value goes into has to exist before the call takes
-        // its address, and compiling it is what numbers it. Declared here rather
-        // than by the block rule above, which declares what a block assigns and
-        // this is not an assignment.
+        // The old-value variable is declared before the call; it is not an assignment.
         string original = null;
         if (atomic.Original != null)
         {
@@ -952,12 +805,8 @@ public class HlslAstWriter : HlslWriter
             arguments += $", {original}";
         }
 
-        // A byte address buffer has the interlocked operations as methods on itself,
-        // taking the byte offset. Everything else - a structured buffer, a typed
-        // UAV, groupshared memory - has them as free functions over the destination,
-        // which is an element or a texel rather than the resource. Asked of the
-        // resource rather than of what the address operand carries, because a typed
-        // texture carries no byte offset either.
+        // Byte address buffers have Interlocked* methods taking the byte offset; all
+        // else uses free functions over the element or texel.
         if (_registers.IsRawResource(resourceKey))
         {
             WriteLine($"{resource}.{atomic.MethodName}({address}, {arguments});");
@@ -976,11 +825,7 @@ public class HlslAstWriter : HlslWriter
 
     private static int GetElementByteOffset(AtomicStatement atomic)
     {
-        // Through the moves: fxc works the offset out into a register - one mov
-        // writes the offsets of every member the shader touches - so it arrives as
-        // a move of the constant rather than as the constant. Taken as nothing, the
-        // atomic named whichever member sits at the top of the element, and every
-        // one of them in an element came out as that one.
+        // fxc movs the offset into a register first, so look through moves.
         HlslTreeNode offset = atomic.ElementByteOffset;
         while (offset is MoveOperation move)
         {
@@ -994,8 +839,6 @@ public class HlslAstWriter : HlslWriter
     private void WriteIndexableTempStoreStatement(IndexableTempStoreStatement store)
     {
         string index = _compiler.CompileIndexableTempIndex(Reduce(store.Index));
-        // The write mask is dropped when the whole element is written, the way a
-        // register's is.
         int components = _registers.IndexableTemps[store.Register].Components;
         string mask = store.Components.Length == components
             ? ""
@@ -1020,13 +863,8 @@ public class HlslAstWriter : HlslWriter
         IList<IStatement> body = loop.Body;
         if (loop.IsCountedLoop)
         {
-            // The initializer and increment compile as statements; the for header
-            // wants them as clauses. Through CompileAssignment, so that the header
-            // declares the variable only where nothing above the loop does: a switch
-            // carries a counter register out of a case, the block declared it there,
-            // and `for (uint t3 = 0; ...)` under that declaration is a second
-            // variable of the same name - fxc warns X3078 and reads the outer one
-            // afterwards, which the loop never assigned.
+            // Through CompileAssignment so the header declares the counter only if
+            // nothing above does; a second declaration shadows it (X3078).
             string initializer = CompileAssignment([Reduce(loop.Initializer)]).TrimEnd(';');
             string condition = _compiler.Compile(Reduce(loop.ContinueCondition));
             string increment = _compiler.Compile(Reduce(loop.Increment)).TrimEnd(';');
@@ -1047,10 +885,8 @@ public class HlslAstWriter : HlslWriter
         }
         else if (TryGetExitTest(loop, out HlslTreeNode continueCondition, out IStatement exitTest))
         {
-            // The bytecode tests and breaks at the top of the body, and written
-            // that way fxc compiles it as if_nz, break, endif where the original
-            // had one breakc_nz. As the loop's own condition it is that one
-            // instruction again, and the loop reads as the loop it is.
+            // A break at the top as the while condition recompiles to one breakc,
+            // not if/break/endif.
             string condition = _compiler.Compile(Reduce(continueCondition));
             WriteLine($"while ({condition}) {{");
             body = [.. loop.Body.Where(statement => !ReferenceEquals(statement, exitTest))];
@@ -1074,11 +910,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The condition a loop whose body opens by breaking on a test can carry in its
-    /// header instead, and the statement it came from. The phi assignments that
-    /// carry values round the loop write nothing and are stepped over; anything
-    /// else in front of the break is code that has to run before the test, and the
-    /// loop stays as it is.
+    /// Finds a break opening the loop body that can become the loop's condition.
+    /// Any real code before the break must run first, so it rules this out.
     /// </summary>
     private static bool TryGetExitTest(
         LoopStatement loop, out HlslTreeNode continueCondition, out IStatement exitTest)
@@ -1087,10 +920,7 @@ public class HlslAstWriter : HlslWriter
         exitTest = null;
         foreach (IStatement statement in loop.Body)
         {
-            // The phi assignments that carry values round the loop write nothing,
-            // and neither does a statement whose every value is read inline by
-            // whatever comes after - the comparison an ilt computes for the
-            // breakc that follows it. Both are stepped over.
+            // Skip statements that write nothing: phis and values read inline later.
             if (statement is AssignmentStatement assignment
                 && assignment.Outputs.All(output =>
                     output.Value is PhiNode
@@ -1114,11 +944,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether the loop has to be marked [loop] for fxc to compile it at all. A
-    /// sample with implicit derivatives inside a loop fxc cannot count is an error
-    /// unless the loop is marked, so the source it came from was marked; anything
-    /// else is left to fxc, which unrolls what it can count and loops the rest,
-    /// and the attribute stays out of every loop that does not need it.
+    /// Whether fxc needs [loop] to compile it: a gradient operation in a loop it
+    /// cannot count is an error otherwise.
     /// </summary>
     private static bool NeedsLoopAttribute(LoopStatement loop)
     {
@@ -1141,8 +968,7 @@ public class HlslAstWriter : HlslWriter
         return Reachable(roots.Where(r => r != null)).Any(IsGradientOperation);
     }
 
-    // A sample that takes its mip level from the derivatives of its coordinates,
-    // or a derivative outright.
+    // A derivative, or a sample that takes its mip level from derivatives.
     private static bool IsGradientOperation(HlslTreeNode node)
     {
         return node is PartialDerivativeXOperation or PartialDerivativeYOperation
@@ -1151,13 +977,10 @@ public class HlslAstWriter : HlslWriter
                     | TextureLoadControls.LevelZero | TextureLoadControls.Gather)) == 0);
     }
 
-    // Nested loops must not shadow the enclosing loop's counter, and the first one
-    // must not shadow the input struct, which is also called i. The counter is what
-    // moves: renaming the struct would change every shader that reads it.
+    // Counters must not shadow an enclosing counter or the input struct `i`;
+    // the counter is renamed, not the struct.
     private string GetLoopVariableName(int depth)
     {
-        // Only where those names are in scope: with a single input register the
-        // parameter is named after its semantic and there is no struct called i.
         bool inputInScope = _registers.MethodInputRegisters.Count > 1
             || _shader.Type == ShaderType.Geometry;
         bool outputInScope = HasOutputStruct;
@@ -1196,10 +1019,6 @@ public class HlslAstWriter : HlslWriter
         WriteJumpStatement(breakStatement.Comparison, "break");
     }
 
-    /// <summary>
-    /// Writes a <c>break</c> or <c>continue</c>, guarded by its condition unless that
-    /// condition is absent or always true.
-    /// </summary>
     private void WriteJumpStatement(HlslTreeNode comparisonNode, string keyword)
     {
         if (comparisonNode == null)
@@ -1231,9 +1050,7 @@ public class HlslAstWriter : HlslWriter
         HlslTreeNode[] comparison = ifStatement.Comparison;
         IList<IStatement> trueBody = ifStatement.TrueBody;
         IList<IStatement> falseBody = ifStatement.FalseBody;
-        // An if whose if side is empty and whose else side is the whole body -
-        // `if_lt` over a condition fxc wrote the other way round - says the same
-        // thing inverted, with one branch instead of two and nothing in it.
+        // An empty if side with an else is written as the inverted if.
         if (trueBody.Count == 0 && falseBody != null && Inverted(comparison) is HlslTreeNode[] opposite)
         {
             comparison = opposite;
@@ -1241,14 +1058,8 @@ public class HlslAstWriter : HlslWriter
             falseBody = null;
         }
 
-        // A D3D9 `if_<rel>` hands one comparison per component, but its operand is
-        // often a single component read through a swizzle - `if_ne r0.z, -r0.z`
-        // tests only .z, and all four components carry the one test. HLSL wants a
-        // scalar condition, and four copies compiled side by side is a vector; one
-        // of them says the same thing. A partial-precision operand makes this worse
-        // than an ugly condition: the cast the half-ness puts on each component is
-        // sized to the group, so four components come out `(half4)`, and comparing
-        // those is X3019 rather than merely wide.
+        // A D3D9 `if_<rel>` repeats one test per component; collapse identical ones
+        // to a scalar (a `(half4)` comparison would be X3019).
         comparison = [.. comparison.Select(c => ReadAssignedFlag(ifStatement, c))];
         var tested = comparison.Select(Reduce).ToList();
         if (tested.Count > 1
@@ -1256,30 +1067,16 @@ public class HlslAstWriter : HlslWriter
         {
             tested = [tested[0]];
         }
-        // The subexpressions the condition writes more than once, named above the
-        // if. A predicate is written out rather than named and stays that way -
-        // naming a mask names it through an integer variable, which is an `and` the
-        // bytecode did not have (see IStatement.NamedHeldNodes) - but that is about
-        // the mask, not about what the mask is computed from. The operands are
-        // ordinary values, they are evaluated before the branch either way, and
-        // naming one costs nothing: every fixture's instruction count is unchanged.
-        //
-        // A screen space reflection tested a ray's depth against a sampled one
-        // twice over, and wrote out the dot product and the sample twice each - one
-        // line reading as two texture fetches. The hoist also lets a condition read
-        // a name already in scope, through ReadEarlierNames: a blur that had named
-        // its sample on the line above was re-rendering the whole fetch to test it.
+        // Name the condition's repeated operands above the if. The predicate itself
+        // stays unnamed (see IStatement.NamedHeldNodes); its operands cost nothing.
         WriteSharedSubexpressions([[.. tested]]);
         if (WritesFlowAttributes)
         {
             WriteLine("[branch]");
         }
         string condition = _compiler.Compile(tested);
-        // An if that only returns is the one line a conditional return is written
-        // as, `if (c) return a;`: fxc compiles that to an if, a ret and an endif,
-        // and read back it was the same test in braces. Written into a buffer to
-        // see whether it is one line, and from the buffer either way, so that the
-        // body is compiled once.
+        // An if that only returns is written `if (c) return a;`. The body goes to a
+        // buffer first to see if it is one line, so it is compiled once.
         if (falseBody == null && trueBody.Count == 1 && trueBody[0] is ReturnStatement { Comparison: null })
         {
             System.IO.TextWriter outer = internalWriter;
@@ -1332,18 +1129,9 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// A test of a flag the statement before has just put in a variable, as a test of
-    /// the variable. A predicate is written out again rather than named (see
-    /// IStatement.NamedHeldNodes): named for the if alone, a mask is converted to
-    /// the 0 or 1 an int holds on the way in, which is an instruction the shader
-    /// did not have - and so here too where nothing reads the variable after the
-    /// if: tile_luminance and groupshared_scan assign theirs only for fxc to drop
-    /// the assignment, and read, it costs one. But where the variable is there
-    /// anyway - decal_blend keeps `decalCount <= 1` for a later test - testing the
-    /// comparison again is the extra instruction: `t1 = decalCount <= 1;
-    /// if (decalCount > 1)` where the shader read the register it had just
-    /// written. Only the statement right before the if, so that nothing can have
-    /// assigned the variable in between.
+    /// Tests a flag the previous statement just assigned through its variable, but
+    /// only if the variable is live after the if; otherwise re-testing is cheaper.
+    /// Only the statement right before, so nothing reassigns it in between.
     /// </summary>
     private HlslTreeNode ReadAssignedFlag(IfStatement ifStatement, HlslTreeNode test)
     {
@@ -1375,8 +1163,7 @@ public class HlslAstWriter : HlslWriter
         return test;
     }
 
-    // Either way round: decal_blend assigns `decalCount <= 1` and tests `1 < decalCount`,
-    // whose opposite is `1 >= decalCount`.
+    // Either way round: `a <= b` is the same as `b >= a`.
     private static bool IsSameComparison(ComparisonNode a, ComparisonNode b)
     {
         if (a.IsInteger != b.IsInteger || a.IsUnsigned != b.IsUnsigned)
@@ -1403,9 +1190,7 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The comparison with the opposite outcome, component for component, or null
-    /// where any of them has none - a test of something that is not a comparison at
-    /// all, or one whose inverse the enum cannot name.
+    /// The per-component inverse, or null where any component has none.
     /// </summary>
     private static HlslTreeNode[] Inverted(HlslTreeNode[] comparison)
     {
@@ -1427,17 +1212,13 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Declares the variables a block assigns, above the block. A variable declared
-    /// inside a branch or a case would go out of scope at its closing brace.
+    /// Declares the variables a block assigns above it, so they outlive its braces.
     /// </summary>
     private void WriteBlockTempVariables(
         IDictionary<RegisterComponentKey, HlslTreeNode> outputs,
         IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
     {
-        // Not the variables the block was handed - but a register the block was
-        // handed holding something else, and assigns a fresh variable to, is the
-        // block's to declare: a mask register reused for a flag inside an if/else
-        // had the flag declared inside one branch and read after the join.
+        // Not variables the block was handed; a register reused for a fresh one is new.
         var newAssignments = outputs
             .Where(o => o.Value is TempVariableNode)
             .Where(o => !(inputs.TryGetValue(o.Key, out HlslTreeNode input) && HandsVariable(input, o.Value)))
@@ -1446,15 +1227,11 @@ public class HlslAstWriter : HlslWriter
         {
             foreach (var group in GroupAssignments(newAssignments))
             {
-                // Compile variable with all components
                 _compiler.Compile(group);
 
                 var variable = group.First() as TempVariableNode;
-                // An enclosing block may already declare it, when a nested if merged
-                // into the same variable. Declaring it again would shadow it. By
-                // number as well as by node: the xy of a register assigned before
-                // the block and the xyz the block assigns are two sets of nodes
-                // under one name, and the block redeclared it.
+                // An enclosing block may declare it already; check by number too, as
+                // different nodes can share one name.
                 if (!_declaredVariables.Add(variable) || !_declaredIndices.Add(variable.DeclarationIndex.Value))
                 {
                     continue;
@@ -1466,9 +1243,7 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    // Whether the value a block is handed for a register is the variable the
-    // block assigns: the variable itself, its assignment, or a join that merges it
-    // - the if before this one assigning the same register hands a phi over it.
+    // Whether the input is the variable itself, its assignment, or a phi over it.
     private static bool HandsVariable(HlslTreeNode input, HlslTreeNode variable)
     {
         return ReferenceEquals(input, variable)
@@ -1477,17 +1252,11 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// A linkage method's return: the one register the body writes, taken from
-    /// what the return statement holds live for it - the expression itself where
-    /// the body computed it right here, the variable where one carried it. A
-    /// method has no output struct and no semantic: what it computes is what it
-    /// hands back.
+    /// A linkage method's return of the one register the body writes.
     /// </summary>
     private void WriteLinkageReturn(ReturnStatement returnStatement)
     {
-        // The variables this statement assigns are written first - except the
-        // result's own register, which the return itself is about to name, and
-        // which is often still an expression rather than a variable.
+        // Temps first, except the result register, which the return names itself.
         var temps = returnStatement.Outputs
             .Where(o => o.Key.RegisterKey.IsTempRegister
                 && !o.Key.RegisterKey.Equals(_linkageReturnRegister))
@@ -1512,9 +1281,7 @@ public class HlslAstWriter : HlslWriter
             : $"if ({condition}) return {compiled};");
     }
 
-    // The value the method hands back: a variable's assignment returns as the
-    // variable, whose line the statements above wrote; an expression is the
-    // value itself, and the return is where it is written.
+    // An assignment returns as its variable; an expression is returned inline.
     private HlslTreeNode ResultOf(IStatement statement, RegisterComponentKey key)
     {
         if (!statement.Outputs.TryGetValue(key, out HlslTreeNode value))
@@ -1529,14 +1296,10 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteReturnStatement(ReturnStatement returnStatement)
     {
-        // A return can replace an assignment statement, and the returned expression
-        // reads what that statement assigned.
+        // A return can stand in for an assignment statement; write its temps first.
         WriteStatementTempAssignments(returnStatement);
 
-        // With an output struct, a return writes only what changed since the struct
-        // was last written: an if whose both branches return would otherwise repeat
-        // the position computed above it in each of them. A single output has no
-        // struct and is returned as the expression, wherever it was computed.
+        // With an output struct, write only outputs changed since the last write.
         bool hasOutputStruct = HasOutputStruct;
         var returnedOutputs = returnStatement.Outputs
             .Where(o => o.Key.RegisterKey.IsOutput)
@@ -1550,10 +1313,7 @@ public class HlslAstWriter : HlslWriter
         Dictionary<RegisterComponentKey, int[]> outputComponents =
             GroupComponentMasks(returnedOutputs);
 
-        // The returned expression is compiled straight from here rather than through
-        // GroupAssignments, so the hoist has to happen here too - and what it names
-        // has to come back, since a whole output's value may now be a variable and
-        // the dictionary holds the group it was written from.
+        // Returns bypass GroupAssignments, so hoist here and take the groups back.
         List<RegisterComponentKey> outputKeys = [.. outputs.Keys];
         List<HlslTreeNode[]> outputGroups = [.. outputKeys.Select(key => outputs[key])];
         WriteSharedSubexpressions(outputGroups);
@@ -1566,11 +1326,7 @@ public class HlslAstWriter : HlslWriter
             ? null
             : _compiler.Compile(Reduce(returnStatement.Comparison));
 
-        // A compute or geometry shader returns nothing, so an early ret leaves with
-        // no value at all. Asking for the one output there threw, and a `return;`
-        // guarding the rest of a compute shader is how every one of them starts.
-        // A geometry shader has outputs - the vertices it appends - and returns
-        // none of them: `return o;` from it is X3079.
+        // Compute and geometry shaders return void (`return o;` in a GS is X3079).
         if (_registers.MethodOutputRegisters.Count == 0 || _shader.Type == ShaderType.Geometry)
         {
             WriteLine(condition == null ? "return;" : $"if ({condition}) return;");
@@ -1585,8 +1341,7 @@ public class HlslAstWriter : HlslWriter
         }
         else if (condition != null)
         {
-            // The outputs were written by the statements before this one; a
-            // conditional return only chooses whether to leave with them.
+            // Earlier statements wrote the outputs; this only decides to leave.
             WriteLine($"if ({condition}) return {_registers.OutputVariableName};");
         }
         else
@@ -1600,28 +1355,17 @@ public class HlslAstWriter : HlslWriter
                 string compiled = CompileOutput(rootGroup.Key.RegisterKey, rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name}{componentMask} = {compiled};");
             }
-            // A blank line whether or not anything was written just above: the return
-            // reads as the end of the method either way, and after the closing brace
-            // of an if and an else that filled the struct between them it needs the
-            // separation more, not less.
             WriteLine();
             WriteLine($"return {_registers.OutputVariableName};");
         }
     }
 
-    // An output the signature types as a float takes a float, so bits reaching one
-    // are reinterpreted. One it types as an integer takes the integer as it is - and
-    // as an integer, so that a whole register returned at once builds an intN and not
-    // a floatN: the int-to-float-to-int the float constructor does each way is a
-    // lossy round trip, not the identity it looks like once the value leaves the
-    // range a float holds exactly.
+    // Compiled in the output's signature type. An integer output must build an intN,
+    // not a floatN: int-to-float-to-int is lossy for large values.
     private string CompileOutput(RegisterKey outputKey, IEnumerable<HlslTreeNode> nodes)
     {
         RegisterDeclaration declaration = _registers.RegisterDeclarations[outputKey];
-        // An output the signature declares at partial precision is a half already, so a
-        // half cast on the way into it says the same thing twice - and fxc reads the
-        // declaration rather than the cast, which is what makes the cast alone worth
-        // nothing.
+        // A half output needs no half cast on the way in.
         if (declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision))
         {
             nodes = nodes.Select(node =>
@@ -1641,12 +1385,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names the subexpressions the roots share and compiles each named one into
-    /// its own line of HLSL. The caller that goes on to order more lines - an
-    /// assignment statement writes its temps and outputs through one sort - keeps
-    /// the nodes so that sort can see a line that reads a variable one of the
-    /// other lines declares; a caller that writes everything it has straight away
-    /// just wants the text.
+    /// Names the subexpressions the roots share, one compiled line each. The nodes
+    /// are returned too so a caller can sort the lines with its own.
     /// </summary>
     private List<(HlslTreeNode[] Nodes, string Text)> CompileSharedSubexpressions(
         IList<HlslTreeNode[]> roots)
@@ -1663,12 +1403,7 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The swizzle naming the components an output write touches, when it does not
-    /// touch all of them. The member is as wide as the register is written across
-    /// the whole shader - the write masks have all been seen by the time this
-    /// writes - and an unmasked assignment to it takes the value's width as the
-    /// write's, broadcasting it over the components this statement leaves alone and
-    /// packing the ones it wrote into the register's first slots.
+    /// The swizzle of a partial output write, or "" where it writes the whole member.
     /// </summary>
     private static string ComponentMask(int[] components, RegisterDeclaration declaration)
     {
@@ -1697,12 +1432,8 @@ public class HlslAstWriter : HlslWriter
         var nodeGrouper = new NodeGrouper(_registers);
 
         var groups = new List<HlslTreeNode[]>();
-        // By register, except that a component whose variable a phi goes on to
-        // read - a loop counter or accumulator being given its starting value - is
-        // kept apart from the register's other components. Its variable is shared
-        // with every reassignment of it, and grouping it into a float3 with two
-        // loop invariants that happen to sit beside it makes the counter t0.z for
-        // the rest of the shader, which no loop is recovered from.
+        // By register, but a component a phi reads (a loop counter's start) is kept
+        // apart, or the counter becomes one lane of an unrelated vector.
         var registerGroups = outputs
             .Where(o => o.Key.RegisterKey.IsTempRegister || o.Key.RegisterKey.IsOutput)
             .OrderBy(o => o.Key.ComponentIndex)
@@ -1713,25 +1444,17 @@ public class HlslAstWriter : HlslWriter
 
         WidenWithSiblingRows(registerGroups);
 
-        // After reducing, not before: naming a subexpression hides it from the
-        // templates, and a node feeding four components would be named rather than
-        // broadcast.
+        // After reducing: naming hides a subexpression from the templates.
         groups.AddRange(HoistSharedSubexpressions(registerGroups));
 
         foreach (var registerGroup in registerGroups)
         {
-            // In dependency order before grouping, not after. GroupComponents merges
-            // consecutive runs, so two assignments that need a third between them must
-            // not be handed to it as neighbours. The sort is stable, so components
-            // that do not depend on each other stay in component order.
+            // Sort before grouping: GroupComponents merges consecutive runs.
             var registerNodes = TempAssignmentOrder.SortNodes(registerGroup);
             _compiler.Compile(registerNodes);
             List<HlslTreeNode[]> componentGroups =
                 [.. nodeGrouper.GroupComponents(registerNodes).Select(g => g.ToArray())];
-            // The dependency order is for statements. Lanes one instruction wrote
-            // and one statement writes are in no order but the register's:
-            // continue_nested's cmp tests the x it overwrites, which sorted the x
-            // last, and the statement wrote `t0.wyzx = ...` for `t0.wxyz`.
+            // Lanes of one instruction keep register order, not dependency order.
             for (int i = 0; i < componentGroups.Count; i++)
             {
                 HlslTreeNode[] lanes = componentGroups[i];
@@ -1742,8 +1465,6 @@ public class HlslAstWriter : HlslWriter
                     componentGroups[i] = [.. lanes.OrderBy(lane => Array.IndexOf(registerGroup, lane))];
                 }
             }
-            // Before the groups themselves, and before anything overwrites what they
-            // read.
             groups.AddRange(HoistStaleReads(componentGroups));
             groups.AddRange(componentGroups);
         }
@@ -1753,14 +1474,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names the reads that no order of these assignments can make right. Components
-    /// that rotate - `mul r0.xyz, r0.yzxy, l(1.5)` taking x from y, y from z and z
-    /// from x - and two variables that swap depend on each other in a circle:
-    /// whichever is written first destroys what the next one reads. The ordering
-    /// pass takes the first of them and moves on, having no order to find, and the
-    /// circle was broken silently - output that compiled and computed something the
-    /// shader did not. Read out before any of them run, the parallel assignment the
-    /// one instruction made is kept.
+    /// Names reads no ordering can satisfy, such as rotated components
+    /// (`mul r0.xyz, r0.yzxy, ...`) or a swap, so the parallel assignment is kept.
     /// </summary>
     private List<HlslTreeNode[]> HoistCyclicReads(IList<HlslTreeNode[]> ordered)
     {
@@ -1808,17 +1523,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names the expressions that one instruction computes once and several
-    /// assignments then read.
-    ///
-    /// One instruction writing several components becomes several assignments, and
-    /// those run one after another where the instruction did not. `cmp r1, r2.x, r3,
-    /// r1` decided every component from one condition, computed before any of them
-    /// changed; written as `t1.y = 3 - t1.y >= 0 ? ...` followed by `t1.xzw =
-    /// 3 - t1.y >= 0 ? ...`, the second tests a t1.y the first has already
-    /// overwritten. Naming the condition first puts back the value the instruction
-    /// saw. Unlike the hoisting below, this is not a matter of how large the
-    /// expression is - it is wrong at any size.
+    /// Names expressions several component groups of one instruction read, when
+    /// an earlier group overwrites what they read. Needed for correctness, at any size.
     /// </summary>
     private List<HlslTreeNode[]> HoistStaleReads(IList<HlslTreeNode[]> componentGroups)
     {
@@ -1840,8 +1546,7 @@ public class HlslAstWriter : HlslWriter
             return [];
         }
 
-        // Which of the assignments each node is read by. Anything read by more than
-        // one of them is read after the first has already run.
+        // A node read by more than one group is read after the first has run.
         var readers = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
         for (int i = 0; i < componentGroups.Count; i++)
         {
@@ -1881,13 +1586,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The lanes of one add put back into one spelling. AddNegativeTemplate writes
-    /// `x + -1` as `x - 1`, which is what a lane on its own wants, and it cannot see
-    /// the lane beside it: fullscreen_id's position is one mad, `uv * float2(2, -2) +
-    /// float2(-1, 1)`, and with its x a subtraction and its y an addition the two
-    /// would not group, and fxc built them as two mads over two conversions. Where an
-    /// instruction's lanes are an addition and a subtraction of a constant, the
-    /// subtraction is an addition of the negated constant again.
+    /// Turns `x - c` lanes back into `x + -c` where another lane of the same
+    /// instruction is an add, so the lanes group into one vector expression.
     /// </summary>
     private static void RejoinSignedLanes(IList<HlslTreeNode[]> registerGroups)
     {
@@ -1950,21 +1650,15 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// An expression read in more than one place is written out at each of them, so a
-    /// value built on top of a value built on top of a value doubles the output at
-    /// every level. Ten instructions of that reach sixty thousand characters.
-    ///
-    /// Naming one costs a line, so only the ones big enough to be worth it are named
-    /// here; the smaller ones are left to the text pass below.
+    /// Minimum size of a shared subexpression worth naming; smaller repeats are
+    /// left to the text pass. Unnamed, shared values grow the output exponentially.
     /// </summary>
     private const int SharedSubexpressionThreshold = 8;
 
     private List<HlslTreeNode[]> HoistSharedSubexpressions(
         IList<HlslTreeNode[]> registerGroups)
     {
-        // Here because every caller arrives with its roots reduced and nothing named
-        // yet, which is the one point an idiom can be put into the graph rather than
-        // recognised out of it later. See IdiomRecovery.
+        // Roots are reduced and nothing is named yet: the point to recover idioms.
         RejoinSignedLanes(registerGroups);
         IdiomRecovery.Recover(registerGroups, _grouper.MatrixMultiplicationGrouper);
         ReadEarlierNames(registerGroups);
@@ -1998,49 +1692,22 @@ public class HlslAstWriter : HlslWriter
             }
         }
 
-        // GetDimensions has no expression form - it hands its results back through
-        // out parameters - so a resinfo result is always named, whatever it costs.
+        // Out-parameter calls (GetDimensions etc.) have no expression form: always named.
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
         resourceInfo.AddRange(NameConsumes(order));
         resourceInfo.AddRange(NameDoubleBits(order));
 
-        // Sharing alone is not a reason to name something - almost every expression
-        // shares a register read. What is worth naming is a subexpression of some
-        // size that the compiler writes more than once, and then whatever text
-        // still repeats after those have been taken out.
-        //
-        // This used to run only on statements whose inlined size passed a budget,
-        // on the reading that a short statement has nothing worth cutting. The
-        // budget turned itself off exactly where it was wanted: recovering an idiom
-        // makes a statement shorter, so a lerp or a normalize put colour_grade
-        // under the line and took its two names away with it, and the sample they
-        // held came back per component. Twenty-one fixtures name more now, their
-        // longest lines a good deal shorter for it, and not one costs an
-        // instruction more.
-
-        // What the compiler writes, rather than what the graph shares. A length
-        // inside a normalize has a consumer per component and is written none of
-        // those times - the grouper takes the divisions whole and the length with
-        // them - so naming it by consumer count put a variable where the grouper
-        // looks for a LengthOperation, and cost the normalize. The same reading the
-        // text pass below is built on: what a node costs in a statement cannot be
-        // had off the graph, only by compiling it and looking.
+        // Named: sizeable subexpressions written more than once, then repeated text.
+        // Counted from compiled text, not graph consumers: a length inside a
+        // normalize has many consumers but is never written out.
         Dictionary<HlslTreeNode, int> written = MeasureAndNumber(registerGroups).WrittenCounts();
 
-        // Deepest first, so that a shared node inside another one is named before
-        // the node containing it stops being reachable from here.
+        // Deepest first, so an inner shared node is named before its container.
         var candidates = new List<HlslTreeNode>();
         for (int i = order.Count - 1; i >= 0; i--)
         {
             HlslTreeNode node = order[i];
-            // An operation, or a normalize, which is not one and is written as a
-            // call all the same - IsNameable says so, and this is the same question.
-            // The two used to disagree, and it showed as soon as a normalize became a
-            // node: recovered into the graph it is nameable to NameRepeatedText and
-            // invisible here, so tangent_lighting stopped naming one that two
-            // expressions read and wrote it out twice. The rest of what IsNameable
-            // allows - a texture load, a lit, a constant - this path has never
-            // considered, and whether it should is a question of its own.
+            // Operations and the call-like output nodes; keep in step with IsNameable.
             if (roots.Contains(node)
                 || node is not (Operation or NormalizeOutputNode or ReflectOutputNode
                     or MatrixMultiplyOutputNode))
@@ -2082,14 +1749,8 @@ public class HlslAstWriter : HlslWriter
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// A load an earlier statement named is read through its name here too, where
-    /// the name is in scope. The naming passes run a statement at a time, and a
-    /// value one of them named was read again from the buffer by the next: a
-    /// particle's life named for the new life and loaded once more for the store
-    /// of its position - an instruction, since fxc does not merge loads from a view
-    /// it writes. And more than an instruction where a store comes between: the
-    /// node is the value the load read, and read again after a store to the same
-    /// element it is the value stored, not the one loaded.
+    /// Reads a load an earlier statement named through that name, where in scope.
+    /// Reloading costs an instruction, and after a store it reads the stored value.
     /// </summary>
     private void ReadEarlierNames(IList<HlslTreeNode[]> registerGroups)
     {
@@ -2140,9 +1801,7 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    // Whether the later statement comes after the earlier one in the earlier one's
-    // body, or inside a statement that does - where a variable the earlier one
-    // declares can be read.
+    // Whether `later` follows `earlier` in its body (at any depth), so its names are in scope.
     private bool IsInScopeAfter(IStatement earlier, IStatement later)
     {
         if (FindPlace(_functionStatements, earlier) is not (IList<IStatement> body, int index))
@@ -2161,16 +1820,7 @@ public class HlslAstWriter : HlslWriter
         return false;
     }
 
-    /// <summary>
-    /// Scalars named apart and only ever read together, as one vector. Four dot
-    /// products are four instructions and four names, and where the shader goes on
-    /// to multiply the vector they make by a matrix, `float4(t13, t9, t5, t2)` was
-    /// written out at every row. Those become one variable, read whole, when every
-    /// read of each of them is a read of all of them in the one order, and there is
-    /// more than one such read. Asked of the compiled text rather than the graph: a
-    /// dot product is four multiplies on the graph and reads its vector nowhere, and
-    /// the graph's reader lists carry nodes that templates have long since replaced.
-    /// </summary>
+    // Dot products that are rows of one matrix, in row register order.
     private TempVariableNode[] InMatrixRowOrder(
         TempVariableNode[] variables, Dictionary<TempVariableNode, HlslTreeNode[]> scalars)
     {
@@ -2191,6 +1841,10 @@ public class HlslAstWriter : HlslWriter
         return [.. rows.OrderBy(r => r.Register).Select(r => r.Variable)];
     }
 
+    /// <summary>
+    /// Merges scalars only ever read together, in one order and more than once, into
+    /// one vector variable. Decided from the compiled text, not the graph.
+    /// </summary>
     private bool MergeVectorReads(
         List<HlslTreeNode[]> assignments, List<(HlslTreeNode[] Nodes, string Text)> recording)
     {
@@ -2212,8 +1866,7 @@ public class HlslAstWriter : HlslWriter
             return false;
         }
 
-        // Every read of a scalar, and every run of two to four of them read as a
-        // vector, counted.
+        // Count every read of each scalar, and every 2-4 scalar run read as a vector.
         var reads = new Dictionary<TempVariableNode, List<NodeList>>(ReferenceEqualityComparer.Instance);
         var runs = new Dictionary<NodeList, int>();
         foreach ((HlslTreeNode[] nodes, _) in recording)
@@ -2245,10 +1898,8 @@ public class HlslAstWriter : HlslWriter
             .OrderByDescending(r => r.Value * r.Key.Nodes.Length))
         {
             TempVariableNode[] variables = [.. run.Nodes.Cast<TempVariableNode>()];
-            // Read as this run and nowhere else, none of them merged already, and
-            // declared alike, since they are to share a declaration. Compiling the
-            // constructor compiles each component on its own and records that too,
-            // so a scalar is read alone exactly once per read of the run.
+            // Read only as this run, unmerged, and typed alike to share a declaration.
+            // Each run read also records one lone read per component.
             if (variables.Any(merged.Contains)
                 || variables.Any(v => reads[v].Any(read => !read.Equals(run) && read.Nodes.Length != 1)
                     || reads[v].Count(read => read.Nodes.Length == 1) != count)
@@ -2257,9 +1908,7 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
-            // Rows of one matrix in the order the matrix has them, so that the
-            // four dots read as the one mul they are; anything else in the order
-            // it was read.
+            // Matrix rows in matrix order, so the dots regroup into one mul.
             variables = InMatrixRowOrder(variables, scalars);
             var group = new HlslTreeNode[variables.Length];
             for (int i = 0; i < variables.Length; i++)
@@ -2276,8 +1925,7 @@ public class HlslAstWriter : HlslWriter
         return merged.Count != 0;
     }
 
-    // Merging leaves the numbers the merged variables had unused, so the ones in
-    // use are closed up and the counter set back to follow them.
+    // Closes the numbering gaps merging leaves, and resets the counter.
     private void CloseUpNumbering(List<HlslTreeNode[]> assignments)
     {
         List<TempVariableNode> variables = [.. assignments
@@ -2299,17 +1947,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// What compiling these groups and throwing the text away reveals about them.
-    ///
-    /// The values, not the assignments: compiling an assignment writes a whole
-    /// statement - the declaration, the name and the semicolon - and what is being
-    /// counted here is the text of expressions. (It used to say numbering as the
-    /// reason, and that reason is gone: a measurement takes its numbers back now.
-    /// This one stands on its own.)
-    /// </summary>
-    /// <summary>
-    /// And this one numbers as it measures, because these two measurements are where
-    /// the writer's variables get their numbers - see
+    /// Compiles the groups' values (not assignments) and discards the text, keeping
+    /// the measurement. Also numbers the variables; see
     /// <see cref="NodeCompiler.MeasureAndNumber"/>.
     /// </summary>
     private CompileMeasurement MeasureAndNumber(IEnumerable<HlslTreeNode[]> groups)
@@ -2324,25 +1963,16 @@ public class HlslAstWriter : HlslWriter
             root is TempAssignmentNode assignment ? assignment.Value : root));
     }
 
-    /// <summary>
-    /// How much of a statement's text has to be a repeat of one expression before
-    /// that expression is named: about what the declaration line costs.
-    /// </summary>
+    // Repeated text needed before naming: about the cost of a declaration line.
     private const int RepeatedTextBudget = 24;
 
-    /// <summary>
-    /// Names the expressions the statement's text writes out more than once. Which
-    /// those are cannot be read off the graph: four dot products read by sixteen
-    /// multiplies are one `mul(t0, viewProj)` once the grouper has been at them. So
-    /// the statement is compiled and thrown away, the text of every subexpression
-    /// counted, the one with the most repeated text named, and the statement compiled
-    /// again: the expressions inside the named one are repeated less now, or not at
-    /// all, and are measured afresh.
-    /// </summary>
-    // The text of the statement as it stood when nothing was left to name, for the
-    // merge that reads it afterwards.
+    // The final recording of NameRepeatedText, for MergeVectorReads.
     private List<(HlslTreeNode[] Nodes, string Text)> _lastRecording;
 
+    /// <summary>
+    /// Names expressions the statement's text repeats, one at a time, recompiling
+    /// after each. Measured on text because grouping changes what is written.
+    /// </summary>
     private List<HlslTreeNode[]> NameRepeatedText(
         IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots)
     {
@@ -2355,10 +1985,7 @@ public class HlslAstWriter : HlslWriter
             HashSet<HlslTreeNode> grouped = measurement.Grouped;
             List<HlslTreeNode[]> groupMatches = measurement.GroupMatches;
 
-            // A repeat is the same nodes compiled again - or the same but for a
-            // constant, which may be a node of its own at each: a template that
-            // builds one builds one per match, and the 1 in the w of four dot
-            // products is four nodes.
+            // A repeat is the same nodes, up to equal constants (templates build one per match).
             HlslTreeNode[] candidate = recording
                 .GroupBy(r => new NodeList(Broadcast(r.Nodes)))
                 .Select(g => (g.Key.Nodes, Repeated: (g.Count() - 1) * g.First().Text.Length))
@@ -2369,23 +1996,15 @@ public class HlslAstWriter : HlslWriter
                 .OrderByDescending(r => r.Repeated)
                 .Select(r => r.Nodes)
                 .FirstOrDefault();
-            // Only this statement's readers are given the variable. The graph is
-            // shared with every other statement that reads the value, and one of
-            // those may be outside the block this one is in.
+            // Only this statement's readers get the variable; the graph is shared.
             HashSet<HlslTreeNode> readers = HlslTreeNode.NewNodeSet();
             foreach (HlslTreeNode node in Reachable(groups.SelectMany(g => g)))
             {
                 readers.Add(node);
             }
 
-            // The two below run only once nothing is repeated by the nodes. A value
-            // the bytecode computes twice is two subtrees, which read alike because
-            // they are alike, and neither is a repeat to the grouping above; an
-            // instruction read by two expressions is one subtree and not a repeat
-            // either. Both are left to last so that they take nothing away from it -
-            // naming what is inside a nest before the nest leaves the expression
-            // around it written out at every use, and the counts the text pass
-            // merges are exactly the ones that would.
+            // The fallbacks run only when no node-identical repeat is left, so naming
+            // an inner node never preempts naming the nest around it.
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
@@ -2402,8 +2021,7 @@ public class HlslAstWriter : HlslWriter
             }
             candidate = occurrences[0];
 
-            // The components beside a subtree are its own, so taking them leaves the
-            // others behind: the extension is for the one occurrence there is.
+            // Widen to sibling components only for a single occurrence.
             if (occurrences.Count == 1)
             {
                 candidate = WithSiblingComponents(candidate, readers, roots);
@@ -2411,15 +2029,8 @@ public class HlslAstWriter : HlslWriter
             }
             occurrences = InWrittenOrder(occurrences);
             candidate = occurrences[0];
-            // The variable is declared where the statement being written goes, and
-            // the graph is shared: one node read by both branches of an if is read
-            // by the two returns through one and the same reader node, so naming it
-            // at the first branch rewires the shared reader and the other branch
-            // compiles its text naming too - a name that closed its brace before
-            // that line. Ask every statement the text pass will write after this
-            // one, and that this one does not nest, whether it holds a reader of
-            // what is about to be named - and name nothing of this statement where
-            // it would.
+            // Rewiring a shared reader would leak the name into a later statement
+            // outside its scope (e.g. the other branch of an if); stop instead.
             if (ReadersOutOfScope(occurrences))
             {
                 _lastRecording = recording;
@@ -2436,10 +2047,8 @@ public class HlslAstWriter : HlslWriter
                     }
                 }
             }
-            // A constant's twins: an equal constant read alongside the variable's
-            // other components is that component - not the one node compiled, and
-            // not only the ones compiled, since a matrix multiply compiles one of
-            // its four dots' vectors and the others are never seen.
+            // Equal constants read alongside the variable's other components are
+            // rewired too, including ones never compiled (other dots of a mul).
             int[] valuePositions = [.. Enumerable.Range(0, candidate.Length).Where(i => candidate[i] is not ConstantNode)];
             for (int i = 0; i < candidate.Length; i++)
             {
@@ -2461,11 +2070,8 @@ public class HlslAstWriter : HlslWriter
                     Rewire(twin, variables[i], alongside);
                 }
             }
-            // Where what was named is a register's whole value, the register reads
-            // the variable from now on. Rewire moves the readers in the graph and an
-            // output has none - it is not a node that reads the value, it is the
-            // register whose value that is - so the group it was written from is
-            // repointed instead.
+            // A named whole register value is repointed in its group; Rewire only
+            // moves graph readers, and a register root has none.
             for (int i = 0; i < registerGroups.Count; i++)
             {
                 if (registerGroups[i].Length == candidate.Length
@@ -2480,12 +2086,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether a reader of one of the nodes about to be named - or the node itself -
-    /// is held by a statement that the text pass will write after this one without
-    /// the name reaching it: a later one in an enclosing block that this one is not
-    /// in, or a sibling branch. Statements already written cannot be touched by
-    /// rewiring - their text is out - and statements inside this one read the name
-    /// from the line about to be written above it.
+    /// Whether a later-written statement outside the name's scope (e.g. a sibling
+    /// branch) holds one of the nodes about to be named, or a reader of one.
     /// </summary>
     private bool ReadersOutOfScope(List<HlslTreeNode[]> occurrences)
     {
@@ -2514,8 +2116,7 @@ public class HlslAstWriter : HlslWriter
                 stack.Push(reader);
             }
         }
-        // Statements in the order the text pass writes them: each one, then what
-        // it nests - the branches of an if in the order it writes them.
+        // Statements in writing order, each before what it nests.
         var order = new List<IStatement>();
         void Walk(IList<IStatement> body)
         {
@@ -2568,17 +2169,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The other components of the same instruction, where the candidate is one of
-    /// them. One texture load is four nodes, and a component that repeats often
-    /// enough on its own is named on its own: a terrain shader reading three
-    /// channels of a blend map named each of them and wrote the sample out three
-    /// times, once per declaration. Named together they are one read and one
-    /// variable.
-    ///
-    /// Only the components this statement reads, and only the ones the grouper would
-    /// write as one swizzle anyway. That is the test rather than input identity: the
-    /// components of one sample do not share their coordinate nodes - each is read
-    /// into its own - so what says they are one instruction is that they group.
+    /// Widens a candidate with the other components of its instruction that this
+    /// statement reads and that group with it, so e.g. a sample is named once.
     /// </summary>
     private HlslTreeNode[] WithSiblingComponents(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
@@ -2607,8 +2199,7 @@ public class HlslAstWriter : HlslWriter
         {
             return candidate;
         }
-        // The same rule the operation branch enforces: nothing the candidate is
-        // built on, and nothing built on it, is one of its components.
+        // No component may be built on, or underneath, the candidate.
         HashSet<HlslTreeNode> within = HlslTreeNode.NewNodeSet();
         foreach (HlslTreeNode root in candidate)
         {
@@ -2639,30 +2230,10 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The other components of the same instruction, where the instruction is an
-    /// operation. A texture load's components are one node apiece over the one
-    /// input and differ by ComponentIndex; `ddx(texcoord.x)` and `ddx(texcoord.y)`
-    /// are two nodes over two inputs, and what says they are one instruction is
-    /// that they group - the same test the other search ends on. Ordered by the
-    /// component their input reads, so the variable's components come out in the
-    /// order a swizzle of it wants them.
-    /// </summary>
-    /// <summary>
-    /// A register assigned rows of a matrix multiply, given the multiply's other rows
-    /// as lanes of its own. A decal's position is three rows of its transform, and
-    /// the box test compares all three with one lt - but fxc overwrites the third in
-    /// its register with the test's answer within the same instructions, so only
-    /// two reached a variable, the third was written as a dot of its own, and the
-    /// test as `abs(dot(...)) < 0.5 && all(abs(t3) < 0.5)`: three instructions
-    /// dearer for each decal. With the third row a lane of the same variable the
-    /// test is all(abs(t3) < 0.5), and the position one float3.
-    ///
-    /// The variable is the register's, keyed by the register's components, and the
-    /// row it is given has no component of that register to be. So it is given here,
-    /// where the statement's assignments are gathered, as one more assignment in the
-    /// group - and only where every reader of the row is this statement or one after
-    /// it in the same block, inside which the variable is declared, and the variable
-    /// is assigned nowhere else, so that its declaration is the one this writes.
+    /// Adds the other rows of a matrix multiply as lanes of a register assigned some
+    /// of them, so a test over all rows reads one vector. Only where every reader of
+    /// the added row is in this block from here on and the variable is assigned
+    /// nowhere else.
     /// </summary>
     private void WidenWithSiblingRows(List<HlslTreeNode[]> registerGroups)
     {
@@ -2723,18 +2294,14 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    // Where an output goes among the writes: the place the output struct declares
-    // it, and the register number where it declares none of them. By number
-    // alone, D3D9's position, first texture coordinate and first colour are all
-    // register 0, and they were written in whatever order fxc had - which changed
-    // from one round to the next.
+    // Output write order: struct order, else register number. Number alone is
+    // ambiguous in D3D9, where several outputs are register 0.
     private int OutputOrder(RegisterComponentKey key)
     {
         int place = OutputsInStructOrder().ToList().FindIndex(d => d.RegisterKey.Equals(key.RegisterKey));
         return place >= 0 ? place : 1000 + key.RegisterKey.Number;
     }
 
-    // Where a statement sits: the body holding it, and its place in that body.
     private static (IList<IStatement> Body, int Index)? FindPlace(IList<IStatement> body, IStatement statement)
     {
         for (int i = 0; i < body.Count; i++)
@@ -2761,7 +2328,6 @@ public class HlslAstWriter : HlslWriter
         return null;
     }
 
-    // Every value the statements reach, and those inside them.
     private static HashSet<HlslTreeNode> ValuesOf(IEnumerable<IStatement> statements)
     {
         var roots = new List<HlslTreeNode>();
@@ -2779,7 +2345,6 @@ public class HlslAstWriter : HlslWriter
         return values;
     }
 
-    // Whether any of these variables is assigned by anything but these assignments.
     private bool IsAssignedElsewhere(TempAssignmentNode[] assignments)
     {
         HashSet<HlslTreeNode> variables = HlslTreeNode.NewNodeSet();
@@ -2805,22 +2370,14 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The other rows of a matrix multiply, where the candidate is some of them. A
-    /// decal's position is three rows of one transform, and only the first two were
-    /// read twice - as the coordinate it samples with, and by the box test - so the
-    /// two were named as `mul(t2, (float4x2)decalMatrix)` and the third written on
-    /// its own as `dot(transpose(decalMatrix)[2], t2)`: the multiply taken apart,
-    /// two instructions dearer. Named with the rows beside it the statement reads,
-    /// the multiply is one again. Only a run of rows with no gap, so that what is
-    /// named is a multiply the grouper writes whole.
+    /// Widens matrix rows to the gap-free run of rows of that matrix the statement
+    /// reads, so the multiply is named whole rather than taken apart.
     /// </summary>
     private HlslTreeNode[] WithSiblingRows(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
     {
         MatrixMultiplicationGrouper matrices = _grouper.MatrixMultiplicationGrouper;
-        // Not one row on its own: a projection's w is named as the divisor, and
-        // widened into the whole multiply its divide came apart into one per use -
-        // `t2.xy / t2.w` and `t2.z / t2.w` - an instruction dearer apiece.
+        // Not a single row: widening a projection's w splits its divides apart.
         if (candidate.Length < 2
             || !candidate.All(node => node is DotProductOperation dot && matrices.MatrixRowRegister(dot) != null)
             || !candidate.Skip(1).All(node =>
@@ -2855,7 +2412,6 @@ public class HlslAstWriter : HlslWriter
             }
             byRow[row] = sibling;
         }
-        // The run the candidate is in, and nothing past a gap on either side.
         var run = new List<HlslTreeNode>();
         for (int row = first; byRow.ContainsKey(row - 1); row--)
         {
@@ -2868,6 +2424,10 @@ public class HlslAstWriter : HlslWriter
         return run.Count > candidate.Length ? [.. run] : null;
     }
 
+    /// <summary>
+    /// Widens an operation candidate with operations that group with it (e.g.
+    /// `ddx(uv.x)` and `ddx(uv.y)`), ordered by the component each reads.
+    /// </summary>
     private HlslTreeNode[] WithSiblingOperations(
         HlslTreeNode[] candidate, HashSet<HlslTreeNode> readers, HashSet<HlslTreeNode> roots)
     {
@@ -2876,14 +2436,8 @@ public class HlslAstWriter : HlslWriter
             return candidate;
         }
         var byOrder = new SortedDictionary<int, HlslTreeNode> { [order] = candidate[0] };
-        // A sibling is a component read alongside the candidate - never a value the
-        // candidate is built on, nor one built on the candidate. Naming the pair as
-        // lanes of one variable puts a lane's initializer inside the other's read:
-        // a load read by two expressions beside the product built on it came out
-        // `float2 t1 = 2 * t1.y;` beside `float2 t1 = g0[0];` - and once the grouped
-        // compile sees through the self-reference and refuses to write the pair as
-        // one statement, the line is a constructor of whole declarations, which fxc
-        // refuses outright (X3000).
+        // A sibling never feeds or reads the candidate: one lane's initializer would
+        // read the other lane of the same variable.
         HashSet<HlslTreeNode> withinCandidate = HlslTreeNode.NewNodeSet();
         foreach (HlslTreeNode node in Reachable([candidate[0]]))
         {
@@ -2894,16 +2448,10 @@ public class HlslAstWriter : HlslWriter
             if (ReferenceEquals(sibling, candidate[0])
                 || roots.Contains(sibling)
                 || !_templateMatcher.CanGroupComponents(sibling, candidate[0], false)
-                // Not a value of another type: one load reads a struct's float life
-                // and its uint flags together, and as one float2 the flags were
-                // converted to a float on the way in - their bits gone.
+                // Same type only: a uint lane in a float vector loses its bits.
                 || ValueTypes.IsIntegerValue(sibling) != ValueTypes.IsIntegerValue(candidate[0])
-                // A load's lanes are the lanes it loaded. A product of one of them
-                // groups with another through `* 1`, and is a different instruction:
-                // `tint = c * 2 + 1` named the load's y, z and w beside `2 * c.z` -
-                // a lane built on its neighbour, which came out as a constructor of
-                // declarations - and once that was refused, `t0 * float4(2, 1, 1, 1)`
-                // and a float3 of what was left, where the source is `2 * t0 + 1`.
+                // A load's siblings are only lanes of the same load (`x * 1` would
+                // otherwise group with it).
                 || ((sibling is LoadStructuredNode || candidate[0] is LoadStructuredNode)
                     && !(sibling is LoadStructuredNode && candidate[0] is LoadStructuredNode
                         && HlslTreeNode.IsSameInstruction(sibling, candidate[0])))
@@ -2919,14 +2467,10 @@ public class HlslAstWriter : HlslWriter
         return byOrder.Count == 1 ? candidate : [.. byOrder.Values];
     }
 
-    // The one lane each component reads, where it reads one: of elementwise
-    // operations, the component index of every leaf but those all of them read -
-    // a scalar broadcast across the vector. A cross product's lane reads two
-    // others and answers nothing.
+    // The single lane each component reads through elementwise operations, ignoring
+    // leaves every component reads (broadcasts); null where it reads several.
     private int?[] LanesRead(IList<HlslTreeNode> components)
     {
-        // Leaves are component reads, and whatever is not elementwise, which is
-        // only a broadcast if every lane reads it.
         List<HashSet<HlslTreeNode>> leaves = [];
         foreach (HlslTreeNode component in components)
         {
@@ -2956,8 +2500,7 @@ public class HlslAstWriter : HlslWriter
         }
         return [.. leaves.Select(found =>
         {
-            // A row of a matrix multiply is the lane its row is, as the mul's
-            // own variable is laid out (SourceLane).
+            // A matrix row's lane is its row (see SourceLane).
             int?[] lanes = [.. found
                 .Where(leaf => !leaves.All(other => other.Contains(leaf)))
                 .Select(leaf => leaf is IHasComponentIndex indexed
@@ -2970,10 +2513,8 @@ public class HlslAstWriter : HlslWriter
         })];
     }
 
-    // The lanes a vector's components have in the variable they are named in,
-    // laid out as InWrittenOrder lays one instruction's components out: by the
-    // lanes they read where those are all different, by the lanes they were
-    // written to otherwise.
+    // Lanes of a named vector, as InWrittenOrder lays them out: by lanes read where
+    // all distinct, else by lanes written.
     private int?[] LanesOf(IList<HlslTreeNode> components)
     {
         if (components.All(n => n.SourceInstruction != 0 && HlslTreeNode.IsSameInstruction(n, components[0])))
@@ -2987,10 +2528,8 @@ public class HlslAstWriter : HlslWriter
         return [.. components.Select(SourceLane)];
     }
 
-    // The lane a value has in the variable it is named in: a row of a matrix
-    // multiply is the row it is - which is how InWrittenOrder lays out the mul's
-    // own variable, whichever register lanes fxc wrote the rows to - and anything
-    // else the component the instruction that made it wrote, or the one it reads.
+    // A value's lane: a matrix row's row number, else the component its
+    // instruction wrote, else the one it reads.
     private int? SourceLane(HlslTreeNode node)
     {
         if (node is DotProductOperation dot
@@ -3001,10 +2540,8 @@ public class HlslAstWriter : HlslWriter
         return node.SourceInstruction != 0 ? node.SourceComponent : ComponentOrder(node);
     }
 
-    // Where a sibling goes beside the candidate: the lane one instruction wrote it
-    // to, where one wrote both - three components of a structured load all read
-    // the same index, so the component they read answered the same for each and
-    // only one of them was taken; otherwise the component the expression reads.
+    // A sibling's slot: the written lane for lanes of one structured load (they all
+    // read the same index), else the component read.
     private static int? SiblingOrder(HlslTreeNode node, HlslTreeNode candidate)
     {
         return HlslTreeNode.IsSameInstruction(node, candidate) && node is LoadStructuredNode
@@ -3012,11 +2549,7 @@ public class HlslAstWriter : HlslWriter
             : ComponentOrder(node);
     }
 
-    /// <summary>
-    /// Which component of its register an expression reads, for ordering the
-    /// components of one instruction against each other. The first one found: an
-    /// operation over one register's component answers with that component.
-    /// </summary>
+    // The first register component an expression reads, for ordering lanes.
     private static int? ComponentOrder(HlslTreeNode node)
     {
         return ComponentOrder(node, HlslTreeNode.NewNodeSet());
@@ -3042,63 +2575,17 @@ public class HlslAstWriter : HlslWriter
         return null;
     }
 
-    /// <summary>
-    /// One instruction read by more than one expression. `ddx(texcoord)` inside an
-    /// fwidth and again as a component of a constructor is written out at each,
-    /// and fxc takes the derivative twice; named once, both read the variable.
-    ///
-    /// The readers are the test, not the widths the recording holds. A node inside
-    /// a constructor is recorded both as its own component and as part of the
-    /// group, so being written at two widths is the ordinary case and says
-    /// nothing. Two readers is a value computed once and written twice.
-    ///
-    /// Only the nodes that cost an instruction to compute again. A few characters
-    /// of arithmetic written out twice cost nothing, and there are hundreds of
-    /// those: naming them would be a declaration apiece for no instruction saved.
-    /// </summary>
-    /// <summary>
-    /// A register's whole value, where something other than the register itself
-    /// reads it. Such a value cannot be named a component at a time: the four dot
-    /// products of `mul(v, m)` are one match, and naming the one the fog reads
-    /// would leave the output reading a variable for its w and the dots for the
-    /// rest, which is no multiply at all. Named whole it keeps its shape, since the
-    /// assignment compiles the same components and the grouper matches them again.
-    ///
-    /// Judged by what saying it again costs in text rather than by whether it costs
-    /// an instruction - fxc recognises the common subexpression either way, so this
-    /// is the text pass's question and takes the text pass's budget.
-    /// </summary>
-    /// <summary>
-    /// What a register written a second time from one value has to cost before the
-    /// value is named: about what the declaration line costs, the way
-    /// RepeatedTextBudget is, and smaller than it because what a name saves here is
-    /// a whole write rather than a repeat inside one expression. Twelve catches the
-    /// four hull shaders in the corpus that write a tessellation factor to every
-    /// edge, where twenty-four caught two of them, and neither costs an instruction
-    /// anywhere.
-    /// </summary>
+    // Smaller than RepeatedTextBudget: a name here saves a whole write.
     private const int SharedRootBudget = 12;
 
     /// <summary>
-    /// One value that several registers are written from, named once so that each of
-    /// them is an assignment of the name.
-    ///
-    /// Nothing else names this. SharedRoots below wants a group of more than one
-    /// component, because that is the case where the components have to move
-    /// together and a grouper match is what says they may; SplitRead drops a root
-    /// outright, on the reading that a root is being written where it stands and
-    /// needs no name. Which is true of a root written once. A hull shader's patch
-    /// constant function clamps its tessellation factor and writes it to four edges
-    /// and two insides, and those are six roots that are three values: the clamp
-    /// came out four times and the half of it twice, three instructions more than
-    /// the shader it was read from.
+    /// Names one value several registers are written from. Nothing else names it:
+    /// SharedRoots needs multi-component groups and SplitRead skips roots.
     /// </summary>
     private List<HlslTreeNode[]> RootOfSeveralRegisters(
         IList<HlslTreeNode[]> registerGroups,
         List<(HlslTreeNode[] Nodes, string Text)> recording)
     {
-        // By the nodes they are written from, so that two registers written from one
-        // value are one candidate however many components they have.
         foreach (IGrouping<NodeList, HlslTreeNode[]> written in registerGroups
             .GroupBy(group => new NodeList(group))
             .Where(g => g.Count() > 1)
@@ -3110,9 +2597,7 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
-            // What writing it again costs, measured the way every other name here is:
-            // the text the compiler wrote for it, once for each register past the
-            // first.
+            // Cost: its text, once per register past the first.
             int text = recording
                 .Where(r => r.Nodes.Length == group.Length
                     && r.Nodes.Zip(group).All(pair => ReferenceEquals(pair.First, pair.Second)))
@@ -3128,23 +2613,10 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// A computed value a register is written from that the statement also writes
-    /// inside another expression. quad_tess_factors writes the patch's centre,
-    /// `0.25 * (p0 + p1 + p2 + p3)`, to an output and measures the eye's distance
-    /// from it, and the join phase that measures it read the fork phases' output
-    /// back; written out twice, fxc computes it twice, three instructions with the
-    /// scheduling around it. Short enough that no text budget catches it, which is
-    /// why it is its own rule: what a second write of a root costs is an
-    /// instruction, not text. carried_constants, the same shape over three
-    /// control points, comes back to the instructions it was read from as well.
-    ///
-    /// Hull shaders only, since the cost is the phases': fxc splits the patch
-    /// constant function into fork and join phases and computes a value again in
-    /// each that writes it out. Elsewhere it is one function and fxc reuses what
-    /// it computed - particle_draw's `t1 * t2` written to the texcoord and again
-    /// in a mad costs nothing, and named, the mad it folds back into is the same
-    /// text again one round on. And not a vector of one value read twice, which
-    /// is a broadcast rather than a value the register holds.
+    /// Names a register's computed value that the statement writes again inside
+    /// another expression. In hull shaders any repeat counts, whatever its length:
+    /// fxc recomputes it in each fork/join phase. Elsewhere fxc reuses it, so only
+    /// a vector read a lane at a time is named.
     /// </summary>
     private List<HlslTreeNode[]> RootReadAgain(
         IList<HlslTreeNode[]> registerGroups,
@@ -3175,12 +2647,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether every lane of a root vector is written again on its own inside
-    /// another expression. fullscreen_id's texcoord is `float2((float)a, (float)b)`,
-    /// and the position is the texcoord scaled and offset - read a lane apiece, it
-    /// was `2 * (float)a - 1` and `-2 * (float)b + 1`, two conversions and two mads
-    /// where the shader had one of each. Named, the lanes are the variable's
-    /// components, and the grouper takes them back together.
+    /// Whether every lane of a root vector is written again on its own elsewhere;
+    /// named, the grouper can take the lanes back together.
     /// </summary>
     private bool IsReadALaneAtATime(
         HlslTreeNode[] group,
@@ -3192,14 +2660,8 @@ public class HlslAstWriter : HlslWriter
         {
             return false;
         }
-        // Only where naming the vector cannot put a reader of one lane inside the
-        // value of another, which is a cycle no order of statements writes.
-        // shadowZDir's shadow position is (skin + gWorld[3].xyz, dot + 2): the
-        // matrix multiply of it reads the xyz a lane at a time while the dot in its
-        // w is built on the multiply's answer - through a variable named before
-        // this one, which is why the walk leaves a read only where it finds the
-        // assignment that wrote it. Named, the multiply reads the variable whose w
-        // it feeds, and the t4 statement lands above the t6 it reads.
+        // Not where a reader of one lane feeds another lane, even through an
+        // already named variable: that is a cycle no statement order writes.
         var writtenValues = new Dictionary<int, HlslTreeNode>();
         foreach (HlslTreeNode[] assignmentGroup in named)
         {
@@ -3245,13 +2707,16 @@ public class HlslAstWriter : HlslWriter
                 }
             }
         }
-        // A constructor writes each lane on its own as a matter of course, so a lane
-        // of one is read elsewhere only where it is written alone a second time.
+        // A constructor writes each lane alone once already.
         int own = IsConstructorOnly(group) ? 1 : 0;
         return group.All(node => recording.Count(r => r.Nodes.Length == 1
             && ReferenceEquals(r.Nodes[0], node)) > own);
     }
 
+    /// <summary>
+    /// Names a register's whole value where something else reads it, whole so a
+    /// `mul(v, m)` is not split into loose dots. Judged by text cost.
+    /// </summary>
     private List<HlslTreeNode[]> SharedRoots(
         IList<HlslTreeNode[]> registerGroups,
         HashSet<HlslTreeNode> readers,
@@ -3260,11 +2725,8 @@ public class HlslAstWriter : HlslWriter
     {
         foreach (HlslTreeNode[] group in registerGroups)
         {
-            // One component is what SplitRead above is for; this is for the ones
-            // that have to move together - and only where a grouper took them
-            // together, since that is what makes them one expression. Four
-            // unrelated values sharing a register are a constructor, and an
-            // assignment cannot be written inside one.
+            // Multi-component groups a grouper matched (SplitRead does single ones);
+            // unrelated lanes are a constructor, which cannot hold an assignment.
             if (group.Length < 2
                 || !group.All(IsNameable)
                 || group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode))
@@ -3299,15 +2761,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components one instruction wrote, where the output writes them out in
-    /// more than one place. A four wide mad whose components are read as xz here, y
-    /// there and x and zw in the return is one instruction and four lerps in the
-    /// text; named, it is the one instruction the bytecode has and the readers are
-    /// swizzles of it.
-    ///
-    /// The node says which instruction made it, so this asks that and then the text
-    /// pass's question: whether writing it out at each use costs more than the line
-    /// a name takes.
+    /// Names one instruction's components that are written out in several places,
+    /// so readers become swizzles of one variable. Judged by text cost.
     /// </summary>
     private List<HlslTreeNode[]> SharedInstruction(
         HashSet<HlslTreeNode> readers,
@@ -3320,39 +2775,27 @@ public class HlslAstWriter : HlslWriter
             .Where(group => group.Count() > 1)
             .OrderByDescending(group => group.Count()))
         {
-            // In the order the instruction wrote them, so the variable's components
-            // are the register's and the readers are the swizzles they were.
             HlslTreeNode[] group = [.. instruction.OrderBy(node => node.SourceComponent)];
             if (group.Any(node => node.Outputs.Any(reader => reader is TempAssignmentNode)))
             {
                 continue;
             }
-            // Every place the components are written out. What a name saves is all
-            // of them but the one it keeps.
             List<(HlslTreeNode[] Nodes, string Text)> written = [.. recording
                 .Where(r => r.Nodes.All(group.Contains))];
-            // And only where something reads them as a vector. A register whose
-            // components are read one at a time by unrelated expressions is four
-            // values that share an instruction, and gathering them into a variable
-            // makes fxc build the vector that the shader was doing without.
+            // Only where something reads them as a vector; otherwise fxc would have
+            // to build a vector the shader never had.
             if (written.Count < 2 || !written.Any(r => r.Nodes.Length > 1))
             {
                 continue;
             }
             int saved = written.Sum(r => r.Text.Length) - written.Max(r => r.Text.Length);
-            // Or where one place writes the whole of it and another a part, however
-            // short: fxc does not see `f16tof32(v.x)` as a component of
-            // `f16tof32(v)`, and computes the part again beside the whole.
+            // Or whole and part both written: fxc recomputes `f16tof32(v.x)` beside
+            // `f16tof32(v)`.
             bool wholeAndPart = written.Any(r => r.Nodes.Length == group.Length)
                 && written.Any(r => r.Nodes.Length < group.Length)
                 && group.All(node => node is Operation);
-            // And only where they are one vector expression together, as
-            // ScatteredInstruction asks: a mad that worked out two samples'
-            // coordinates in its four lanes, each sample reading its own pair, was
-            // named `float3(texcoord.x - texel.x, texcoord.y + texel.y, ...)` with a
-            // lane repeated, and three movs put it back together.
-            // Arithmetic lanes only: a sincos is one instruction writing a sine and
-            // a cosine, and `float2(cos(a), sin(a))` is the pair the shader wanted.
+            // Packed arithmetic lanes must form one vector expression, not a
+            // constructor; other ops (a sincos pair) may be a constructor.
             bool packedArithmetic = group.All(node => node is AddOperation or SubtractOperation
                 or MultiplyOperation or MultiplyAddOperation or NegateOperation);
             if ((saved >= RepeatedTextBudget || wholeAndPart) && !(packedArithmetic && IsConstructorOnly(group)))
@@ -3364,21 +2807,9 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// One instruction's components computed apart. A decal's box test compares all
-    /// three components of the position at once - one ge and one and over .xyz -
-    /// and multiplies the three answers together, and read back a component at a
-    /// time it said step(abs(t3.x), 0.5) * step(abs(t3.y), 0.5) * step(abs(t3.z), 0.5):
-    /// three computations, which fxc compiled as a pair and a single, two
-    /// instructions dearer. Named as the vector the instruction made - float3 t6 =
-    /// step(abs(t3), 0.5) - it is the one instruction again, and the product reads
-    /// t6.x, t6.y and t6.z.
-    ///
-    /// Only where each component is a computation and is written on its own, never
-    /// with the others - SharedInstruction is the rule for components something
-    /// reads together - and where the components written together are one vector
-    /// expression rather than a constructor of them, which would be the same work
-    /// three times with a declaration besides. Asked by measuring, which leaves
-    /// nothing behind.
+    /// Names one instruction's components that are only ever written apart, as the
+    /// vector it made: `step(abs(t3), 0.5)` rather than three scalar steps. Only
+    /// where together they compile to one vector expression, not a constructor.
     /// </summary>
     private List<HlslTreeNode[]> ScatteredInstruction(
         HashSet<HlslTreeNode> readers,
@@ -3423,13 +2854,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Whether every operand the text reads is a vector from its start - a name on
-    /// its own, or .xy, .xyz, a single component broadcast - rather than components
-    /// picked out of order. fxc packs unrelated scalar arithmetic into one
-    /// instruction where the lanes are free, and gathered into a vector those come
-    /// back as `texcoord.xz * texcoord.yw` and `abs(a.xw) + 1`: one instruction, as
-    /// the bytecode had, but values the shader never had, in place of the two
-    /// readable ones it did.
+    /// Whether every swizzle in the text is a prefix (.xy, .xyz, .xyzw). Shuffled
+    /// swizzles mean fxc packed unrelated scalars into one instruction.
     /// </summary>
     private static bool ReadsWholeVectors(string text)
     {
@@ -3444,17 +2870,10 @@ public class HlslAstWriter : HlslWriter
         return true;
     }
 
-    /// <summary>
-    /// About what a declaration line costs, the way RepeatedTextBudget is - but for
-    /// one write rather than a repeat, so it is the length at which a read is better
-    /// read off a name than in the line it would sit in.
-    /// </summary>
+    // Length at which a single write is worth naming anyway.
     private const int SingleWriteBudget = 28;
 
-    /// <summary>
-    /// How many writes this node is worth naming for: what the compiler wrote it,
-    /// and one more where it wrote it only once but wrote a great deal of text.
-    /// </summary>
+    // Write count, bumped to 2 for a single write of long text.
     private static int WorthNaming(
         HlslTreeNode node,
         Dictionary<HlslTreeNode, int> writes,
@@ -3466,39 +2885,19 @@ public class HlslAstWriter : HlslWriter
             : written;
     }
 
+    /// <summary>
+    /// Names an instruction written out more than once (fxc computes it each time).
+    /// Only nodes that cost an instruction; cheap arithmetic is free to repeat.
+    /// </summary>
     private List<HlslTreeNode[]> SplitRead(
         HashSet<HlslTreeNode> readers,
         HashSet<HlslTreeNode> grouped,
         HashSet<HlslTreeNode> roots,
         CompileMeasurement measurement)
     {
-        // How many times the compiler wrote the node. This used to be a count of the
-        // expressions that read it, worked out by walking every reader of every
-        // component and dropping the ones CanGroupComponents said could be
-        // components of one value - which is not the same question. What decides a
-        // name is how many times the text will be written, and `sample.y + sample.x`
-        // is one expression reading two components and writes the sample twice.
-        //
-        // The old count was loose in the other direction as well. It answered per
-        // instruction, keyed on a node's first input, so every sample through one
-        // sampler answered with the same inflated number and got named even where
-        // one expression read it; narrowing it to the instruction that made each node
-        // was tried on 2026-09-27 and cost twenty fixtures those names. The walk was
-        // also quadratic in how many components answered together - forty samples of
-        // one texture are a hundred and sixty of them, each walking all the others -
-        // and needed a cache per instruction to be affordable.
-        //
-        // The measurement has had the true count all along: one entry per Compile
-        // call, so a value two expressions write appears twice. Measured over the
-        // corpus, swapping the one for the other costs no instruction anywhere.
+        // Writes, not readers: `sample.y + sample.x` writes the sample twice.
         Dictionary<HlslTreeNode, int> writes = measurement.WrittenCounts();
 
-        // And the third thing: something to go on naming an
-        // expensive read that one expression reads. The text the compiler wrote for
-        // it, which the measurement also has. A sample written once is still worth a
-        // line when the line it would otherwise sit in is long - that is what keeps
-        // the fixtures a handful of short statements - and a normalize written once
-        // is not, because it is short enough to read where it stands.
         var text = new Dictionary<HlslTreeNode, int>(ReferenceEqualityComparer.Instance);
         foreach ((HlslTreeNode[] nodes, string written) in measurement.Recording)
         {
@@ -3511,10 +2910,7 @@ public class HlslAstWriter : HlslWriter
             .Where(node => CostsAnInstruction(node)
                 && !roots.Contains(node)
                 && !grouped.Contains(node))
-            // Not one that has been named already. Counting over the instruction
-            // rather than the node means naming a component does not bring its own
-            // count down - every component still answers for all of them - so
-            // without this the pass names the same sample round after round.
+            // Not already named, or it would be named every round.
             .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode))
             .Select(node => (Node: node, Read: WorthNaming(node, writes, text)))
             .Where(node => node.Read > 1)
@@ -3524,16 +2920,9 @@ public class HlslAstWriter : HlslWriter
         return chosen == null ? null : [[chosen]];
     }
 
-    /// <summary>
-    /// Whether computing this node again is an instruction rather than free. A
-    /// load, a texture read and a derivative are; an add of two registers fxc
-    /// folds away, and naming one would be a line for nothing.
-    /// </summary>
+    // Whether recomputing the node costs fxc an instruction (it does not CSE these).
     private static bool CostsAnInstruction(HlslTreeNode node)
     {
-        // A normalize is a nrm, or a dp3, an rsq and a mul; written twice it is
-        // computed twice - fxc folded `normalize(t)` read by a mad and a cross
-        // into three instructions rather than the one nrm it came from.
         return node is LoadStructuredNode
             or TextureLoadOutputNode
             or SamplePositionNode
@@ -3544,12 +2933,8 @@ public class HlslAstWriter : HlslWriter
             or PartialDerivativeYOperation;
     }
 
-    /// <summary>
-    /// Whether a value can be given a variable of its own. An operation can, and so
-    /// can the multi output nodes - a texture load, a normalize, a lit - which are
-    /// not operations but are written as one call all the same. A register read and a
-    /// variable already have names; a group, a phi and an assignment are not values.
-    /// </summary>
+    // Operations and call-like multi-output nodes; register reads and variables
+    // already have names.
     private static bool IsNameable(HlslTreeNode node)
     {
         return node is Operation
@@ -3561,11 +2946,7 @@ public class HlslAstWriter : HlslWriter
             or ConstantNode;
     }
 
-    /// <summary>
-    /// The subtrees one expression's text was written from, where the text repeats
-    /// past the budget and the nodes do not: every occurrence of the one expression,
-    /// to be named together, or null where there is none.
-    /// </summary>
+    // All occurrences of text that repeats past the budget from different nodes.
     private List<HlslTreeNode[]> TextRepeats(
         List<(HlslTreeNode[] Nodes, string Text)> recording,
         HashSet<HlslTreeNode> grouped,
@@ -3577,12 +2958,7 @@ public class HlslAstWriter : HlslWriter
                     .Distinct().Select(n => n.Nodes).ToList(),
                 Repeated: (g.Count() - 1) * g.Key.Length))
             .Where(r => r.Occurrences.Count > 1)
-            // All of one width. The occurrences are named together, against the
-            // components of the first, so a narrower one has nothing at the
-            // positions the others are rewired at. Two can differ: Broadcast takes
-            // an occurrence whose components are all the one value down to a single
-            // node, and a scalar promoted to a vector writes the same text as the
-            // vector does.
+            // All one width: Broadcast can shrink one occurrence to a single node.
             .Where(r => r.Occurrences.All(nodes => nodes.Length == r.Occurrences[0].Length))
             .Where(r => r.Repeated >= RepeatedTextBudget)
             .Where(r => r.Occurrences.All(nodes =>
@@ -3596,13 +2972,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components of a value in the order the value has them, rather than in
-    /// the order the first reader happened to read them. A repeat is found by its
-    /// text, and the text is whatever swizzle that reader used - so the normalize
-    /// under a cross product, read .yzx first, was named as `normalize(t.zyx)` and
-    /// every reader of it became a permutation of the one it was. Components of one
-    /// multi output node have an index apiece, and those one instruction wrote have
-    /// the component it wrote them to; either says what order to put them in.
+    /// Reorders occurrence components into the value's own order, not the swizzle
+    /// the first reader used, so the name is not a permutation of the value.
     /// </summary>
     private List<HlslTreeNode[]> InWrittenOrder(List<HlslTreeNode[]> occurrences)
     {
@@ -3612,18 +2983,13 @@ public class HlslAstWriter : HlslWriter
             return occurrences;
         }
         int[] order = null;
-        // Rows of one matrix against one vector in the order the matrix has
-        // them, so that the four dots read as the one mul they are. Found in
-        // reader order they were `float4(row1, row0, row3, row2)`.
+        // Matrix rows in matrix order, so the dots regroup into one mul.
         int?[] rows = [.. first.Select(n => n is DotProductOperation dot
             && first.All(other => ReferenceEquals(other, n)
                 || (other is DotProductOperation otherDot && _grouper.MatrixMultiplicationGrouper.AreRowsOfOneMatrix(dot, otherDot)))
             ? _grouper.MatrixMultiplicationGrouper.MatrixRowRegister(dot)
             : null)];
-        // A normalize's components by the component of the vector each one
-        // divides, not the register lane fxc put it in: recompiled, fxc stores
-        // normalize(t1) rotated to save a swizzle on the cross product after it,
-        // and named in lane order it was `normalize(t1.yzx)` read back as t2.zxy.
+        // A normalize by the input lane each component divides; fxc may store it rotated.
         int?[] lanes = first[0] is NormalizeOutputNode firstNormalize
             ? LanesOf(firstNormalize.Inputs)
             : null;
@@ -3652,10 +3018,7 @@ public class HlslAstWriter : HlslWriter
             && first.All(n => HlslTreeNode.IsSameInstruction(n, first[0]))
             && first.Select(n => n.SourceComponent).Distinct().Count() == first.Length)
         {
-            // By the lanes the instruction read, where they are all different: fxc
-            // writes `-t0 * t1 + tangent` to a register rotated when the reader
-            // after it wants it so, and laid out by the lanes it wrote it was
-            // `-t0.yzx * t1 + tangent.yzx`, read back as t2.zxy. Otherwise by those.
+            // By lanes read where all distinct (fxc may write rotated), else lanes written.
             int?[] read = LanesRead(first);
             order = read.All(c => c != null) && read.Distinct().Count() == first.Length
                 ? [.. Enumerable.Range(0, first.Length).OrderBy(i => read[i])]
@@ -3669,9 +3032,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Numbers the hoisted variables in the order their assignments are written.
-    /// The outermost repeat is named first, and the ones inside it after, so the
-    /// order they were made in is the reverse of the order they are read in.
+    /// Renumbers hoisted variables in writing order; outer repeats are named first,
+    /// so creation order is roughly the reverse.
     /// </summary>
     private List<HlslTreeNode[]> Renumber(List<HlslTreeNode[]> assignments)
     {
@@ -3690,12 +3052,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The reads of textures and buffers among the named values in an order of
-    /// their own - by their text - in the places the reads had between them, and
-    /// everything else where it was. Which of two independent samples fxc issues
-    /// first is its scheduling, and they came back the other way round from one
-    /// round to the next: tex3Dproj then tex3Dlod, then tex3Dlod then tex3Dproj.
-    /// The dependency sort after this keeps any read that needs another after it.
+    /// Sorts resource reads among themselves by text, in their existing slots, so
+    /// fxc's scheduling of independent samples does not flip between round trips.
     /// </summary>
     private List<HlslTreeNode[]> InReadOrder(List<HlslTreeNode[]> assignments)
     {
@@ -3721,21 +3079,19 @@ public class HlslAstWriter : HlslWriter
         return group.All(a => a is TempAssignmentNode { Value: TextureLoadOutputNode or ResourceLoadNode or LoadStructuredNode });
     }
 
-    // One node read as every component of an operand - a scalar divisor under a
-    // vector - is written once, and counts as the one node.
+    // A node broadcast to every component counts as one node.
     private static HlslTreeNode[] Broadcast(HlslTreeNode[] nodes)
     {
         return nodes.All(n => SameValue(n, nodes[0])) ? [nodes[0]] : nodes;
     }
 
-    // The same node, or two constants of the same value.
     private static bool SameValue(HlslTreeNode a, HlslTreeNode b)
     {
         return ReferenceEquals(a, b)
             || (a is ConstantNode ca && b is ConstantNode cb && ca.Value == cb.Value);
     }
 
-    // The nodes an expression was compiled from, as a grouping key.
+    // Grouping key; equal constants compare equal.
     private readonly struct NodeList(HlslTreeNode[] nodes) : IEquatable<NodeList>
     {
         public HlslTreeNode[] Nodes { get; } = nodes;
@@ -3764,12 +3120,6 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
-    /// <summary>
-    /// A variable for the nodes, typed as an integer where every one of them is,
-    /// the way the finalizer types a register's: by the readers where they agree,
-    /// by the operation otherwise. A vector with a float component is a float
-    /// vector, whatever the 1 in its last component was.
-    /// </summary>
     private TempVariableNode[] CreateTempVariables(IList<HlslTreeNode> nodes)
     {
         TempVariableNode[] variables = _compiler.CreateTempVariables(nodes.Count);
@@ -3778,27 +3128,19 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Types variables from the values they will hold. Separate from creating them
-    /// because a call's variables are created by how many components its element
-    /// has rather than by how many nodes read it - see NameConsumes - and those
-    /// need typing just the same.
+    /// Types variables from the values they will hold; a type holds only if every
+    /// component has it.
     /// </summary>
     private void ApplyValueTypes(TempVariableNode[] variables, IList<HlslTreeNode> nodes)
     {
         bool isInteger = nodes.All(node => ValueTypes.IsIntegerValue(node) == true);
         bool isBits = nodes.All(node => ValueTypes.IsBitsVariable(node, isInteger));
-        // A double where every component is one, the way an integer is. The value is
-        // not asked - a multiply of two doubles is the same node either way - so what
-        // answers is the record the parser kept of what the instructions wrote.
+        // The node cannot tell a double; the parser's record of double writes does.
         bool isDouble = !isInteger && nodes.All(_doubleValues.Contains);
-        // Unsigned only where every component is, and not for bits: those are a
-        // float's, and calling them uint says something about them that is not so.
+        // Bits are a float's, never uint.
         bool isUnsigned = isInteger && !isBits
             && nodes.All(node => ValueTypes.IsUnsignedValue(node) == true);
-        // A bool where every component is a condition only conditions read - the
-        // finalizer's rule (HoldsOnlyACondition) for the values this writer names.
-        // `any(m) && !all(m)` named as a float was converted to 1 or 0 on the way
-        // in, and only tested afterwards.
+        // A condition only conditions read (as HoldsOnlyACondition in the finalizer).
         bool isBool = nodes.All(node => node is ComparisonNode or LogicalAndOperation or LogicalOrOperation
             && node.Outputs.Count != 0
             && node.Outputs.All(reader => (reader is MoveConditionalOperation select
@@ -3815,9 +3157,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names every resinfo result reachable from here, the components of one call
-    /// together, as one variable per call: GetDimensions writes a whole set of out
-    /// parameters, and its components are read out of the variable afterwards.
+    /// Names each reachable resinfo call as one variable for its GetDimensions out
+    /// parameters.
     /// </summary>
     private List<HlslTreeNode[]> NameResourceInfo(IList<HlslTreeNode> order)
     {
@@ -3837,14 +3178,9 @@ public class HlslAstWriter : HlslWriter
                 named.Add(component);
             }
 
-            // Which GetDimensions overload the call was, which decides how wide the
-            // variable is that its out parameters are written into. The no-mip form
-            // reports as many components as the shape has: a 1D its width alone, a
-            // 2D and a cube width and height, and an array of 2D, a cube array and a
-            // 3D the element count or the depth after those. Anything the shader
-            // read past them - the mip count always, the depth of a shape that has
-            // none - has no no-mip spelling, and is what the mip form is for, where
-            // a 4-wide variable has the component either way.
+            // The overload sets the variable's width. The no-mip form has 1 (1D),
+            // 2 (2D, cube) or 3 (arrays, 3D) components; reading past that (e.g. the
+            // mip count) needs the 4-wide mip form.
             ResourceDimension? dimension = _registers
                 .GetTextureDefinition(info.Resource.RegisterComponentKey.RegisterKey)?.Dimension;
             bool hasDepth = dimension is ResourceDimension.Texture2DArray
@@ -3853,16 +3189,12 @@ public class HlslAstWriter : HlslWriter
             int noMipComponents = is1D ? 1 : hasDepth ? 3 : 2;
             bool mipForm = !IsConstantZero(info.MipLevel)
                 || call.Any(c => c.InfoComponent >= noMipComponents);
-            // A multisampled texture's overload is three wide - width, height and
-            // the sample count - and has no mip level to ask about.
+            // Multisampled: width, height[, elements], sample count; no mip level.
             ResourceInfoNode sampleCount = call.FirstOrDefault(c => c.IsSampleCount);
             TempVariableNode[] variables = _compiler.CreateTempVariables(
                 info.IsBuffer ? (info.ReportsStride ? 2 : 1)
                 : sampleCount != null ? sampleCount.SampleCountComponent + 1
-                // A multisampled texture whose count is a constant asks for no
-                // sample count and takes the overload with one all the same: width,
-                // height and the count, with the element count between them for an
-                // array.
+                // The sample count is in the overload even when not read.
                 : dimension == ResourceDimension.Texture2DmsArray ? 4
                 : dimension == ResourceDimension.Texture2Dms ? 3
                 : mipForm ? 4
@@ -3882,22 +3214,14 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names every Consume reachable from here, the components of one call
-    /// together. A consume buffer has the one method and it reads the whole
-    /// element, so the call is named and its components read out of the variable -
-    /// the same shape a GetDimensions takes, for the same reason.
+    /// Names each reachable Consume call as one variable for the whole element.
     /// </summary>
     private List<HlslTreeNode[]> NameConsumes(IList<HlslTreeNode> order)
     {
         var assignments = new List<HlslTreeNode[]>();
         var named = HlslTreeNode.NewNodeSet();
-        // In the order the buffer was consumed, which is the order the instructions
-        // did it in and nothing else. Two calls are independent in the graph - neither
-        // reads what the other left - so the walk reaches them in whatever order it
-        // reaches them, and naming them in that order wrote the second call's variable
-        // first. Both calls say `queue.Consume()`, so the text does not show it: what
-        // shows is that the components come out of the wrong one, and each call takes a
-        // different element off the counter.
+        // In instruction order: each call takes the next element, and the graph
+        // does not order independent calls.
         foreach (ConsumeNode consume in order.OfType<ConsumeNode>()
             .OrderBy(candidate => candidate.Slot.SourceInstruction))
         {
@@ -3905,8 +3229,7 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
-            // One call is one slot: the loads that read what a single
-            // imm_atomic_consume took.
+            // One call is one slot (one imm_atomic_consume).
             List<ConsumeNode> call = [.. order.OfType<ConsumeNode>()
                 .Where(other => other.NamedAs == null
                     && ReferenceEquals(other.Slot, consume.Slot))
@@ -3915,23 +3238,15 @@ public class HlslAstWriter : HlslWriter
             {
                 named.Add(component);
             }
-            // The whole element, not the components this statement happens to read:
-            // the hoist runs once per statement, and a call whose components are
-            // read by two of them would otherwise be named twice and consumed twice.
-            // The variables are remembered by the slot so the second statement finds
-            // the first one's.
+            // The whole element, remembered by slot, so a second statement reading
+            // the call does not consume again.
             if (!_consumeVariables.TryGetValue(consume.Slot, out TempVariableNode[] variables))
             {
                 variables = _compiler.CreateTempVariables(
                     _registers.GetStructuredBufferComponents(
                         consume.Buffer.RegisterComponentKey.RegisterKey));
-                // Typed from the components the call reads. Created by how many the
-                // element has and nothing else, they were typed by nothing at all, so
-                // a uint element whose bits are a float's came out of a variable that
-                // said neither - and every float reader of it converted the bits into
-                // the number they spell instead of reinterpreting them.
+                // Typed from the components read, so float readers reinterpret bits.
                 ApplyValueTypes(variables, [.. call]);
-                // A struct element is read by member, off the struct the call returns.
                 RegisterKey consumedKey = consume.Buffer.RegisterComponentKey.RegisterKey;
                 if (_registers.FindStructuredMemberRuns(consumedKey, "t", 0, [0]) != null)
                 {
@@ -3959,11 +3274,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names every double taken apart into its two words, the two words of one
-    /// double together. `asuint` over a double hands them back through out
-    /// parameters - there is no expression for one word of it - so the call is named
-    /// and the words are read out of the variable, the same shape a GetDimensions
-    /// takes and for the same reason.
+    /// Names each double split into words as one variable: `asuint(double, ...)`
+    /// only has an out-parameter form.
     /// </summary>
     private List<HlslTreeNode[]> NameDoubleBits(IList<HlslTreeNode> order)
     {
@@ -3975,7 +3287,6 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
-            // One call is one double: both words come out of the same asuint.
             List<DoubleBitsNode> call = [.. order.OfType<DoubleBitsNode>()
                 .Where(other => other.NamedAs == null
                     && ReferenceEquals(other.Value, bits.Value))
@@ -3984,19 +3295,13 @@ public class HlslAstWriter : HlslWriter
             {
                 named.Add(component);
             }
-            // Both words, not the ones this statement happens to read: the call
-            // fills a pair of out parameters whether or not the shader stored both,
-            // and a one wide variable has nowhere to put the other. The variables
-            // are remembered by the double so a second statement finds the first
-            // one's rather than calling again.
+            // Always both words, remembered by the double so the call is made once.
             if (!_doubleBitsVariables.TryGetValue(bits.Value, out TempVariableNode[] variables))
             {
                 variables = _compiler.CreateTempVariables(2);
                 foreach (TempVariableNode variable in variables)
                 {
-                    // asuint's out parameters are uints, and these are a double's
-                    // bits rather than a number - which is what a float reader of
-                    // one has to be told, so that it reinterprets.
+                    // Bits, so a float reader reinterprets.
                     variable.IsInteger = true;
                     variable.IsUnsigned = true;
                     variable.IsBits = true;
@@ -4020,10 +3325,7 @@ public class HlslAstWriter : HlslWriter
 
     private static bool IsSameResourceInfoCall(ResourceInfoNode a, ResourceInfoNode b)
     {
-        // One GetDimensions on a multisampled texture becomes a resinfo and a
-        // sampleinfo, and fxc picks their return types separately - it took the
-        // size as uints and the count as a float in the same call. So the types
-        // have to agree only between measurements of the same kind.
+        // resinfo and sampleinfo of one call may differ in return type.
         return (a.ReturnType == b.ReturnType || a.IsSampleCount != b.IsSampleCount)
             && a.Resource.RegisterComponentKey.RegisterKey.Equals(b.Resource.RegisterComponentKey.RegisterKey)
             && (ReferenceEquals(a.MipLevel, b.MipLevel)
@@ -4036,12 +3338,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// Names the candidates, the components of one operation together.
-    ///
-    /// A value graph holds a four wide instruction as four separate nodes and puts
-    /// them back together when an assignment is compiled. Naming each of them on its
-    /// own happens before that and defeats it: four scalars that were one mad, and
-    /// nothing downstream can tell they belong together any more.
+    /// Names the candidates, the components of one operation together; named one
+    /// by one, a vector instruction could never be regrouped.
     /// </summary>
     private List<HlslTreeNode[]> NameCandidates(List<HlslTreeNode> candidates,
         HashSet<HlslTreeNode> reachable, HashSet<HlslTreeNode> roots)
@@ -4063,27 +3361,12 @@ public class HlslAstWriter : HlslWriter
                 {
                     continue;
                 }
-                // Components are siblings, never one computed from another: fxc
-                // reads a register's old value before writing it, so a value built
-                // on a candidate is that candidate's value again, not a lane beside
-                // it. gta_ped_face's luma and its double - the second write to the
-                // one register, `mul r1.x, 2, r1.x` over the dp3 - grouped because
-                // the grouper looks through a folded factor to the node it is, and
-                // that node is the other component; the pair came back as an
-                // undeclared float2 read by .x and .y, its two writes glued inside
-                // a constructor at the first read.
+                // Never one computed from another (e.g. `mul r1.x, 2, r1.x`).
                 if (other.IsInputOf(candidate) || candidate.IsInputOf(other))
                 {
                     continue;
                 }
-                // Against the first, which is how GroupComponents reads a run too -
-                // or where one instruction made both, which is the same question
-                // answered by the bytecode rather than by the shape of the two
-                // values. A mad over two components of a register is one
-                // instruction however differently its operands read, and hoisting
-                // used to lose that: the two halves of gbuffer_decode's normal are
-                // scaled by one mad and were named apart, which left everything
-                // downstream of them scalar.
+                // Groupable with the first, or made by the same instruction.
                 if (nodeGrouper.CanGroupComponents(candidate, other)
                     || HlslTreeNode.IsSameInstruction(candidate, other))
                 {
@@ -4092,16 +3375,8 @@ public class HlslAstWriter : HlslWriter
                 }
             }
 
-            // And the instruction's components that are not candidates themselves.
-            // skinned_terrain blends the fourth bone into all four components of
-            // the position with one mad, and the height is added to its y: x, z
-            // and w were read twice and named, the y once, inside the height's
-            // expression, so it was blended there again and fxc blended twice.
-            // A lane of the same variable, the height reads t2.y. Only where the
-            // components are one vector expression, as ScatteredInstruction asks:
-            // fxc packs unrelated scalars into the free lanes of one instruction,
-            // and gathered, microfacet_lighting's `8 * t6` and `0.5 * t7` were
-            // `float2(8, 0.5) * float2(t6, t7)`.
+            // Add the instruction's other lanes, or a lane read once is recomputed
+            // inline; only where they form one vector expression, not packed scalars.
             if (group.All(node => node is Operation && HlslTreeNode.IsSameInstruction(node, candidate))
                 && group.Select(node => node.SourceComponent).Distinct().Count() == group.Count)
             {
@@ -4134,13 +3409,8 @@ public class HlslAstWriter : HlslWriter
                 }
             }
 
-            // In the order the value has them, not the order they were found in:
-            // the candidates are collected from the graph, which is walked from the
-            // last component back, and a variable named backwards is read by every
-            // swizzle reversed.
+            // The value's order, not discovery order (the walk runs backwards).
             group = [.. InWrittenOrder([[.. group]])[0]];
-            // Rows of a matrix multiply take the multiply's other rows with them, as
-            // the text pass's candidates do - see WithSiblingRows.
             if (WithSiblingRows([.. group], reachable, roots) is HlslTreeNode[] rows
                 && rows.All(row => !named.Contains(row) || group.Contains(row, ReferenceEqualityComparer.Instance)))
             {
@@ -4156,9 +3426,7 @@ public class HlslAstWriter : HlslWriter
         return assignments;
     }
 
-    // The node count of the expression as it would be written out, where a node read
-    // twice counts twice. Memoised over the shared graph, so measuring the explosion
-    // does not take exponential time itself.
+    // Number of distinct nodes in the expression.
     private static int CountReachable(HlslTreeNode node)
     {
         var seen = HlslTreeNode.NewNodeSet();
@@ -4187,8 +3455,7 @@ public class HlslAstWriter : HlslWriter
         return new TempAssignmentNode(variable, node);
     }
 
-    // Reads the variable where the node was read - by every reader, or by the
-    // readers among the given ones.
+    // Points the node's readers (all, or those in `among`) at the variable.
     private static void Rewire(HlslTreeNode node, TempVariableNode variable, HashSet<HlslTreeNode> among = null)
     {
         HlslTreeNode[] readers = node.Outputs.ToArray();
@@ -4211,10 +3478,8 @@ public class HlslAstWriter : HlslWriter
     }
 
     /// <summary>
-    /// The components of each output, keyed by the first of them. By the
-    /// declaration rather than by the register: fxc packs two outputs into one -
-    /// TEXCOORD0 at o1.xy and TEXCOORD1 at o1.z - and one assignment covering both
-    /// writes the second into the first and leaves the second unwritten.
+    /// Output components grouped by declaration, not register: fxc packs several
+    /// outputs into one register.
     /// </summary>
     private Dictionary<RegisterComponentKey, HlslTreeNode[]> GroupComponents(
         IEnumerable<KeyValuePair<RegisterComponentKey, HlslTreeNode>> outputsByComponent)

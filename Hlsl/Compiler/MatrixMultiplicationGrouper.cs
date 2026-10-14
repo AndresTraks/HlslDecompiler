@@ -13,23 +13,17 @@ public class MatrixMultiplicationGrouper
         _registers = registers;
     }
 
-    // Vector by matrix multiplication has a pattern of:
-    // float2(dot(m_row1, v), dot(m_row2, v))
-    // float3(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v))
-    // float4(dot(m_row1, v), dot(m_row2, v), dot(m_row3, v), dot(m_row4, v))
-    // float4(dot(m_row1.xyz, v.xyz), dot(m_row2.xyz, v.xyz), dot(m_row3.xyz, v.xyz), dot(m_row4.xyz, v.xyz)) + m_column4
-    // Note: mul(float2xM, floatN) is compiled as mul((float2xN)float2xM, floatN)
+    // floatN(dot(m_row1, v), ..., dot(m_rowN, v)), optionally with dots of v.xyz
+    // plus a fourth column (v.w == 1).
+    // mul(float2xM, floatN) is compiled as mul((float2xN)float2xM, floatN).
     public MatrixMultiplicationContext TryGetMultiplicationGroup(IList<HlslTreeNode> components)
     {
         if (components.All(c => c is AddOperation))
         {
             HlslTreeNode[] submatrixNodes = components.Select(g => g.Inputs[0]).ToArray();
             MatrixMultiplicationContext submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
-            // A matrix that is a member of a struct has no column past its last for
-            // the addend to be: what sits at that register is the next member, and
-            // taking it for a column makes a float4x5 of a struct and a float5 of
-            // the vector. The registers either side of a matrix member belong to
-            // something else by construction, so the addend is simply an addend.
+            // A struct member matrix has no extra column: the next register is the
+            // next member.
             if (submatrixGroup != null && submatrixGroup.MemberPath == null)
             {
                 RegisterInputNode[] wColumnNodes = components
@@ -110,10 +104,8 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
-        // A matrix in a structured buffer is read as one load per row rather than as a
-        // run of constant registers, so none of the register arithmetic below sees it.
-        // It is recognised on its own terms instead, and cannot collide with that: a
-        // row there is a RegisterInputNode or a RelativeAddressNode, and never a load.
+        // Structured buffer rows are loads, never register reads, so this cannot
+        // collide with the register matching below.
         MatrixMultiplicationContext structured = TryGetStructuredMultiplicationGroup(components);
         if (structured != null)
         {
@@ -187,12 +179,8 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// A vector multiplied by a matrix a structured buffer holds. fxc reads such a
-    /// matrix a row at a time - one ld_structured per row, at byte offsets sixteen
-    /// apart in the one element - and dots the vector against each, which is the same
-    /// shape a constant buffer matrix makes out of consecutive registers. Written as
-    /// the dot products they are, an instance transform came out as four lines of
-    /// `dot(v, transpose(instances[id].world)[row])` where the source said mul.
+    /// A matrix in a structured buffer: one ld_structured per row, consecutive
+    /// within one element, each dotted with the vector.
     /// </summary>
     private MatrixMultiplicationContext TryGetStructuredMultiplicationGroup(
         IList<HlslTreeNode> components)
@@ -236,10 +224,7 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
-        // One element of one buffer, and the rows in order: as far apart as a row is
-        // wide, since a buffer element is packed tight, and the first of them where the
-        // matrix begins. Anything else is a run of loads that happens to be dotted,
-        // not a matrix multiplication.
+        // Same element and buffer, rows in order and tightly packed.
         int bytesPerRow = 4 * (matrixType.ParameterClass == ParameterClass.MatrixRows
             ? matrixType.Columns
             : matrixType.Rows);
@@ -253,17 +238,13 @@ public class MatrixMultiplicationGrouper
                 return null;
             }
         }
-        // As many rows as the matrix has, so that a shader dotting three rows of a
-        // float4x4 is not written as the whole of it.
+        // Three rows of a float4x4 are not the whole matrix.
         if (matrixType.Rows != rows.Count)
         {
             return null;
         }
 
-        // A load carries no component index of its own; the resource operand it reads
-        // does. Which way the row lies is the same question the constant buffer case
-        // asks - every component the register's first is a matrix read by column - and
-        // one load per row answers it with components zero upwards.
+        // The component index is on the load's resource operand.
         bool matrixByVector = rows[0].All(
             c => ((IHasComponentIndex)((LoadStructuredNode)c).Value).ComponentIndex == 0);
         return new MatrixMultiplicationContext(
@@ -277,9 +258,7 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// The side of a dot product that is one row of a structured buffer element: every
-    /// component a load from the one element at the one byte offset. The other side is
-    /// the vector.
+    /// The dot operand whose components all load one element at one byte offset.
     /// </summary>
     private static IList<HlslTreeNode> TryGetStructuredRow(DotProductOperation dot)
     {
@@ -338,9 +317,7 @@ public class MatrixMultiplicationGrouper
         return vectorSwizzled;
     }
 
-    // Which element of an array of matrices the rows belong to, or null for a
-    // matrix that is not in an array. The rows' register says: so many registers
-    // past the declaration, over the registers an element takes.
+    // The array element the rows belong to, or null if not an array.
     private int? GetElementIndex(ConstantDeclaration matrix, HlslTreeNode firstRow)
     {
         if (matrix.TypeInfo.NumElements <= 1)
@@ -355,11 +332,8 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// The matrix the dot products multiply by: the whole of one, or the rows and
-    /// columns a cast names - `mul((float3x3)world, normal)` is three dots of three
-    /// registers, and `mul(v, (float4x3)m)` three dots of four. A cast takes the
-    /// upper left of the matrix, so anything smaller than the declaration has to
-    /// start at its first register and first component.
+    /// The whole matrix or a cast of it (`mul((float3x3)world, normal)`). A cast
+    /// takes the upper left, so a smaller one must start at register and component 0.
     /// </summary>
     private ConstantDeclaration TryGetMatrixDeclaration(IList<HlslTreeNode[]> dotProductNodes, bool matrixByVector)
     {
@@ -374,13 +348,8 @@ public class MatrixMultiplicationGrouper
             return null;
         }
 
-        // In mul(matrix, vector) each dot is a row and its width the columns; in
-        // mul(vector, matrix) each dot is a column and its width the rows. Which it
-        // is was read off the registers, and those are the matrix's rows where it
-        // was packed by row - so the same dots are the other multiplication, the
-        // way the compiler reads them back. Square, the two agree and nothing shows;
-        // a row major float4x3 measured as a float3x4 is no float4x3 and did not
-        // group at all.
+        // In mul(M, v) each dot is a row; in mul(v, M) a column. Row major flips
+        // which, as in the compiler; it matters for non-square matrices.
         bool byVector = matrix.MatrixType.ParameterClass == ParameterClass.MatrixRows
             ? !matrixByVector
             : matrixByVector;
@@ -397,10 +366,8 @@ public class MatrixMultiplicationGrouper
         return IsLeadingRow(matrix, first) ? matrix.Declaration : null;
     }
 
-    // Whether a row reads the matrix from its first register and component on -
-    // the registers one after another from the matrix's first, or the first
-    // register's components from .x, in any order: a permuted row is a swizzle of
-    // the vector, which SwizzleVector applies.
+    // Consecutive registers from the matrix's first, or the first register's
+    // components in any order (a permutation is a vector swizzle, see SwizzleVector).
     private bool IsLeadingRow(RowMatrix matrix, HlslTreeNode[] row)
     {
         RegisterComponentKey firstKey = RowKey(row[0]);
@@ -422,7 +389,6 @@ public class MatrixMultiplicationGrouper
         return registersOn || componentsOfFirst;
     }
 
-    // Whether a register is so many registers past another of the same kind.
     private static bool IsRegistersOn(RegisterComponentKey first, RegisterComponentKey key, int count)
     {
         if (!first.RegisterKey.TypeEquals(key.RegisterKey))
@@ -438,10 +404,8 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// Whether two dot products are rows of one matrix - the same declaration and,
-    /// in an array, the same element - against the same vector: two components of
-    /// one matrix multiply, and the only way two dot products are components of
-    /// anything. In no particular order; the whole is checked at compile time.
+    /// Rows of the same matrix (and array element) against the same vector, in any
+    /// order; the whole group is checked at compile time.
     /// </summary>
     public bool AreRowsOfOneMatrix(DotProductOperation a, DotProductOperation b)
     {
@@ -467,10 +431,7 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// The register a dot product's matrix row is read from, or null where the dot
-    /// is not a row of a matrix against a vector. Four rows merged into one
-    /// variable in the order they were read come out as a matrix multiply only in
-    /// the order they sit in the matrix.
+    /// The row's register, for ordering merged rows as they sit in the matrix.
     /// </summary>
     public int? MatrixRowRegister(DotProductOperation dot)
     {
@@ -486,9 +447,7 @@ public class MatrixMultiplicationGrouper
             : key.RegisterKey.Number;
     }
 
-    // A matrix row is read either straight from its register or through the
-    // address register - `c1` or `c1[a0.x]` - and a row of the same element is
-    // one register on from the row before it, read the same way.
+    // `c1` or `c1[a0.x]`.
     private static bool IsRow(HlslTreeNode node)
     {
         return node is RegisterInputNode or RelativeAddressNode;
@@ -507,11 +466,8 @@ public class MatrixMultiplicationGrouper
     }
 
     /// <summary>
-    /// The matrix a row register belongs to: a matrix constant, an element of an
-    /// array of them, or a matrix member of a struct - `instances[id].world` read as
-    /// cb0[r0.x + 2], or `g_x.world` - or null for a register that is no row of
-    /// anything. A struct that is not an array has the one element, which is what
-    /// the element arithmetic here already amounts to for it.
+    /// A matrix constant (or array element), or a struct's matrix member such as
+    /// `g_x.world`; null otherwise.
     /// </summary>
     private RowMatrix GetRowMatrix(HlslTreeNode rowNode)
     {
@@ -532,8 +488,7 @@ public class MatrixMultiplicationGrouper
         return null;
     }
 
-    // A matrix constant, or a matrix member of a struct element, and the register
-    // within the element it starts at.
+    // StartRegister is the register within the element where the matrix starts.
     private sealed record RowMatrix(ConstantDeclaration Declaration, ShaderTypeInfo MatrixType, string MemberPath, int StartRegister);
 
     private IList<HlslTreeNode> TryGetMatrixRow(DotProductOperation dot, DotProductOperation firstDot, int row)
@@ -599,24 +554,18 @@ public class MatrixMultiplicationContext
 
     public HlslTreeNode[] Vector { get; }
 
-    // Null for a matrix in a structured buffer, which no constant declares: the
-    // three properties below name it instead.
+    // Null for a structured buffer matrix, named by the Structured* properties.
     public ConstantDeclaration MatrixDeclaration { get; }
 
-    // A matrix in a structured buffer: the buffer's name, the node picking the
-    // element, and the member within it. `instances`, `i.sv_instanceid`, `.world`.
     public string StructuredBufferName { get; init; }
     public HlslTreeNode StructuredElement { get; init; }
     public string StructuredMemberPath { get; init; }
 
     public int? ElementIndex { get; init; }
-    // The index expression of rows read through the address register, or null.
     public HlslTreeNode ElementIndexNode { get; init; }
-    // Whether that index already counts elements, the stride having been taken
-    // off at the read.
+    // The register stride was already stripped at the read.
     public bool ElementIndexCountsElements { get; init; }
-    // For a matrix member of a struct element, the member's name - ".world" -
-    // following the element subscript, and the member's own type.
+    // ".world" for a struct's matrix member.
     public string MemberPath { get; init; }
     public ShaderTypeInfo MatrixTypeInfo { get; init; }
     public bool IsMatrixByVector { get; }

@@ -1,8 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// The angle of the point (x, y), which shader bytecode has no instruction for and
-/// an fx_2_0 preshader does.
+/// atan2, from an fx_2_0 preshader (shader bytecode has no such instruction).
 /// </summary>
 public class ArcTangent2Operation : Operation
 {

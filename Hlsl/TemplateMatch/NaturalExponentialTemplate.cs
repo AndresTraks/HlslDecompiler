@@ -1,11 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts `exp` back together.
-///
-/// The bytecode exponential is base 2, so fxc writes `exp(x)` as
-/// `exp2(x * 1.4426950)` - the value over ln 2. Written out it reads as a base
-/// change someone did by hand rather than as the exponential it is.
+/// Recovers exp(x) from `exp2(x * 1.4426950)`.
 /// </summary>
 public class NaturalExponentialTemplate : NodeTemplate<ExponentialOperation>
 {

@@ -5,10 +5,7 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.FlowControl;
 
 /// <summary>
-/// A memory barrier, GroupMemoryBarrierWithGroupSync() and its kin. A statement
-/// of its own so that it closes the assignment statement around it: a groupshared
-/// load before it and one after it read different memory, and neither may be
-/// moved across it.
+/// A memory barrier. A statement of its own so that no load is moved across it.
 /// </summary>
 public class SyncStatement : IStatement
 {
@@ -25,8 +22,7 @@ public class SyncStatement : IStatement
 
     public string IntrinsicName => GetIntrinsicName(Flags);
 
-    // The intrinsic the flags spell. fxc emits a fixed set of combinations, one
-    // per intrinsic; anything else is not a barrier HLSL can write.
+    // fxc emits one fixed flag combination per intrinsic; anything else has no HLSL.
     public static string GetIntrinsicName(D3D10SyncFlags flags)
     {
         bool threads = flags.HasFlag(D3D10SyncFlags.ThreadsInGroup);
@@ -42,6 +38,5 @@ public class SyncStatement : IStatement
         return threads ? barrier + "WithGroupSync" : barrier;
     }
 
-    /// <summary>Nothing: this statement holds no value of its own.</summary>
     public IEnumerable<HeldSlot> HeldSlots => [];
 }

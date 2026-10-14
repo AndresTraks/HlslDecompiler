@@ -5,12 +5,9 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl.FlowControl;
 
 /// <summary>
-/// One of the places a statement holds a value outside its input and output maps,
-/// declared once: how to read it, how to write it, and whether the statement names
-/// what is in it. Every question <see cref="IStatement"/> answers about held values
-/// is derived from these, so a slot cannot be reported by one answer and missed by
-/// another - which is the whole reason they exist rather than three hand-written
-/// members per statement.
+/// A place a statement holds a value outside its input and output maps: how to read
+/// and write it, and whether it is named. Every held-value query on <see
+/// cref="IStatement"/> derives from these, so none can miss a slot.
 /// </summary>
 public class HeldSlot
 {
@@ -27,13 +24,11 @@ public class HeldSlot
         _replace = replace;
     }
 
-    /// <summary>Whether the statement prints what is here by whatever name it ends
-    /// up under, rather than writing it out again. See <see
-    /// cref="IStatement.NamedHeldNodes"/> for what turns on it.</summary>
+    /// <summary>Printed by name rather than written out again; see <see
+    /// cref="IStatement.NamedHeldNodes"/>.</summary>
     public bool IsNamed { get; }
 
-    /// <summary>What is in the slot now, with the empty places left out: a store
-    /// masked to two components holds a null for each of the others.</summary>
+    /// <summary>Without nulls: a masked store holds null for unwritten components.</summary>
     public IEnumerable<HlslTreeNode> Nodes => _read().Where(node => node != null);
 
     public void Replace(HlslTreeNode node, HlslTreeNode replacement)
@@ -56,8 +51,7 @@ public class HeldSlot
             });
     }
 
-    /// <summary>A named run of references - the values of a store, the components of
-    /// a coordinate - rewritten where they sit, since the array is the slot.</summary>
+    /// <summary>A named array, rewritten in place since the array is the slot.</summary>
     public static HeldSlot Named(Func<HlslTreeNode[]> read)
     {
         return new HeldSlot(
@@ -76,16 +70,13 @@ public class HeldSlot
             });
     }
 
-    /// <summary>A value the statement writes out again wherever it appears, so there
-    /// is no name to redirect and no setter to need. Held all the same: the walks
-    /// have to reach it.</summary>
+    /// <summary>A value written out again where it appears, so it needs no setter.
+    /// Still held so that the walks reach it.</summary>
     public static HeldSlot WrittenAgain(Func<HlslTreeNode> read)
     {
         return new HeldSlot(false, () => [read()], null);
     }
 
-    /// <summary>The same, for a statement that writes out several - a switch and its
-    /// case labels, an if and its comparisons.</summary>
     public static HeldSlot WrittenAgain(Func<IEnumerable<HlslTreeNode>> read)
     {
         return new HeldSlot(false, () => read() ?? [], null);

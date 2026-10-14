@@ -9,16 +9,9 @@ using System.Text;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// A Direct3D 10 or 11 effect written back as the .fx it was compiled from: its
-/// uniforms and objects, a function for each of its shaders, and the techniques
-/// and passes that set them.
-///
-/// The order is the effect's own wherever HLSL allows it, since the order is what
-/// the effect compiler numbers things by - variables, state objects and shaders
-/// alike. A shader's function has to be declared before the variable that compiles
-/// it and after the uniforms it reads, and the effect's order already has those the
-/// right way round: each function is written just before the first variable that
-/// needs it, and those only a pass compiles come after the variables.
+/// Writes a D3D10/11 effect back as .fx source. The effect's own order is kept,
+/// since the effect compiler numbers things by it; each shader function goes just
+/// before the first variable that needs it.
 /// </summary>
 public sealed class EffectWriter
 {
@@ -75,9 +68,7 @@ public sealed class EffectWriter
     }
 
     /// <summary>
-    /// A function for every shader, named after where it is set: the variable that
-    /// holds it, or the pass that compiles it. Two that are the same bytecode are
-    /// one function - a shader compiled in two passes is.
+    /// Names a function per distinct bytecode after the variable or pass that sets it.
     /// </summary>
     private void NameShaders()
     {
@@ -164,8 +155,6 @@ public sealed class EffectWriter
         }
     }
 
-    // The struct types the uniforms are declared with, each before the first that
-    // holds it.
     private void WriteStructTypes()
     {
         var written = new HashSet<string>();
@@ -201,8 +190,7 @@ public sealed class EffectWriter
     {
         foreach (EffectConstantBuffer buffer in _effect.ConstantBuffers)
         {
-            // The globals are a buffer of their own to the compiler, named $Globals,
-            // and declared by not being in any other.
+            // $Globals is declared by not being in any block.
             bool isGlobals = buffer.Name == "$Globals" && !buffer.IsTextureBuffer;
             if (!isGlobals)
             {
@@ -281,13 +269,11 @@ public sealed class EffectWriter
         }
     }
 
-    // A texture's element type is not in the effect's type, only in the reflection
-    // data of a shader that reads it. One no shader reads is the plain type.
+    // A texture's element type is only in the reflection of a shader that reads it.
     private string ObjectTypeName(EffectObjectVariable variable)
     {
         if (variable.Type.ObjectType == EffectObjectType.String)
         {
-            // The effect spells the type String; HLSL spells it string.
             return "string";
         }
         return _resourceTypeNames.TryGetValue(variable.Name, out string typeName)
@@ -320,9 +306,7 @@ public sealed class EffectWriter
             EffectAssignment assignment = block[i];
             EffectState state = EffectStates.All[assignment.State];
 
-            // fx_5_0 writes one value for every render target where the source
-            // wrote it once without a subscript, so eight in a row that agree are
-            // written back as the one.
+            // fx_5_0 expands an unsubscripted state to every index; collapse it back.
             if (state.VectorScalar && assignment.Index == 0 && i + state.Indices <= block.Count
                 && Enumerable.Range(0, state.Indices).All(n =>
                     block[i + n].State == assignment.State && block[i + n].Index == n
@@ -383,10 +367,8 @@ public sealed class EffectWriter
     }
 
     /// <summary>
-    /// A pass's assignments as the calls that made them. SetBlendState is three -
-    /// the blend factor, the sample mask, then the state - and SetDepthStencilState
-    /// two, the stencil reference then the state, so those are gathered until the
-    /// state they belong to comes.
+    /// A pass's assignments as Set* calls. Blend factor, sample mask and stencil
+    /// reference are separate assignments gathered until their state comes.
     /// </summary>
     private void WritePassAssignments(IReadOnlyList<EffectAssignment> assignments)
     {
@@ -428,8 +410,6 @@ public sealed class EffectWriter
         }
     }
 
-    // What an object state is set to: NULL, a variable, an element of one, or a
-    // shader compiled there and then.
     private string ObjectValue(EffectAssignment assignment)
     {
         return assignment.Kind switch
@@ -457,9 +437,7 @@ public sealed class EffectWriter
     }
 
     /// <summary>
-    /// A state's value written so that it compiles to the same constant: the effect
-    /// keeps the type a literal had - a float, an int, a uint, a bool - and not only
-    /// its value. A name is an int, a hexadecimal literal a uint.
+    /// A state constant spelled to keep its literal type: a name is an int, hex a uint.
     /// </summary>
     private static string ConstantValue(EffectState state, EffectConstant constant)
     {
@@ -481,10 +459,8 @@ public sealed class EffectWriter
     }
 
     /// <summary>
-    /// The HLSL that compiles to a shader object: CompileShader, wrapped in
-    /// ConstructGSWithSO where the effect gave it stream output - with one
-    /// declaration in the fx_4_0 form, with four and the rasterized stream in the
-    /// fx_5_0 one.
+    /// CompileShader, wrapped in ConstructGSWithSO for stream output (one
+    /// declaration in fx_4_0; four plus the rasterized stream in fx_5_0).
     /// </summary>
     private string ShaderExpression(EffectShader shader, bool isShader5)
     {
@@ -564,8 +540,8 @@ public sealed class EffectWriter
     }
 
     /// <summary>
-    /// An initializer, from the value as the effect packs it: every component in
-    /// order, a matrix's by row, without the padding the registers would have.
+    /// An initializer from the effect's packing: components in order, matrices by
+    /// row, no register padding.
     /// </summary>
     private static string Value(EffectType type, byte[] packed)
     {
@@ -641,8 +617,7 @@ public sealed class EffectWriter
     private bool _separate;
     private bool _anythingWritten;
 
-    // A blank line before whatever is written next, if anything is, and only one
-    // however many blocks ask for it.
+    // At most one blank line before the next write.
     private void Separate()
     {
         _separate = _anythingWritten;

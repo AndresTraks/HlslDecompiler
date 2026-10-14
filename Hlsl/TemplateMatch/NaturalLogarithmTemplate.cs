@@ -1,11 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts `log` back together.
-///
-/// The bytecode logarithm is base 2, so fxc writes `log(x)` as
-/// `log2(x) * 0.69314718` - the result times ln 2. The multiply is the outer node
-/// here, where the exponential's is the inner one.
+/// Recovers log(x) from `log2(x) * 0.69314718`.
 /// </summary>
 public class NaturalLogarithmTemplate : NodeTemplate<MultiplyOperation>
 {

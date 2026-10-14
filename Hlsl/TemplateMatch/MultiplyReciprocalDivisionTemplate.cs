@@ -2,23 +2,8 @@
 
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
-// a * (1 / b) is a / b, whichever side the reciprocal is on: `mul r0, r0, r2.x`
-// with r2.x an rsq is the normalize it came from only once it is a division.
-//
-// An rcp is a reciprocal too, and a multiply by one is the division the source
-// wrote: shader model 3 has no divide instruction, so `z / w` is an rcp and a mul,
-// and `texcoord.z * rcp(texcoord.w)` is a perspective divide spelled the only way
-// the profile allows.
-//
-// Only where every reader of the rcp is a multiply, though. One fxc computes once
-// and multiplies by in several places is still the division the source wrote at
-// each of them - three components of a colour over one attenuation read as a
-// division of the whole vector - but a reciprocal that is also read as a number in
-// its own right is not a division, and rewriting the multiply alone leaves the rcp
-// standing beside it. distance_falloff divides by its falloff and raises the same
-// falloff to a power: taken without this, it asked for `sign(d) / t1` on one line
-// and `pow(saturate(rcp(t1)), light.w)` on the next, where the reader has to work
-// out that the rcp and the divide are the one reciprocal.
+// a * (1 / b) or a * rcp(b) is a / b (SM3 has no divide). An rcp only when every
+// reader multiplies by it; one also read as a value would stay beside the divide.
 public class MultiplyReciprocalDivisionTemplate : NodeTemplate<MultiplyOperation>
 {
     public override bool Match(HlslTreeNode node)
@@ -37,7 +22,6 @@ public class MultiplyReciprocalDivisionTemplate : NodeTemplate<MultiplyOperation
         };
     }
 
-    // What the reciprocal is of: the divisor of a `1 / b`, and the operand of an rcp.
     private static HlslTreeNode Divisor(HlslTreeNode reciprocal)
     {
         return reciprocal is DivisionOperation division

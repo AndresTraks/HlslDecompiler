@@ -6,25 +6,9 @@ using System.Reflection;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// That every compiled shader in the corpus is text-compared by one of the two
-/// decompile tests.
-///
-/// A fixture is four stored files and a line of C#, and the line is the part with
-/// nothing to catch it missing. The fxc-backed tiers enumerate CompiledShaders, so
-/// they pick a new shader up on their own; the test that compares the decompiled
-/// text against the stored .asm and .fx is a list of [TestCase] attributes, and a
-/// shader left off it is simply not compared. The four files sit there looking like
-/// a fixture and nothing reads three of them.
-///
-/// Nothing had gone missing when this was written - 499 shaders, 499 registered -
-/// which is the reason to write it down while that is still true rather than after
-/// a fixture has been quietly asleep for a year.
-///
-/// A shader named zz_ is exempt, because that is the probing workflow: a candidate
-/// is dropped into CompiledShaders to be run through the recompile and equivalence
-/// tiers, looked at, and then either deleted or made a fixture properly. Holding it
-/// to this while it is still a question would mean registering something that is
-/// about to be thrown away.
+/// Every shader in CompiledShaders has a [TestCase] in a text-diff decompile test;
+/// the fxc tiers enumerate the folder, but those tests are explicit lists.
+/// zz_ shaders are exempt: they are temporary probes.
 /// </summary>
 [TestFixture]
 public class FixtureRegistrationTests
@@ -32,8 +16,7 @@ public class FixtureRegistrationTests
     [Test]
     public void EveryCompiledShaderIsTextCompared()
     {
-        // The same enumeration the fxc tiers run, so what this checks is exactly
-        // "everything those tiers decompile is also compared as text".
+        // The same enumeration the fxc tiers run.
         List<string> corpus = [.. RecompileTests.Shaders()
             .Select(data => $"{data.Arguments[0]}/{data.Arguments[1]}")
             .Where(name => !name.Contains("/zz_"))
@@ -48,10 +31,7 @@ public class FixtureRegistrationTests
             "Named by a [TestCase] with no .fxc in CompiledShaders.");
     }
 
-    /// <summary>
-    /// The shaders the two text-diff tests name, read off their attributes rather
-    /// than listed again here - a second list would be the thing this test is about.
-    /// </summary>
+    // Read off the attributes, not listed again.
     private static IEnumerable<string> RegisteredCases()
     {
         foreach (MethodInfo test in new[]

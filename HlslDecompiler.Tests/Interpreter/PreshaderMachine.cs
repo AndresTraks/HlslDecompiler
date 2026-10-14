@@ -6,14 +6,9 @@ using System.Linq;
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// Runs an fx_2_0 preshader, the way the effect runtime does before the shader:
-/// in doubles, a component at a time, from the uniforms to the shader's constant
-/// registers.
-///
-/// Written apart from the decompiler's reading of the same instructions on purpose,
-/// and checked apart from it too - against the shader fxc compiles from the same
-/// source with /Op, which does the arithmetic in the shader instead, where the
-/// machine already knows what each instruction means.
+/// Runs an fx_2_0 preshader like the effect runtime: in doubles, per component,
+/// from the uniforms to the shader's constants. Deliberately independent of the
+/// decompiler's preshader reading, and checked against fxc /Op output instead.
 /// </summary>
 public static class PreshaderMachine
 {

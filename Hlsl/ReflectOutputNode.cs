@@ -1,13 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// One component of a reflection. HLSL defines `reflect(i, n)` as
-/// `i - 2 * dot(i, n) * n`, and that is what fxc writes - a dot, an add of the
-/// result to itself, and a mad per component with the scale negated - so the idiom
-/// is as many components as the vectors have, all sharing the two of them.
-///
-/// A node rather than something the compiler recognises out of the components it is
-/// about to write, for the reason IdiomRecovery gives.
+/// One component of `reflect(i, n)` = `i - 2 * dot(i, n) * n`. A node, not a
+/// compile-time grouping, for the reason IdiomRecovery gives.
 /// </summary>
 public class ReflectOutputNode : HlslTreeNode, IHasComponentIndex
 {

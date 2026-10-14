@@ -3,18 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts step back together.
-///
-/// step(edge, x) is defined as `x >= edge ? 1 : 0` and compiles to exactly
-/// that, so nothing is being recovered here beyond the name: shader model 3
-/// has the instruction as sge, and shader model 4 writes the comparison with a
-/// movc choosing between the two constants. Both come back out as a ternary,
-/// which says what the hardware does rather than what the shader asked for, and
-/// costs a pair of brackets everywhere it appears as an operand.
-///
-/// An integer comparison stays a ternary. step returns a float, and a mask
-/// tested on integers is usually on its way into arithmetic that would go
-/// floating with it.
+/// Names step(edge, x) = `x >= edge ? 1 : 0`, from SM3 sge or an SM4 movc over a
+/// float ge. An integer comparison stays a ternary: step returns a float.
 /// </summary>
 public class StepTemplate : NodeTemplate<Operation>
 {
@@ -43,10 +33,7 @@ public class StepTemplate : NodeTemplate<Operation>
             return null;
         }
 
-        // ge writes its own node rather than a ComparisonNode, so the shape the
-        // shader model 4 mask arrives in is a select over one of those. It is the
-        // float comparison - ige and uge are separate opcodes - so there is nothing
-        // further to ask about the operands.
+        // ge is always the float comparison (ige/uge are separate opcodes).
         if (select.Condition is GreaterEqualOperation greaterEqual)
         {
             return new StepOperation(greaterEqual.Source1, greaterEqual.Source0);

@@ -1,7 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// Bitwise ~ on an integer. A not of a comparison is the comparison inverted, and
-// never reaches here.
+// Bitwise ~ on an integer; a not of a comparison becomes the inverted comparison.
 public class BitwiseNotOperation : Operation
 {
     public BitwiseNotOperation(HlslTreeNode value)

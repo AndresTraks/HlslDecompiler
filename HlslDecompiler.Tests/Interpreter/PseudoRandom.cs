@@ -3,9 +3,8 @@
 namespace HlslDecompiler.Tests.Interpreter;
 
 /// <summary>
-/// Values derived from a name rather than drawn from a sequence, so that the same
-/// name gives the same value in both programs being compared whatever order they
-/// ask for them in, and so that a failure reproduces exactly.
+/// Values hashed from a name, not drawn from a sequence, so request order does not
+/// matter and failures reproduce.
 /// </summary>
 public static class PseudoRandom
 {
@@ -21,11 +20,7 @@ public static class PseudoRandom
         ];
     }
 
-    /// <summary>
-    /// Between -2 and 2. Small enough that a multiply chain stays in a range where
-    /// a relative comparison means something, and signed so that a dropped negation
-    /// shows up.
-    /// </summary>
+    // In [-2, 2]: small so products stay comparable, signed so a lost negation shows.
     private static float Component(uint hash, int index)
     {
         uint bits = Mix(hash + (uint)index * 0x9E3779B9);

@@ -3,14 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts smoothstep back together.
-///
-/// fxc writes it as the position between the edges, clamped, and then the
-/// polynomial that eases it: t * t * (3 - 2t), where t is
-/// saturate((x - edge0) / (edge1 - edge0)). Three factors and a subtraction of
-/// the same t, which is a shape nothing else arrives at by accident - the edge
-/// has to be the same node in both the numerator and the denominator for the
-/// algebra to be smoothstep at all, and that is what makes this safe to match.
+/// Recovers smoothstep from `t * t * (3 - 2t)`, with
+/// t = saturate((x - edge0) / (edge1 - edge0)).
 /// </summary>
 public class SmoothStepTemplate : NodeTemplate<MultiplyOperation>
 {
@@ -33,7 +27,6 @@ public class SmoothStepTemplate : NodeTemplate<MultiplyOperation>
             return null;
         }
 
-        // Two of the three are the position itself and the third is the easing.
         for (int easing = 0; easing < 3; easing++)
         {
             HlslTreeNode first = factors[(easing + 1) % 3];
@@ -107,10 +100,8 @@ public class SmoothStepTemplate : NodeTemplate<MultiplyOperation>
     }
 
     /// <summary>
-    /// The edges, from the position between them. edge0 has to be the same node in
-    /// `x - edge0` and `edge1 - edge0`, or this is a different expression that
-    /// happens to be cubed. Between 0 and 1 there is no division to fold: the
-    /// position is x itself, clamped.
+    /// edge0 must be the same node in both subtractions. With no division the
+    /// edges are 0 and 1.
     /// </summary>
     private static HlslTreeNode TryGetSmoothStep(SaturateOperation position)
     {

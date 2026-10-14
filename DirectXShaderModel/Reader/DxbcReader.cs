@@ -8,13 +8,10 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class DxbcReader : BinaryReader
 {
-    // Whether an input operand names a vertex as well as a register - v[2][0] rather
-    // than v0. A geometry shader is handed the vertices of a primitive and a hull
-    // shader the control points of a patch, and both read them that way.
+    // Geometry and hull shader inputs name a vertex too: v[2][0].
     private bool _inputsAreVertexArrays = false;
 
-    // Whether the variable types carry shader model 5's longer record, which ends
-    // in the type's name.
+    // Shader model 5's longer type record, which ends in the type's name.
     private bool _typesHaveNames = false;
 
     public DxbcReader(Stream input, bool leaveOpen = false)
@@ -68,11 +65,8 @@ public class DxbcReader : BinaryReader
                 ReadInt32(); // flags
                 ReadInt32(); // creator string offset
 
-                // Shader model 5 grew the variable record - a texture and sampler
-                // range each - and says so in an RD11 block after the header, which
-                // lists the size of every record kind. With the model 4 stride, the
-                // second variable of any model 5 buffer was read from the middle of
-                // the first, and its type offset pointed off the end of the file.
+                // Shader model 5 has a longer variable record, sized in an RD11
+                // block after the header.
                 int variableRecordSize = 24;
                 if (FourCC.Decode(ReadInt32()) == "RD11")
                 {
@@ -83,10 +77,8 @@ public class DxbcReader : BinaryReader
                     _typesHaveNames = true;
                 }
 
-                // Which cb register each buffer binds to, from the resource
-                // bindings. The buffers are listed in the order fxc found them,
-                // which is not their slot: one declared register(b3) and nothing
-                // else is the first in the list and reads through cb3.
+                // Each buffer's cb slot, from the resource bindings; the buffer
+                // list order is not the slot order.
                 var bufferSlots = new Dictionary<string, int>();
                 long bindingsStart = chunkOffset + resourceBindingOffset + 8;
                 for (int i = 0; i < resourceBindingCount; i++)
@@ -134,8 +126,7 @@ public class DxbcReader : BinaryReader
 
                         short registerNumber = (short)bufferSlots.GetValueOrDefault(bufferName, i);
                         short elementOffset = (short)j;
-                        // A resource bind info buffer describes a structured
-                        // buffer rather than being one, and is named after it.
+                        // Describes the structured buffer it is named after.
                         if (bufferType == D3DCbufferType.ResourceBindInfo)
                         {
                             structuredElements[bufferName] = typeInfo;
@@ -191,10 +182,7 @@ public class DxbcReader : BinaryReader
             {
                 ReadSignatures(chunkOffset, OperandType.Output, outputSignatures);
             }
-            // A geometry shader that names its stream writes the output signature
-            // with the stream beside each element, in a chunk of its own. Reading
-            // only OSGN left a shader model 5 geometry shader with no output
-            // semantics at all, so every output fell back to SV_Target.
+            // The output signature with a stream per element (SM5 geometry shaders).
             else if (chunkType == "OSG5")
             {
                 ReadSignatures(chunkOffset, OperandType.Output, outputSignatures,
@@ -202,10 +190,6 @@ public class DxbcReader : BinaryReader
             }
             else if (chunkType == "PCSG")
             {
-                // What the hull shader computed once for the whole patch. A domain
-                // shader reads these; they are not in the input signature, and the
-                // tessellation factors among them are there whether it reads them
-                // or not.
                 ReadSignatures(chunkOffset, OperandType.InputPatchConstant,
                     patchConstantSignatures);
             }
@@ -245,10 +229,8 @@ public class DxbcReader : BinaryReader
     }
 
     /// <summary>
-    /// The IFCE chunk: a header of counts and offsets, the class types, and the
-    /// slot records. Offsets count from the start of the chunk's data. A class
-    /// type's ID is its place in the list - the record has a field for it, which
-    /// fxc leaves zero.
+    /// The IFCE chunk. Offsets count from the chunk's data. A class type's ID is
+    /// its list index; fxc leaves the record's ID field zero.
     /// </summary>
     private ShaderInterfaces ReadInterfaces(int dataStart)
     {
@@ -299,18 +281,9 @@ public class DxbcReader : BinaryReader
     }
 
     /// <summary>
-    /// Marks each instruction with the output stream it belongs to, where a geometry
-    /// shader writes more than one. Both streams declare o0 upwards and mean different
-    /// things by them, so the stream has to travel with the instruction: it is the only
-    /// thing telling a write of one stream's o1 from a write of the other's.
-    ///
-    /// A declaration belongs to the stream it was declared under - dcl_stream m1 opens
-    /// a run of them. A write belongs to the stream of the emit that sends it, which is
-    /// the next one in program order: fxc fills the output registers and then emits, so
-    /// everything between two emits goes to the later of them.
-    ///
-    /// Left alone for a shader with one stream, whose registers are then keyed exactly
-    /// as they always were.
+    /// Marks each instruction with its output stream when a geometry shader has
+    /// several, since each stream numbers its own o# registers. A declaration
+    /// belongs to the preceding dcl_stream, a write to the next emit.
     /// </summary>
     private static void AssignOutputStreams(List<Instruction> instructions)
     {
@@ -367,10 +340,8 @@ public class DxbcReader : BinaryReader
         uint opcodeToken = ReadUInt32();
         D3D10Opcode opcode = (D3D10Opcode)(opcodeToken & 0x7FF);
 
-        // customdata does not carry its length where every other instruction does.
-        // Its payload - an immediate constant buffer, say - is longer than the seven
-        // bits in the opcode token, so the dword after it holds the length instead,
-        // counting both. Reading it the usual way asks for an array of -1 dwords.
+        // customdata's length is in the next dword (counting both), not the opcode
+        // token.
         if (opcode == D3D10Opcode.CustomData)
         {
             uint customDwordCount = ReadUInt32();
@@ -384,9 +355,7 @@ public class DxbcReader : BinaryReader
 
         int operandDwordCount = (int)((opcodeToken >> 24) & 0x7F) - 1;
 
-        // An extended opcode token carries the texel offsets of sample_aoffimmi,
-        // among other things, and counts towards the instruction length. Dropping it
-        // would sample the wrong texels without saying so.
+        // Extended opcode tokens count towards the instruction length.
         int[] sampleOffsets = null;
         ResourceDimension? indexableDimension = null;
         int indexableStride = 0;
@@ -409,9 +378,6 @@ public class DxbcReader : BinaryReader
                         SignExtend4((extendedToken >> 17) & 0xF),
                     ];
                     break;
-                // Shader model 5 repeats the resource's dimension and return types
-                // at the instruction reading it, and a structured buffer's stride
-                // with them.
                 case ResourceDim:
                     indexableDimension = (ResourceDimension)((extendedToken >> 6) & 0x1F);
                     indexableStride = (int)((extendedToken >> 11) & 0xFFFF);
@@ -446,13 +412,9 @@ public class DxbcReader : BinaryReader
             operandTokens[i] = ReadUInt32();
         }
 
-        // A typed UAV declares its dimension in the same bits a texture does: it
-        // is a texture that can be written to, and has no sample count.
         if (opcode is D3D10Opcode.DclResource or D3D10Opcode.DclUnorderedAccessViewTyped)
         {
             var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
-            // A multisampled texture carries its sample count in the seven bits above
-            // the dimension: dcl_resource_texture2dms(4).
             int sampleCount = (int)((opcodeToken >> 16) & 0x7F);
             return new D3D10Instruction(opcode, operandTokens, resourceDimension, _inputsAreVertexArrays)
             {
@@ -469,9 +431,7 @@ public class DxbcReader : BinaryReader
         if (opcode == D3D10Opcode.DclUnorderedAccessViewStructured
             || opcode == D3D10Opcode.DclUnorderedAccessViewRaw)
         {
-            // Bit 23 of the declaration's opcode token. Read off the bytecode
-            // rather than the documentation: cs_5_0/buffer_counter declares three
-            // structured UAVs, the two it counts carry it and the third does not.
+            // Bit 23, found from the bytecode rather than documentation.
             instruction.HasOrderPreservingCounter = (opcodeToken & 0x800000) != 0;
         }
         if (opcode.HasBooleanTest())
@@ -482,17 +442,13 @@ public class DxbcReader : BinaryReader
         {
             instruction.ResInfoReturnType = (D3D10ResInfoReturnType)((opcodeToken >> 11) & 0x3);
         }
-        // sampleinfo reports one number and has one bit for how, where resinfo has
-        // two: the reciprocal form is not one of its choices, so 1 here means the
-        // uint that is 2 there.
+        // sampleinfo has one bit: 1 means uint (2 in resinfo's two bits).
         if (opcode == D3D10Opcode.SampleInfo)
         {
             instruction.ResInfoReturnType = ((opcodeToken >> 11) & 0x1) != 0
                 ? D3D10ResInfoReturnType.Uint
                 : D3D10ResInfoReturnType.Float;
         }
-        // The tessellator domain and the control point count ride in the opcode
-        // token the way a resource dimension does.
         if (opcode == D3D10Opcode.DclTessDomain)
         {
             instruction.TessellatorDomain = (D3D10TessellatorDomain)((opcodeToken >> 11) & 0x3);
@@ -502,8 +458,6 @@ public class DxbcReader : BinaryReader
         {
             instruction.ControlPointCount = (int)((opcodeToken >> 11) & 0x7F);
         }
-        // A hull shader says these two as well, in the same bits: what the
-        // tessellator does with the factors it computes.
         if (opcode == D3D10Opcode.DclTessPartitioning)
         {
             instruction.TessellatorPartitioning =
@@ -535,8 +489,6 @@ public class DxbcReader : BinaryReader
         return instruction;
     }
 
-    // A variable type, and the members of a struct one. The member list was being
-    // discarded, so a struct in a constant buffer had no members to name.
     private ShaderTypeInfo ReadShaderTypeInfo(int chunkOffset, int typeOffset)
     {
         BaseStream.Position = chunkOffset + typeOffset + 8;
@@ -548,10 +500,7 @@ public class DxbcReader : BinaryReader
         short numStructMembers = ReadInt16();
         int firstMemberOffset = ReadInt32();
 
-        // An interface pointer's type names the interface, at the end of the
-        // record shader model 5 lengthened: the HLSL wrote `IShade g_one;`. And
-        // a struct's names the struct: `RWStructuredBuffer<P> ps` was written back
-        // with a struct called PsElement, which is not the type a host asks for.
+        // Interface and struct type names, at the end of the SM5 record.
         string name = null;
         if (_typesHaveNames && variableClass is ParameterClass.InterfacePointer or ParameterClass.Struct)
         {
@@ -570,15 +519,10 @@ public class DxbcReader : BinaryReader
             memberInfo = [];
             for (int member = 0; member < numStructMembers; member++)
             {
-                // Reading a member type moves the stream, so the position is set
-                // again for every one of them.
+                // Reading a member type moves the stream.
                 BaseStream.Position = chunkOffset + firstMemberOffset + member * 12 + 8;
                 int memberNameOffset = ReadInt32();
                 int memberTypeOffset = ReadInt32();
-                // The third word of the member record, which was being strided
-                // past: where the member starts within the structure. A load from
-                // a structured buffer names a byte offset and nothing else, so
-                // this is what says which member it reads.
                 int memberByteOffset = ReadInt32();
 
                 BaseStream.Position = chunkOffset + memberNameOffset + 8;

@@ -7,18 +7,10 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// The idioms recovered from the graph the parser has just built, before anything
-/// else reads it: a vector read at a computed component, and an array index that
-/// counts registers where the source counted elements. Each is an identity over
-/// the values - a sum of products against the rows of an identity matrix is a
-/// subscript, whatever instruction made it - so it is asked of the finished graph
-/// rather than of the operands of the one instruction being parsed. They used to
-/// be recognised in the middle of the parse, by the code building that
-/// instruction's nodes, and saw only what it had in hand.
-///
-/// Before the statement finalizer and the type facts, both of which read the
-/// graph as these leave it, and before the parse types its immediates by their
-/// readers: the products a subscript replaces are readers of nothing afterwards.
+/// Idioms recovered from the freshly parsed graph: a vector read at a computed
+/// component, and an array index that counts registers instead of elements.
+/// Must run before the statement finalizer, the type facts, and immediate typing,
+/// since the products a subscript replaces stop being readers.
 /// </summary>
 internal sealed class ParsedIdioms
 {
@@ -44,7 +36,7 @@ internal sealed class ParsedIdioms
         }
         foreach (AddOperation sum in Values().OfType<AddOperation>().ToList())
         {
-            // Taken apart already, as part of a sum recovered before it.
+            // Already taken apart as part of an earlier sum.
             if (sum.Outputs.Count == 0 && !IsStatementValue(sum))
             {
                 continue;
@@ -68,10 +60,8 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// The products a dot product is the sum of, in the order of the components they
-    /// multiply - a dp4 is ((x + y) + z) + w - or null where the sum is not only
-    /// products. A dp2add's addend is dropped where it is zero, which it is when fxc
-    /// writes a two wide dot that way.
+    /// A dot product's products in component order (dp4 is ((x + y) + z) + w), or
+    /// null. A zero dp2add addend is dropped.
     /// </summary>
     private static List<MultiplyOperation> Products(AddOperation sum)
     {
@@ -95,12 +85,7 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// The subscript a dot product stands for where one of its operands is a row of
-    /// an identity matrix in the immediate constant buffer, which is how fxc reads a
-    /// vector at a component it has to work out - `v[i]` is `dp4 dst, v, icb[i]`.
-    /// Null for an ordinary dot product. The reads of the identity come off the
-    /// buffer's tally once the products are taken apart: an array nothing reads any
-    /// more is not declared at all.
+    /// `v[i]` from `dp4 dst, v, icb[i]` where icb is an identity matrix.
     /// </summary>
     private HlslTreeNode TakeVectorComponent(HlslTreeNode[][] operands)
     {
@@ -111,9 +96,7 @@ internal sealed class ParsedIdioms
                 componentInput => componentInput[selector] as RelativeAddressNode)];
             if (rows[0]?.RegisterComponentKey.RegisterKey
                 is not D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer } icb
-                // Row c of the identity holds the one in component c, so the operand's
-                // swizzle has to be in order for the dot to pick the index's component:
-                // `icb[i].yxzw` would answer v[i] for two of the four indices only.
+                // The swizzle must be in order: `icb[i].yxzw` is not v[i].
                 || rows.Where((row, component) => row == null
                     || !icb.Equals(row.RegisterComponentKey.RegisterKey)
                     || row.ComponentIndex != component
@@ -122,10 +105,8 @@ internal sealed class ParsedIdioms
             {
                 continue;
             }
-            // A subscript has to be written on something that can carry one, and the
-            // operand is only ever a register read here - a swizzle of one takes a
-            // subscript, `float4(a, b, c, d)[i]` is not something fxc will compile,
-            // and a temp the writer inlines an expression into could be either.
+            // Only a named register read takes a subscript; fxc rejects
+            // `float4(a, b, c, d)[i]`, and a temp may be inlined into either.
             HlslTreeNode[] vector = [.. operands.Select(
                 componentInput => componentInput[1 - selector])];
             if (!vector.All(IsNamedVectorRead))
@@ -137,11 +118,7 @@ internal sealed class ParsedIdioms
         return null;
     }
 
-    /// <summary>
-    /// Whether the value is read straight out of a constant buffer or an input
-    /// register, which is what comes out of the writer as a name with a swizzle on
-    /// it rather than as an expression.
-    /// </summary>
+    /// <summary>A constant buffer or input read, which the writer emits as a name.</summary>
     private static bool IsNamedVectorRead(HlslTreeNode node)
     {
         RegisterKey registerKey = node switch
@@ -157,16 +134,9 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// The subscript a dot product stands for where one of its operands is a vector of
-    /// tests of an integer against each component's number, which is how a shader
-    /// model 3 shader reads a vector at a component it has to work out, having no
-    /// immediate constant buffer to hold an identity in: `v[i]` is
-    /// `cmp r0, -abs(i - (0, 1, 2, 3)), 1, 0` dotted with v. Read back as that, it
-    /// came out as a vector of `i == 0 ? 1.0 : 0.0` and a sum of products.
-    ///
-    /// Only for an index declared an integer. A float index between two whole numbers
-    /// matches none of the tests and dots to zero, where the subscript would truncate
-    /// it and read a component.
+    /// The SM3 form of `v[i]`: `cmp r0, -abs(i - (0, 1, 2, 3)), 1, 0` dotted with v.
+    /// Integer indices only: a fractional float index dots to zero, where a
+    /// subscript would truncate it.
     /// </summary>
     private HlslTreeNode TakeSelectedComponent(HlslTreeNode[][] operands)
     {
@@ -194,9 +164,8 @@ internal sealed class ParsedIdioms
         return null;
     }
 
-    // What `cmp dst, -abs(i - c), 1, 0` tests for being c: i, where the value is
-    // that, and null otherwise. fxc adds -c rather than subtracting, and adds the
-    // -0 of the first component as well.
+    // The i of `cmp dst, -abs(i - c), 1, 0`, or null. fxc writes i + -c, and
+    // c == 0 may appear with or without the add.
     private static HlslTreeNode TestedForComponent(HlslTreeNode test, int component)
     {
         if (test is not CompareOperation
@@ -223,8 +192,6 @@ internal sealed class ParsedIdioms
         return component == 0 ? difference : null;
     }
 
-    // The offsets are moved into the register before the index is added to them,
-    // and an address into the address register before it is read through.
     private static HlslTreeNode Moved(HlslTreeNode node)
     {
         while (node is MoveOperation move)
@@ -242,12 +209,9 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// An index into an array of matrices counts registers, so fxc multiplies the
-    /// element by the rows first - `ishl r0.x, v1.x, l(2)`, an imul by 4, or the
-    /// mad a shader model 3 shader hands its mova. Read through here, rather than
-    /// divided back at the write, the product is never a value: named where four
-    /// rows read it, it came out as `int4 t2 = t1 * 4` and `bones[t2.x / 4]` four
-    /// times over.
+    /// An index into a matrix array counts registers (`ishl r0.x, v1.x, l(2)`).
+    /// Stripped here rather than divided at the write, so the scaled index never
+    /// becomes a named value.
     /// </summary>
     private void StripElementStride(RelativeAddressNode read)
     {
@@ -260,11 +224,8 @@ internal sealed class ParsedIdioms
         {
             return;
         }
-        // An input that goes straight into the address register, scaled and
-        // nothing else, is an integer: a source that declared it float would carry
-        // a floor on the way, and this one has none. Declared float instead, fxc
-        // put the floor back - a frc and an add - and matrix_palette cost two
-        // instructions for it.
+        // An input scaled straight into the address register is an int: a float
+        // source would need a floor (frc + add) on the way.
         if (element is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D9RegisterKey { Type: RegisterType.Input } } input)
         {
             const int SInt32ComponentType = 2;
@@ -310,9 +271,6 @@ internal sealed class ParsedIdioms
         return false;
     }
 
-    /// <summary>
-    /// Every value the statements reach, through what each one reads.
-    /// </summary>
     private IEnumerable<HlslTreeNode> Values()
     {
         var seen = HlslTreeNode.NewNodeSet();
@@ -359,9 +317,7 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// Puts the replacement wherever the node was: in what reads it, which the
-    /// graph's own Replace reaches, and in the statements, which hold their values
-    /// in maps and slots that are not input edges and which it does not.
+    /// Replace also in statements' maps and held slots, which are not input edges.
     /// </summary>
     private void ReplaceEverywhere(HlslTreeNode node, HlslTreeNode replacement)
     {
@@ -383,7 +339,6 @@ internal sealed class ParsedIdioms
         }
     }
 
-    // The sums and products a dot product was built of, which go with it.
     private static HashSet<HlslTreeNode> Chain(AddOperation sum)
     {
         HashSet<HlslTreeNode> chain = HlslTreeNode.NewNodeSet();
@@ -399,13 +354,9 @@ internal sealed class ParsedIdioms
     }
 
     /// <summary>
-    /// Takes a replaced value out of the graph, and with it the part of the graph it
-    /// was made of - the products and sums of a dot product, which nothing else was
-    /// built to read. Left attached they count as readers of what is under them, and
-    /// the writer went on naming values nothing reads. A row of the identity a
-    /// product read comes off the buffer's tally. Anything else it read is only let
-    /// go of: another instruction's value is still the value of its register, and the
-    /// statement finalizer is what decides that nothing reads it.
+    /// Detaches a replaced value and its dot-product chain, which would otherwise
+    /// count as readers. Identity rows come off the icb tally; other inputs are only
+    /// unlinked, leaving deadness to the statement finalizer.
     /// </summary>
     private void TakeApart(HlslTreeNode node, HashSet<HlslTreeNode> chain)
     {

@@ -9,18 +9,10 @@ public sealed class RegisterState
 {
 
     public ICollection<ConstantRegister> ConstantDefinitions = [];
-    /// <summary>
-    /// The rows of an immediate constant buffer, which fxc emits for a small
-    /// constant array it would rather index than unroll. Nothing names it, so it is
-    /// called icb as the disassembly calls it.
-    /// </summary>
     public IList<ConstantRegister> ImmediateConstantBuffer { get; } = [];
 
-    // Which rows a read of it starts at, and how many reads start there. fxc lays
-    // several literal arrays end to end in the one buffer, so `icb[r0.x + 3]` reads
-    // the one beginning at row three: the bases are where one array ends and the next
-    // begins. Counted rather than collected because a read can be taken back: an
-    // identity dotted with a vector is a subscript of the vector and names no array.
+    // Base row -> read count. fxc lays literal arrays end to end, so `icb[r0.x + 3]`
+    // reads the array starting at row 3. Counted because reads can be undeclared.
     private readonly SortedDictionary<int, int> _immediateConstantBufferBases = [];
 
     public void DeclareImmediateConstantBufferRead(int baseRow)
@@ -29,11 +21,7 @@ public sealed class RegisterState
         _immediateConstantBufferBases[baseRow] = reads + 1;
     }
 
-    /// <summary>
-    /// Takes back a read the parser declared and then rewrote into something that
-    /// does not name the buffer. The rows are still there to be declared while
-    /// anything else reads them; an array nothing reads any more is not written out.
-    /// </summary>
+    /// <summary>For a read rewritten into something that no longer names the buffer.</summary>
     public void UndeclareImmediateConstantBufferRead(int baseRow)
     {
         if (_immediateConstantBufferBases.TryGetValue(baseRow, out int reads) && reads > 1)
@@ -46,13 +34,8 @@ public sealed class RegisterState
         }
     }
 
-    /// <summary>Whether anything still reads the immediate constant buffer.</summary>
     public bool IsImmediateConstantBufferRead => _immediateConstantBufferBases.Count != 0;
 
-    /// <summary>
-    /// Whether the rows from here on are the identity matrix of this width, which is
-    /// what makes a dot product with one of them the component the index picks.
-    /// </summary>
     public bool IsImmediateConstantBufferIdentity(int baseRow, int width)
     {
         if (baseRow < 0 || baseRow + width > ImmediateConstantBuffer.Count)
@@ -72,11 +55,7 @@ public sealed class RegisterState
         return true;
     }
 
-    /// <summary>
-    /// The literal arrays the buffer holds: one per row a read starts at, each
-    /// running to the next. A buffer read at row zero and nowhere else is the one
-    /// array it looks like, and keeps the plain name.
-    /// </summary>
+    /// <summary>One literal array per base row, each running to the next.</summary>
     public IEnumerable<(string Name, int Start, int Length)> ImmediateConstantBufferArrays()
     {
         List<int> bases = ImmediateConstantBufferStarts();
@@ -87,7 +66,6 @@ public sealed class RegisterState
         }
     }
 
-    /// <summary>What the array beginning at this row is called.</summary>
     public string ImmediateConstantBufferName(int baseRow)
     {
         List<int> bases = ImmediateConstantBufferStarts();
@@ -99,8 +77,7 @@ public sealed class RegisterState
     {
         List<int> bases = [.. _immediateConstantBufferBases.Keys.Where(
             b => b >= 0 && b < ImmediateConstantBuffer.Count)];
-        // Whatever is in front of the first row anything reads is still part of the
-        // buffer, and declaring it keeps every later array at the row it belongs to.
+        // Rows before the first read are still declared, keeping later bases in place.
         if (bases.Count == 0 || bases[0] != 0)
         {
             bases.Insert(0, 0);
@@ -113,11 +90,8 @@ public sealed class RegisterState
     private string _localNamePrefix = "";
 
     /// <summary>
-    /// What the names the shader makes up for itself start with: its literal
-    /// arrays, icb and c4, and its groupshared memory, g0. Nothing in the bytecode
-    /// names them, so two shaders name theirs alike, which is nothing to a shader
-    /// on its own and a redefinition to two functions of one effect. In an effect
-    /// each function's start with its own name.
+    /// Prefix for made-up global names (icb, c4, g0), so two functions of one effect
+    /// do not redefine each other's.
     /// </summary>
     public string LocalNamePrefix
     {
@@ -133,32 +107,14 @@ public sealed class RegisterState
     public ICollection<ResourceDefinition> ResourceDefinitions { get; } = [];
 
     /// <summary>
-    /// The typed unordered access views an interlocked operation writes. HLSL has no
-    /// interlocked operation over more than a scalar, so such a view's element is one
-    /// number, whatever the vector the declaration in the bytecode names.
+    /// Typed UAVs written by interlocked ops; their element is a scalar whatever
+    /// the declaration says.
     /// </summary>
     private readonly HashSet<ResourceDefinition> _atomicViews = [];
 
-    /// <summary>
-    /// A structured buffer whose element is a matrix is loaded a row at a time, and
-    /// the byte offset of the load says which row: `ld_structured ..., l(48), t0` is
-    /// the fourth of a float4x4. Dropped, every row of an instance transform read as
-    /// the first one.
-    ///
-    /// Which way round a row is stored is the same question a constant buffer
-    /// matrix asks, and is answered the same way. A struct element would have the
-    /// offset pick a member, which is not read yet.
-    /// </summary>
-    /// <summary>The structured buffer a load or a store names, or null.</summary>
     public ResourceDefinition FindStructuredBuffer(RegisterKey resourceKey)
     {
-        // By what kind of register it is as well as by its number. Groupshared
-        // memory is g0 and a structured buffer t0, both number zero, so a load
-        // from the first was finding the element type of the second and naming
-        // members of a float4 array.
-        // A view slot holds one buffer whatever kind of structured buffer it is: an
-        // append or a consume buffer's element is a struct as much as a read-write
-        // one's, and asked for the read-write kind alone it had no members to name.
+        // Match the register kind too: groupshared g0 and structured t0 share a number.
         D3DShaderInputType[] inputTypes = (resourceKey as D3D10RegisterKey)?.OperandType switch
         {
             OperandType.Resource => [D3DShaderInputType.Structured],
@@ -175,10 +131,7 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Whether the resource is addressed by a byte offset alone rather than by an
-    /// element and an offset within it - a ByteAddressBuffer either way round. An
-    /// atomic does not say which kind it is in its opcode, unlike a store, so what
-    /// the address operand means has to be read off the declaration.
+    /// A (RW)ByteAddressBuffer. Atomics don't encode this in the opcode, unlike stores.
     /// </summary>
     public bool IsRawResource(RegisterKey resourceKey)
     {
@@ -192,11 +145,7 @@ public sealed class RegisterState
             r.ShaderInputType == rawType && r.BindPoint == resourceKey.Number);
     }
 
-    /// <summary>
-    /// Whether a buffer reports its stride beside its element count, which only a
-    /// structured one does. A byte address buffer reports its size in bytes and a
-    /// typed one how many elements it holds, and each of those is one number.
-    /// </summary>
+    /// <summary>Only a structured buffer's GetDimensions also reports a stride.</summary>
     public bool IsStructuredResource(RegisterKey resourceKey)
     {
         bool isUav = resourceKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
@@ -209,11 +158,7 @@ public sealed class RegisterState
                 : r.ShaderInputType is D3DShaderInputType.Structured));
     }
 
-    /// <summary>
-    /// The declaration a buffer operand names. A structured or a byte address
-    /// buffer binds as a kind of its own; a typed one binds the way a texture does,
-    /// so looking only among the first kinds found no declaration at all.
-    /// </summary>
+    /// <summary>A typed buffer binds as a texture, so Texture is included.</summary>
     public ResourceDefinition GetBufferDefinition(RegisterKey registerKey)
     {
         bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
@@ -231,13 +176,9 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Names the members a load or a store reaches. An element that is a struct is
-    /// addressed by a byte offset and nothing else, so `ld_structured ..., l(0), u0`
-    /// over a struct of a float3 and a float reads two members at once and has to be
-    /// written as both. Null where the element is not a struct.
+    /// Names the struct members a load or store reaches; one load can span several,
+    /// giving a constructor. Null where the element is not a struct.
     /// </summary>
-    /// <param name="components">Which components of the element are read, in the
-    /// order they are written.</param>
     public string NameStructuredMembers(
         RegisterKey resourceKey, string element, int byteOffset, IList<int> components)
     {
@@ -254,8 +195,7 @@ public sealed class RegisterState
             return null;
         }
         List<string> named = [.. runs.Select(r => r.Name)];
-        // A constructor over double members is a double vector: `float2(low, high)`
-        // rounds both of them, and the buffer holds neither.
+        // A float constructor would round double members.
         string constructor = GetStructuredComponentsPerElement(resourceKey) == 2
             ? "double"
             : "float";
@@ -265,10 +205,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The members a load or a store reaches, each named with the swizzle that
-    /// selects the part of it touched, and with which of the components handed in
-    /// go there. One run per member, in the order the components come. Null where
-    /// the element is not a struct.
+    /// One run per member register reached, named with its swizzle, plus the indices
+    /// of the components that go there. Null where the element is not a struct.
     /// </summary>
     public IList<(string Name, int[] Values)> FindStructuredMemberRuns(
         RegisterKey resourceKey, string element, int byteOffset, IList<int> components)
@@ -290,12 +228,8 @@ public sealed class RegisterState
             }
             (ShaderStructMemberInfo member, string path, int memberOffset) = found.Value;
             int inMember = (byteOffset + components[i] * 4 - memberOffset) / 4;
-            // A matrix or an array member is more than one register rather than
-            // one, so where a component sits is which register of the member and
-            // which component of that: the eighth float of a float4x4 is the last
-            // of its second row, and of a float2 v[4] the second of v[3]. Counted
-            // straight through the member it ran off the end of `xyzw`, which is
-            // four letters long however many floats the member has.
+            // Matrix and array members span registers: split into register and
+            // component (float 7 of a float4x4 is row 1's w).
             int stride = GetRegisterFloatCount(member.TypeInfo);
             int register = inMember / stride;
             int inRegister = inMember % stride;
@@ -315,22 +249,15 @@ public sealed class RegisterState
         {
             ShaderTypeInfo typeInfo = run.Member.TypeInfo;
             bool isMatrix = typeInfo.Rows > 1;
-            // One row of a matrix is as wide as the matrix has columns where it is
-            // stored by row, and as its rows where it is stored by column. Not the
-            // register it is padded out to: a row of three written `.xyz` says a
-            // swizzle where the whole of it was read.
+            // The stored row's width, not the padded register's, so a whole row
+            // gets no swizzle.
             int width = isMatrix
                 ? (typeInfo.ParameterClass == ParameterClass.MatrixRows
                     ? typeInfo.Columns
                     : typeInfo.Rows)
                 : typeInfo.Columns;
-            // Named in full rather than under the element: a matrix row is
-            // `transpose(bones[i].skin)[0]`, and the element cannot be put in front
-            // of that afterwards.
+            // Full path here: a matrix row wraps it, `transpose(bones[i].skin)[0]`.
             string member = $"{element}.{run.Path}";
-            // Which element of an array the register is in, and which register of
-            // that element: a matrix takes a register a row, so an array of them
-            // takes that many each, and a member that is not an array is all one.
             int perElement = GetMemberRegisterCount(typeInfo);
             string one = typeInfo.NumElements > 1
                 ? $"{member}[{run.Register / perElement}]"
@@ -346,19 +273,7 @@ public sealed class RegisterState
         })];
     }
 
-    /// <summary>
-    /// Whether what a structured load reads at a byte address into the element is an
-    /// integer, or null where the reflection data does not say - groupshared memory,
-    /// or a buffer whose element type it does not carry. An element that is a struct
-    /// answers for the member the address falls in: the element's own type is Struct,
-    /// which says nothing, and a float member of a struct alongside a uint one was
-    /// left to whatever else had touched the register - a component fxc reused for a
-    /// counter afterwards, so the float was declared int and truncated on the way in.
-    /// </summary>
-    /// <summary>
-    /// Whether the integer a structured load reads is unsigned, from the same member
-    /// the type comes from. Null where the member is not an integer or nothing says.
-    /// </summary>
+    /// <summary>Null where the member is not an integer or nothing says.</summary>
     public bool? IsUnsignedStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
         if (FindStructuredTypeAt(resourceKey, byteAddress) is not var (type, _))
@@ -374,24 +289,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// What one element of a structured buffer holds, whichever of the kinds it is
-    /// bound as. FindStructuredBuffer answers the two whose members get named; an
-    /// append buffer, a consume buffer and one carrying a counter bind as kinds of
-    /// their own, and what their element holds is the same question.
-    ///
-    /// By the kind of register as well as by the number, which is the whole
-    /// difficulty: groupshared memory is g0 and a structured buffer t0, both number
-    /// zero, so a lookup taking any definition at the right bind point hands a load
-    /// from the first the element type of the second - which is what taking
-    /// GetBufferDefinition for the wider lookup did, and it read as a fixture
-    /// quietly changing its mind about whether a groupshared uint was signed.
-    /// Groupshared memory has no reflection data at all - what it holds is read off
-    /// the stores into it - so it answers nothing here, and rightly.
-    ///
-    /// Written twice before this, and the two had diverged: the integer question
-    /// below had the append and consume kinds inline while the unsigned and the
-    /// double ones beside it did not, so a ConsumeStructuredBuffer could be known to
-    /// hold an integer and not known to hold a signed one.
+    /// Element type for any structured kind, including counter buffers. Matches the
+    /// register kind too: groupshared g0 shares t0's number but has no reflection.
     /// </summary>
     private ShaderTypeInfo FindStructuredElementType(RegisterKey resourceKey)
     {
@@ -411,6 +310,10 @@ public sealed class RegisterState
             && d.BindPoint == resourceKey.Number)?.ElementType;
     }
 
+    /// <summary>
+    /// Asked per member: a struct element's own type says nothing. Null where
+    /// reflection does not say (e.g. groupshared memory).
+    /// </summary>
     public bool? IsIntegerStructuredMember(RegisterKey resourceKey, int byteAddress)
     {
         if (FindStructuredTypeAt(resourceKey, byteAddress) is not var (type, _))
@@ -425,11 +328,7 @@ public sealed class RegisterState
         };
     }
 
-    /// <summary>
-    /// The type a byte address within a buffer element holds, and where the member
-    /// holding it starts. An element with no members of its own is the whole of it,
-    /// starting at zero; otherwise it is whichever member the address falls in.
-    /// </summary>
+    /// <summary>The type at a byte address in the element, and its member's offset.</summary>
     private (ShaderTypeInfo Type, int ByteOffset)? FindStructuredTypeAt(
         RegisterKey resourceKey, int byteAddress)
     {
@@ -449,10 +348,7 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Whether a byte address within a buffer element is the upper half of a double.
-    /// A double is eight bytes where a load and a store count in four, so a value
-    /// begins at every other address and the one between them holds the top half of
-    /// the number before it - a component of the load with no value of its own.
+    /// Loads count in 4 bytes, so every other component of a double is its upper half.
     /// </summary>
     public bool IsDoubleStructuredMemberUpperHalf(RegisterKey resourceKey, int byteAddress)
     {
@@ -467,30 +363,19 @@ public sealed class RegisterState
             && type.ParameterType == ParameterType.Double;
     }
 
-    /// <summary>
-    /// How many register components one value of a buffer element takes: two where
-    /// the element holds doubles and one otherwise. The stride counts in floats, so
-    /// a StructuredBuffer&lt;double&gt; declares two components for its one value and
-    /// a double2 four for its two.
-    /// </summary>
+    /// <summary>Register components per value: 2 for doubles, else 1.</summary>
     public int GetStructuredComponentsPerElement(RegisterKey resourceKey)
     {
         return HasDoubleStructuredMember(resourceKey) ? 2 : 1;
     }
 
-    /// <summary>
-    /// Whether the element holds doubles at all, which is what makes the components
-    /// of a load or a store pair up rather than stand for a value each.
-    /// </summary>
     public bool HasDoubleStructuredMember(RegisterKey resourceKey)
     {
         ShaderTypeInfo elementType = FindStructuredBuffer(resourceKey)?.ElementType;
         return elementType != null && HasDoubleMember(elementType);
     }
 
-    // All the way down, not only the members the element names itself: a struct of
-    // structs holds its doubles inside them, and asked of the outer members alone the
-    // element looked to have none and every double in it was read as two floats.
+    // Recursive: nested structs hold doubles too.
     private static bool HasDoubleMember(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.MemberInfo is { Count: > 0 } members)
@@ -501,10 +386,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The member a byte address within an element reaches, the path that names it
-    /// under the element, and where that member starts. A member can be a struct of
-    /// its own, and then what the address reaches is a member inside it: `.i.a`, so
-    /// the search descends until it is holding something with no members left.
+    /// The leaf member at a byte address, its path (`i.a`, descending into nested
+    /// structs), and its start offset.
     /// </summary>
     private static (ShaderStructMemberInfo Member, string Path, int ByteOffset)? FindStructuredMember(
         IList<ShaderStructMemberInfo> members, int byteAddress, int baseOffset)
@@ -518,9 +401,6 @@ public sealed class RegisterState
             }
             if (member.TypeInfo.MemberInfo is { Count: > 0 } nested)
             {
-                // An array of structs is addressed by which one of them first: the
-                // members repeat, and what the address reaches is inside the one
-                // its stride puts it in.
                 int stride = GetElementByteSize(member.TypeInfo);
                 int index = (byteAddress - offset) / stride;
                 var inner = FindStructuredMember(nested, byteAddress, offset + index * stride);
@@ -536,11 +416,8 @@ public sealed class RegisterState
         return null;
     }
 
-    // How many floats one row of a member holds. A buffer element is packed tight,
-    // so a matrix row holds its own floats and no padding: a float3x3's rows are
-    // twelve bytes apart, and fxc reads each of them with a load of its own at
-    // l(0), l(12), l(24). Counted as four, the second row was found a float early
-    // and named as the tail of the first.
+    // Floats per matrix row. Buffer elements are packed tight: a float3x3's rows
+    // are 12 bytes apart, not 16.
     private static int GetRegisterFloatCount(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.Rows > 1)
@@ -552,9 +429,6 @@ public sealed class RegisterState
         return Math.Max(typeInfo.Columns, 1);
     }
 
-    // A matrix is a register a row where it is stored by row and a register a
-    // column where it is stored by column; anything else that is not a struct is
-    // one register.
     private static int GetMemberRegisterCount(ShaderTypeInfo typeInfo)
     {
         if (typeInfo.Rows <= 1)
@@ -566,15 +440,9 @@ public sealed class RegisterState
             : typeInfo.Columns;
     }
 
-    // One element of a member: a struct is as big as the end of its last member,
-    // and anything else is its registers.
     /// <summary>
-    /// What a type is packed to: eight bytes for a double, four for everything else,
-    /// and for a struct whatever the largest of anything in it is. What it is for is
-    /// the padding at the end of a struct - a struct of a double and a float ends at
-    /// twelve and is sixteen long - which only shows up once there is something after
-    /// it. Nothing but a double aligns to more than four, so this rounds nothing for
-    /// a struct without one in it.
+    /// 8 for a double, else 4; a struct takes its largest member's. Gives the tail
+    /// padding of a struct: { double; float; } is 16 bytes long, not 12.
     /// </summary>
     private static int GetTypeAlignment(ShaderTypeInfo typeInfo)
     {
@@ -589,41 +457,26 @@ public sealed class RegisterState
     {
         if (typeInfo.MemberInfo is { Count: > 0 } members)
         {
-            // Out to the end of the last member, and then out again to the struct's
-            // own alignment: the second Inner of `struct Inner { double high; float
-            // low; }` starts at sixteen, not at the twelve its members reach, and
-            // read twelve apart the array's members were found in the padding.
+            // End of the last member, rounded up to the struct's alignment.
             int end = members.Max(m => m.ByteOffset + GetMemberByteSize(m.TypeInfo));
             int alignment = GetTypeAlignment(typeInfo);
             return (end + alignment - 1) / alignment * alignment;
         }
-        // A matrix in a structured buffer element is packed tight, not a register a
-        // row: a float3x3 is thirty six bytes, which is what its buffer's stride says.
-        // Sized as three registers it ran to forty eight, so every member after it was
-        // found twelve bytes early - a float4x4 following one was read as the tail of
-        // the matrix, and the output did not compile.
-        // A double is eight bytes where every other scalar is four. Counted as four,
-        // a double member ran to half its length and the second half of the number
-        // fell outside it - into the padding before the next member, or into no
-        // member at all - so nothing knew the component was half of something.
+        // Packed tight, not a register per row: a float3x3 is 36 bytes.
         int componentSize = typeInfo.ParameterType == ParameterType.Double ? 8 : 4;
         return typeInfo.Rows > 1
             ? typeInfo.Rows * typeInfo.Columns * componentSize
             : typeInfo.Columns * componentSize;
     }
 
-    // A member declared as an array is that many elements one after another.
     private static int GetMemberByteSize(ShaderTypeInfo typeInfo)
     {
         return GetElementByteSize(typeInfo) * Math.Max(typeInfo.NumElements, 1);
     }
 
     /// <summary>
-    /// The matrix a structured buffer element holds at a byte offset, with the path
-    /// that names it from the element - empty where the element is the matrix, and
-    /// `.world` where a member is. Null where the offset is not a matrix's first row,
-    /// which is what tells a run of dot products over one element apart from a matrix
-    /// multiplication over it.
+    /// The matrix starting at a byte offset in the element, with its path ("" or
+    /// `.world`). Null unless the offset is a matrix's first row.
     /// </summary>
     public (string MemberPath, ShaderTypeInfo TypeInfo)? FindStructuredMatrixAt(
         RegisterKey resourceKey, int byteOffset)
@@ -655,8 +508,7 @@ public sealed class RegisterState
         {
             return element;
         }
-        // As far apart as the row is wide, not a register: an element that is itself
-        // a float3x3 has its rows twelve bytes apart.
+        // Rows are packed tight (12 bytes for a float3x3), not a register apart.
         int bytesPerRow = GetRegisterFloatCount(resource.ElementType) * 4;
         string matrix = $"transpose({element})";
         return $"{matrix}[{byteOffset / bytesPerRow}]";
@@ -665,48 +517,31 @@ public sealed class RegisterState
 
     public IDictionary<RegisterKey, RegisterDeclaration> RegisterDeclarations { get; } = new Dictionary<RegisterKey, RegisterDeclaration>();
 
-    // A list rather than a dictionary keyed by register: fxc packs interpolators as
-    // tightly as constants, so two differently named inputs - TEXCOORD0 at v2.xy and
-    // TEXCOORD1 at v2.z - can share one register, and a plain per-register key could
-    // not hold both.
+    // A list, not keyed by register: TEXCOORD0 at v2.xy and TEXCOORD1 at v2.z share one.
     public IList<RegisterDeclaration> MethodInputRegisters { get; } = [];
 
-    /// <summary>
-    /// What the array of vertices an input register belongs to is called. A domain or
-    /// hull shader is handed the patch it is dividing; a geometry shader is handed the
-    /// vertices of its primitive, and calls them what its input parameter is called.
-    /// </summary>
     public string InputArrayName =>
         _shaderModel.Type is ShaderType.Domain or ShaderType.Hull ? "patch" : "i";
 
     /// <summary>
-    /// The control points a hull shader's patch constant phase reads back from what
-    /// its control point phase wrote - `vocp[1][0].w` - declared a register apiece
-    /// the way the patch's are, and read through an OutputPatch parameter of its own.
+    /// Control point outputs (`vocp[1][0].w`) read back by the hull shader's patch
+    /// constant phase through an OutputPatch parameter.
     /// </summary>
     public IList<RegisterDeclaration> ControlPointOutputRegisters { get; } = [];
 
     public const string OutputPatchName = "opatch";
 
-    // Which list a declaration of an input of this kind goes in.
     private IList<RegisterDeclaration> InputListOf(D3D10RegisterKey registerKey) =>
         registerKey.OperandType == OperandType.OutputControlPoint
             ? ControlPointOutputRegisters
             : MethodInputRegisters;
     public IList<RegisterDeclaration> MethodOutputRegisters = [];
 
-    /// <summary>A geometry shader's SV_PrimitiveID input, when it reads one.</summary>
     public RegisterDeclaration PrimitiveIdDeclaration { get; set; }
 
-    // Which instance of an instanced geometry shader this run is, and how many
-    // instances it was declared with.
     public RegisterDeclaration GSInstanceIdDeclaration { get; set; }
 
-    /// <summary>
-    /// The output streams a geometry shader declared, in order. One for almost every
-    /// shader there is; shader model 5 allows up to four, each written through a
-    /// parameter of its own.
-    /// </summary>
+    /// <summary>Geometry shader output streams in declaration order (SM5: up to 4).</summary>
     public IList<int> Streams { get; } = [];
 
     public void DeclareStream(int stream)
@@ -720,58 +555,33 @@ public sealed class RegisterState
     public int? GSInstanceCount { get; set; }
     public int? MaxOutputVertexCount { get; set; }
 
-    /// <summary>How many control points a patch comes in with, and goes out with.
-    /// The first is the size of the array a domain shader reads.</summary>
     public int? InputControlPointCount { get; set; }
 
-    // The patch constants this shader actually reads. What it is given is in the
-    // signature chunk, which holds the tessellation factors as well.
+    // Only the patch constants actually read; the signature chunk lists them all.
     public IList<RegisterDeclaration> PatchConstantRegisters { get; } = [];
     public int? OutputControlPointCount { get; set; }
 
-    /// <summary>
-    /// The bound a hull shader declares its tessellation factors keep to, from
-    /// dcl_hs_max_tessfactor, or null where it declares none.
-    /// </summary>
+    /// <summary>From dcl_hs_max_tessfactor, or null.</summary>
     public float? MaxTessFactor { get; set; }
 
-    /// <summary>What the tessellator subdivides, which the shader declares with
-    /// the [domain(...)] attribute.</summary>
     public D3D10TessellatorDomain TessellatorDomain { get; set; }
 
-    /// <summary>
-    /// What the tessellator does with the factors, which only the shader that
-    /// computes them says: the [partitioning(...)] and [outputtopology(...)]
-    /// attributes of a hull shader. A domain shader declares neither.
-    /// </summary>
+    /// <summary>Hull shader only; a domain shader declares neither.</summary>
     public D3D10TessellatorPartitioning TessellatorPartitioning { get; set; }
     public D3D10TessellatorOutputPrimitive TessellatorOutputPrimitive { get; set; }
-    /// <summary>
-    /// Whether the shader asked for the depth and stencil test to run before
-    /// it rather than after, which HLSL says with [earlydepthstencil] and the
-    /// bytecode with a global flag. It changes when a discard takes effect and
-    /// nothing else says it, so a decompilation that drops it is a different
-    /// shader that computes the same thing.
-    /// </summary>
+    /// <summary>[earlydepthstencil]: changes when a discard takes effect.</summary>
     public bool ForceEarlyDepthStencil { get; set; }
 
     public int[] NumThreads { get; set; }
     public D3D10Primitive? InputPrimitive { get; set; }
     public D3D10PrimitiveTopology? PrimitiveTopology { get; set; }
 
-    // The topology each stream emits, where a geometry shader writes several: they are
-    // declared a stream at a time and need not agree.
+    // Streams may declare different topologies.
     public IDictionary<int, D3D10PrimitiveTopology> TopologyByStream { get; }
         = new Dictionary<int, D3D10PrimitiveTopology>();
 
-    /// <summary>Whether the shader writes more than one output stream.</summary>
     public bool HasSeveralStreams => Streams.Count > 1;
 
-    /// <summary>
-    /// What the struct of one stream's vertex is called, and the variable it is built
-    /// in. With one stream these are the names they have always been; with several,
-    /// each stream carries its number so that the two never meet.
-    /// </summary>
     public string StreamStructureName(int? stream) =>
         HasSeveralStreams ? $"GS_OUT{stream ?? 0}" : "GS_OUT";
 
@@ -781,28 +591,17 @@ public sealed class RegisterState
     public string StreamParameterName(int? stream) =>
         HasSeveralStreams ? $"stream{stream ?? 0}" : "stream";
 
-    // x# registers: a local array the shader indexes at run time, declared with
-    // its element count and how many components each element holds.
+    // x# registers.
     public IDictionary<int, (int Elements, int Components)> IndexableTemps { get; } =
         new Dictionary<int, (int Elements, int Components)>();
 
-    // g# registers: a compute shader's groupshared arrays, declared with the
-    // element stride in bytes and the element count.
+    // g# registers; Stride is in bytes.
     public IDictionary<int, (int Stride, int Elements)> ThreadGroupSharedMemory { get; } =
         new Dictionary<int, (int Stride, int Elements)>();
 
-    // The groupshared registers fxc gave raw storage. It gives raw storage to a
-    // variable that is not an array and structured storage to one that is, so this
-    // is how the two are told apart: `dcl_tgsm_structured g0, 4, 1` and
-    // `dcl_tgsm_raw g0, 4` are the same four bytes and only the first is an array.
+    // fxc gives raw storage to a non-array groupshared variable, structured to an array.
     public ISet<int> RawThreadGroupSharedMemory { get; } = new HashSet<int>();
 
-    /// <summary>
-    /// The interfaces, their tables and their bodies, when the shader calls through
-    /// one: read off the declarations the parser is walking, and written back as
-    /// interface, class and global-instance declarations before the entry point.
-    /// Empty when the shader has no dynamic linkage.
-    /// </summary>
     public LinkageModel Linkage { get; set; }
 
     private ShaderModel _shaderModel;
@@ -812,12 +611,10 @@ public sealed class RegisterState
         _shaderModel = shaderModel;
     }
 
-    // A struct member is as wide as the member, not as the register holding it, so
-    // reading float3 dir does not need a .xyz spelling it out.
+    // The width of the declaration or member covering the component, not of the
+    // whole (packed) register.
     public int GetRegisterMaskedLength(RegisterComponentKey registerComponentKey)
     {
-        // A packed output is as wide as its own declaration, not as the register
-        // both of them share.
         if (registerComponentKey.RegisterKey.IsOutput
             && IsPackedOutputComponent(registerComponentKey))
         {
@@ -833,17 +630,11 @@ public sealed class RegisterState
             {
                 return memberWidth;
             }
-            // Not a struct member, but still narrower than the register it shares: a
-            // float packed alongside three others is one component wide, and naming
-            // it after its own component made `power.w` out of a scalar.
             if (declaration != null && declaration.TypeInfo.Columns >= 1
                 && declaration.TypeInfo.Columns <= 4)
             {
                 return declaration.TypeInfo.Columns;
             }
-            // An input register can be packed the same way a constant buffer is, so
-            // its width is that of the declaration actually covering this component,
-            // not of the register's merged, wider mask.
             if (d3d10RegisterKey.OperandType is OperandType.Input or OperandType.OutputControlPoint)
             {
                 RegisterDeclaration inputDeclaration = FindInputDeclaration(
@@ -853,8 +644,6 @@ public sealed class RegisterState
                     return inputDeclaration.MaskedLength;
                 }
             }
-            // A patch constant register is packed the same way, and more reliably:
-            // a tessellation factor takes its x whatever else is in it.
             if (d3d10RegisterKey.OperandType == OperandType.InputPatchConstant
                 && RegisterDeclarations.TryGetValue(d3d10RegisterKey, out RegisterDeclaration patchConstant))
             {
@@ -864,38 +653,28 @@ public sealed class RegisterState
         return GetRegisterMaskedLength(registerComponentKey.RegisterKey);
     }
 
-    // Which declaration of a packed input register actually covers this component -
-    // fxc can declare TEXCOORD0 at v2.xy and TEXCOORD1 at v2.z, each with its own
-    // dcl_input_ps, and MethodInputRegisters holds one entry per declaration rather
-    // than one per register so both survive.
+    // The declaration of a packed input register covering this component.
     public RegisterDeclaration FindInputDeclaration(D3D10RegisterKey registerKey, int componentIndex)
     {
-        // A geometry shader's declarations are keyed by the register alone, and a
-        // read names the vertex as well; the vertices share the declaration.
+        // GS reads name the vertex too; all vertices share one declaration.
         D3D10RegisterKey baseKey = registerKey.GetGSBaseKey();
         return InputListOf(registerKey).FirstOrDefault(d =>
             d.RegisterKey.Equals(baseKey) && (d.WriteMask & (1 << componentIndex)) != 0);
     }
 
-    // The same for an output: fxc packs o1.xy and o1.z as readily as it packs
-    // inputs, each with its own dcl_output.
     private RegisterDeclaration FindOutputDeclaration(RegisterKey registerKey, int componentIndex)
     {
         return MethodOutputRegisters.FirstOrDefault(d =>
             d.RegisterKey.Equals(registerKey) && (d.WriteMask & (1 << componentIndex)) != 0);
     }
 
-    /// <summary>Whether another declaration shares this output component's
-    /// register.</summary>
     public bool IsPackedOutputComponent(RegisterComponentKey registerComponentKey)
     {
         return registerComponentKey.RegisterKey.IsOutput
             && MethodOutputRegisters.Count(d => d.RegisterKey.Equals(registerComponentKey.RegisterKey)) > 1;
     }
 
-    /// <summary>Which component of its register a packed output starts at, so that
-    /// the swizzle naming it is rebased onto the field rather than the
-    /// register.</summary>
+    /// <summary>Where a packed output starts, for rebasing its swizzle.</summary>
     public int GetOutputComponentBase(RegisterComponentKey registerComponentKey)
     {
         RegisterDeclaration declaration = !registerComponentKey.RegisterKey.IsOutput
@@ -915,16 +694,13 @@ public sealed class RegisterState
         return 0;
     }
 
-    /// <summary>The output declaration covering a component, for naming it.</summary>
     public RegisterDeclaration GetOutputDeclaration(RegisterComponentKey registerComponentKey)
     {
         return FindOutputDeclaration(registerComponentKey.RegisterKey, registerComponentKey.ComponentIndex)
             ?? RegisterDeclarations[registerComponentKey.RegisterKey];
     }
 
-    // Whether another declaration actually shares this component's register, which is
-    // a narrower question than whether the field is a scalar: SV_VertexID is one
-    // component wide too, and alone in its register.
+    // Not the same as being a scalar: SV_VertexID is a scalar alone in its register.
     public bool IsPackedInputComponent(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
@@ -932,8 +708,6 @@ public sealed class RegisterState
         {
             return false;
         }
-        // By the base key: a vertex read names the vertex as well, and the vertices
-        // share one declaration apiece.
         return MethodInputRegisters
             .Select(d => d.RegisterKey)
             .Distinct()
@@ -954,9 +728,7 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Which component of its register a packed input starts at, the same way a
-    /// packed constant does: TEXCOORD1 at v2.z starts at component 2, and a swizzle
-    /// naming it has to be rebased onto the variable, whose own components start at x.
+    /// Where a packed input starts (TEXCOORD1 at v2.z: 2), for rebasing its swizzle.
     /// </summary>
     public int GetInputComponentBase(RegisterComponentKey registerComponentKey)
     {
@@ -986,17 +758,9 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Whether two components of one input register belong to the same declared
-    /// variable: TEXCOORD0's x and y do, TEXCOORD0's y and TEXCOORD1's z do not.
-    /// Grouped as one read, two different variables become one swizzle of the first,
-    /// and where the later component sits below that variable's base the rebased
-    /// swizzle names a component that variable has not got.
+    /// TEXCOORD0's x and y are; TEXCOORD0's y and TEXCOORD1's z are not. Patch
+    /// constants are never packed together, so need no check.
     /// </summary>
-    /// <remarks>
-    /// Only inputs are packed this way. A patch constant register is not: fxc gives
-    /// each of them its own vpc register rather than packing two into one, and they
-    /// are declared keyed by register alone, so there is nothing here to separate.
-    /// </remarks>
     public bool IsSameInputVariable(D3D10RegisterKey registerKey, int component1, int component2)
     {
         RegisterDeclaration first = FindInputDeclaration(registerKey, component1);
@@ -1006,8 +770,7 @@ public sealed class RegisterState
 
     public int GetRegisterMaskedLength(RegisterKey registerKey)
     {
-        // A constant is as wide as it was declared, whichever set it lives in: an
-        // `int count` fills a whole i# register but is still one component.
+        // As wide as declared: `int count` fills an i# register but is one component.
         if (registerKey is D3D9RegisterKey d3D9RegisterKey
             && (d3D9RegisterKey.Type == RegisterType.Const
                 || d3D9RegisterKey.Type == RegisterType.ConstInt
@@ -1016,23 +779,19 @@ public sealed class RegisterState
             var constant = FindConstant(registerKey);
             if (constant != null)
             {
-                // A matrix stored column-major puts a column in each register, so
-                // the register is as wide as the matrix is tall: a float4x3's is a
-                // float4, and reading three of its components is a swizzle.
+                // Column major: a register holds a column, as wide as the matrix is tall.
                 return constant.TypeInfo.Rows > 1
                     ? constant.TypeInfo.Rows
                     : constant.TypeInfo.Columns;
             }
 
-            // An indexed def has no declaration to be as wide as. Every def is a
-            // full float4, which is the width the subscript reads.
+            // An indexed def is always a full float4.
             if (FindConstantArray(registerKey) != null)
             {
                 return 4;
             }
         }
 
-        // An immediate constant buffer row is a float4 and is never declared.
         if (registerKey is D3D10RegisterKey immediateKey
             && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
         {
@@ -1054,9 +813,6 @@ public sealed class RegisterState
             if (d3D10RegisterKey.OperandType == OperandType.UnorderedAccessView
                 && ResourceDefinitions.Any(r => r.ShaderInputType is D3DShaderInputType.UavRWStructured
                     or D3DShaderInputType.UavRWByteAddress
-                    // Keeping a counter does not change how an element is addressed,
-                    // and a store through the slot IncrementCounter gave back is an
-                    // ordinary subscripted store.
                     or D3DShaderInputType.UavRWStucturedWithCounter
                 && r.BindPoint == registerKey.Number))
             {
@@ -1074,12 +830,8 @@ public sealed class RegisterState
         throw new NotImplementedException();
     }
 
-    // A Shader Model 3 constant table gives every float-set struct member a register
-    // of its own: fxc packs nothing into a member's leftover components, so the
-    // register within an element names the member outright, and the register's own
-    // swizzle is the member's - there is nothing to rebase. Naming the member rather
-    // than swizzling the struct is what keeps `lights[1].color.xyz` from being
-    // written as `lights[4].xyz`, a field no struct has.
+    // SM3 gives every struct member its own register(s), so the register within the
+    // element names the member and its swizzle needs no rebasing.
     public bool TryGetConstantMember(
         RegisterComponentKey registerComponentKey, out StructMemberAccess member)
     {
@@ -1106,8 +858,7 @@ public sealed class RegisterState
         {
             return false;
         }
-        // The walk hands back a matrix whole. What is read here is the one register
-        // of it the key names, which is a row or a column.
+        // The walk returns a matrix whole; narrow to the register's row or column.
         if (member.IsMatrix)
         {
             member = MatrixRowOf(member, registerWithinElement);
@@ -1115,11 +866,7 @@ public sealed class RegisterState
         return true;
     }
 
-    /// <summary>
-    /// The row or column a register of a matrix member holds, as a member in its
-    /// own right - a vector of the width that row or column has, named the way
-    /// HLSL reaches it.
-    /// </summary>
+    /// <summary>The row or column one register of a matrix member holds, as a vector member.</summary>
     public static StructMemberAccess MatrixRowOf(
         StructMemberAccess matrix, int registerWithinElement)
     {
@@ -1130,9 +877,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Which member of an element of a struct array a register within the element
-    /// falls in, for an element picked at run time - `lights[i]` read as c[aL.x + 4]
-    /// where 4 is the register within the element.
+    /// For an element picked at run time: `lights[i]` read as c[aL.x + 4], where 4
+    /// is the register within the element.
     /// </summary>
     public static bool TryGetStructMemberAtRegister(
         ConstantDeclaration declaration,
@@ -1148,8 +894,7 @@ public sealed class RegisterState
         return TryGetD3D9MemberAtRegister(declaration.TypeInfo, element, registerWithinElement, out member);
     }
 
-    // The member occupying a register of an element, descending into a member that
-    // is a struct itself. The register alone picks it, since each member owns one.
+    // The register alone picks the member, since each owns its registers.
     private static bool TryGetD3D9MemberAtRegister(
         ShaderTypeInfo typeInfo, string name, int register, out StructMemberAccess member)
     {
@@ -1164,12 +909,7 @@ public sealed class RegisterState
                 int within = register - offset;
                 if (info.TypeInfo.MemberInfo != null)
                 {
-                    // A member that is an array of structs takes its element count of
-                    // elements, each as many registers as the struct: the register
-                    // picks the element, and what is left over picks the member within
-                    // it. Descending on the register as it stands names every element
-                    // after the first as though it were the first, and then runs off
-                    // the end of the members and names nothing at all.
+                    // Array of structs: pick the element, then descend on the remainder.
                     int perElement = registers / Math.Max(info.TypeInfo.NumElements, 1);
                     if (info.TypeInfo.NumElements > 1)
                     {
@@ -1178,11 +918,8 @@ public sealed class RegisterState
                     return TryGetD3D9MemberAtRegister(
                         info.TypeInfo, memberName, within % perElement, out member);
                 }
-                // A matrix is returned whole, the register within it left to the
-                // caller: a writer wants the one row or column the register holds,
-                // and the matrix multiplication grouper wants the matrix and where
-                // it starts, and a name already resolved to a row answers only the
-                // first of those.
+                // Returned whole: the grouper needs the matrix and where it starts;
+                // writers narrow it to a row themselves.
                 if (info.TypeInfo.Rows > 1)
                 {
                     int perMatrix = MatrixRegisterCount(info.TypeInfo);
@@ -1198,8 +935,6 @@ public sealed class RegisterState
                         memberName, info.TypeInfo, (offset + within / perMatrix * perMatrix) * 4);
                     return true;
                 }
-                // An array of scalars or vectors takes a register per element, and the
-                // register within the member says which element it reads.
                 if (info.TypeInfo.NumElements > 1)
                 {
                     memberName += $"[{within}]";
@@ -1213,11 +948,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The matrix member a constant register falls in, where the declaration is a
-    /// struct - the `.world` of `instances[id].world`, named from the element so
-    /// that two members of one struct are told apart, and which element it is. A
-    /// struct is what the declaration says for every one of its members, so what
-    /// is at the register is the only thing that answers this.
+    /// The struct's matrix member at a register (`.world` of `instances[id].world`)
+    /// and the element index.
     /// </summary>
     public bool TryGetStructMatrixAt(
         RegisterComponentKey key,
@@ -1251,10 +983,7 @@ public sealed class RegisterState
         return found && member.IsMatrix;
     }
 
-    /// <summary>
-    /// One register of a matrix is one column - or one row where it was packed by
-    /// row - so a matrix takes that many, and an array of them that many apiece.
-    /// </summary>
+    /// <summary>One register per column, or per row if row major.</summary>
     public static int MatrixRegisterCount(ShaderTypeInfo typeInfo)
     {
         return typeInfo.ParameterClass == ParameterClass.MatrixRows
@@ -1263,16 +992,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The row or column one register of a matrix holds, named. HLSL subscripts by
-    /// row whatever the packing, so a column - which is what a register holds
-    /// unless the matrix was packed by row - is reached through the transpose, and
-    /// a row must not be: `transpose(m)[i]` of a float4x3 has only three rows to
-    /// give and the fourth register of one asks for a subscript it has not got.
-    /// </summary>
-    /// <summary>
-    /// The row of a matrix a run of components is, where it is one row whole and in
-    /// order. A column major matrix keeps a row across four registers, a component of
-    /// each, which is how a preshader reads a row of one to multiply it by another.
+    /// The matrix row a run of components is, whole and in order; in a column major
+    /// matrix it spans registers, one component each (as preshaders read rows).
     /// </summary>
     public (string Matrix, int Row)? TryGetMatrixRow(IList<HlslTreeNode> components)
     {
@@ -1310,6 +1031,10 @@ public sealed class RegisterState
         return components.Count == columns ? (matrix, row) : null;
     }
 
+    /// <summary>
+    /// HLSL subscripts by row, so a column register is reached through transpose;
+    /// a row major register must not be.
+    /// </summary>
     public static string MatrixRegisterName(ShaderTypeInfo typeInfo, string name, int register)
     {
         return typeInfo.ParameterClass == ParameterClass.MatrixRows
@@ -1317,12 +1042,7 @@ public sealed class RegisterState
             : $"transpose({name})[{register}]";
     }
 
-    /// <summary>
-    /// A register read with the components taken off it. For a matrix register that
-    /// is not the name and the swizzle side by side - one component of a column is
-    /// an element, which HLSL subscripts twice - and for everything else it is the
-    /// name with the swizzle after it, as it always was.
-    /// </summary>
+    /// <summary>Name plus swizzle, except matrix registers (see MatrixRegisterComponents).</summary>
     public string GetRegisterComponents(RegisterComponentKey key, string swizzle)
     {
         return TryGetMatrixRegister(key.RegisterKey) is (ShaderTypeInfo typeInfo, string name, int register)
@@ -1331,15 +1051,9 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The matrix a constant register belongs to: its type, the matrix named -
-    /// carrying the element subscript where it is an array of them - and which of
-    /// its registers this is. Null where the register holds no matrix.
-    ///
-    /// RegisterIndex is the cbuffer itself, b0, and is the same for every variable
-    /// in it, so the row is the register's distance from where this variable starts,
-    /// which the reader records in bytes. An array of matrices gives every row a
-    /// register of its own, so the element and the row have to be separated: row 0
-    /// of bones[1] is register 4, not row 4 of something.
+    /// The matrix (with element subscript) a constant register belongs to and which
+    /// of its registers it is. For a cbuffer, RegisterIndex is the buffer, so the
+    /// offset comes from VariableOffset.
     /// </summary>
     private (ShaderTypeInfo TypeInfo, string Name, int Register)? TryGetMatrixRegister(
         RegisterKey registerKey)
@@ -1390,19 +1104,9 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// One register of a matrix with the components read off it. A single component
-    /// of a column is an element of the matrix, and HLSL subscripts an element
-    /// twice: `transpose(m)[1].x` and `m[0][1]` are the one register read - fxc
-    /// compiles both to `cb0[1].x` - and the second says it with no transpose to
-    /// read through and no swizzle letter to count. A column-major normal matrix
-    /// built from three cross products reads nine elements this way, and said the
-    /// long way round not one of them fits on a line.
-    ///
-    /// Only where one component is read. A slice of a column -
-    /// `transpose(m)[0].yz` - is two elements from two rows, and HLSL has no
-    /// subscript that takes them together. A matrix packed by row needs none of
-    /// this: its register is a row already, and `m[2].x` reads better than
-    /// `m[2][0]`.
+    /// One component of a column major register is written `m[0][1]` rather than
+    /// `transpose(m)[1].x`. Several components, or a row major register, keep the
+    /// swizzle form.
     /// </summary>
     public static string MatrixRegisterComponents(
         ShaderTypeInfo typeInfo, string name, int register, string swizzle)
@@ -1415,9 +1119,7 @@ public sealed class RegisterState
             : MatrixRegisterName(typeInfo, name, register) + swizzle;
     }
 
-    // How many registers a member takes. A leaf vector or scalar has one to itself
-    // and never shares it; a matrix, a struct or an array takes one per row, column,
-    // element or member, and an array multiplies the whole.
+    // In SM3 a scalar or vector member never shares its register.
     private static int GetD3D9MemberRegisterCount(ShaderTypeInfo typeInfo)
     {
         int elements = Math.Max(typeInfo.NumElements, 1);
@@ -1437,9 +1139,7 @@ public sealed class RegisterState
         return elements;
     }
 
-    // Which member of a struct a register component falls in, and how wide that
-    // member is. An element of `struct1 lights[2]` spans two registers, so the
-    // register alone names neither the element nor the member.
+    // The struct member a cbuffer register component falls in, and its width.
     private static bool TryGetStructMember(
         ConstantDeclaration declaration,
         D3D10RegisterKey registerKey,
@@ -1458,15 +1158,12 @@ public sealed class RegisterState
             return false;
         }
 
-        // The declaration's own count, which rounds a part-used register up: an
-        // element of 72 bytes takes five and not four. Truncated, the last register
-        // of an element counted as the first of the next, and everything in it was
-        // named after whichever member sits at the top of the struct.
+        // Rounds a part-used register up: a 72 byte element takes 5 registers.
         int registersPerElement = d3d10Declaration.RegistersPerElement;
         int registerOffset = registerKey.ConstantBufferOffset.Value
             - d3d10Declaration.VariableOffset / ConstantRegisterSizeInBytes;
         int elementIndex = registerOffset / registersPerElement;
-        // Where the component sits inside the element, counted in floats.
+        // In floats.
         int target = (registerOffset % registersPerElement) * 4 + componentIndex;
 
         string variable = declaration.TypeInfo.NumElements > 1
@@ -1477,14 +1174,12 @@ public sealed class RegisterState
         {
             return false;
         }
-        // A matrix member takes a row, or every row of it names the whole matrix -
-        // `dot(position, lights[1].shadowMatrix)` four times over.
+        // Narrow a matrix member to the row this register holds.
         if (access.IsMatrix)
         {
             int row = (target - access.StartOffset) / 4;
             element = access.MatrixRow(row);
             memberWidth = access.MatrixRowWidth;
-            // A row of a matrix begins a register of its own.
             return true;
         }
         element = access.Name;
@@ -1494,11 +1189,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The member of an element of a struct array that a register within the
-    /// element falls in, for an element picked at run time - `instances[id]` read
-    /// as cb0[r0.x + 5], where 5 is the register within the element. Says where
-    /// the member starts and what it is, so that a scalar prints without a swizzle
-    /// and a matrix member takes a row.
+    /// For an element picked at run time: `instances[id]` read as cb0[r0.x + 5],
+    /// where 5 is the register within the element.
     /// </summary>
     public static bool TryGetStructMemberAt(
         ConstantDeclaration declaration,
@@ -1529,11 +1221,8 @@ public sealed class RegisterState
                 string memberName = $"{name}.{info.Name}";
                 int elements = Math.Max(info.TypeInfo.NumElements, 1);
                 int elementStart = offset;
-                // An array member is named by element, and what the offset has left
-                // over addresses that element the way a lone one of its type would
-                // be addressed. Taken whole, every element reads as the first, and
-                // the member starts where the array does rather than where the
-                // element does - which is the component a swizzle is rebased onto.
+                // An array member starts where the element does, which is what a
+                // swizzle is rebased onto.
                 if (elements > 1)
                 {
                     int stride = width / elements;
@@ -1554,18 +1243,13 @@ public sealed class RegisterState
         return false;
     }
 
-    // How many floats a type occupies. A struct is the sum of its members, rounded
-    // up to a register, which is where a following member starts.
+    // Floats a type occupies in a cbuffer. A struct is rounded up to a register.
     private static int GetTypeWidth(ShaderTypeInfo typeInfo)
     {
         int elements = Math.Max(typeInfo.NumElements, 1);
         if (typeInfo.MemberInfo == null)
         {
-            // A matrix takes a whole register per column - per row where it was
-            // packed by row - and what it leaves of that register is its own
-            // padding and not the next member's. float3x4 is four registers and
-            // float4x3 is three, which the twelve floats they both hold say
-            // neither of.
+            // Whole registers per column (per row if row major), padding included.
             if (typeInfo.Rows > 1)
             {
                 int registers = typeInfo.ParameterClass == ParameterClass.MatrixRows
@@ -1574,11 +1258,7 @@ public sealed class RegisterState
                 return registers * 4 * elements;
             }
             int element = typeInfo.Rows * typeInfo.Columns;
-            // Every element of an array starts on a register, so `float2 pair[2]`
-            // takes two of them and not one: pair[1] is at .x of the second, not at
-            // .z of the first. Packed as though it were tight, everything after the
-            // array is read a register early - and the array's own last elements
-            // fall outside the type altogether, to be named as some other member.
+            // Each array element starts a register: `float2 pair[2]` takes two.
             return elements > 1 ? (element + 3) / 4 * 4 * elements : element;
         }
 
@@ -1590,8 +1270,6 @@ public sealed class RegisterState
         return (size + 3) / 4 * 4 * elements;
     }
 
-    // `float4 arr[4]` spans four registers under one declaration, so the element
-    // has to be named or every one of them reads as `arr`.
     private static string GetConstantBufferName(
         ConstantDeclaration declaration, D3D10RegisterKey registerKey)
     {
@@ -1605,8 +1283,7 @@ public sealed class RegisterState
         return $"{declaration.Name}[{registerKey.ConstantBufferOffset.Value - variableRegister}]";
     }
 
-    // How far a register sits past the start of the variable occupying it, in
-    // elements. cb0[r0.x + 1] against an array starting at register 1 is arr[r0.x].
+    // In registers: cb0[r0.x + 1] against an array at register 1 is arr[r0.x].
     public int GetConstantBufferElementOffset(
         D3D10RegisterKey registerKey, ConstantDeclaration declaration)
     {
@@ -1617,10 +1294,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Which component of its register a constant starts at. A constant buffer packs
-    /// several variables into one register, so a float3 declared after a float sits
-    /// at .yzw - and the swizzle naming it has to be rebased onto the variable, which
-    /// has components of its own starting at x.
+    /// Where a packed constant starts (a float3 after a float: 1), for rebasing its
+    /// swizzle.
     /// </summary>
     public int GetConstantComponentBase(RegisterComponentKey registerComponentKey)
     {
@@ -1636,12 +1311,7 @@ public sealed class RegisterState
         {
             return 0;
         }
-        // A struct is named by member, and its members are packed into a register
-        // the way plain variables are: a float2 and a float share one, and a read
-        // across the two of them is a read of two members. Answering 0 for all of
-        // them made the register look like one variable, and the swizzle of the
-        // whole read went onto the first member - `o.i.a.xyz` off the end of a
-        // float2.
+        // Struct members are packed like plain variables; rebase onto the member.
         if (declaration.TypeInfo.ParameterClass == ParameterClass.Struct)
         {
             return TryGetStructMember(declaration, registerKey,
@@ -1654,12 +1324,8 @@ public sealed class RegisterState
         {
             return 0;
         }
-        // A double takes two components, so a double vector spills into the next
-        // register: a double4 is cb0[0].xyzw and cb0[1].xyzw. Read as an offset
-        // within one register the base would put the second register's components
-        // back at the start of the declaration - `a.x` where `a.z` was meant - so
-        // it is taken from the register actually being read and counts back over
-        // the registers the declaration has already filled.
+        // A double vector spills into the next register (double4 is cb0[0..1].xyzw),
+        // so the base counts back from the register being read; it may be negative.
         if (declaration.TypeInfo.ParameterType == ParameterType.Double)
         {
             return (d3d10.VariableOffset
@@ -1668,12 +1334,7 @@ public sealed class RegisterState
         return d3d10.VariableOffset % ConstantRegisterSizeInBytes / 4;
     }
 
-    /// <summary>
-    /// How many register components one element of the declaration takes: two for a
-    /// double and one for everything else. A swizzle names elements where the key
-    /// counts components, and for doubles the two are not the same thing - the second
-    /// element of a double2 is at .zw, and is `.y`.
-    /// </summary>
+    /// <summary>2 for a double (double2's .y is at .zw), else 1.</summary>
     public int GetConstantComponentsPerElement(RegisterComponentKey registerComponentKey)
     {
         if (registerComponentKey.RegisterKey is not D3D10RegisterKey registerKey
@@ -1741,24 +1402,15 @@ public sealed class RegisterState
 
     private string _outputVariableName;
 
-    /// <summary>
-    /// What the output struct is called. Normally "o", unless the shader already has
-    /// something by that name - a constant buffer called o shadowed it, and every
-    /// read of one of its members stopped compiling.
-    /// </summary>
+    /// <summary>"o", unless a global already has that name.</summary>
     public string OutputVariableName => _outputVariableName ??= UnusedName("o");
 
-    /// <summary>
-    /// Whether the outputs are written through a struct rather than as the one value
-    /// the method returns. A geometry shader always is: it writes its vertices
-    /// through the stream, so `o` is a GS_OUT however few members it has.
-    /// </summary>
+    /// <summary>A geometry shader always writes a struct to its stream.</summary>
     public bool HasOutputStruct =>
         MethodOutputRegisters.Count > 1 || _shaderModel.Type == ShaderType.Geometry;
 
     private string _inputVariableName;
 
-    /// <summary>What the input struct is called, on the same terms.</summary>
     public string InputVariableName => _inputVariableName ??= UnusedName("i");
 
     private string UnusedName(string preferred)
@@ -1794,9 +1446,7 @@ public sealed class RegisterState
             var decl = RegisterDeclarations[registerKey];
             switch (d3D9RegisterKey.Type)
             {
-                // A ps_2_0 texture register is an input like any other and is
-                // registered as one, so it is named through the input struct on the
-                // same terms rather than bare.
+                // A ps_2_0 texture register is an ordinary input.
                 case RegisterType.Texture:
                 case RegisterType.Input:
                 case RegisterType.MiscType:
@@ -1809,10 +1459,6 @@ public sealed class RegisterState
                     var constDecl = FindConstant(registerKey);
                     if (constDecl.TypeInfo.Rows == 1)
                     {
-                        // Each element of `float4 m[4]` gets its own register, so the
-                        // element has to be named - every one of them read as `m`. A
-                        // struct spans several registers per element, so the register
-                        // counts elements times registers rather than elements alone.
                         if (constDecl.TypeInfo.NumElements > 1)
                         {
                             int element = (registerKey.Number - constDecl.RegisterIndex)
@@ -1821,10 +1467,6 @@ public sealed class RegisterState
                         }
                         return constDecl.Name;
                     }
-                    // A matrix takes a register per column, or per row where it was
-                    // packed by row, and an array of them that many apiece - so the
-                    // element and the register within it have to be separated the
-                    // same way the constant buffer side does it.
                     (ShaderTypeInfo d3d9Matrix, string d3d9Name, int d3d9Register) =
                         TryGetMatrixRegister(registerKey).Value;
                     return MatrixRegisterName(d3d9Matrix, d3d9Name, d3d9Register);
@@ -1863,9 +1505,7 @@ public sealed class RegisterState
                     return d3d10RegisterKey.Number.ToString();
                 case OperandType.Input:
                     var decl = RegisterDeclarations[registerKey];
-                    // A geometry shader reads through the vertex array however few
-                    // registers the input struct holds, so this comes before the
-                    // single-input shortcut rather than after it.
+                    // Before the single-input shortcut: GS always reads the vertex array.
                     if (d3d10RegisterKey.GSVertex.HasValue)
                     {
                         return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
@@ -1879,15 +1519,9 @@ public sealed class RegisterState
                 case OperandType.InputThreadGroupID:
                 case OperandType.InputThreadIDInGroup:
                 case OperandType.InputThreadIDInGroupFlattened:
-                // Read the way the thread ids are: a named register, in the input
-                // struct beside the others once there is more than one.
                 case OperandType.InputCoverageMask:
-                // And the rasterizer's answer to whether it covered the whole
-                // pixel, read the same way.
                 case OperandType.InputInnerCoverage:
                     {
-                        // In the input structure with every other input once there
-                        // is more than one of them.
                         string threadName = RegisterDeclarations[registerKey].Name;
                         return MethodInputRegisters.Count == 1 ? threadName : "i." + threadName;
                     }
@@ -1896,9 +1530,7 @@ public sealed class RegisterState
                 case OperandType.InputDomainPoint:
                 case OperandType.OutputControlPointID:
                     return RegisterDeclarations[registerKey].Name;
-                // A field of the struct the hull shader filled in. The tessellation
-                // factors are one array over several registers, so the name comes
-                // from the signature rather than from the register.
+                // Named from the signature: tess factors are one array over registers.
                 case OperandType.InputPatchConstant:
                     {
                         RegisterSignature signature =
@@ -1906,19 +1538,12 @@ public sealed class RegisterState
                         string field = signature == null
                             ? RegisterDeclarations[registerKey].Name
                             : PatchConstants.Reference(signature, _shaderModel.PatchConstantSignatures);
-                        // A domain shader is handed these in a parameter; a hull
-                        // shader is computing them, and reads back the struct it is
-                        // filling. A join phase reading vpc6 is reading what a fork
-                        // phase wrote to o6 a few lines up, and naming it after the
-                        // domain shader's parameter named something this shader has
-                        // not got.
+                        // A hull shader's join phase reads back the struct it is filling.
                         string holder = _shaderModel.Type == ShaderType.Hull
                             ? OutputVariableName
                             : PatchConstants.ParameterName;
                         return $"{holder}.{field}";
                     }
-                // A control point of the patch, read the way a geometry shader
-                // reads a vertex of its primitive.
                 case OperandType.InputControlPoint:
                     return $"patch[{d3d10RegisterKey.GSVertex}]."
                         + RegisterDeclarations[registerKey].Name;
@@ -1946,7 +1571,6 @@ public sealed class RegisterState
                             or D3DShaderInputType.UavRWStucturedWithCounter)
                         .First(d => d.BindPoint == registerKey.Number)
                         .Name;
-                // Groupshared memory has no reflection entry to take a name from.
                 case OperandType.ThreadGroupSharedMemory:
                     return GroupSharedName(registerKey.Number);
                 default:
@@ -1962,12 +1586,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The variable a component of a register is, by its byte offset where several
-    /// variables share the register, and by the register otherwise - a shader
-    /// model 3 constant, or a read through a register index, which has no offset to
-    /// ask by. Asked by register alone, a uint packed after a float3 was taken for
-    /// the float, and `uint a; int b;` in one register made b a uint; both writers
-    /// had a copy of that mistake.
+    /// By component where variables share a register, else by register (SM3, or
+    /// a relative read).
     /// </summary>
     public ConstantDeclaration FindConstantOfComponent(RegisterComponentKey registerComponent)
     {
@@ -1977,11 +1597,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// What a register component is declared to hold, where something declares it:
-    /// a constant buffer variable by its own type, a signature register by the
-    /// component type the signature gives, and a thread or group id, which is a
-    /// uint without being declared anything. Unknown for a temp, whose type is the
-    /// writer's to decide, and for anything else nothing declares.
+    /// From the constant or signature declaration; thread ids are uint. Unknown for
+    /// temps and anything undeclared.
     /// </summary>
     public DeclaredType GetDeclaredType(RegisterComponentKey registerComponent)
     {
@@ -2012,11 +1629,7 @@ public sealed class RegisterState
         return DeclaredType.Unknown;
     }
 
-    /// <summary>
-    /// The member of a groupshared element a byte offset reaches, or null where the
-    /// register is not groupshared memory or its element fits in one register,
-    /// which is every one that is named without a member.
-    /// </summary>
+    /// <summary>Null unless groupshared memory wider than one register.</summary>
     public (string Name, int Components, int ComponentBase)? ThreadGroupSharedMember(
         RegisterKey resourceKey, int byteOffset)
     {
@@ -2042,12 +1655,7 @@ public sealed class RegisterState
 
     private string _temporaryPrefix;
 
-    /// <summary>
-    /// What a named temporary is called. `t` unless the shader has something of its
-    /// own by that name and a number - `sampler2D t0` is a natural name for one,
-    /// matching the register it binds to - in which case the temporary would shadow
-    /// it and `tex2D(t0, uv)` would be passing a float4 where a sampler goes.
-    /// </summary>
+    /// <summary>"t", unless a global is named t + digits (e.g. `sampler2D t0`).</summary>
     public string TemporaryPrefix
     {
         get
@@ -2087,12 +1695,7 @@ public sealed class RegisterState
                 int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * RegisterSize;
                 ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d =>
                 {
-                    // Never a texture buffer's variable. It binds to a t register and
-                    // is read with ld, so it shares no register space with a cb
-                    // operand - but it keeps a register index all the same, and a
-                    // tbuffer at t0 beside an unnumbered cbuffer at b0 answered for
-                    // cb0's variables: `idx` and `dir` came out as `entries[0].x` and
-                    // `entries[0].yzw`, off the tbuffer's array.
+                    // A tbuffer variable has a register index too, but binds to t#.
                     if (d is D3D10ConstantDeclaration { IsTextureBuffer: true })
                     {
                         return false;
@@ -2101,21 +1704,13 @@ public sealed class RegisterState
                     {
                         return false;
                     }
-                    // Anywhere in the register, not only at the start of it. A
-                    // packoffset can put a variable part of the way in - `float2 b :
-                    // packoffset(c0.z)` begins eight bytes up, with nothing in front
-                    // of it - and looking for the one covering the register's first
-                    // byte found none and threw. Where several share the register the
-                    // first is taken, as before; which of them a component belongs to
-                    // is asked elsewhere, of the component.
+                    // Overlapping the register anywhere: packoffset(c0.z) starts mid-way.
+                    // The first of several is taken; per component, see the overload.
                     var constant = d as D3D10ConstantDeclaration;
                     return constant.VariableOffset < expectedOffset + RegisterSize
                         && expectedOffset < constant.VariableOffset + constant.VariableSize;
                 });
-                // A register of the buffer that no variable is in: a packoffset can
-                // leave one empty, and the declaration walks every register the
-                // buffer has. Nothing is there to name, which the callers all ask
-                // about rather than assume, so it is answered rather than thrown.
+                // Null for a register packoffset left empty; callers handle it.
                 return declaration;
             }
             return null;
@@ -2123,8 +1718,7 @@ public sealed class RegisterState
         return FindConstant(registerKey as D3D9RegisterKey);
     }
 
-    // Byte offset of a single component within the constant buffer, rather than of
-    // the whole register, so packed scalars resolve to the right declaration.
+    // By component, so packed scalars resolve to the right declaration.
     public ConstantDeclaration FindConstant(D3D10RegisterKey registerKey, int componentIndex)
     {
         if (registerKey.OperandType != OperandType.ConstantBuffer
@@ -2158,16 +1752,14 @@ public sealed class RegisterState
             return null;
         }
 
-        // Register numbers are per set: sampler s0 and constant c0 are different
-        // registers that share an index, so the set has to match as well.
+        // Register numbers are per set: s0 and c0 differ.
         return ConstantDeclarations.FirstOrDefault(c =>
             c is D3D9ConstantDeclaration declaration
             && declaration.RegisterSet == registerSet
             && declaration.ContainsIndex(registerKey.Number));
     }
 
-    // Remembers that a def is read through a0 or aL, which is the only thing that
-    // distinguishes an array of literals from constants the parser folds in place.
+    // A def read through a0 or aL is a literal array rather than a folded constant.
     public void MarkIndexedConstant(RegisterKey registerKey)
     {
         if (registerKey is D3D9RegisterKey d3D9RegisterKey
@@ -2198,9 +1790,8 @@ public sealed class RegisterState
             byIndex[definition.RegisterIndex] = definition;
         }
 
-        // The subscripted register is element zero of the array as far as the
-        // bytecode shows, but a constant offset folded into the index would put it
-        // mid-array, so the run is walked backwards as well as forwards.
+        // A constant offset folded into the index may put the subscripted register
+        // mid-array, so walk backwards to the run's start.
         var starts = new SortedSet<int>();
         foreach (int indexed in _indexedConstants)
         {
@@ -2229,7 +1820,6 @@ public sealed class RegisterState
         return arrays;
     }
 
-    /// <summary>What groupshared memory declared at this register is called.</summary>
     public string GroupSharedName(int register)
     {
         return $"{LocalNamePrefix}g{register}";
@@ -2253,11 +1843,8 @@ public sealed class RegisterState
     {
         if (registerKey.IsConstant)
         {
-            // Several variables can share one 16-byte register - `float a, b` both
-            // live in cb0[0], at .x and .y - so every declaration whose bytes fall in
-            // the slot matters, not just the first. Matching on the declaration's
-            // Offset does not work: the reader sets it to the variable's index within
-            // the buffer, not to a register slot.
+            // Every variable packed into the register. Offset is the variable's index
+            // in the buffer, not a register, so VariableOffset is used.
             foreach (D3D10ConstantDeclaration declaration in _shaderModel.ConstantDeclarations
                 .Where(d => d.RegisterIndex == registerKey.Number
                     && d.VariableOffset / ConstantRegisterSizeInBytes == registerKey.ConstantBufferOffset))
@@ -2282,12 +1869,7 @@ public sealed class RegisterState
         RegisterDeclarations.Add(registerKey, registerDeclaration);
     }
 
-    /// <summary>
-    /// The declaration a texture operand names, read only or writable. t and u
-    /// registers number separately, so which of the two a bind point means has to
-    /// come from the register rather than the number: `t0` and `u0` are two
-    /// resources, and looking only among the read only ones found neither.
-    /// </summary>
+    /// <summary>t and u registers number separately; the operand type picks which.</summary>
     public ResourceDefinition GetTextureDefinition(RegisterKey registerKey)
     {
         bool isUav = registerKey is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
@@ -2298,37 +1880,23 @@ public sealed class RegisterState
                     : d.ShaderInputType is D3DShaderInputType.Texture));
     }
 
-    /// <summary>
-    /// How many coordinates address one texel of a resource - two for a Texture2D,
-    /// three for a Texture3D or a Texture2DArray.
-    /// </summary>
     public int GetResourceDimensionSize(RegisterKey registerKey)
     {
         return GetTextureDefinition(registerKey).GetDimensionSize();
     }
 
     /// <summary>
-    /// How many components of an interlocked operation's address operand name what
-    /// it works on. A typed texture is addressed by a coordinate, as wide as it has
-    /// dimensions; a structured buffer takes an element and a byte offset within it,
-    /// a raw one a byte offset alone, and groupshared memory an element and an
-    /// offset - one component each, the second being no part of the subscript.
+    /// Subscript components of an atomic's address: a typed UAV's dimension count,
+    /// else 1 (the byte offset of structured or groupshared memory is not part of it).
     /// </summary>
     public int GetAtomicAddressWidth(RegisterKey resourceKey)
     {
         return FindTypedUavView(resourceKey)?.GetDimensionSize() ?? 1;
     }
 
-    /// <summary>
-    /// The typed unordered access view a register names, and null when it is a
-    /// structured buffer, a raw one, or groupshared memory - which are none of them
-    /// views of a texture format.
-    /// </summary>
     private ResourceDefinition FindTypedUavView(RegisterKey resourceKey)
     {
-        // By the kind of register as well as its number: groupshared memory is g0
-        // and a typed view u0, both number zero, and the one is addressed by an
-        // element while the other is addressed by a coordinate.
+        // Check the kind: groupshared g0 and u0 share a number.
         if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView })
         {
             return null;
@@ -2338,10 +1906,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Notes that an interlocked operation writes a view. HLSL has none over more
-    /// than a scalar, so the element of such a view is one number - see <see
-    /// cref="ResourceDefinition.ReadWriteAtomicTypeName"/> - and it is declared as
-    /// one.
+    /// Such a view is declared with a scalar element; see
+    /// <see cref="ResourceDefinition.ReadWriteAtomicTypeName"/>.
     /// </summary>
     public void DeclareAtomicTarget(RegisterKey resourceKey)
     {
@@ -2359,12 +1925,8 @@ public sealed class RegisterState
 
     public void DeclareResource(D3D10RegisterKey registerKey, ResourceDimension resourceDimension, int resourceReturnType, int sampleCount = 0)
     {
-        // A texture buffer declares itself the same way a texture does, with a
-        // dcl_resource_buffer, and is told apart only by the binding calling it a
-        // tbuffer. Its variables are never read as constant registers, so nothing
-        // else would ever bring them in.
-        // t and u registers number separately, so which of the two the declaration
-        // is for has to come from the register rather than from the bind point.
+        // A tbuffer declares like a texture; only the binding tells. Its variables
+        // are never read as cb registers, so they are added here.
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => registerKey.OperandType == OperandType.UnorderedAccessView
                 ? d.ShaderInputType is D3DShaderInputType.UavRWTyped
@@ -2387,13 +1949,9 @@ public sealed class RegisterState
         }
     }
 
-    // How wide one element of a structured buffer is, in components. The
-    // declaration gives it in bytes, so a StructuredBuffer<float4> fills a register
-    // and a StructuredBuffer<float> is one component. Anything wider than a
-    // register cannot be addressed as one, so it is capped there.
+    // Element width in components, from the byte stride, capped at 4.
     private readonly Dictionary<RegisterKey, int> _structuredBufferComponents = [];
 
-    // The declaration writer has a ResourceDefinition rather than a register key.
     public int GetStructuredBufferComponents(D3DShaderInputType shaderInputType, int bindPoint)
     {
         OperandType operandType = shaderInputType == D3DShaderInputType.UavRWStructured
@@ -2436,8 +1994,7 @@ public sealed class RegisterState
         }
     }
 
-    // A raw buffer has no stride: it is read and written by byte offset, so many
-    // dwords at a time. Four components, since a load can take up to four.
+    // No stride; 4 components, the most one load reads.
     public void DeclareRawBuffer(D3D10RegisterKey registerKey)
     {
         DeclareStructuredStride(registerKey, 16);
@@ -2454,12 +2011,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// The members a groupshared element is written as, where it is wider than one
-    /// register. Nothing describes it - groupshared memory has no reflection entry, so
-    /// the stride is all there is to go on - and the only shape that fits any stride is
-    /// as many whole registers as it holds and then whatever is left over: twenty bytes
-    /// is a four wide member and a scalar. Each is named for where it starts, so the
-    /// byte offset a load or a store asks for picks one of them.
+    /// Groupshared memory has no reflection, so a wide element is split into whole
+    /// registers plus the remainder (20 bytes: a float4 and a float), named by offset.
     /// </summary>
     public static IList<(string Name, int ByteOffset, int Components)> ThreadGroupSharedMembers(int stride)
     {
@@ -2472,10 +2025,6 @@ public sealed class RegisterState
         return members;
     }
 
-    /// <summary>
-    /// The member a byte offset into a groupshared element reaches, and which of its
-    /// components the offset starts at.
-    /// </summary>
     public static (string Name, int Components, int ComponentBase)? ThreadGroupSharedMemberAt(
         int stride, int byteOffset)
     {
@@ -2489,8 +2038,6 @@ public sealed class RegisterState
         return null;
     }
 
-    // The type name a groupshared element of several members is declared as. Named
-    // after the register, there being nothing else to name it after.
     public static string ThreadGroupSharedElementType(int register)
     {
         return $"G{register}Element";
@@ -2508,18 +2055,8 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Whether this groupshared register is one variable rather than an array, which
-    /// is what fxc's raw storage means and how HLSL says it: a groupshared variable
-    /// that is not an array is declared raw, and one that is, structured - measured
-    /// 2026-10-09 over a scalar, a vector, a matrix, a struct and arrays of one and
-    /// four elements. So raw groupshared memory is not undeclarable, which is what
-    /// the parser and two KnownDifferences entries used to say; it is declared by
-    /// leaving the subscript off.
-    ///
-    /// Only where the whole of it is one register component's worth. A wider raw
-    /// variable is a vector, a matrix or a struct, and the array of four byte
-    /// elements is still how this writes those - every raw declaration in the corpus
-    /// is four bytes, a counter or a bound being the thing a shader keeps this way.
+    /// fxc declares a non-array groupshared variable raw, an array structured, so a
+    /// raw 4-byte one is written without a subscript. Wider raw ones stay arrays.
     /// </summary>
     public bool IsGroupSharedScalar(int register)
     {
@@ -2537,10 +2074,6 @@ public sealed class RegisterState
             && IsGroupSharedScalar(key.Number);
     }
 
-    /// <summary>
-    /// What a groupshared access names: the element of the array, or the variable
-    /// itself where it was not declared as one.
-    /// </summary>
     public string GroupSharedElementReference(RegisterKey registerKey, string name, string index)
     {
         return IsGroupSharedScalar(registerKey) ? name : $"{name}[{index}]";
@@ -2549,9 +2082,7 @@ public sealed class RegisterState
     public void DeclareUnorderedAccessView(D3D10RegisterKey registerKey, uint stride)
     {
         DeclareStructuredStride(registerKey, stride);
-        // An append buffer, a consume buffer and one with a counter all declare
-        // themselves dcl_uav_structured; which of the four it is, only the binding
-        // says.
+        // Append, consume and counter buffers all declare dcl_uav_structured.
         ResourceDefinition definition = _shaderModel.ResourceDefinitions
             .Where(d => d.ShaderInputType is D3DShaderInputType.UavRWStructured
                 or D3DShaderInputType.UavAppendStructured
@@ -2612,8 +2143,7 @@ public sealed class RegisterState
                 instruction.GetDestinationResultModifier());
             RegisterDeclarations.Add(registerKey, registerDeclaration);
 
-            // A ps_2_0 texture register is an input like any other; it just carries
-            // its semantic in the register number.
+            // A ps_2_0 texture register is an ordinary input.
             if (registerKey.Type == RegisterType.Input
                 || registerKey.Type == RegisterType.MiscType
                 || registerKey.Type == RegisterType.Texture)
@@ -2670,10 +2200,7 @@ public sealed class RegisterState
 
     public void DeclareDestinationRegister(D3D10Instruction instruction)
     {
-        // The _sgv forms declare system-generated values - vertex_id, instance_id,
-        // is_front_face. Leaving them out meant they never reached the input
-        // registers, so they went unnamed, undeclared and missing from the
-        // signature, and fell back on the SV_Target default.
+        // The _sgv forms declare system-generated values (vertex_id, is_front_face...).
         if (instruction.Opcode == D3D10Opcode.DclInput ||
             instruction.Opcode == D3D10Opcode.DclInputPS ||
             instruction.Opcode == D3D10Opcode.DclInputPSSgv ||
@@ -2694,10 +2221,7 @@ public sealed class RegisterState
 
                     if (RegisterDeclarations.TryGetValue(vertexKey, out var existingDeclaration))
                     {
-                        // Packed the way a pixel shader's inputs are packed, below:
-                        // `float3 position; float life;` is v[0][0].xyz and
-                        // v[0][0].w, two dcl_inputs and two semantics, and merging
-                        // the masks made one float4 position whose w was the life.
+                        // Packed inputs, as below.
                         RegisterDeclaration candidate = CreateRegisterDeclarationFromD3D10Dcl(instruction, vertexKey);
                         if (candidate.Semantic != existingDeclaration.Semantic)
                         {
@@ -2723,26 +2247,16 @@ public sealed class RegisterState
             {
                 if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
                 {
-                    // fxc packs interpolators as tightly as constants: TEXCOORD0 can be
-                    // v2.xy and TEXCOORD1 v2.z, each declared by its own dcl_input_ps.
-                    // Only widen the existing field when this dcl names the same thing;
-                    // otherwise it is a second field sharing the register, and needs a
-                    // declaration - and an input struct field - of its own.
-                    // Outputs pack the same way and were left out of this, so a
-                    // vertex shader writing TEXCOORD0 to o1.xy and TEXCOORD1 to o1.z
-                    // declared one float3 and lost the second semantic.
+                    // Inputs and outputs are packed (TEXCOORD0 at v2.xy, TEXCOORD1 at
+                    // v2.z); a different semantic is a second field of its own.
                     RegisterDeclaration candidate = registerKey.OperandType is OperandType.Input or OperandType.Output
                         ? CreateRegisterDeclarationFromD3D10Dcl(instruction, registerKey)
                         : null;
                     if (candidate != null && candidate.Semantic != existingDeclaration.Semantic)
                     {
-                        // candidate.WriteMask does not start at x, so the usual
-                        // highest-bit-plus-one width would count the other
-                        // declaration's components as its own.
+                        // Neither starts at x necessarily, so count bits rather than
+                        // taking the highest bit plus one.
                         candidate.MaskedLengthOverride = CountSetBits(candidate.WriteMask);
-                        // And the one already there is as wide as its own components
-                        // too: a write of o2.xy covering both would otherwise widen
-                        // the first of them over the second.
                         existingDeclaration.MaskedLengthOverride =
                             CountSetBits(existingDeclaration.WriteMask);
                         if (registerKey.OperandType == OperandType.Input)
@@ -2771,44 +2285,27 @@ public sealed class RegisterState
                         case OperandType.InputThreadGroupID:
                         case OperandType.InputThreadIDInGroup:
                         case OperandType.InputThreadIDInGroupFlattened:
-                        // Where in the patch this run is, which is a parameter of
-                        // main beside the patch itself.
                         case OperandType.InputDomainPoint:
-                        // The coverage the rasterizer handed this pixel: read per
-                        // pixel, so a parameter of main like the thread ids.
                         case OperandType.InputCoverageMask:
-                        // Whether the rasterizer covered the whole pixel, read
-                        // per pixel the same way.
                         case OperandType.InputInnerCoverage:
-                        // Which control point this run computes, which is a
-                        // parameter of main beside the patch.
                         case OperandType.OutputControlPointID:
                             MethodInputRegisters.Add(registerDeclaration);
                             break;
-                        // A field of the patch constant struct, which is written
-                        // from the signature chunk rather than from what is read.
                         case OperandType.InputPatchConstant:
                             PatchConstantRegisters.Add(registerDeclaration);
                             break;
-                        // Per primitive rather than per vertex, so not a field of the
-                        // vertex struct: a parameter of main of its own.
+                        // Per primitive (and per GS instance), not per vertex: own parameters.
                         case OperandType.InputPrimitiveID:
                             PrimitiveIdDeclaration = registerDeclaration;
                             break;
-                        // And so is the instance number, which is per run of the
-                        // shader rather than per vertex of the primitive.
                         case OperandType.InputGSInstanceID:
                             GSInstanceIdDeclaration = registerDeclaration;
                             break;
                         case OperandType.Output:
-                        // A depth output is written like any other, and naming no
-                        // register does not make it less of one.
                         case OperandType.OutputDepth:
                         case OperandType.OutputDepthGreaterEqual:
                         case OperandType.OutputDepthLessEqual:
-                        // And a coverage mask names none either.
                         case OperandType.OutputCoverageMask:
-                        // Nor does the stencil reference it writes out.
                         case OperandType.OutputStencilRef:
                             MethodOutputRegisters.Add(registerDeclaration);
                             break;
@@ -2824,13 +2321,9 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// dcl_indexrange says a run of input registers is one array, indexed at run
-    /// time. Each of them has been declared separately by a dcl_input of its own,
-    /// and HLSL writes the run as one parameter - `float4 texcoord[4] : TEXCOORD`,
-    /// whose elements take the consecutive semantics those declarations carry. So
-    /// the first keeps its declaration and grows a length, and the rest stop being
-    /// parameters of their own. They stay in RegisterDeclarations, since an
-    /// instruction reading one by name still has to find it.
+    /// dcl_indexrange makes a run of inputs one array (`float4 texcoord[4] : TEXCOORD`):
+    /// the first grows a length, the rest stop being parameters but stay in
+    /// RegisterDeclarations for reads by name.
     /// </summary>
     public void DeclareIndexRange(D3D10Instruction instruction)
     {
@@ -2856,10 +2349,7 @@ public sealed class RegisterState
     {
         if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
         {
-            // Not where the register carries more than one declaration: a write of
-            // o2.xy covering a SV_ClipDistance at x and a SV_CullDistance at y would
-            // widen the first over the second, and every component would then be
-            // found in the first.
+            // Not for a packed output: widening the first would swallow the others.
             if (!registerKey.IsOutput
                 || MethodOutputRegisters.Count(d => d.RegisterKey.Equals(registerKey)) <= 1)
             {
@@ -2962,15 +2452,12 @@ public sealed class RegisterState
     }
 
     /// <summary>
-    /// Whether the signature element describes this register. A geometry shader's
-    /// streams have a signature each and both call their registers o0 upwards, so the
-    /// stream is part of which element a register is - and a register carries none
-    /// where the shader has one stream, which is the same question as stream zero.
+    /// GS streams each number their registers from o0, so the stream must match; a
+    /// register without one is stream 0.
     /// </summary>
     private static bool MatchesSignature(RegisterSignature signature, D3D10RegisterKey registerKey)
     {
-        // A control point a patch constant phase reads back is one the control
-        // point phase wrote, so it is in the output signature.
+        // Control points read back by the patch constant phase are in the output signature.
         bool sameType = registerKey.OperandType == OperandType.OutputControlPoint
             ? signature.RegisterKey.OperandType == OperandType.Output && !signature.IsPatchConstant
             : signature.RegisterKey.OperandType == registerKey.OperandType;
@@ -2982,10 +2469,7 @@ public sealed class RegisterState
     private RegisterDeclaration CreateRegisterDeclarationFromD3D10Dcl(D3D10Instruction instruction, D3D10RegisterKey registerKey)
     {
         registerKey = registerKey.GetGSBaseKey();
-        // fxc can pack two differently named inputs into one register - TEXCOORD0 at
-        // v2.xy and TEXCOORD1 at v2.z - each declared by its own dcl_input_ps. Match
-        // on the mask this dcl actually declares, not just the register, so the two
-        // resolve to their own signatures instead of both finding whichever is first.
+        // Match on the declared mask too, so packed inputs find their own signatures.
         int declaredMask = instruction.GetDestinationWriteMask();
         IEnumerable<RegisterSignature> signatures = _shaderModel.InputSignatures
             .Concat(_shaderModel.OutputSignatures)
@@ -3006,29 +2490,19 @@ public sealed class RegisterState
                 ComponentType = signature.ComponentType,
                 InterpolationMode = instruction.GetInterpolationMode(),
             };
-            // A declaration that does not start at the register's x is packed above
-            // something else, whether or not this program declared that something:
-            // `float thickness` at v0.w is one component, and the highest-bit-plus-one
-            // width made it four and read it as `thickness.x` off a float. A hull
-            // shader's patch constant phase reads just such a lone register - it
-            // declares the control point components it uses and no others - which is
-            // where this showed.
+            // Not starting at x means packed above something, declared here or not
+            // (`float thickness` at v0.w is one component).
             if ((signature.Mask & 1) == 0)
             {
                 declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
             }
-            // A patch constant register is packed with the tessellation factors as a
-            // matter of course - a float3 lands in a register's yzw because a factor
-            // has its x - so its width is the count of its own components rather
-            // than the highest one it reaches.
+            // Patch constants pack around the tessellation factors.
             if (registerKey.OperandType == OperandType.InputPatchConstant)
             {
                 declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
                 declaration.PatchConstantSignature = signature;
             }
-            // And a hull shader writes the same registers, packed the same way. It
-            // names them the same way too: the field of the struct it returns,
-            // subscript and all, rather than the semantic of the one register.
+            // The hull shader writes them, named as fields of the struct it returns.
             if (signature.IsPatchConstant && registerKey.OperandType == OperandType.Output)
             {
                 declaration.MaskedLengthOverride = CountSetBits(signature.Mask);
@@ -3039,9 +2513,7 @@ public sealed class RegisterState
             return declaration;
         }
 
-        // A depth output is one component, and so is SV_GroupIndex, the flattened
-        // thread id; the 4 is a guess for everything else - it happens to make the
-        // three-wide thread ids three wide.
+        // 4 is a guess for everything else.
         bool isScalar = registerKey.OperandType == OperandType.OutputDepth
             || registerKey.OperandType == OperandType.OutputDepthGreaterEqual
             || registerKey.OperandType == OperandType.OutputDepthLessEqual
@@ -3052,23 +2524,16 @@ public sealed class RegisterState
             || registerKey.OperandType == OperandType.InputThreadIDInGroupFlattened
             || registerKey.OperandType == OperandType.InputPrimitiveID
             || registerKey.OperandType == OperandType.InputGSInstanceID
-            // Which control point of the patch this run of a hull shader's control
-            // point phase is computing: one number, and an unsigned one.
             || registerKey.OperandType == OperandType.OutputControlPointID;
-        // A domain location is two components on a quad and three on a triangle,
-        // and its dcl says which - `dcl_input vDomain.xy` - where the 4 below would
-        // make every one of them three wide.
+        // vDomain is 2 wide on a quad, 3 on a triangle; the dcl mask says which.
         int writeMask = registerKey.OperandType == OperandType.InputDomainPoint
             ? instruction.GetDestinationWriteMask()
             : isScalar ? 1 : 4;
-        // SV_Coverage is a uint. The signature says so too, but keys it to register
-        // -1, which is why the lookup above did not find it.
+        // uints the signature keys to register -1, so the lookup above misses them.
         const int UInt32ComponentType = 1;
         int componentType =
             registerKey.OperandType == OperandType.OutputCoverageMask
             || registerKey.OperandType == OperandType.InputCoverageMask
-            // A stencil reference and an inner coverage are uints too, and
-            // keyed to no register in the signature for the same reason.
             || registerKey.OperandType == OperandType.OutputStencilRef
             || registerKey.OperandType == OperandType.InputInnerCoverage
             || registerKey.OperandType == OperandType.OutputControlPointID

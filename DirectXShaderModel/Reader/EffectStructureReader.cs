@@ -7,11 +7,9 @@ using System.Text;
 namespace HlslDecompiler.DirectXShaderModel;
 
 /// <summary>
-/// The structured part of an fx_4_x or fx_5_0 effect body, read in the order the
-/// runtime loads it: the constant buffers with their variables, the object
-/// variables, then the groups - or for fx_4_x, which has none, the techniques - with
-/// their passes. Each record names what it is by offsets into the unstructured
-/// data that comes before it, where the strings, types, values and shaders are.
+/// The structured part of an fx_4_x/fx_5_0 body: buffers, object variables, then
+/// groups (fx_4_x: techniques). Records point by offset into the unstructured data
+/// before it.
 /// </summary>
 internal sealed class EffectStructureReader
 {
@@ -37,9 +35,6 @@ internal sealed class EffectStructureReader
 
     private Effect Read()
     {
-        // The header's counts: the effect's buffers, numeric and object variables,
-        // the pool's three, the techniques, the size of the unstructured data, and
-        // tallies of what the runtime allocates. fx_5_0 adds groups and interfaces.
         int bufferCount = (int)ReadUInt32At(4);
         int objectVariableCount = (int)ReadUInt32At(12);
         int poolCounts = (int)(ReadUInt32At(16) | ReadUInt32At(20) | ReadUInt32At(24));
@@ -227,7 +222,6 @@ internal sealed class EffectStructureReader
             EffectType type = ReadType(ReadUInt32());
             if (type.Class == EffectVariableClass.Object && type.ObjectType == EffectObjectType.String)
             {
-                // A string annotation's offsets are here, one per element.
                 string[] strings = [.. Enumerable.Range(0, Math.Max(type.Elements, 1))
                     .Select(_ => ReadString(ReadUInt32()))];
                 annotations.Add(new EffectAnnotation(name, type, strings, null));
@@ -327,8 +321,7 @@ internal sealed class EffectStructureReader
         return new EffectShader { Bytecode = bytecode.Length == 0 ? null : bytecode };
     }
 
-    // An inline shader in fx_4_x is a shader and a stream output declaration, which
-    // a shader without stream output has an empty offset for.
+    // A zero declaration offset means no stream output.
     private EffectShader ReadStreamOutShader(uint shaderOffset, uint declarationOffset)
     {
         byte[] bytecode = ReadBlock(shaderOffset);
@@ -348,8 +341,8 @@ internal sealed class EffectStructureReader
         return shader;
     }
 
-    // SBinaryShaderData5: the shader, four stream output declarations and how many
-    // of them there are, the stream that is rasterized, and interface bindings.
+    // SBinaryShaderData5: shader, 4 SO declarations, their count, rasterized
+    // stream, interface bindings.
     private EffectShader ReadShader5At(uint offset, bool structured = false)
     {
         uint Field(int index) => structured
@@ -396,8 +389,6 @@ internal sealed class EffectStructureReader
                 TotalSize = totalSize,
                 Stride = stride,
                 PackedSize = packedSize,
-                // SBinaryNumericType: a bit field of layout, scalar type, rows,
-                // columns and whether a matrix is stored by column.
                 Layout = (EffectNumericLayout)(data & 7),
                 ScalarType = (EffectScalarType)((data >> 3) & 0x1F),
                 Rows = (int)((data >> 8) & 7),
@@ -438,7 +429,6 @@ internal sealed class EffectStructureReader
         return type;
     }
 
-    // A block in the unstructured data is its length and then its bytes.
     private byte[] ReadBlock(uint offset)
     {
         int size = (int)ReadUnstructuredUInt32(offset);

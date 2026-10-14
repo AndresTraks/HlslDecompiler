@@ -86,10 +86,8 @@ public class ShaderReader : BinaryReader
         return instruction;
     }
 
-    // Shader model 1 has no length field in the instruction token, so the operand
-    // count is the opcode's own. Only the two instructions ps_1_4 renamed take a
-    // different number there: `tex t0` becomes `texld r0, t0` and `texcoord t0`
-    // becomes `texcrd r0, t0`, both reading the coordinate they used to imply.
+    // Shader model 1 tokens carry no length. ps_1_4 adds a coordinate operand to
+    // tex (texld) and texcoord (texcrd).
     private static int GetOperationFixedSize(Opcode opcode, byte minorVersion)
     {
         switch (opcode)
@@ -114,8 +112,6 @@ public class ShaderReader : BinaryReader
             case Opcode.Mov:
             case Opcode.Rcp:
             case Opcode.Rsq:
-            // The ps_1_x texture addressing set, every one of which takes the
-            // register it writes and the one it reads the coordinates from.
             case Opcode.TexBem:
             case Opcode.TexBeml:
             case Opcode.TexDP3:
@@ -147,8 +143,6 @@ public class ShaderReader : BinaryReader
             case Opcode.Sge:
             case Opcode.Slt:
             case Opcode.Sub:
-            // texm3x3spec reflects an eye ray, which is the second source; bem
-            // takes the two it adds.
             case Opcode.Bem:
             case Opcode.TexM3x3Spec:
                 return 3;

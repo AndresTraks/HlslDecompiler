@@ -1,11 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// A comparison mask added to an integer is a count of the times the test held:
-/// the mask is -1 where it did, so `x - mask` is one more and `x + mask` one less.
-/// That is how fxc compiles `c ? n + 1 : n` - `iadd r, -mask, r` - and read back
-/// as arithmetic it was `n - (c ? -1 : 0)`. Only an integer adds a mask; a float
-/// add of one would add the bits of a NaN.
+/// `n - mask` on integers is `c ? n + 1 : n` (the mask is -1 where c holds), as
+/// fxc compiles it. Integers only.
 /// </summary>
 public class AddMaskTemplate : NodeTemplate<Operation>
 {

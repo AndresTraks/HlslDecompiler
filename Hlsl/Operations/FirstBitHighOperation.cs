@@ -1,10 +1,7 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// HLSL's firstbithigh: the position of the highest set bit, counted from the
-// lowest, or -1 where there is none. The instructions it compiles to count the
-// other way - firstbit_hi over a uint, firstbit_shi over an int, both of them
-// the number of bits above the one that matters - so one instruction is
-// `31 - firstbithigh(x)` and only the whole idiom fxc writes is the call.
+// HLSL's firstbithigh (from the low end, -1 if none). firstbit_hi/shi count
+// from the top, so one instruction parses as `31 - firstbithigh(x)`.
 public class FirstBitHighOperation : ConsumerOperation
 {
     public FirstBitHighOperation(HlslTreeNode value, bool isUnsigned)

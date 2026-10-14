@@ -6,14 +6,9 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// What a preshader computes, as the trees the shader would have computed it with
-/// had the effect compiler left the arithmetic where it was written. The shader
-/// reads a constant register the preshader wrote, and gets the expression over the
-/// uniforms instead of a register: `scale * 2 + 1` rather than a c1 nothing declares.
-///
-/// The instructions are run symbolically, a component at a time in order, which is
-/// how the runtime runs them: a temporary written by one is the tree the next one
-/// reads.
+/// A preshader's outputs as expression trees over the uniforms, so the shader
+/// reads `scale * 2 + 1` rather than an undeclared c1. Instructions are run
+/// symbolically a component at a time, in order.
 /// </summary>
 public static class PreshaderTree
 {

@@ -16,14 +16,10 @@ public sealed class NodeCompiler
     private readonly MatrixMultiplicationCompiler _matrixMultiplicationCompiler;
     private int _tempAssignmentindexCounter = 0;
 
-    // While a measuring compile is running, the variables it had to number and what
-    // they looked like before, so that the numbers go back with the text. See
-    // Measure.
+    // Variables numbered during a rolled-back measurement, with their prior state.
     private List<(TempVariableNode Variable, int ComponentIndex, int? VariableSize)>
         _measuredNumbering;
 
-    /// <summary>The number the next variable is given. Set back where variables
-    /// were merged and their numbers closed up.</summary>
     public int NextTempVariableIndex
     {
         get => _tempAssignmentindexCounter;
@@ -31,14 +27,9 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Variables standing for a shared subexpression rather than for a register, one
-    /// per component. They are numbered here because the counter lives here, and
-    /// given their size and component up front: the lazy path below numbers a whole
-    /// register's worth of components at once, and would make a scalar the fourth
-    /// of four. The components share a declaration index, which is what makes the
-    /// writer name them as one vector - a value graph holds a four wide operation as
-    /// four separate nodes, and naming each of them on its own turns one instruction
-    /// into four statements that can never be put back together.
+    /// Variables for a shared subexpression, one per component, sized up front (the
+    /// lazy path would size them as a whole register). The shared declaration index
+    /// makes the writer name them as one vector.
     /// </summary>
     public TempVariableNode[] CreateTempVariables(int size)
     {
@@ -53,17 +44,12 @@ public sealed class NodeCompiler
 
     public const int PromoteToAnyVectorSize = -1;
 
-    /// <summary>The name the writer gives a structured buffer's struct element.</summary>
     public System.Func<ResourceDefinition, string> StructuredElementTypeName { get; set; }
 
-    // The values the parser recorded as doubles; see HlslAst.DoubleValues.
+    // See HlslAst.DoubleValues.
     private readonly ISet<HlslTreeNode> _doubleValues;
 
-    /// <summary>
-    /// Whether a value is a double. A variable is not one of the parsed values - it
-    /// was made to stand for one - so it answers from its own declared type, which
-    /// was settled from the record when the variable was created.
-    /// </summary>
+    // A variable is not a parsed value, so it answers from its declared type.
     private bool IsDoubleValued(HlslTreeNode node)
     {
         return node switch
@@ -74,8 +60,7 @@ public sealed class NodeCompiler
         };
     }
 
-    // The variable of the innermost counted loop, which aL refers to. The writer
-    // generates that name from the nesting depth, so it has to be handed in.
+    // The innermost counted loop's variable, which aL refers to; set by the writer.
     public string LoopVariableName { get; set; }
 
     public NodeCompiler(RegisterState registers, ISet<HlslTreeNode> doubleValues = null)
@@ -98,21 +83,14 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Set while the writer measures a statement before writing it: every expression
-    /// compiled on the way, with the nodes it was compiled from. Which of them the
-    /// text repeats is not a property of the graph - a node read by sixteen
-    /// multiplies is written once when the grouper makes a matrix multiply of them -
-    /// so the writer compiles first and counts afterwards.
+    /// Set while measuring: every expression compiled, with its nodes. What the text
+    /// repeats depends on grouping, not the graph, so the writer compiles then counts.
     /// </summary>
     public List<(HlslTreeNode[] Nodes, string Text)> Recording { get; set; }
 
     /// <summary>
-    /// Set alongside Recording: the nodes a grouper took the inside of. A cross
-    /// product is recognised from the six multiplies under it, and those multiplies
-    /// are never written on their own - naming one puts a variable where the next
-    /// compile expects the pattern, and the grouper stops matching. The operands a
-    /// grouper hands back are not in here: those are compiled by themselves anyway,
-    /// so a name is safe at the boundary of a match and nowhere inside it.
+    /// Set alongside Recording: nodes inside a grouper match (not its operands).
+    /// Naming one would break the pattern on the next compile.
     /// </summary>
     public HashSet<HlslTreeNode> Grouped { get; set; }
 
@@ -123,21 +101,8 @@ public sealed class NodeCompiler
     public List<HlslTreeNode[]> GroupMatches { get; set; }
 
     /// <summary>
-    /// Records everything under the matched components except what is under the
-    /// operands the match handed back.
-    /// </summary>
-    /// <summary>
-    /// A set of components that is one expression, where the expression is a node
-    /// rather than a shape the compiler recognised: an idiom IdiomRecovery put into
-    /// the graph. The match is recorded and nothing is marked grouped, because there
-    /// is nothing inside the match to keep a name out of - the component is the
-    /// match.
-    ///
-    /// It has to be recorded all the same. The passes that name a value a root
-    /// shares with another reader ask GroupMatches whether the components are one
-    /// expression, and a recovered idiom that does not answer stops being named:
-    /// vs_2_0/fog_lighting wrote `mul(i.position, worldViewProjection)` three times
-    /// where it had named it once.
+    /// Records a recovered idiom node as one expression. Nothing is marked grouped,
+    /// but the match must be recorded so shared-value naming sees it.
     /// </summary>
     private void MarkMatched(IEnumerable<HlslTreeNode> matched)
     {
@@ -149,13 +114,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// A vector times the product of two matrices: `mul(p, mul(world, viewProjection))`.
-    /// An fx_2_0 preshader multiplies the matrices before the shader runs, and the
-    /// shader multiplies the vector by what it was handed, so the two halves meet
-    /// only in the graph - each component is the vector's components times a row of
-    /// the product each, added up, and each row is a row of the first matrix times
-    /// the second. Recognised a row at a time, it came out as the sum it is:
-    /// `p.x * mul(world[0], viewProjection) + p.y * mul(world[1], ...) + ...`.
+    /// A vector times the product of two matrices, `mul(p, mul(world, viewProjection))`,
+    /// where an fx_2_0 preshader computed the matrix product.
     /// </summary>
     private string TryCompileVectorByMatrixProduct(List<HlslTreeNode> components)
     {
@@ -166,8 +126,7 @@ public sealed class NodeCompiler
             return null;
         }
 
-        // Each term is a component of the vector, the same in every component of
-        // the result, times an element of a row of the matrix.
+        // Each term is a vector component (shared by all results) times a row element.
         var pairs = new List<(HlslTreeNode Factor, List<HlslTreeNode> Row)>();
         for (int i = 0; i < rowCount; i++)
         {
@@ -229,8 +188,7 @@ public sealed class NodeCompiler
         return $"mul({Compile(vector)}, {product})";
     }
 
-    // The products a sum adds up, as their two factors, or null for one that adds
-    // anything else.
+    // The products a sum adds up, or null if it adds anything else.
     private static List<(HlslTreeNode, HlslTreeNode)> Terms(HlslTreeNode node)
     {
         switch (node)
@@ -255,10 +213,8 @@ public sealed class NodeCompiler
         {
             return;
         }
-        // What the match is of, as against what it is made of. A set of components
-        // one grouper took whole is one expression and can be named as one; four
-        // unrelated values that share a register are a constructor, and naming them
-        // writes an assignment inside it.
+        // A whole match is one expression and may be named as one; a constructor
+        // of unrelated values may not.
         GroupMatches?.Add([.. matched]);
         HashSet<HlslTreeNode> boundary = HlslTreeNode.NewNodeSet();
         foreach (IEnumerable<HlslTreeNode> operand in operands)
@@ -297,10 +253,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Compiles a value standing where a float is wanted - an output, or a return.
-    /// Bits reaching one of those are reinterpreted, the same as bits reaching the
-    /// operand of a float operation; the writer has to say so because an output is
-    /// not an operation and carries no type of its own into here.
+    /// Compiles a value where a float is wanted (an output or return), so bits are
+    /// reinterpreted. An output carries no type of its own.
     /// </summary>
     public string CompileAsFloat(IEnumerable<HlslTreeNode> group)
     {
@@ -317,20 +271,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Compiles these groups, keeps what the compile revealed, and leaves nothing
-    /// behind: the text is thrown away and the names it had to invent on the way are
-    /// taken back.
-    ///
-    /// Emission numbers a variable the first time it writes one, and it has to -
-    /// what number a variable gets depends on how the writer groups the components
-    /// it writes, which is an emission-time decision and cannot be settled before.
-    /// So a measuring compile cannot help numbering, and if it keeps its numbers the
-    /// corpus comes out named in the order it was measured rather than the order it
-    /// is written. Rolling them back is what makes a measurement free, and free is
-    /// what lets a decision be taken by measuring both ways.
-    ///
-    /// Nests: the state is saved and restored, so a measurement inside a measurement
-    /// is the inner one's answer and the outer one's rollback.
+    /// Compiles these groups for what they reveal, then discards the text and rolls
+    /// back any variable numbering, so measuring has no side effects. Nests.
     /// </summary>
     public CompileMeasurement Measure(IEnumerable<IEnumerable<HlslTreeNode>> groups)
     {
@@ -339,20 +281,8 @@ public sealed class NodeCompiler
 
     /// <summary>
     /// The same compile, keeping the numbers it invents. This is how the writer
-    /// numbers its variables, and it is not an accident of where the counter lives:
-    /// what number a variable gets depends on how the writer groups the components
-    /// it writes, which is settled while writing and not before, so the only thing
-    /// that can number the variables in writing order is a write.
-    ///
-    /// Which makes the writer's first measurement two jobs at once, and the second
-    /// one unnamed until now. Rolling its numbers back moves ten fixtures: eight
-    /// renumber harmlessly, and cs_4_0/bitpack emits `source.Load(t1.x)` a line
-    /// above the declaration of t1, because the order the assignments are sorted
-    /// into is read off numbers that no longer exist by then.
-    ///
-    /// So the measurements that are also the numbering say so, and the ones that
-    /// only want to know something use <see cref="Measure(IEnumerable{IEnumerable{HlslTreeNode}})"/>
-    /// and leave nothing behind.
+    /// numbers variables: numbering depends on grouping, settled only while writing.
+    /// Assignment order is later sorted by these numbers, so they must persist.
     /// </summary>
     public CompileMeasurement MeasureAndNumber(IEnumerable<IEnumerable<HlslTreeNode>> groups)
     {
@@ -373,9 +303,7 @@ public sealed class NodeCompiler
         _compileDepth = 0;
         var numbering = new List<(TempVariableNode, int, int?)>();
         Recording = measurement.Recording;
-        // Null while the numbering is being kept, so the lazy path records nothing
-        // and an enclosing measurement does not roll these back either: a number the
-        // writer is keeping is the writer's now.
+        // Null when keeping numbers, so an enclosing measurement does not roll them back.
         Grouped = measurement.Grouped;
         GroupMatches = measurement.GroupMatches;
         _measuredNumbering = keepNumbering ? null : numbering;
@@ -393,9 +321,7 @@ public sealed class NodeCompiler
             GroupMatches = outerGroupMatches;
             _measuredNumbering = outerNumbering;
             _compileDepth = outerDepth;
-            // Backwards: one variable can be numbered, rolled back and numbered
-            // again within a measurement, and the first entry is the one that says
-            // what it looked like to begin with.
+            // Backwards: a variable may be recorded twice; the first entry is original.
             for (int i = numbering.Count - 1; i >= 0; i--)
             {
                 (TempVariableNode variable, int component, int? size) = numbering[i];
@@ -412,20 +338,15 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// How many compiles deep this one is: one for what a statement writes, more
-    /// for what is written inside it. A rewrite that writes an operator where the
-    /// node is one call - a vector of dots written as the sum they are - has to
-    /// bracket it inside an expression, which brackets by the node and not by the
-    /// text, and need not at the top.
+    /// Compile nesting depth; 1 at a statement's top. A rewrite that emits an
+    /// operator where the node is a call must parenthesize unless at the top.
     /// </summary>
     private int _compileDepth;
 
-    // The depth a value is written at the top of: one for a statement's own
-    // compile, one more for the value of an assignment, which its group compiles.
+    // The top depth: 1 for a statement, 2 for an assignment's value.
     private int _topDepth = 1;
 
-    // The variables the assignment being compiled writes, for an accumulation to
-    // name them first.
+    // The variables the current assignment writes, for an accumulation to name first.
     private HashSet<HlslTreeNode> _assignedVariables;
 
     public string Compile(List<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
@@ -450,15 +371,8 @@ public sealed class NodeCompiler
             throw new ArgumentOutOfRangeException(nameof(components));
         }
 
-        // An integer that is a float's bits, standing where a float is wanted: the
-        // bits are the value, and converting them gives the number they happen to
-        // make - a packed pair of half floats came back as three thousand million.
-        // Every component, so that a constructor whose components are not all bits
-        // is left to reinterpret them one at a time. What goes inside is integers,
-        // and a constructor of them is an integer one: built as a float vector,
-        // four int variables were converted on the way in and asfloat reinterpreted
-        // the converted floats - `asfloat(float4(t0, t1, t2, t3))`, an itof where
-        // the bytecode moved bits.
+        // A float's bits where a float is wanted: reinterpret, don't convert. Only
+        // if every component is bits; the inside is compiled as an integer vector.
         if (_readingAsFloat && components.All(c => ValueTypes.IsReinterpretedAsFloat(c)
             || IsIntegerRegisterReadAsFloat(c)
             || (_compileDepth == _floatArithmeticOperandDepth && IsIntegerVariableReadAsFloat(c))))
@@ -487,20 +401,13 @@ public sealed class NodeCompiler
             IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {
-                // Dot products the grouper took apart, one per group, which is where
-                // they would be written one by one.
                 if (TryCompileTransposedDots(components) is string weighted)
                 {
                     return weighted;
                 }
-                // The grouper splits a vector operation whose operands do not all
-                // group - a mad whose addend is ddx in .xy and ddy in .zw. Written
-                // as two half-mads inside a constructor, fxc keeps the halves apart;
-                // written as one mad with the constructor around the operand that
-                // differs, it is the instruction it came from. Only for an operation
-                // that works a component at a time - a dot or a length is not one -
-                // and only when one operand differs: two constructors, one per
-                // operand, read worse than the one around the whole.
+                // An elementwise op with exactly one ungrouped operand stays one op
+                // with a constructor around that operand, which fxc keeps as one
+                // instruction; two half-ops in a constructor it keeps apart.
                 if (IsElementwiseAcross(components) && CountUngroupedOperands(components) == 1)
                 {
                     return CompileOperation((Operation)components[0], components, promoteToVectorSize);
@@ -511,23 +418,16 @@ public sealed class NodeCompiler
             var multiplication = _nodeGrouper.MatrixMultiplicationGrouper.TryGetMultiplicationGroup(components);
             if (multiplication != null)
             {
-                // The index a row is read through is handed back too, and is
-                // written on its own - `cascadeTransform[min(t0, 3)]` - so it is a
-                // boundary of the match like the vector is.
+                // A row index is compiled separately, so it bounds the match too.
                 MarkGrouped(components, multiplication.Vector,
                     multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
                 return _matrixMultiplicationCompiler.Compile(multiplication);
             }
-            // Dot products group only as rows of one matrix multiply. A run of them
-            // the multiplication grouper does not take whole - two rows of a four
-            // row matrix, say - has no vector form, and is written one by one.
+            // Dots the multiplication grouper did not take whole have no vector form.
             if (components.All(c => c is DotProductOperation)
                 && components.Distinct(ReferenceEqualityComparer.Instance).Count() > 1)
             {
-                // The rows in another order are still one multiply, read through a
-                // swizzle: fxc puts them into a register as it schedules them, and a
-                // projection's x and y in .yx came back as two dots where the compile
-                // before had them as mul(position, (float4x2)cascadeTransform).
+                // Rows in another order are still one multiply, read through a swizzle.
                 if (TryCompilePermutedMultiplication(components) is string permuted)
                 {
                     return permuted;
@@ -548,12 +448,7 @@ public sealed class NodeCompiler
                 return $"normalize({vector})";
             }
 
-            // Still here, and no longer the way a reflect is usually recognised:
-            // IdiomRecovery puts one into the graph before anything is named, and it
-            // reaches every reflect in the corpus - all six of them - so this does
-            // not fire for any of those any more. It stays for a shape or a path the
-            // recovery does not reach, where a reflect recognised late still reads
-            // better than the arithmetic it is made of.
+            // Fallback for reflects IdiomRecovery did not reach.
             var reflect = _nodeGrouper.ReflectGrouper.TryGetContext(components);
             if (reflect != null)
             {
@@ -569,38 +464,25 @@ public sealed class NodeCompiler
             }
         }
 
-        // The other half of the grouper seeing through a folded zero: the components
-        // that kept their constant and the ones that lost it are written back into
-        // the one add, `t1 + float4(1, 0, 3, 4)` rather than a constructor of three
-        // conditionals. Saying they group and then compiling them apart is what
-        // reads Inputs[1] of a node that has none.
+        // Components the grouper joined through a folded constant factor (or addend,
+        // below) are written back as one op: `t1 + float4(1, 0, 3, 4)`.
         if (components.Count > 1
             && components.Any(c => c is MultiplyOperation)
             && components.Any(c => c is not MultiplyOperation)
             && components.All(c => c is not MultiplyOperation multiply
                 || multiply.Factor1 is ConstantNode || multiply.Factor2 is ConstantNode))
         {
-            // The one takes the type of the constants beside it, the same as the
-            // zero below and for the same reason. `uint4(id, id * 7 + 3, id & 255, 1)`
-            // is a mov and an imad, and the mov groups with the imad as the `id * 1`
-            // it is - but written `id.xx * float2(1, 7)` the mad is a float one, so
-            // the round trip converts the id in and the answer back out and pays a
-            // utof and an ftoi for it. Written `int2(1, 7)` it is the imad it was,
-            // and one instruction shorter than the original besides: fxc folds the
-            // mov into the mad's other component.
+            // The restored 1 takes the type of the constants beside it; a float 1
+            // among integers would turn an imad into a float mad with conversions.
             bool integerFactors = components
                 .OfType<MultiplyOperation>()
                 .Select(multiply => FactorOfFoldedMultiply(multiply))
                 .All(factor => factor is ConstantNode constant && constant.IntegerValue != null)
-                // And only over integers: a float multiplied stays a float, and
-                // `asfloat(m) * int2(1, 2)` mixes the two for nothing.
                 && !components.Any(IsFloatValued);
             List<HlslTreeNode> multiplied = [.. components.Select(FactoredOfFoldedMultiply)];
             List<HlslTreeNode> factors = [..
                 components.Select(c => FactorOfFoldedMultiply(c, integerFactors))];
-            // The multiplied side bracketed where it is a sum - which it can be,
-            // grouped through a folded addend of its own - since `a + b * f`
-            // multiplies only b.
+            // Bracket a sum: `a + b * f` multiplies only b.
             string multipliedText = Compile(multiplied, promoteToVectorSize);
             if (IsSum(multiplied[0]) || multipliedText.Contains(" + ") && !IsBracketed(multipliedText)
                 && !IsOneCall(multipliedText))
@@ -615,9 +497,7 @@ public sealed class NodeCompiler
             && components.Any(c => c is not AddOperation)
             && components.All(c => c is not AddOperation add || HasConstantAddend(add)))
         {
-            // The zero takes the type of the constants beside it. Written as a float
-            // among integers it makes the whole vector a float2, and an integer
-            // expression that was three instructions becomes six.
+            // The restored 0 takes the type of the constants beside it.
             bool integer = components
                 .OfType<AddOperation>()
                 .Select(add => AddendOfFoldedAdd(add))
@@ -640,8 +520,6 @@ public sealed class NodeCompiler
             return CompileDoubleConstant(components);
         }
 
-        // A counter call is a value of its own rather than a component of anything:
-        // the slot it answers with is an index the shader subscripts the buffer by.
         if (first is BufferCounterNode counter)
         {
             string counted = _registers.GetRegisterName(
@@ -673,8 +551,7 @@ public sealed class NodeCompiler
 
         if (first is PhiNode)
         {
-            // Phis are an IR construct. StatementFinalizer lowers them to a temp
-            // variable plus its assignments; reaching here means that did not happen.
+            // StatementFinalizer should have lowered every phi.
             throw new InvalidOperationException($"Phi node reached compilation without being lowered: {first} with inputs {string.Join(", ", first.Inputs.Select(i => i.GetType().Name + ":" + i))}.");
         }
 
@@ -686,8 +563,7 @@ public sealed class NodeCompiler
         return node is AddOperation or SubtractOperation;
     }
 
-    // A division that is written as one - not the `x / length(x)` that is written
-    // as normalize(x).
+    // A division not written as normalize(x).
     private bool IsQuotient(IEnumerable<HlslTreeNode> components)
     {
         List<HlslTreeNode> list = [.. components];
@@ -701,9 +577,8 @@ public sealed class NodeCompiler
         {
             return false;
         }
-        // An attribute evaluation takes the input register itself and nothing else -
-        // fxc answers an expression there with an internal compiler error - so two
-        // of them are one call only when they are one instruction.
+        // An attribute evaluation must take the input register itself (fxc crashes
+        // on an expression), so only one instruction is one call.
         if (first is EvaluateAttributeOperation
             && components.Any(c => !HlslTreeNode.IsSameInstruction(c, first)))
         {
@@ -727,18 +602,13 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// What a select tests, bracketed where it is a select itself. A conditional
-    /// binds more loosely than anything else, so one written bare where another's
-    /// condition goes is taken apart at the wrong `?`: `a >= 0 ? b : c >= 0 ? d : e`
-    /// is `a >= 0 ? b : (c >= 0 ? d : e)`, not `(a >= 0 ? b : c) >= 0 ? d : e`. A
-    /// preshader tests one compare's result with another as a matter of course.
+    /// What a select tests, bracketed where it is a select itself, since `?:` binds
+    /// more loosely than anything else.
     /// </summary>
     private string CompileCondition(List<HlslTreeNode> components)
     {
-        // A select between masks tested as a condition is a select between bools:
-        // fxc flattens `if (count) t = count <= 1; else t = -1;` into a movc, and
-        // read back the test was `(count ? count <= 1 : -1)`, a bool beside an int.
-        // The -1 is the mask of true, and said so it is `count ? count <= 1 : true`.
+        // A select between masks used as a condition is a select between bools:
+        // `count ? count <= 1 : true`, not `: -1`.
         if (components.Count == 1
             && components[0].Inputs[0] is MoveConditionalOperation masks
             && IsMask(masks.Inputs[1]) && IsMask(masks.Inputs[2])
@@ -752,9 +622,8 @@ public sealed class NodeCompiler
             : condition;
     }
 
-    // The order that puts both operands' lanes in order, where that is not the
-    // order they are in and one order does: each a component of a register or a
-    // variable, all different, rising together.
+    // A permutation that sorts both operands' distinct lanes together, or null if
+    // they are already in order or no single order works.
     private static int[] InLaneOrder(IList<HlslTreeNode> left, IList<HlslTreeNode> right)
     {
         if (left.Count < 2
@@ -779,8 +648,7 @@ public sealed class NodeCompiler
         return order;
     }
 
-    // Whether a shift left is written as the multiply it is: by one constant
-    // amount, small enough that the power of two is an int.
+    // A shift left by one constant amount under 31 is written as a multiply.
     private static bool IsWrittenAsMultiply(List<HlslTreeNode> components)
     {
         if (components.Count == 0 || components[0] is not ShiftLeftOperation)
@@ -810,10 +678,8 @@ public sealed class NodeCompiler
             : Compile(mask);
     }
 
-    // An operation whose every result component depends on that component of its
-    // operands alone, so that a vector of them is the same operation on vectors.
-    // A conversion is left out: `(float4)float4(a, b, c, d)` says less than four
-    // casts do.
+    // Each result component depends only on that component of the operands.
+    // Conversions are left out: `(float4)float4(a, b, c, d)` reads worse.
     internal static bool IsElementwise(Operation operation)
     {
         return operation is AddOperation or SubtractOperation or MultiplyOperation
@@ -834,12 +700,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// ubfe and ibfe as the shift and mask they mean. Where the width and offset are
-    /// immediates - which is how fxc writes a field it can see - the mask and the
-    /// shifts are worked out here and written as numbers, which is what a shader
-    /// author writes and what fxc turns back into the one instruction. ibfe fills
-    /// the top with the field's own top bit, which HLSL does by shifting the field
-    /// up to the top of a signed value and back down.
+    /// ubfe and ibfe as shift and mask, with immediates folded to numbers. ibfe
+    /// sign-extends by shifting the field to the top of an int and back down.
     /// </summary>
     private string CompileBitFieldExtract(BitFieldExtractOperation extract, List<HlslTreeNode> components)
     {
@@ -857,7 +719,6 @@ public sealed class NodeCompiler
             }
             if (AllIntegers(widths, out int[] width) && AllIntegers(offsets, out int[] offset))
             {
-                // Five bits wide is a mask of 31; a whole word wide is no mask.
                 string shifted = offset.All(o => o == 0)
                     ? value
                     : $"{value} >> {CompileIntegers(offset)}";
@@ -887,10 +748,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// bfi as the masks it means: the value with the field's bits cleared, or'd
-    /// with the inserted bits shifted into place and cut to the field. Written with
-    /// the numbers worked out where they are immediates, the way an author packs
-    /// a byte into a word - `(v & ~65280) | ((b << 8) & 65280)`.
+    /// bfi as masks: `(v &amp; ~65280) | ((b &lt;&lt; 8) &amp; 65280)`.
     /// </summary>
     private string CompileBitFieldInsert(List<HlslTreeNode> components)
     {
@@ -899,21 +757,15 @@ public sealed class NodeCompiler
         string insert = CompileIntegerOperand(components.Select(c => c.Inputs[2]));
         string value = CompileIntegerOperand(components.Select(c => c.Inputs[3]));
 
-        // A bfi keeps the bits of its base that the mask does not cover, and a base
-        // of nothing has none to keep. fxc writes a masked shift that way - the
-        // whole of `(x & 7) << 2` is a bfi over zero - and writing the half that
-        // keeps the base out in full turned one instruction into a not, an and and
-        // an or of a constant that is nothing at all.
+        // fxc writes `(x & 7) << 2` as a bfi into zero; omit the kept-base half.
         bool insertsIntoNothing = components.All(c => ConstantMatcher.IsZero(c.Inputs[3]));
         if (AllIntegers(widths, out int[] width) && AllIntegers(offsets, out int[] offset))
         {
             int[] mask = [.. width.Zip(offset, (w, o) => (w >= 32 ? -1 : (1 << w) - 1) << o)];
             string maskText = CompileIntegers(mask);
             string shifted = offset.All(o => o == 0) ? insert : $"({insert} << {CompileIntegers(offset)})";
-            // Bracketed: an and binds more loosely than most of what this can sit
-            // inside, and `bfi(...) / 4` written bare is anded with the quotient.
-            // The bits kept, as the number they are where that is a positive one:
-            // `& 16777215`, not `& ~-16777216` - but `& ~65280`, not `& -65281`.
+            // Bracketed, since & binds loosely. Kept bits as a positive number where
+            // possible: `& 16777215`, but `& ~65280` rather than `& -65281`.
             string keptText = mask.All(m => ~m >= 0)
                 ? CompileIntegers([.. mask.Select(m => ~m)])
                 : $"~{maskText}";
@@ -946,39 +798,31 @@ public sealed class NodeCompiler
         return _constantCompiler.Compile([.. values.Select(v => new ConstantNode(v))]);
     }
 
-    // Compiles a sub-expression, parenthesised when its operator binds more loosely
-    // than the one it is being nested into.
+    // Compiles a sub-expression, parenthesised when its operator binds more loosely.
     private string CompileOperand(IEnumerable<HlslTreeNode> components, int promoteToVectorSize = PromoteToAnyVectorSize)
     {
         List<HlslTreeNode> list = components.ToList();
         string compiled = Compile(list, promoteToVectorSize);
-        // A comparison standing where a value is wanted is the mask it wrote, which
-        // is all ones for true rather than one. sign expands to the difference of
-        // two comparisons, and reading them as HLSL bools gave back the negation of
-        // the sign: `(t < 0) - (t > 0)` is 1 where the shader says -1.
+        // A comparison used as a value is its mask: all ones for true, not 1.
         if (list[0] is ComparisonNode)
         {
             return $"({compiled} ? -1 : 0)";
         }
-        // By the node, unless the nodes were written as one call: three subtracts
-        // that are a cross product bind as tightly as any call does, and
-        // `(cross(a, b)) * c` says nothing with its brackets.
+        // By the node, unless written as one call (e.g. cross for three subtracts).
         return AssociativityTester.NeedsParenthesesAsOperand(list[0]) && !IsOneCall(compiled)
                 && !IsBracketed(compiled)
             ? $"({compiled})"
             : compiled;
     }
 
-    // Whether the text is a vector constructor - float2(...), int3(...) - and
-    // nothing beside it.
+    // Whether the text is exactly one vector constructor.
     private static bool IsConstructor(string text)
     {
         return IsOneCall(text)
             && System.Text.RegularExpressions.Regex.IsMatch(text, @"^(float|int|uint|bool)[234]\(");
     }
 
-    // Whether the text is a minus and then factors multiplied and nothing else: no
-    // operator outside brackets but `*` - `-0.5 * t.y`, `-t0 * x`.
+    // Whether the text is a negated product like `-0.5 * t.y`.
     private static bool IsNegatedProduct(string text)
     {
         if (text.Length < 2 || text[0] != '-' || text[1] == '-' || text[1] == ' ')
@@ -999,11 +843,9 @@ public sealed class NodeCompiler
         return true;
     }
 
-    // Whether swapping two operands leaves fxc nothing to decide differently:
-    // plain arithmetic over registers, constants and variables. The order a
-    // shader reads a resource or calls an interface in is the order fxc binds
-    // them, and which side of an add a product is on is which one it fuses into
-    // a mad - screen_position cost one more with its sample moved.
+    // Whether swapping operands is safe for fxc: plain arithmetic over registers,
+    // constants and variables. Resource and call order set fxc's bindings, and
+    // product placement decides which side fuses into a mad.
     private static bool CanReorder(IEnumerable<HlslTreeNode> first, IEnumerable<HlslTreeNode> second, bool products)
     {
         if (!products && first.Concat(second).Any(node => node is MultiplyOperation or MultiplyAddOperation
@@ -1024,9 +866,6 @@ public sealed class NodeCompiler
             {
                 case ConstantNode or RegisterInputNode or TempVariableNode:
                     continue;
-                // A comparison is arithmetic too, and reads nothing a swap could
-                // move: `t1 | (t2 < 0 ? 1 : 0)` came back the other way round from
-                // every round, fxc reversing the or each time.
                 case GroupNode or Operation or ComparisonNode:
                     foreach (HlslTreeNode input in node.Inputs)
                     {
@@ -1040,11 +879,8 @@ public sealed class NodeCompiler
         return true;
     }
 
-    // Whether two operands of a commutative operator go the other way round. By
-    // what they are - a temporary first, `t0 + stride`, as the value being worked
-    // on; then an input, a value computed, a constant buffer's, and a constant
-    // last, `x + 1` - and then by their text, numbers by their value, so that
-    // t4 comes before t15. Both are the same whichever order fxc scheduled them.
+    // Canonical order for commutative operands, independent of fxc's scheduling:
+    // temp, input, computed, constant buffer, literal; then natural text order.
     private static bool SortsAfter(HlslTreeNode firstNode, string first, HlslTreeNode secondNode, string second)
     {
         int firstRank = OperandRank(firstNode, first);
@@ -1126,8 +962,7 @@ public sealed class NodeCompiler
         return depth == 0;
     }
 
-    // Whether the text is one function call and nothing beside it: a name, and a
-    // bracket that opens after it and closes at the end.
+    // Whether the text is exactly one function call.
     private static bool IsOneCall(string text)
     {
         int open = text.IndexOf('(');
@@ -1148,47 +983,27 @@ public sealed class NodeCompiler
         return depth == 0;
     }
 
-    /// <summary>
-    /// Whether a register holds floats, from the declaration that names it: a
-    /// constant buffer variable by its own type, an input by the component type its
-    /// signature gives, and a thread id by neither, being a uint.
-    /// </summary>
     private bool IsFloatRegister(RegisterInputNode register)
     {
         return _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Float;
     }
 
-    /// <summary>
-    /// A uniform or an attribute declared an integer and read by float arithmetic
-    /// with nothing converting it between: in shader model 4 every instruction says
-    /// what it reads, and fxc writes a utof or an itof wherever the source meant the
-    /// number, so a float instruction reading the register as it stands is reading
-    /// a float's bits. `i.position * i.blendweight * packedScale` over a uint weight
-    /// and a uint scale handed in as bits converted both instead - a wrong value,
-    /// and two utof in the recompile.
-    ///
-    /// Not in shader model 3, where every register is a float's and an integer
-    /// uniform is read as one because nothing else can read it: `address` there is
-    /// a number. And only where every reader that says what it reads says float -
-    /// a GetDimensions reading a mip level says nothing, an integer add says
-    /// integer, and either leaves the value the number it is.
-    /// </summary>
-    // The depth the operands of the float arithmetic being compiled are at, or -1.
-    // Only those: a conversion's operand is read as the integer it is, and so is
-    // an array's index, however deep in a float expression either sits.
+    // The depth of the operands of the float arithmetic being compiled, or -1.
+    // A conversion's operand or an array index deeper down is still an integer.
     private int _floatArithmeticOperandDepth = -1;
 
-    // A variable declared an integer, an operand of float arithmetic with no
-    // conversion between. A register has no type, and a float instruction reading
-    // one reads its bits: where fxc kept a comparison's mask and then a float sum in
-    // one register, the variable is declared for the mask, the sum is stored into
-    // it as asint(...), and the float that reads it back wants it as asfloat(...) -
-    // read as it stood, the sum was converted from the integer its bits make.
+    // An integer variable read directly by float arithmetic holds a float's bits
+    // (fxc reused the register), so it is read back with asfloat.
     private static bool IsIntegerVariableReadAsFloat(HlslTreeNode value)
     {
         return value is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false, IsDouble: false };
     }
 
+    /// <summary>
+    /// An SM4 integer uniform or input read by float arithmetic with no conversion:
+    /// fxc would have written utof/itof had the number been meant, so these are bits.
+    /// Only where every reader that says anything says float.
+    /// </summary>
     private bool IsIntegerRegisterReadAsFloat(HlslTreeNode value)
     {
         if (value is not RegisterInputNode register
@@ -1201,11 +1016,8 @@ public sealed class NodeCompiler
             && ValueTypes.ReadAsInteger(register) == false;
     }
 
-    // An operand a bitwise operator or a shift reads. Where the value is a float -
-    // a temp declared as one, or an operation that computes one - the integer
-    // wanted is its bits and not its number, so it is reinterpreted rather than
-    // converted. It has to be reinterpreted somehow: HLSL will not apply either
-    // operator to a float at all (X3082).
+    // An operand of a bitwise op or shift: a float is reinterpreted with asint,
+    // since its bits are wanted and HLSL rejects these ops on floats (X3082).
     private string CompileIntegerOperand(IEnumerable<HlslTreeNode> components)
     {
         List<HlslTreeNode> list = components.ToList();
@@ -1215,12 +1027,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// A value where an operation that works on integers wants one, and reads it
-    /// through an argument rather than an operator: the value or the comparand of
-    /// an interlocked operation. A float there is its bits and not its number -
-    /// a depth written into groupshared memory as asuint is minimised as the
-    /// integer those bits make, and converting it would compare the depth rounded
-    /// to a whole number instead.
+    /// An integer argument of an interlocked operation; a float there is its bits.
     /// </summary>
     public string CompileIntegerArgument(HlslTreeNode node, bool unsigned = false)
     {
@@ -1229,15 +1036,12 @@ public sealed class NodeCompiler
         {
             return compiled;
         }
-        // asuint where the destination is one, so that the reinterpretation and the
-        // thing it is handed to agree: asint into a uint compiles, with fxc warning
-        // X3203 about the mismatch and assuming unsigned, which is a warning the
-        // shader it came from never had.
+        // asint into a uint argument draws fxc warning X3203.
         return unsigned ? $"asuint({compiled})" : $"asint({compiled})";
     }
 
-    // Whether a value is a float, from the value itself rather than from what reads
-    // it: the readers of one of these are integer instructions by construction.
+    // Whether a value is a float, from the value itself: its readers here are
+    // integer instructions by construction.
     private bool IsFloatValued(HlslTreeNode node)
     {
         return node switch
@@ -1245,39 +1049,28 @@ public sealed class NodeCompiler
             TempVariableNode temp => !temp.IsInteger,
             RegisterInputNode register => IsFloatRegister(register),
             ConvertOperation convert => convert.TargetType is not ("int" or "uint"),
-            // The half conversions read one type and make the other, so the
-            // ConsumesInteger test below answers the wrong question for them: an
-            // f32tof16 assigned to an integer variable was reinterpreted rather than
-            // left alone, and `asint` around half float bits says nothing true.
+            // These read one type and make the other.
             FloatToHalfOperation => false,
             HalfToFloatOperation => true,
-            // asdouble reads uints and makes a double, so the same warning applies
-            // to it: ConsumesInteger answers about what goes in.
             BitsToDoubleOperation => true,
             ComparisonNode => false,
-            // What the operation computes in, which a template that rebuilt it has
-            // handed on - the flag the parse put on the instruction is not on the
-            // nodes a template builds, and they came out as not floats at all.
+            // Recorded facts, which templates hand on to the nodes they build.
             Operation operation => ValueTypes.ComputesInIntegers(operation) == false,
             _ => false,
         };
     }
 
     /// <summary>
-    /// Set while compiling the value of an assignment to an integer variable. A
-    /// vector constructor has no idea what it is being assigned to, and
-    /// `int2 t0 = float2(a, b)` sends both components through a float on the way.
+    /// Set while compiling a value assigned to an integer variable, so a constructor
+    /// is not written `int2 t0 = float2(a, b)`.
     /// </summary>
     private bool _assigningToInteger;
 
     /// <summary>
-    /// Set while the value an integer variable is assigned is compiled, and only
-    /// until an operation is entered: what the variable is handed directly, as
-    /// opposed to what some float arithmetic inside it reads.
+    /// Like _assigningToInteger, but cleared on entering an operation.
     /// </summary>
     private bool _assignedDirectlyToInteger;
 
-    // What the multiply was of, or the whole node where the one was folded away.
     private static HlslTreeNode FactoredOfFoldedMultiply(HlslTreeNode node)
     {
         return node is not MultiplyOperation multiply
@@ -1285,10 +1078,7 @@ public sealed class NodeCompiler
             : multiply.Factor1 is ConstantNode ? multiply.Factor2 : multiply.Factor1;
     }
 
-    // What it was multiplied by, or the one that was folded out.
-    // What it was multiplied by, or the one that was folded out. A fresh node
-    // rather than one of the graph's: nothing reads it, and the compiler runs over
-    // and over.
+    // The constant factor, or a fresh 1 (not a graph node, so nothing reads it).
     private static HlslTreeNode FactorOfFoldedMultiply(HlslTreeNode node, bool integer = false)
     {
         return node is not MultiplyOperation multiply
@@ -1301,7 +1091,6 @@ public sealed class NodeCompiler
         return add.Addend1 is ConstantNode || add.Addend2 is ConstantNode;
     }
 
-    // What the add was of, or the whole node where the add was folded away.
     private static HlslTreeNode BaseOfFoldedAdd(HlslTreeNode node)
     {
         return node is not AddOperation add
@@ -1309,8 +1098,7 @@ public sealed class NodeCompiler
             : add.Addend1 is ConstantNode ? add.Addend2 : add.Addend1;
     }
 
-    // What was added, or the zero that was folded out. A fresh node rather than one
-    // of the graph's: nothing reads it, and the compiler runs over and over.
+    // The constant addend, or a fresh 0 (not a graph node, so nothing reads it).
     private static HlslTreeNode AddendOfFoldedAdd(HlslTreeNode node, bool integer = false)
     {
         return node is not AddOperation add
@@ -1319,21 +1107,10 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// A vector of dot products against one vector of weights, over vectors whose
-    /// components line up across the dots - the first of every left side from one
-    /// value, the second from another - as those values weighted and added up:
-    /// `float3(dot(float3(t1.x, t6.x, t0.x), k), dot(float3(t1.y, t6.y, t0.y), k), ...)`
-    /// is `t1 * k.x + t6 * k.y + t0 * k.z`. That is a basis applied to a direction,
-    /// three vector mads in the shader it came from; as the dots, fxc transposes the
-    /// basis into registers of its own and does a dp3 per component, which cost
-    /// transposed_basis eight instructions.
-    ///
-    /// Recognising it means seeing the components together, which only happens here,
-    /// and deciding means knowing whether each value comes out as one - `t1`, a
-    /// normalize, a cross product - or as a constructor of loose components, which is
-    /// no better than the dots. That is asked by measuring, which leaves nothing
-    /// behind; the first attempt at this compiled to decide, and moved nine goldens
-    /// with no transpose in them by numbering their variables in passing.
+    /// Dots against one weight vector over transposed values, written as a weighted
+    /// sum: `float3(dot(float3(t1.x, t6.x, t0.x), k), ...)` is
+    /// `t1 * k.x + t6 * k.y + t0 * k.z`. Taken only if the sum measures without
+    /// vector constructors.
     /// </summary>
     private string TryCompileTransposedDots(List<HlslTreeNode> components)
     {
@@ -1350,16 +1127,12 @@ public sealed class NodeCompiler
                     && Enumerable.Range(0, weights.Length).All(j => SameValue(other[j], weights[j])))
                 || !dots.All(dot => dot.Inputs[1 - shared] is GroupNode values
                     && values.Length == weights.Length)
-                // A dot broadcast across the vector is one value, not a transpose:
-                // every component the same dot, every column one component repeated -
-                // read again for each component, so asked by value, not by node.
+                // A broadcast dot is one value, not a transpose (asked by value).
                 || !Enumerable.Range(0, weights.Length).All(j => ColumnDiffers(dots, 1 - shared, j)))
             {
                 continue;
             }
-            // Each component as the sum it is, for the compiler to group across the
-            // components the way it groups any arithmetic: the values' components into
-            // the values, and a weight read by every component into a broadcast.
+            // Each component as its sum, for the compiler to group across components.
             var built = new List<HlslTreeNode>();
             var sums = new List<HlslTreeNode>();
             foreach (DotProductOperation dot in dots)
@@ -1389,15 +1162,13 @@ public sealed class NodeCompiler
                 {
                     continue;
                 }
-                // Inside another expression, bracketed: the node is a dot product,
-                // which the expression around it does not bracket, and this is a sum.
+                // Bracketed when nested: the node is a dot, which callers don't bracket.
                 string weighted = Compile(sums);
                 return _compileDepth > _topDepth ? $"({weighted})" : weighted;
             }
             finally
             {
-                // Built to be compiled and nothing else: left as readers of what they
-                // read, they would count in every question asked of the graph after.
+                // Detach the temporary nodes from the graph's readers.
                 foreach (HlslTreeNode node in built)
                 {
                     foreach (HlslTreeNode input in node.Inputs)
@@ -1405,10 +1176,7 @@ public sealed class NodeCompiler
                         input.Outputs.Remove(node);
                     }
                 }
-                // And left in what the compile recorded, they are text the naming
-                // passes find twice - once as these sums and once as the dots the
-                // caller records them as - and name: a normal map's basis came out
-                // as `float3 t6 = <sum>; float3 t7 = t6;`.
+                // And from the recording, or naming would see them twice.
                 HashSet<HlslTreeNode> temporary = HlslTreeNode.NewNodeSet();
                 temporary.UnionWith(built);
                 Recording?.RemoveAll(record => record.Nodes.Any(temporary.Contains));
@@ -1437,11 +1205,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Dot products that are the rows of one matrix multiply in some order other
-    /// than their own, as the multiply read through the swizzle that puts each row
-    /// back in its component; or null where no order of them is the whole matrix.
-    /// The grouper checks each row against the first, so in an order it takes,
-    /// position k really is row k.
+    /// Dots that are a matrix multiply's rows out of order, as the multiply read
+    /// through a swizzle; null where no order is the whole matrix.
     /// </summary>
     private string TryCompilePermutedMultiplication(List<HlslTreeNode> components)
     {
@@ -1456,8 +1221,6 @@ public sealed class NodeCompiler
             }
             MarkGrouped(rows, multiplication.Vector,
                 multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
-            // Component i of the result is the row it holds: the position of i in
-            // the order.
             string swizzle = string.Concat(Enumerable.Range(0, components.Count)
                 .Select(i => "xyzw"[Array.IndexOf(order, i)]));
             return $"{_matrixMultiplicationCompiler.Compile(multiplication)}.{swizzle}";
@@ -1465,7 +1228,7 @@ public sealed class NodeCompiler
         return null;
     }
 
-    // Every order of the indices below count, the one they are in first.
+    // All permutations of 0..count-1, identity first.
     private static IEnumerable<int[]> Orders(int count)
     {
         static IEnumerable<int[]> Permute(int[] prefix, int[] rest)
@@ -1490,19 +1253,11 @@ public sealed class NodeCompiler
     {
         UngroupConstantGroups(componentGroups);
 
-        // Assigning to an integer does not make the components integers. Where one
-        // of them computes a float - a constructor inside the float half of an
-        // integer assignment, `dot(levels.xyz, float3(...))` under a cast to uint -
-        // an int constructor truncates it before the arithmetic that wanted it.
-        // A vector of doubles is a double vector, whatever the assignment wants:
-        // `float2(a, b)` over two doubles rounds both of them on the way into a
-        // buffer that holds neither.
+        // An integer assignment makes an int constructor only if no component is a
+        // float; doubles always make a double vector.
         string integerType = _assigningToUnsigned ? "uint" : "int";
-        // Some of each, handed straight to an integer variable: the variable holds
-        // bits, and the float components are the bits they are. Built as a float
-        // vector, the integers among them were converted to floats on the way in
-        // and the floats converted back - `int2 t2 = float2(t1.x, x * s)` over a
-        // t1 that was bits already, which is neither value.
+        // Mixed components assigned straight to an integer variable: it holds bits,
+        // so the float components are reinterpreted.
         bool reinterpretFloats = _assignedDirectlyToInteger
             && components.Any(IsFloatValued) && !components.All(IsFloatValued);
         string type = components.All(IsDoubleValued)
@@ -1514,12 +1269,8 @@ public sealed class NodeCompiler
         for (int g = 0; g < componentGroups.Count; g++)
         {
             IList<HlslTreeNode> group = componentGroups[g];
-            // A run of dot products against the same weights beside other
-            // components is a transpose all the same: a column-major bone blend
-            // into a float4 with a w of 1 came back as three dots of float2(bone0.x,
-            // bone1.x) against the weights, five instructions dearer than the one
-            // blend. TryCompileTransposedDots takes only a whole vector of them, so
-            // the run is offered on its own, and stands as one argument.
+            // A run of transposed dots beside other components is offered on its
+            // own and stands as one argument.
             if (!reinterpretFloats && group.Count == 1 && group[0] is DotProductOperation)
             {
                 int end = g;
@@ -1541,23 +1292,15 @@ public sealed class NodeCompiler
             {
                 compiled = $"as{integerType}({compiled})";
             }
-            // A broadcast of a register fills its group with a swizzle, so its
-            // text is already as wide as the components it covers. A broadcast
-            // whose text stays a scalar - an expression with nothing in it that
-            // took the group's width - covers one. A constructor pads only when
-            // a vector is among its arguments, so a scalar is written once per
-            // component, which is how a run of constants is written one per
-            // argument.
+            // A broadcast whose text stays scalar is repeated once per component;
+            // a constructor does not pad scalars.
             int copies = group.Count > 1 && BroadcastsScalar(group) ? group.Count : 1;
             parts.AddRange(Enumerable.Repeat(compiled, copies));
         }
         return $"{type}{components.Count}({string.Join(", ", parts)})";
     }
 
-    /// <summary>
-    /// Whether the group is one value read by every component of it, and its text
-    /// is a scalar rather than the width of the group.
-    /// </summary>
+    /// <summary>Whether the group is one value whose text is a scalar.</summary>
     private bool BroadcastsScalar(IList<HlslTreeNode> group)
     {
         HlslTreeNode head = group[0];
@@ -1574,15 +1317,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// How wide the text of a broadcast comes out when the compiler is asked for
-    /// `requested` components of it - which is what the constructor above hands
-    /// each group. The answer is what the case for each operation does with the
-    /// width it is given: a read asked for its width spreads into a swizzle of
-    /// it, an operation is as wide as the operands it passes the request on to,
-    /// and a value with no components to spread - a constant, the one number a
-    /// dot or a load reads - is one however it is asked. An operation that
-    /// drops the request is only as wide as its operands make it on their own,
-    /// and every operand of a broadcast is the one node read twice.
+    /// How wide a broadcast's text comes out when compiled with `requested`
+    /// components. Must mirror what each compile case does with the width.
     /// </summary>
     private int BroadcastWidth(HlslTreeNode node, int requested)
     {
@@ -1593,41 +1329,31 @@ public sealed class NodeCompiler
                 or VectorComponentNode:
                 return 1;
             case GroupNode vector:
-                // A vector operand is its swizzle: distinct components say their
-                // own width whatever was asked, and the same component read
-                // twice is as wide as it is asked for.
+                // Distinct components set their own width; a repeated one is as asked.
                 return vector.Inputs.Skip(1).All(c => SameValue(c, vector.Inputs[0]))
                     ? requested
                     : vector.Inputs.Count;
             case MultiplyOperation:
                 return MaxBroadcastWidth(node.Inputs, requested);
-            // A cast spells itself `(float2)` over a group of two: it names a
-            // vector type, and HLSL broadcasts its scalar operand into one.
+            // A cast names a vector type: `(float2)`.
             case ConvertOperation:
                 return requested;
             case MoveConditionalOperation or CompareOperation:
-                // The first input is the condition and the tested value, read as
-                // one by the case that prints it; the branches after it are what
-                // carries the width.
+                // The branches carry the width, not the condition.
                 return MaxBroadcastWidth(node.Inputs.Skip(1), requested);
             case ComparisonNode comparison
                 when comparison.IsUnsigned && !IsUnsignedAlready(comparison.Left)
                     && !IsUnsignedAlready(comparison.Right):
-                // The cast saying so is as wide as the comparison.
+                // The (uintN) cast is as wide as the comparison.
                 return requested;
-            // A sample's level answers with one float, and the render target's
-            // sample count is one uint: neither has components to spread.
             case TextureLoadOutputNode lod
                 when lod.Controls.HasFlag(TextureLoadControls.CalculateLod):
                 return 1;
             case RenderTargetSampleCountNode:
                 return 1;
-            // A variable stays the name of its value; what it multiplies,
-            // compares or fills decides how wide it is read.
             case TempVariableNode:
                 return 1;
-            // Everything else that names a component names a value that has them,
-            // and spreads into a swizzle when asked for its width.
+            // Other component reads spread into a swizzle.
             case IHasComponentIndex:
                 return requested;
             default:
@@ -1667,10 +1393,7 @@ public sealed class NodeCompiler
         }
     }
 
-    // Double literals, as a vector where the values of one instruction read
-    // different doubles out of the one immediate. The components are the whole
-    // of it: one number where they all agree, and a constructor wide enough for
-    // the rest.
+    // Double literals: one number where all agree, else a double constructor.
     private string CompileDoubleConstant(List<HlslTreeNode> components)
     {
         string[] values = [.. components.Select(c =>
@@ -1689,20 +1412,15 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Set while the operands of a float operation are compiled. A bits value read
-    /// there is the float those bits are and gets an asfloat; one an integer
-    /// operation reads, or a move carries on, is left as it is.
+    /// Set while compiling a float operation's operands, where bits get an asfloat.
     /// </summary>
     private bool _readingAsFloat;
 
     private string CompileOperation(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
     {
         bool wasReadingAsFloat = _readingAsFloat;
-        // From what the operation computes in, and where that is not known - a
-        // template that rebuilds an add or a multiply makes a node with no flag on
-        // it - from the value it makes. The operators that read bits, and the moves
-        // that carry them, are named separately because they make an integer out of
-        // whatever they are given.
+        // From what the operation computes in, else the value it makes. Bitwise ops
+        // and moves are listed explicitly: they take whatever they are given.
         bool wasReadingAsBits = _readingAsBits;
         bool wasAssignedDirectly = _assignedDirectlyToInteger;
         int wasFloatArithmeticOperandDepth = _floatArithmeticOperandDepth;
@@ -1737,15 +1455,12 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Set while the operands of a bitwise operator or a shift are compiled. What
-    /// those read is the bits of whatever they are given, so an integer texel read
-    /// there is left as the integer it is - `asfloat(mask.Load(p)) & 4` is X3082.
+    /// Set while compiling a bitwise op's or shift's operands, so an integer texel
+    /// is not wrapped in asfloat (`asfloat(mask.Load(p)) &amp; 4` is X3082).
     /// </summary>
     private bool _readingAsBits;
 
-    // Set beside _assigningToInteger while the value of an assignment to an unsigned
-    // variable is compiled, so that a constant vector in it says uint rather than
-    // converting from int silently.
+    // Set beside _assigningToInteger for an unsigned variable, so constants say uint.
     private bool _assigningToUnsigned;
 
     private string CompileOperationOperands(Operation operation, List<HlslTreeNode> components, int promoteToVectorSize)
@@ -1763,21 +1478,15 @@ public sealed class NodeCompiler
                         : $"-({value})";
                 }
 
-            // Before ConsumerOperation, which this is one of: firstbithigh names
-            // two instructions and HLSL tells them apart by the operand, so the
-            // unsigned one says so where the value does not already say it itself.
-            // Without the cast, firstbithigh over a temp - which is declared int -
-            // compiles back to firstbit_shi, which answers differently for every
-            // word with its top bit set.
+            // Before ConsumerOperation. HLSL picks firstbit_hi or firstbit_shi by
+            // operand type, so the unsigned one casts where needed.
             case FirstBitHighOperation high:
                 {
                     string value = Compile(components.Select(g => g.Inputs[0]));
                     if (high.IsUnsigned && !IsUnsignedAlready(high.Value))
                     {
                         string size = components.Count > 1 ? components.Count.ToString() : "";
-                        // A cast binds tighter than the arithmetic it is put in front
-                        // of, so anything but a value already standing alone needs
-                        // the brackets: `(uint)a + b` casts a and adds b to it.
+                        // A cast binds tightly: `(uint)a + b` casts only a.
                         string cast = high.Value is RegisterInputNode or ConstantNode
                             or TempVariableNode or TempAssignmentNode
                             ? value
@@ -1796,11 +1505,7 @@ public sealed class NodeCompiler
 
             case BitsToDoubleOperation _:
                 {
-                    // Both halves as unsigned integers: asdouble takes uints, and a
-                    // half read as a float would come out as the number its bits
-                    // spell. Gathered across the group the way an ordinary operand
-                    // is, so that the two doubles of a double2 are one call over a
-                    // uint2 of low words and a uint2 of high ones.
+                    // asdouble takes uints; grouped so a double2 is one call.
                     bool wasAssigningToUnsigned = _assigningToUnsigned;
                     _assigningToUnsigned = true;
                     try
@@ -1818,9 +1523,7 @@ public sealed class NodeCompiler
             case SignGreaterOrEqualOperation _:
             case SignLessOperation _:
                 {
-                    // sge and slt compare two operands and yield 1 or 0. There is no
-                    // HLSL function of that name, and writing one operand as a call
-                    // dropped the other silently.
+                    // sge and slt yield 1 or 0; there is no HLSL function for them.
                     string comparison = operation is SignLessOperation ? "<" : ">=";
                     string value1 = CompileOperand(components.Select(g => g.Inputs[0]));
                     string value2 = CompileOperand(components.Select(g => g.Inputs[1]));
@@ -1829,17 +1532,12 @@ public sealed class NodeCompiler
 
             case ShiftLeftOperation _:
                 {
-                    // A shift wants integer operands, and a temp carries no type
-                    // here - `t1 << 2` on a float does not compile. fxc emits ishl
-                    // for a multiplication by a power of two, so write it back as
-                    // one: exact, and it types itself.
+                    // fxc emits ishl for a multiply by a power of two; writing it back
+                    // as a multiply also avoids `<<` on an untyped float temp.
                     var amount = components.Select(g => g.Inputs[1]).ToList();
                     if (IsWrittenAsMultiply(components) && amount[0] is ConstantNode shift)
                     {
-                        // Parenthesised where a multiplication would not bind the
-                        // whole of it: `(a + b) << 16` written as `a + b * 65536`
-                        // shifts only the second addend. The sign bit of a packed
-                        // half float sat in the first.
+                        // Bracket a sum: `(a + b) * 65536`.
                         var shifted = components.Select(g => g.Inputs[0]).ToList();
                         string value = CompileOperand(shifted);
                         return string.Format("{0} * {1}",
@@ -1854,10 +1552,8 @@ public sealed class NodeCompiler
             case ShiftRightOperation shiftRight:
                 {
                     string value = CompileIntegerOperand(components.Select(g => g.Inputs[0]));
-                    // HLSL reads >> as arithmetic or logical from the type of what
-                    // is shifted, so ushr has to say it there. As wide as the value,
-                    // since a bare (uint) over two components is X3014. Not over a
-                    // value HLSL already reads as unsigned.
+                    // HLSL picks the >> kind from the operand type, so ushr casts to
+                    // uintN (a bare (uint) over a vector is X3014).
                     if (shiftRight.IsUnsigned && !IsUnsignedAlready(shiftRight.Inputs[0]))
                     {
                         string size = components.Count > 1 ? components.Count.ToString() : "";
@@ -1895,9 +1591,8 @@ public sealed class NodeCompiler
                     var operand2 = components.Select(g => g.Inputs[1]);
                     string text1 = CompileIntegerOperand(operand1);
                     string text2 = CompileIntegerOperand(operand2);
-                    // The variable an accumulation assigns first, `t1 = t1 | bit`, and
-                    // two other operands in an order of their own: fxc's schedule
-                    // puts them either way round.
+                    // An accumulation names its variable first, `t1 = t1 | bit`; other
+                    // operands go in canonical order, since fxc's schedule varies.
                     bool accumulates = _compileDepth == _topDepth && _assignedVariables != null;
                     if (accumulates && operand2.All(_assignedVariables.Contains)
                         && !operand1.Any(_assignedVariables.Contains))
@@ -1918,25 +1613,20 @@ public sealed class NodeCompiler
                     var addend1 = components.Select(g => g.Inputs[0]);
                     var addend2 = components.Select(g => g.Inputs[1]);
                     bool decided = true;
-                    // `a + (b + c)` written without the brackets is `(a + b) + c`,
-                    // which sums in another order - a different rounding, and a mad
-                    // chain fxc no longer sees. Addition commutes, so the sum goes
-                    // first: `b + c + a` is the number that was computed.
+                    // The sum goes first: `b + c + a` keeps the order `a + (b + c)`
+                    // computed, unlike `a + b + c`.
                     if (IsSum(addend2.First()) && !IsSum(addend1.First()))
                     {
                         (addend1, addend2) = (addend2, addend1);
                     }
                     // An accumulation names what it adds to first: `t0 = t0 + x`.
-                    // Which side fxc's add has it on is its scheduling, and it
-                    // came back the other way round from one round to the next.
                     else if (_compileDepth == _topDepth && _assignedVariables != null
                         && addend2.All(_assignedVariables.Contains)
                         && !addend1.Any(_assignedVariables.Contains))
                     {
                         (addend1, addend2) = (addend2, addend1);
                     }
-                    // A select goes second, after what it is added to: `x + (c ? a :
-                    // b)`. fxc's add has it either side from one round to the next.
+                    // A select goes second: `x + (c ? a : b)`.
                     else if (addend1.First() is MoveConditionalOperation or CompareOperation
                         && addend2.First() is not (MoveConditionalOperation or CompareOperation)
                         && !IsSum(addend2.First())
@@ -1953,15 +1643,8 @@ public sealed class NodeCompiler
                     }
                     string right = CompileOperand(addend2);
                     string leftText = CompileOperand(addend1);
-                    // Otherwise in an order of their own: which side of the add fxc
-                    // put each is its scheduling, and comes back the other way
-                    // round from one round to the next.
-                    // Integer adds only: a float add's order decides more of what fxc
-                    // writes than it should - `t13 + t10` the other way round cost
-                    // point_lights its nrm, three instructions.
-                    // And two named values added at the top of a statement, whatever
-                    // they hold: `return t1 + t0` is one add, and nothing about it is
-                    // left for fxc to decide differently.
+                    // Otherwise canonical order, for integer adds only (a float add's
+                    // order changes fxc's output) or two named values at the top.
                     bool namedPair = _compileDepth == _topDepth
                         && addend1.All(a => a is TempVariableNode) && addend2.All(a => a is TempVariableNode);
                     if (!decided && (namedPair || (!IsFloatValued(addend1.First()) && !IsFloatValued(addend2.First())))
@@ -1980,8 +1663,7 @@ public sealed class NodeCompiler
                     {
                         right = right[1..^1];
                     }
-                    // A negated product added is one subtracted: `0.5 - 0.5 * y`, not
-                    // `0.5 + -0.5 * y`. Negating is exact, so the value is the same.
+                    // `0.5 - 0.5 * y`, not `0.5 + -0.5 * y`; negation is exact.
                     if (!IsSum(addend2.First()) && IsNegatedProduct(right))
                     {
                         return $"{leftText} - {right[1..]}";
@@ -1994,8 +1676,6 @@ public sealed class NodeCompiler
             case SubtractOperation _:
                 {
                     var subtrahend = components.Select(g => g.Inputs[1]);
-                    // The subtrahend keeps its brackets: `a - (b + c)` without them
-                    // is `a - b + c`, which adds c rather than taking it away.
                     string right = CompileOperand(subtrahend);
                     return string.Format("{0} - {1}",
                         CompileOperand(components.Select(g => g.Inputs[0])),
@@ -2014,18 +1694,13 @@ public sealed class NodeCompiler
                         multiplicand2 = temp;
                     }
 
-                    // A quotient on the right is kept as one: `a * (b / c)` is what
-                    // was computed, and `a * b / c` rounds differently and shares
-                    // nothing with a `b / c` computed elsewhere.
+                    // Keep `a * (b / c)`: `a * b / c` rounds differently.
                     bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
                     bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First())
                         && !IsQuotient(multiplicand2);
-                    // By the node, unless it was written as one call, as CompileOperand
-                    // asks: a cross product is three subtracts and binds as a call does.
                     string first = Compile(multiplicand1, promoteToVectorSize);
                     string second = Compile(multiplicand2, promoteToVectorSize);
-                    // Two named values multiplied at the top of a statement go in an
-                    // order of their own, as two added there do.
+                    // Two named values at the top go in canonical order.
                     if (_compileDepth == _topDepth
                         && multiplicand1.All(m => m is TempVariableNode) && multiplicand2.All(m => m is TempVariableNode)
                         && SortsAfter(multiplicand1.First(), first, multiplicand2.First(), second))
@@ -2043,11 +1718,8 @@ public sealed class NodeCompiler
                     var divisor = components.Select(g => g.Inputs[1]);
                     string left = CompileOperand(dividend);
                     string right = CompileOperand(divisor);
-                    // The brackets a division needs, for the reason it needs them: %
-                    // binds as tightly as / does. `(id - 2) % 3` written without them
-                    // is `id - 2 % 3`, which takes two off the index and never wraps
-                    // it - and a divisor that is itself a product or a quotient needs
-                    // them too, since `a % b * c` multiplies the remainder.
+                    // % binds like /: bracket a sum, and a divisor that is a product
+                    // or quotient.
                     bool bracketDividend = IsSum(dividend.First());
                     bool bracketDivisor = IsSum(divisor.First())
                         || divisor.First() is MultiplyOperation or ModuloOperation
@@ -2062,24 +1734,15 @@ public sealed class NodeCompiler
                     var dividend = components.Select(g => g.Inputs[0]);
                     var divisor = components.Select(g => g.Inputs[1]);
 
-                    // An rsq is reduced to one over a square root, which is what lets
-                    // the templates see through it - a reciprocal of one is the root
-                    // itself, and a length divided by itself is a normalize. Where
-                    // none of them took it, the division is still the rsq it was, and
-                    // written as one it is one instruction rather than a sqrt and a
-                    // div. HLSL spells it rsqrt, the way it spells rcp.
+                    // rsq is parsed as 1 / sqrt for the templates; one no template
+                    // took is written back as rsqrt.
                     if (ConstantMatcher.IsOne(dividend.First())
                         && divisor.First() is SquareRootOperation)
                     {
                         return $"rsqrt({Compile(divisor.Select(d => d.Inputs[0]))})";
                     }
 
-                    // The dividend needs them as much as the divisor does: an add or a
-                    // subtract binds more loosely than the division, so `(a - b) / c`
-                    // written without them is `a - b / c`, which is a different number.
-                    // And a divisor that is itself a product or a quotient needs them
-                    // whatever it is made of: `a / (b * c)` without them is `a / b * c`,
-                    // which is a times c over b.
+                    // A divisor that is a product or quotient needs brackets too.
                     bool dividendIsAssociative = AssociativityTester.TestForMultiplication(dividend.First());
                     bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor.First())
                         && divisor.First() is not MultiplyOperation && !IsQuotient(divisor);
@@ -2100,9 +1763,8 @@ public sealed class NodeCompiler
                     var value1 = Compile(components.Select(g => g.Inputs[0]));
                     var value2 = Compile(components.Select(g => g.Inputs[1]));
 
-                    // umin and umax pick their overload from the operands, the way
-                    // ushr does: one unsigned operand makes the call unsigned, so
-                    // where neither says so the first is made to.
+                    // min/max pick the overload from the operands: one unsigned operand
+                    // makes the call unsigned.
                     bool isUnsigned = operation is MinimumOperation { IsUnsigned: true }
                         or MaximumOperation { IsUnsigned: true };
                     if (isUnsigned && !IsUnsignedAlready(operation.Inputs[0]) && !IsUnsignedAlready(operation.Inputs[1]))
@@ -2110,11 +1772,7 @@ public sealed class NodeCompiler
                         string size = components.Count > 1 ? components.Count.ToString() : "";
                         value1 = $"(uint{size}){CompileOperand(components.Select(g => g.Inputs[0]))}";
                     }
-                    // And imin and imax the other way: an unsigned operand makes the
-                    // call unsigned, so each one is made signed. blur_row clamps
-                    // `(int)id.x - 4` at zero, and over the uint thread id the max was
-                    // an unsigned one, which fxc folds away - every value is at
-                    // least zero - and the first threads read far off the edge.
+                    // So imin/imax cast unsigned operands to int.
                     else if (!isUnsigned && operation is MinimumOperation or MaximumOperation
                         && ValueTypes.ComputesInIntegers(operation) == true)
                     {
@@ -2136,29 +1794,22 @@ public sealed class NodeCompiler
 
             case ConvertOperation convert:
                 {
-                    // A cast binds tighter than the arithmetic around it, so anything
-                    // that is not already a single term needs brackets of its own:
-                    // `(int)a + b` would convert only a.
+                    // A cast binds tightly: `(int)a + b` converts only a.
                     var value = components.Select(g => g.Inputs[0]).ToList();
                     string compiledValue = Compile(value);
                     bool isSingleTerm = value[0] is RegisterInputNode
                         || value[0] is ConstantNode
                         || value[0] is TempVariableNode
                         || value[0] is ConvertOperation
-                        // A call brings its own brackets. Negation is one of these
-                        // and needs none either: a cast over it still applies last.
+                        // Calls (and negation) need no extra brackets.
                         || value[0] is ConsumerOperation
-                        // And so do the calls that take more than one argument,
-                        // which were bracketed for no reason: `(float)(max(a, b))`.
                         || value[0] is MaximumOperation or MinimumOperation
                             or PowerOperation or ArcTangent2Operation or ClampOperation or SmoothStepOperation
                             or LinearInterpolateOperation or FusedMultiplyAddOperation
                             or DotProductOperation or LengthOperation
                             or FirstBitHighOperation
-                        // A subscript carries its own brackets at the end.
                         || value[0] is VectorComponentNode;
-                    // As wide as what is being converted: `(float)` on a two
-                    // component value asks for a constructor with one argument.
+                    // As wide as the value: `(float2)`, not `(float)`.
                     string castType = components.Count > 1
                         ? convert.TargetType + components.Count
                         : convert.TargetType;
@@ -2169,9 +1820,7 @@ public sealed class NodeCompiler
 
             case LinearInterpolateOperation _:
                 {
-                    // `lrp dst, s, y, x` is x + s * (y - x), and lerp takes the amount
-                    // last: lerp(x, y, s). Passing them straight through made the
-                    // amount the first endpoint and the second endpoint the amount.
+                    // `lrp dst, s, y, x` is lerp(x, y, s).
                     var amount = Compile(components.Select(g => g.Inputs[0]));
                     var to = Compile(components.Select(g => g.Inputs[1]));
                     var from = Compile(components.Select(g => g.Inputs[2]));
@@ -2196,24 +1845,18 @@ public sealed class NodeCompiler
                 }
             case VectorComponentNode select:
                 {
-                    // The vector as wide as it is, not as wide as the one component
-                    // asked for: the subscript picks out of the whole of it, and a
-                    // swizzle narrowing it first would move the component the index
-                    // names.
+                    // The whole vector: narrowing it would shift what the index names.
                     string vector = Compile([select.Vector], select.Vector.Length);
                     return $"{vector}[{CompileAsInteger([select.Index])}]";
                 }
             case DotProductOperation _:
                 {
-                    // A dot takes its width from the vector, so a repeated component has to
-                    // stay written out. dot(r0.ww, r1.xx) is a dp2add; dot(r0.w, r1.x) is
-                    // a multiply, and recompiles as one.
+                    // Keep the full width: dot(r0.ww, r1.xx) is a dp2add, dot(r0.w, r1.x)
+                    // a multiply.
                     int vectorSize = components[0].Inputs[0] is GroupNode vector
                         ? vector.Inputs.Count
                         : PromoteToAnyVectorSize;
-                    // The pairs in the order both operands have their lanes, where one
-                    // order does for both: dot(a.yzx, b.yzx) is dot(a, b), and that is
-                    // how a dot over a register fxc rotated reads otherwise.
+                    // dot(a.yzx, b.yzx) is dot(a, b).
                     if (components.Count == 1
                         && components[0].Inputs[0] is GroupNode left
                         && components[0].Inputs[1] is GroupNode right
@@ -2234,16 +1877,8 @@ public sealed class NodeCompiler
                 }
             case LoadStructuredNode load:
                 {
-                    // The element or the byte offset is an index, not a float's bits:
-                    // in a float context the address would be reinterpreted, and
-                    // `buffer[asfloat(element)]` is an index made from the bits of a
-                    // float rather than the element asked for.
-                    // One load reads one element, and every component of a broadcast
-                    // of it reads that element through the one index: widening the
-                    // address asked for the group spelled `buffer[(int2)element]`, an
-                    // index of two elements where the components asked for one read
-                    // twice. Only loads of different elements fill the subscript into
-                    // a vector index.
+                    // The address is an integer index; a broadcast reads one element,
+                    // so a repeated address stays scalar.
                     var addressInputs = components.Select(g => g.Inputs[0]).ToList();
                     var address = CompileAsInteger(
                         addressInputs.Skip(1).All(a => SameValue(a, addressInputs[0]))
@@ -2253,30 +1888,21 @@ public sealed class NodeCompiler
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
                     if (load.IsGroupShared)
                     {
-                        // Raw groupshared memory: the element, not a Load, because
-                        // the declaration is an array - or the variable itself where
-                        // it is not one. One load reads one element, so there is no
-                        // width or swizzle to take off it.
+                        // Raw groupshared memory is declared as an array (or a scalar).
                         return _registers.GroupSharedElementReference(
                             resourceKey, _registers.GetRegisterName(resourceKey), address);
                     }
                     if (load.IsRaw)
                     {
-                        // A raw buffer reads as many dwords as the highest component
-                        // asked for: Load, Load2, Load3 or Load4 at the byte offset,
-                        // and a swizzle after it where the shader took less than all.
+                        // LoadN up to the highest component, then a swizzle.
                         int width = components.Max(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex) + 1;
                         string rawSwizzle = GetAstSourceSwizzleName(
                             components.Select(g => (IHasComponentIndex)g.Inputs[2]), width);
                         string method = width == 1 ? "Load" : $"Load{width}";
                         return $"{_registers.GetRegisterName(resourceKey)}.{method}({address}){rawSwizzle}";
                     }
-                    // The subscript picks the element, so a component selection goes
-                    // after it. Naming the buffer with a swizzle gave `In.w[i]`.
-                    // The load carries no component index of its own; the resource
-                    // operand it reads does.
-                    // The byte offset picks a row where the element is a matrix and
-                    // a member where it is a struct.
+                    // The swizzle goes after the subscript; components come from the
+                    // resource operand. The byte offset picks a matrix row or a member.
                     string element = $"{_registers.GetRegisterName(resourceKey)}[{address}]";
                     string members = _registers.NameStructuredMembers(resourceKey, element,
                         load.ElementByteOffset,
@@ -2285,10 +1911,8 @@ public sealed class NodeCompiler
                     {
                         return members;
                     }
-                    // Groupshared memory wider than one register is written as a
-                    // struct of them, and the byte offset picks which. There is no
-                    // reflection entry to name the members from, so they are named for
-                    // where they start and the offset is counted in them.
+                    // Wide groupshared memory is a struct of synthesized members named
+                    // by start offset (no reflection data).
                     if (_registers.ThreadGroupSharedMember(resourceKey, load.ElementByteOffset)
                         is var (memberName, memberComponents, memberBase))
                     {
@@ -2299,19 +1923,12 @@ public sealed class NodeCompiler
                     }
                     string row = _registers.ApplyStructuredElementRow(resourceKey, element,
                         load.ElementByteOffset);
-                    // Where the element is neither a matrix (whose byte offset picks a
-                    // row) nor a struct (whose offset picks a member), it is one scalar
-                    // or a vector, and the offset selects a component of it: reading the
-                    // .w of a uint4 is the load at offset twelve. The offset is whole
-                    // components past the operand's own, so it is the swizzle's base.
+                    // For a scalar or vector element the offset selects a component
+                    // (.w of a uint4 is offset 12), so it is the swizzle's base.
                     int componentBase = ReferenceEquals(row, element)
                         ? -load.ElementByteOffset / 4
                         : 0;
-                    // A double element takes two components for each value it holds,
-                    // so the element is that many values wide and the swizzle names
-                    // them rather than the components: a StructuredBuffer<double>
-                    // loads r0.xy for its one number, and named by component that
-                    // came out `input[i].x` off a scalar.
+                    // A double takes two components; the swizzle names values.
                     int loadPerElement = _registers.GetStructuredComponentsPerElement(resourceKey);
                     return row + GetAstSourceSwizzleName(
                         components.Select(g => (IHasComponentIndex)g.Inputs[2]),
@@ -2327,10 +1944,7 @@ public sealed class NodeCompiler
                         return anyAll;
                     }
                     string op = operation is LogicalAndOperation ? "&&" : "||";
-                    // An or under an and keeps its brackets: && binds tighter, and
-                    // `a && b || c` is (a && b) || c. An all() turned round into an
-                    // or of three tests, anded with an any(), was written that way
-                    // and tested something else.
+                    // An or under an and keeps its brackets: && binds tighter.
                     string Operand(int index)
                     {
                         string text = Compile(components.Select(g => g.Inputs[index]));
@@ -2368,9 +1982,7 @@ public sealed class NodeCompiler
 
             case EvaluateAttributeOperation evaluate:
                 {
-                    // The attribute is grouped over its components the way any
-                    // elementwise operation's operand is; where it is evaluated is
-                    // one value for all of them, and an integer either way.
+                    // The sample index or offset is one integer for all components.
                     string attribute = Compile(components.Select(g => g.Inputs[0]));
                     if (evaluate.Place == EvaluateAttributeAt.Centroid)
                     {
@@ -2392,16 +2004,9 @@ public sealed class NodeCompiler
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
-                    // A movc moves bits, and one between a float and an integer -
-                    // `v > 0.5 ? asuint(v) : (uint4)(v * 100)` - selects the float's
-                    // bits. Written `t2 ? t0 : t1`, HLSL selects in floats: the
-                    // integer was converted to a float and back and the float was
-                    // stored as the integer it rounds to. The branch of the other
-                    // kind is reinterpreted to the kind the select is read as - and
-                    // read as a float, an integer branch is the bits of one, which
-                    // `v > 0.5 ? v : asfloat(k)` selects. Only a branch that is no
-                    // constant says which kind it is; HLSL's own mixed select has
-                    // its conversion in the bytecode.
+                    // A movc moves bits, but HLSL's mixed select converts. So a branch
+                    // of the other kind is reinterpreted to the kind the select is
+                    // read as. Constants don't say their kind.
                     bool BranchIs(int input, bool floats) => components.All(c =>
                         c.Inputs[input] is not ConstantNode
                         && (floats ? IsFloatValued(c.Inputs[input]) : ValueTypes.IsIntegerValue(c.Inputs[input]) == true));
@@ -2423,14 +2028,8 @@ public sealed class NodeCompiler
                         }
                     }
 
-                    // Two constant branches are the one place a whole float has
-                    // nothing beside it to be typed by: `cond ? 1 : 0` is a pair of
-                    // int literals to HLSL, and the arithmetic around it goes
-                    // integer with them. It is how a comparison mask anded with the
-                    // bits of 1.0f comes out - the set branch is the float, the
-                    // clear one the integer zero - and it cost comparison_mask two
-                    // instructions. The point goes on the branches that are floats;
-                    // a zero beside one is promoted by it.
+                    // `cond ? 1 : 0` is int to HLSL; a float constant branch gets a
+                    // decimal point (the other is promoted by it).
                     if (AreConstants(components, 1) && AreConstants(components, 2)
                         && (AreFloatConstants(components, 1) || AreFloatConstants(components, 2)))
                     {
@@ -2444,17 +2043,14 @@ public sealed class NodeCompiler
                         }
                     }
 
-                    // A select whose conditions do not make one vector - two unrelated
-                    // tests packed into a register - is two selects, not a select on
-                    // a constructor: `float2(a, b) ? 1.0 : 0` is HLSL, and reads as
-                    // nothing anyone wrote.
+                    // Conditions that don't form one vector make separate selects, not
+                    // `float2(a, b) ? 1.0 : 0`.
                     if (components.Count > 1 && IsConstructor(value1))
                     {
                         string selects = string.Join(", ", components.Select(c =>
                             $"{Compile([c.Inputs[0]])} ? {Branch(c.Inputs[1])} : {Branch(c.Inputs[2])}"));
                         return $"float{components.Count}({selects})";
 
-                        // The same point on a float branch as the whole select puts.
                         string Branch(HlslTreeNode branch)
                         {
                             string text = Compile([branch]);
@@ -2473,24 +2069,19 @@ public sealed class NodeCompiler
         return components.All(c => c.Inputs[inputIndex] is ConstantNode);
     }
 
-    // Whether every component of an operand is a constant that stands for a float.
     private static bool AreFloatConstants(List<HlslTreeNode> components, int inputIndex)
     {
         return components.All(c => c.Inputs[inputIndex] is ConstantNode { IntegerValue: null });
     }
 
-    // A float literal HLSL would otherwise read as an integer. Left alone for one
-    // that already says what it is - a decimal point, an exponent, or a name like
-    // NaN and INF.
+    // Adds ".0" to a literal of only digits and minus signs.
     private static string WithDecimalPoint(string value)
     {
         return value.Any(c => !char.IsAsciiDigit(c) && c != (char)45) ? value : value + ".0";
     }
 
-    // The index into an array of matrices counts registers, so it is already the
-    // element index times the row count. Undo that multiplication where it is
-    // visible rather than emitting a division that only fxc would fold away. An
-    // element is a subscript, so it is compiled as an integer.
+    // A register index into an array of matrices is element * rows; undo a visible
+    // multiply rather than emitting a division.
     public string CompileRegisterIndexAsElement(RelativeAddressNode address, int rows)
     {
         return address.IndexCountsElements
@@ -2500,8 +2091,7 @@ public sealed class NodeCompiler
 
     public string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
     {
-        // DXBC shifts where D3D9 multiplies: `ishl r0.x, v1.x, l(2)` is the element
-        // times four.
+        // DXBC shifts where D3D9 multiplies.
         if (index is ShiftLeftOperation shift
             && shift.Inputs[1] is ConstantNode shiftAmount
             && rows == 1 << (int)shiftAmount.Value)
@@ -2518,24 +2108,16 @@ public sealed class NodeCompiler
                 }
             }
         }
-        // An index fxc has already masked is masked inside the register number
-        // rather than outside it, and in one instruction: `m[(i + 1) & 7]` is
-        // `bfi r0.x, l(3), l(2), i + 1, l(0)`, the mask of three bits shifted up by
-        // the two that multiply the element index by the registers it takes. Taking
-        // the shift back off leaves the mask the shader wrote, where the shift is
-        // exactly the one this index is over. Left as a division, the whole bfi
-        // survived into the output with a divide after it, and fxc rebuilt that as
-        // two instructions rather than the one it had.
+        // fxc masks and scales in one bfi: `m[(i + 1) & 7]` is
+        // `bfi r0.x, l(3), l(2), i + 1, l(0)`. Dropping the shift recovers the mask.
         if (index is BitFieldInsertOperation insert
             && insert.Inputs[0] is ConstantNode { IntegerValue: int width }
             && insert.Inputs[1] is ConstantNode { IntegerValue: int offset }
             && ConstantMatcher.IsZero(insert.Inputs[3])
             && width < 32 && rows == 1 << offset)
         {
-            // Bracketed twice over, and neither is spare: an and binds more
-            // loosely than the constant offset a member of the element adds onto
-            // this, and more loosely than an or or an xor the index itself might be
-            // made of - `a | b & 7` ands before it ors.
+            // Both brackets are needed: & binds more loosely than + and more
+            // tightly than | and ^.
             string masked = CompileAsInteger([insert.Inputs[2]]);
             if (insert.Inputs[2] is not (RegisterInputNode or ConstantNode
                 or TempVariableNode or TempAssignmentNode))
@@ -2547,16 +2129,10 @@ public sealed class NodeCompiler
         return $"{CompileAsInteger([index])} / {rows}";
     }
 
-    // An offset shifts the read by whole texels. Leaving it out compiles and
-    // reads the wrong ones, so it belongs in the call.
     /// <summary>
-    /// A Load address that is a texel plus a constant, written as the whole address
-    /// plus the constant: `int3(t2, 0) + int3(1, 0, 0)` rather than
-    /// `int3(t2 + int2(1, 0), 0)`. The shader kept the address in a register, mip
-    /// level and all, and stepped to the neighbouring texel with one iadd over the
-    /// register; given the texel's add alone fxc adds the pair and moves the mip
-    /// level in beside it again, an instruction more (screen_position). Only where
-    /// the mip level is a constant, and some lane adds an integer constant.
+    /// A Load address that is a texel plus a constant, written as
+    /// `int3(t2, 0) + int3(1, 0, 0)` rather than `int3(t2 + int2(1, 0), 0)`, which
+    /// fxc compiles to one more instruction. Only with a constant mip level.
     /// </summary>
     private string CompileOffsetAddress(List<HlslTreeNode> address)
     {
@@ -2598,6 +2174,7 @@ public sealed class NodeCompiler
         return $"{Compile(bases, bases.Count)} + {Compile(offsets, offsets.Count)}";
     }
 
+    // Texel offsets change which texels are read, so they belong in the call.
     private static string CompileSampleOffsets(int[] sampleOffsets, ResourceDefinition texture)
     {
         if (sampleOffsets == null)
@@ -2613,15 +2190,12 @@ public sealed class NodeCompiler
             : $", {offsets}";
     }
 
-    // An array subscript is an integer, so its literals print as integers and its
-    // arithmetic is not sent through a float.
+    // An array subscript is an integer.
     public string CompileIndexableTempIndex(HlslTreeNode index)
     {
         bool wasAssigningToInteger = _assigningToInteger;
         bool wasReadingAsFloat = _readingAsFloat;
         _assigningToInteger = true;
-        // And the number is what addresses the element: the bits a float value is
-        // standing in for are not. See CompileAsInteger.
         _readingAsFloat = false;
         try
         {
@@ -2635,16 +2209,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Compiles a value standing where an integer is wanted - the element of a
-    /// buffer of integers. A vector constructor has no idea what it is being
-    /// assigned to, so `countbits(x)` and its neighbours came out inside a float4
-    /// on the way into a RWStructuredBuffer&lt;uint4&gt;, which is a conversion each
-    /// way and loses everything above what a float holds exactly.
-    /// </summary>
-    /// <summary>
-    /// The value an assignment writes, without the partial precision cast where the
-    /// variable is declared half: the declaration carries the precision then, and
-    /// `half3 t0 = (half3)x;` says it twice.
+    /// The assigned value, without a half cast where the variable is declared half.
     /// </summary>
     private static HlslTreeNode AssignedValue(TempAssignmentNode assignment)
     {
@@ -2655,10 +2220,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// The accumulator of an msad4 read at some of its lanes. It is a uint4 whichever
-    /// lanes are read, a lane apiece: where fxc computed lanes 0 and 3 only, the
-    /// accumulators it has are those two, and the lanes between take a zero nothing
-    /// reads.
+    /// An msad4 accumulator: always a uint4, with 0 in lanes nothing reads.
     /// </summary>
     private string CompileMsadAccumulator(Msad4Node[] lanes)
     {
@@ -2675,15 +2237,15 @@ public sealed class NodeCompiler
         return $"uint4({string.Join(", ", parts)})";
     }
 
+    /// <summary>
+    /// Compiles a value where an integer is wanted, such as an index or an element
+    /// of an integer buffer: constructors are integer, and nothing gets asfloat.
+    /// </summary>
     public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
     {
         bool wasAssigningToInteger = _assigningToInteger;
         bool wasReadingAsFloat = _readingAsFloat;
         _assigningToInteger = true;
-        // Where an integer is wanted, an integer's bits standing in for a float are
-        // not what is read: an address compiled with the float context still on came
-        // out as `tex[asfloat(coordinate)]`, the bits of a float truncated back into
-        // an index of a texel nobody asked for.
         _readingAsFloat = false;
         try
         {
@@ -2722,9 +2284,7 @@ public sealed class NodeCompiler
                 promoteToVectorSize);
             string index = CompileAsInteger([relativeAddress.Index]);
 
-            // A def-defined array has no declaration to be named from, so it takes
-            // the name of the register its run starts at and is declared alongside
-            // the uniforms.
+            // A def-defined array is named after its first register.
             if (_registers.FindConstantArray(arrayKey.RegisterKey) is ConstantArray literals)
             {
                 int literalOffset = arrayKey.RegisterKey.Number - literals.BaseRegisterIndex;
@@ -2734,24 +2294,17 @@ public sealed class NodeCompiler
                 }
                 return $"{literals.Name}[{index}]{swizzle}";
             }
-            // The immediate constant buffer has no declaration to be named from; the
-            // disassembly calls it icb and so does the one this writes out. The
-            // immediate beside the index is the row the read starts at - fxc puts one
-            // array after another in the one buffer, so `icb[r0.x + 5]` reads the
-            // second of them - and dropped, the read was of the wrong rows entirely.
+            // The immediate constant buffer packs several arrays; the immediate in
+            // `icb[r0.x + 5]` picks which, and names it.
             if (arrayKey.RegisterKey is D3D10RegisterKey immediateKey
                 && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
             {
-                // The immediate beside the index is the row the read starts at, which
-                // is the array it reads rather than an offset into one: dropped, the
-                // read was of the wrong rows entirely.
                 return $"{_registers.ImmediateConstantBufferName(immediateKey.Number)}"
                     + $"[{index}]{swizzle}";
             }
 
-            // Named from the declaration rather than the register, which would carry
-            // an element index of its own. The base register need not be the first of
-            // the array: `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
+            // Named from the declaration; the base register need not be the first:
+            // `floats[i + 2]` reads c2[a0.x] when floats starts at c0.
             string arrayName = _registers.GetRegisterName(arrayKey);
             if (arrayKey.RegisterKey is D3D10RegisterKey vertexKey
                 && vertexKey.OperandType is OperandType.Input or OperandType.OutputControlPoint
@@ -2759,13 +2312,8 @@ public sealed class NodeCompiler
                 && _registers.FindInputDeclaration(vertexKey, arrayKey.ComponentIndex)
                     is RegisterDeclaration vertex)
             {
-                // The vertex array is the subscript and the semantic the member, the
-                // other way round from a constant buffer array. Which member, and how
-                // wide it is, is a question about the component read and not about the
-                // register: two semantics can share one, and the register's own
-                // declaration named the first of them. `patch[id].position.w` was the
-                // texture coordinate packed into the position's register, and a float3
-                // has no w to compile.
+                // `vertices[i].semantic`; the member is found by component, since
+                // semantics can share a register.
                 string memberSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
                     _registers.GetRegisterMaskedLength(arrayKey),
                     promoteToVectorSize,
@@ -2775,9 +2323,7 @@ public sealed class NodeCompiler
                     : _registers.InputArrayName;
                 return $"{vertexArray}[{index}].{vertex.Name}{memberSwizzle}";
             }
-            // A run of input registers declared as one array by dcl_indexrange. Here
-            // the semantic is the array and the index its subscript, the way round a
-            // constant buffer array has it.
+            // Input registers made one array by dcl_indexrange.
             if (arrayKey.RegisterKey is D3D10RegisterKey inputArrayKey
                 && inputArrayKey.OperandType == OperandType.Input
                 && !inputArrayKey.GSVertex.HasValue)
@@ -2788,18 +2334,14 @@ public sealed class NodeCompiler
                 && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)
                     is ConstantDeclaration constantBufferArray)
             {
-                // Named from the declaration, which carries no element index of its
-                // own, unlike the register.
                 arrayName = constantBufferArray.Name;
                 int elementOffset = _registers.GetConstantBufferElementOffset(
                     d3d10ArrayKey, constantBufferArray);
                 if (constantBufferArray.TypeInfo.MemberInfo != null
                     && constantBufferArray.TypeInfo.NumElements > 1)
                 {
-                    // An array of structs picked at run time: the index counts
-                    // registers across the array, so the element is that over the
-                    // registers one takes, and the constant part of the offset says
-                    // which register of the element - which member - is read.
+                    // Array of structs: element = index / stride; the constant
+                    // offset's remainder picks the member.
                     int stride = constantBufferArray.RegistersPerElement;
                     string element = CompileRegisterIndexAsElement(relativeAddress, stride);
                     if (elementOffset / stride != 0)
@@ -2823,11 +2365,7 @@ public sealed class NodeCompiler
                 }
                 if (constantBufferArray.TypeInfo.Rows > 1)
                 {
-                    // An array of matrices takes two subscripts, the same as the D3D9
-                    // case below: the register index counts rows across the array, so
-                    // the element is that index over the row count and the row is what
-                    // is left. Indexing it as though each register were an element
-                    // gives dot(float4, float4x4).
+                    // Array of matrices: element = index / rows, then the row.
                     string matrixElement = CompileRegisterIndexAsElement(
                         relativeAddress, constantBufferArray.RegistersPerElement);
                     return RegisterState.MatrixRegisterComponents(
@@ -2847,9 +2385,8 @@ public sealed class NodeCompiler
                 int registerOffset = d3d9ArrayKey.Number - array.RegisterIndex;
                 if (array.TypeInfo.MemberInfo != null)
                 {
-                    // An array of structs: the index counts registers, so the element
-                    // is that over the registers one takes - and the register left over
-                    // within the element names the member, each of which owns one.
+                    // Array of structs: element = index / stride; the remainder
+                    // register picks the member.
                     int stride = Math.Max(array.RegistersPerElement, 1);
                     string element = CompileRegisterIndexAsElement(relativeAddress, stride);
                     if (registerOffset / stride != 0)
@@ -2874,9 +2411,7 @@ public sealed class NodeCompiler
                 }
                 if (array.TypeInfo.Rows > 1)
                 {
-                    // An array of matrices takes two subscripts. The register index
-                    // counts rows across the whole array, so the element is that
-                    // index over the row count and the row is the constant left over.
+                    // Array of matrices: element = index / rows, then the row.
                     string element = CompileRegisterIndexAsElement(
                         relativeAddress, array.RegistersPerElement);
                     return RegisterState.MatrixRegisterComponents(
@@ -2898,8 +2433,7 @@ public sealed class NodeCompiler
             if (!(registerKey is D3D9RegisterKey d3D9RegisterKey && d3D9RegisterKey.Type == RegisterType.Sampler)
                 && !(registerKey is D3D10RegisterKey d3D10RegisterKey && d3D10RegisterKey.OperandType == OperandType.Immediate32))
             {
-                // A component base from whichever kind of packing applies - at most one
-                // of the two is ever non-zero for a given register.
+                // At most one of the two bases is non-zero for a register.
                 int componentBase = _registers.GetConstantComponentBase(shaderInput.RegisterComponentKey)
                     + _registers.GetInputComponentBase(shaderInput.RegisterComponentKey);
                 swizzle = GetAstSourceSwizzleName(componentsWithIndices,
@@ -2909,9 +2443,7 @@ public sealed class NodeCompiler
                     _registers.GetConstantComponentsPerElement(shaderInput.RegisterComponentKey));
             }
 
-            // A named struct member identifies its register outright - each member
-            // owns one - so the swizzle reads the member's own components. A scalar
-            // has none to pick, and broadcasts as it is where a wider value is wanted.
+            // A struct member owns its register; the swizzle is over its components.
             if (_registers.TryGetConstantMember(shaderInput.RegisterComponentKey, out StructMemberAccess member))
             {
                 if (member.Width <= 1)
@@ -2923,9 +2455,7 @@ public sealed class NodeCompiler
                 return $"{member.Name}{memberSwizzle}";
             }
 
-            // Components off the register rather than a swizzle after its name: one
-            // component of a matrix's column is an element, and HLSL subscripts an
-            // element rather than transposing to reach it.
+            // Not a plain swizzle: a matrix column component is a subscripted element.
             return _registers.GetRegisterComponents(shaderInput.RegisterComponentKey, swizzle);
         }
 
@@ -2937,8 +2467,7 @@ public sealed class NodeCompiler
             {
                 return textureBufferRead;
             }
-            // A writable view is read by subscript rather than by Load, which is
-            // what the shader said and what a store into it looks like beside it.
+            // A writable view is read by subscript rather than Load.
             bool isWritableView = resourceLoad.Resource.RegisterComponentKey.RegisterKey
                 is D3D10RegisterKey { OperandType: OperandType.UnorderedAccessView };
             ResourceDefinition resourceDefinition = _registers.ResourceDefinitions
@@ -2946,11 +2475,7 @@ public sealed class NodeCompiler
                     ? D3DShaderInputType.UavRWTyped
                     : D3DShaderInputType.Texture))
                 .First(d => d.BindPoint == resourceLoad.Resource.RegisterComponentKey.RegisterKey.Number);
-            // Load addresses in texels, so its coordinate vector is built as ints:
-            // as a float3 fxc converts an integer address to float and straight back.
-            // Read as a float where the load's result is one, the address would be
-            // reinterpreted instead: `tex[asfloat(coordinate)]` truncates the bits
-            // of a float back to an index, which is not the texel asked for.
+            // Load addresses are integer texels: no float constructor, no asfloat.
             bool wasAssigningToInteger = _assigningToInteger;
             bool wasReadingAsFloat = _readingAsFloat;
             _assigningToInteger = true;
@@ -2973,11 +2498,7 @@ public sealed class NodeCompiler
             string loaded = isWritableView
                 ? $"{resourceDefinition.Name}[{address}]{loadSwizzle}"
                 : $"{resourceDefinition.Name}.Load({address}{sampleIndex}{loadOffsets}){loadSwizzle}";
-            // A texel of a texture of uints is an integer, and is named as one
-            // where its readers read it as one. Read as anything else it is the
-            // bits it holds and not the number they make: a G-buffer packs a depth
-            // into such a texture beside a normal, and converting the depth would
-            // give whatever number its bits happen to be.
+            // An integer texel read as a float is reinterpreted (e.g. a packed depth).
             if (resourceDefinition.IsIntegerReturnType && !_readingAsBits && !_assigningToInteger
                 && components.All(c => ValueTypes.ReadAsInteger(c) != true))
             {
@@ -2993,14 +2514,11 @@ public sealed class NodeCompiler
 
         if (first is SamplePositionNode samplePosition)
         {
-            // From the resource operand, the way a sampled texel's channel is: the
-            // destination is .xy and the resource swizzle says which of the two.
+            // The swizzle comes from the resource operand.
             string positionSwizzle = GetAstSourceSwizzleName(
                 components.Select(c => (IHasComponentIndex)((SamplePositionNode)c).Resource),
                 2, promoteToVectorSize);
             string index = CompileAsInteger([samplePosition.SampleIndex]);
-            // The render target is asked about by a function of its own rather than
-            // by a method on the resource, there being no resource to name.
             if (samplePosition.Resource.RegisterComponentKey.RegisterKey
                 is D3D10RegisterKey { OperandType: OperandType.Rasterizer })
             {
@@ -3013,13 +2531,8 @@ public sealed class NodeCompiler
 
         if (first is TextureLoadOutputNode textureLoad)
         {
-            // From the resource operand, not from the load: the load is named after
-            // the component it writes, and the resource says which channel that
-            // component came from. The same as LoadStructuredNode above.
-            // lod is the exception: its resource swizzle chooses between the two
-            // levels rather than naming a channel of a texel, and the level itself
-            // is a float. `CalculateLevelOfDetailUnclamped(...).y` is a swizzle of a
-            // scalar, which does not compile.
+            // The channel comes from the resource operand's swizzle. Except for lod,
+            // whose result is a scalar float that cannot be swizzled.
             string swizzle = textureLoad.Controls.HasFlag(TextureLoadControls.CalculateLod)
                 ? ""
                 : textureLoad.Texture != null
@@ -3037,8 +2550,6 @@ public sealed class NodeCompiler
                     .Where(d => d.ShaderInputType == D3DShaderInputType.Sampler)
                     .FirstOrDefault(d => d.BindPoint == textureLoad.Sampler.RegisterComponentKey.RegisterKey.Number);
                 string texcoords = Compile(textureLoad.TextureCoordinateInputs, textureDefinition.GetDimensionSize());
-                // Writing every variant as Sample dropped the level, the gradients or
-                // the compared value, and still compiled.
                 string method = "Sample";
                 string extraArguments = "";
                 if (textureLoad.Controls.HasFlag(TextureLoadControls.CalculateLod))
@@ -3049,10 +2560,7 @@ public sealed class NodeCompiler
                 }
                 else if (textureLoad.Controls.HasFlag(TextureLoadControls.Gather))
                 {
-                    // The sampler operand's swizzle says which channel is gathered -
-                    // `s0.y` the green one - and only red's method goes without a
-                    // suffix. Leaving the channel out gathered the red one and still
-                    // compiled: output that computes something else.
+                    // The sampler swizzle picks the gathered channel (`s0.y` is green).
                     string channel = textureLoad.Sampler.RegisterComponentKey.ComponentIndex switch
                     {
                         1 => "Green",
@@ -3060,8 +2568,6 @@ public sealed class NodeCompiler
                         3 => "Alpha",
                         _ => "",
                     };
-                    // A comparison gather takes the value to compare against after
-                    // the coordinate, the way a comparison sample does.
                     if (textureLoad.Controls.HasFlag(TextureLoadControls.Compare))
                     {
                         method = "GatherCmp" + channel;
@@ -3089,8 +2595,6 @@ public sealed class NodeCompiler
                     extraArguments = $", {Compile(new[] { textureLoad.ScalarArgument })}";
                 }
                 extraArguments += CompileSampleOffsets(textureLoad.SampleOffsets, textureDefinition);
-                // An offset the shader computes goes where an immediate one would,
-                // and is an integer vector like one.
                 if (textureLoad.Controls.HasFlag(TextureLoadControls.ProgrammableOffset))
                 {
                     extraArguments += $", {CompileAsInteger(textureLoad.Offsets.ToList())}";
@@ -3119,14 +2623,8 @@ public sealed class NodeCompiler
 
         if (first is Msad4Node msad)
         {
-            // The reference and the source are the same for every component; the
-            // accumulator is a vector like the result, so it is gathered across the
-            // group the way an ordinary operand is. Read as integers throughout: the
-            // intrinsic takes uints, and a reference read as a float would be its bit
-            // pattern rather than the four bytes it is.
-            // And as unsigned integers, since every parameter of msad4 is a uint: a
-            // folded source word of 0xF1F2F3F4 is -235736076 as an int, which wraps to
-            // the same bits and says the opposite of what the number is.
+            // Reference and source are shared by all components; the accumulator is
+            // gathered across them. Every msad4 parameter is a uint.
             bool wasAssigningToUnsigned = _assigningToUnsigned;
             _assigningToUnsigned = true;
             string reference;
@@ -3152,11 +2650,7 @@ public sealed class NodeCompiler
 
         if (first is InterfaceCallNode call)
         {
-            // One call read at several components: the method runs once, and the
-            // swizzle picks the result, the way a sample's does. The arguments
-            // are whole registers - the body reads its parameters four
-            // components at a time, and what it reads is what the call site had
-            // in them.
+            // One call, swizzled. Arguments are whole registers (four components each).
             MarkMatched(components);
             LinkageModel.InterfaceInfo iface =
                 _registers.Linkage.InterfaceByNumber(call.InterfaceNumber);
@@ -3170,8 +2664,6 @@ public sealed class NodeCompiler
 
         if (first is LitOutputNode lit)
         {
-            // Every component reads the same three inputs, so they are compiled from
-            // this node rather than gathered across the group.
             string nDotL = Compile(new[] { lit.NDotL });
             string nDotH = Compile(new[] { lit.NDotH });
             string specularPower = Compile(new[] { lit.SpecularPower });
@@ -3182,10 +2674,7 @@ public sealed class NodeCompiler
 
         if (first is MatrixMultiplyOutputNode matrixComponent)
         {
-            // As wide as the multiplication, not the register: a float4x3 read by
-            // three wide dots writes three components of whatever register it lands
-            // in, and swizzling against four asks for a component the mul has not
-            // got.
+            // Swizzle against the multiplication's width, not the register's.
             MarkMatched(components);
             string multiplied = _matrixMultiplicationCompiler.Compile(matrixComponent.Matrix);
             string matrixSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
@@ -3195,9 +2684,7 @@ public sealed class NodeCompiler
 
         if (first is ReflectOutputNode reflectComponent)
         {
-            // As wide as the vectors reflected, the same as a normalize and for the
-            // same reason: the components of the reflect are what the swizzle picks
-            // from, not the register they happen to sit in.
+            // Swizzle against the vector's width, not the register's.
             MarkMatched(components);
             string incident = Compile(reflectComponent.Incident.Inputs);
             string normal = Compile(reflectComponent.Normal.Inputs);
@@ -3208,15 +2695,9 @@ public sealed class NodeCompiler
 
         if (first is NormalizeOutputNode)
         {
-            // As wide as the vector normalized, not the register: nrm writes .xyz
-            // of a four wide register, and swizzling against four wrote
-            // `normalize(n).xyz` of a float3 - which fxc then spelled out as a
-            // dp3, an rsq and a mul instead of the one nrm.
+            // Swizzle against the vector's width, not the register's (nrm writes .xyz).
             MarkMatched(components);
-            // Every component, in another order, is the normalize of the inputs in
-            // that order: `normalize(t1.yzx).zxy` is normalize(t1). A variable
-            // laid out in the order of the vector normalized - InWrittenOrder -
-            // takes a rotated nrm's components that way.
+            // All components permuted: `normalize(t1.yzx).zxy` is normalize(t1).
             if (components.Count == first.Inputs.Count && components.Count > 1
                 && components.All(c => c is NormalizeOutputNode n && n.Inputs.SequenceEqual(first.Inputs))
                 && components.Select(c => ((NormalizeOutputNode)c).ComponentIndex).Distinct().Count() == components.Count)
@@ -3244,7 +2725,6 @@ public sealed class NodeCompiler
                 return CompileDoubleBitsCall(components.Cast<TempAssignmentNode>().ToList());
             }
 
-            // Compile variable once with all components
             string variableCompiled = Compile(components.Select(a => (a as TempAssignmentNode).TempVariable));
 
             string type;
@@ -3289,13 +2769,9 @@ public sealed class NodeCompiler
                 _topDepth = wasTopDepth;
                 _assignedVariables = wasAssignedVariables;
             }
-            // A variable its readers type as an integer, holding a value that is a
-            // float: the integer they read is its bits, so the assignment
-            // reinterprets rather than converts. Converting rounded a bit pattern
-            // to the number nearest it, which is not the same bits at all. Every
-            // component, not the first: a vector of some of each reinterprets its
-            // floats one by one, in the constructor.
             // A mask constant into a bool is the bool: `t = -1` is `t = true`.
+            // A float into an integer variable is its bits (if every component is;
+            // mixed vectors reinterpret per component in the constructor).
             if (tempAssignment.TempVariable.IsBool
                 && components.Count == 1
                 && AssignedValue(tempAssignment) is ConstantNode mask)
@@ -3307,8 +2783,7 @@ public sealed class NodeCompiler
             {
                 compiled = $"asint({compiled})";
             }
-            // And the other way about: a float variable holding what a byte
-            // address buffer handed back holds the float those dwords are.
+            // And raw buffer dwords into a float variable are reinterpreted.
             else if (!tempAssignment.TempVariable.IsInteger
                 && components.All(a => ValueTypes.IsReinterpretedAsFloat(((TempAssignmentNode)a).Value)))
             {
@@ -3323,10 +2798,7 @@ public sealed class NodeCompiler
             {
                 int index = _tempAssignmentindexCounter;
                 _tempAssignmentindexCounter++;
-                // The distinct variables, not the places they are read. One scalar
-                // read by every component of a four wide load arrives here four
-                // times, and numbering the positions made it an int4 whose .w was
-                // the value - `input[t0.w]` where the shader said `input[t0]`.
+                // Number distinct variables, not positions: a broadcast repeats one.
                 List<HlslTreeNode> variables = [.. components
                     .Distinct(ReferenceEqualityComparer.Instance)
                     .Cast<HlslTreeNode>()];
@@ -3341,10 +2813,7 @@ public sealed class NodeCompiler
                 }
             }
 
-            // No promoteToVectorSize: a variable names its value, and HLSL
-            // broadcasts a scalar the width of whatever reads it. Writing
-            // `t1.xxx * color.xyz` where `t1 * color.xyz` said the same thing
-            // asks the reader to count swizzle letters.
+            // No promoteToVectorSize: `t1 * color.xyz`, not `t1.xxx * color.xyz`.
             string variableName = $"{_registers.TemporaryPrefix}{tempVariable.DeclarationIndex}";
             if (tempVariable.StructuredElementOf != null
                 && _registers.NameStructuredMembers(tempVariable.StructuredElementOf, variableName, 0,
@@ -3368,9 +2837,7 @@ public sealed class NodeCompiler
 
         if (first is DoubleBitsNode doubleBits)
         {
-            // A word of a double standing as an output's own value is read from the
-            // variable its asuint was hoisted into; the hoist rewires every other
-            // reader, but a root has none to rewire.
+            // As a root it is read from the variable its asuint was hoisted into.
             if (doubleBits.NamedAs == null)
             {
                 throw new NotImplementedException(
@@ -3381,9 +2848,7 @@ public sealed class NodeCompiler
 
         if (first is ResourceInfoNode resourceInfo)
         {
-            // A resinfo result standing as an output's own value is read from the
-            // variable its call was hoisted into; the hoist rewires every other
-            // reader, but a root has none to rewire.
+            // As a root it is read from the variable its call was hoisted into.
             if (resourceInfo.NamedAs == null)
             {
                 throw new NotImplementedException(
@@ -3395,20 +2860,12 @@ public sealed class NodeCompiler
         throw new NotImplementedException();
     }
 
-    /// <summary>
-    /// The declaration and the call for a hoisted resinfo: GetDimensions fills out
-    /// parameters, so the variable is declared first and the call fills it. Two
-    /// statements, which the writer indents line by line.
-    /// </summary>
-    /// <summary>
-    /// A texture buffer is bound to a t register and read with ld, one element at a
-    /// time, where a constant buffer is read as cb0[n] - but the block behind it is
-    /// the same shape, so the element is a variable of it and not a buffer load.
-    /// `ld r0, l(1, 1, 1, 1), t0` over `tbuffer Params { float4 tint; float4
-    /// offset; }` is the offset.
-    /// </summary>
     private const int BytesPerConstantRegister = 4 * sizeof(float);
 
+    /// <summary>
+    /// A tbuffer read with ld names the variable at that register, like a cbuffer:
+    /// `ld r0, l(1, 1, 1, 1), t0` over `tbuffer P { float4 a; float4 b; }` is b.
+    /// </summary>
     private bool TryCompileTextureBufferLoad(
         ResourceLoadNode resourceLoad, string swizzle, out string compiled)
     {
@@ -3423,11 +2880,7 @@ public sealed class NodeCompiler
         }
         if (resourceLoad.Address.FirstOrDefault() is not ConstantNode element)
         {
-            // Read at an index the shader works out rather than a constant one, so
-            // there is no one variable of the buffer to name: the array it is an
-            // element of is named instead, subscripted by the address. Without this
-            // the load fell through to the lookup for a texture, which a texture
-            // buffer is not one of, and that threw for want of a match.
+            // A computed index reads an element of the buffer's array.
             return TryCompileTextureBufferArrayLoad(resourceLoad, buffer, swizzle, out compiled);
         }
         int register = element.IntegerValue ?? (int)element.Value;
@@ -3444,10 +2897,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// A texture buffer's array, subscripted by the register the load asks for. The
-    /// address counts registers within the buffer, so an array is indexed by however
-    /// many registers one of its elements takes, and one that does not start at the
-    /// buffer's first register is indexed from where it does start.
+    /// A tbuffer array subscripted by the load's register address, converted to an
+    /// element index relative to the array's start.
     /// </summary>
     private bool TryCompileTextureBufferArrayLoad(ResourceLoadNode resourceLoad,
         ResourceDefinition buffer, string swizzle, out string compiled)
@@ -3475,10 +2926,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// `float4 t0 = input.Consume();` - the declaration and the call, which a
-    /// consume buffer offers instead of a subscript. One statement, where a
-    /// GetDimensions takes two, because this one returns its element rather than
-    /// filling out parameters.
+    /// `float4 t0 = input.Consume();` as one declaring statement.
     /// </summary>
     private string CompileConsumeCall(List<TempAssignmentNode> assignments)
     {
@@ -3488,13 +2936,7 @@ public sealed class NodeCompiler
             .First(d => d.BindPoint == consume.Buffer.RegisterComponentKey.RegisterKey.Number
                 && d.ShaderInputType == D3DShaderInputType.UavConsumeStructured);
         string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
-        // What the buffer holds, the way the resinfo call below asks its instruction
-        // rather than assuming. Written float outright, a ConsumeStructuredBuffer of
-        // uints handed its element to a float variable - the uint converted going in
-        // and converted back coming out, which above 2^24 is a different number, and
-        // the shift that doubled it written as an add of floats. An element with
-        // members of its own is a struct this does not name, and stays as it was.
-        // A struct element is declared as the struct, and its members read off it.
+        // Declared as the element type: the struct, else the scalar type, else float.
         if (variable.StructuredElementOf != null && StructuredElementTypeName?.Invoke(buffer) is string structName)
         {
             return $"{structName} {_registers.TemporaryPrefix}{variable.DeclarationIndex} = {buffer.Name}.Consume();";
@@ -3506,10 +2948,8 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// The declaration and the call for a hoisted asuint over a double: the two
-    /// words come back through out parameters, so the variable is declared first
-    /// and the call fills it. Two statements, which the writer indents line by line
-    /// - the same shape the resinfo call below takes.
+    /// A hoisted asuint over a double: declaration, then the call filling out
+    /// parameters. Two statements.
     /// </summary>
     private string CompileDoubleBitsCall(List<TempAssignmentNode> assignments)
     {
@@ -3520,65 +2960,46 @@ public sealed class NodeCompiler
             + $"asuint({Compile(bits.Value)}, {name}.x, {name}.y);";
     }
 
+    /// <summary>
+    /// A hoisted resinfo: declaration, then GetDimensions filling out parameters.
+    /// Two statements.
+    /// </summary>
     private string CompileResourceInfoCall(List<TempAssignmentNode> assignments)
     {
         var info = (ResourceInfoNode)assignments[0].Value;
         TempVariableNode variable = assignments[0].TempVariable;
         RegisterKey resourceKey = info.Resource.RegisterComponentKey.RegisterKey;
-        // A buffer is bound as one of several kinds, and which it is decides the
-        // overload below as well as where the name comes from.
         ResourceDefinition resource = info.IsBuffer
             ? _registers.GetBufferDefinition(resourceKey)
             : _registers.GetTextureDefinition(resourceKey);
 
         string type = info.ReturnType == D3D10ResInfoReturnType.Uint ? "uint" : "float";
         string name = $"{_registers.TemporaryPrefix}{variable.DeclarationIndex}";
-        // A byte address buffer reports one number, and `uint1` is not how a scalar
-        // is spelled.
         string width = variable.VariableSize == 1 ? "" : variable.VariableSize.ToString();
         string declaration = $"{type}{width} {name};";
 
-        // The two-wide variable is the two-argument overload; otherwise the full
-        // form, which for a 2D texture is the mip level in and width, height and
-        // mip count out. z is the depth or array size, which a 2D texture has not.
-        // A multisampled texture has no mips and reports how many samples it has in
-        // place of the mip count; an array of them reports the element count first,
-        // so it takes four and still no mip level.
-        // A buffer reports what it holds rather than how big it is: a structured
-        // one its element count and its stride, a byte address one its size. The
-        // stride is a constant fxc already knows, so the shader reads the count
-        // alone and the second out parameter is there to be written into.
+        // A structured buffer reports count and stride; a byte address buffer its size.
         if (info.IsBuffer)
         {
             return declaration + "\r\n" + (info.ReportsStride
                 ? $"{resource.Name}.GetDimensions({name}.x, {name}.y);"
                 : $"{resource.Name}.GetDimensions({name});");
         }
-        // From what the resource is, not from whether the sample count was asked
-        // for. A multisampled texture declared with its count - `Texture2DMSArray
-        // <float4, 4>` - has that count folded into a constant, so there is no
-        // sampleinfo to go by, and the overloads it has are still the ones without
-        // a mip level in them. Asked for the mip form, the width went into the
-        // level: `GetDimensions(0, ...)` puts a literal where an out parameter goes.
+        // From the resource too: a declared sample count is folded to a constant,
+        // leaving no sampleinfo to go by. MS textures have no mip-level overload.
         bool isMultisampled = assignments.Any(a => ((ResourceInfoNode)a.Value).IsSampleCount)
             || resource.Dimension is ResourceDimension.Texture2Dms
                 or ResourceDimension.Texture2DmsArray;
         if (isMultisampled)
         {
-            // Width, height and the sample count, with the element count between
-            // them for an array, and no mip level in either.
+            // Width, height, [elements,] samples.
             return declaration + "\r\n" + (variable.VariableSize == 4
                 ? $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z, {name}.w);"
                 : $"{resource.Name}.GetDimensions({name}.x, {name}.y, {name}.z);");
         }
-        // The same overload table the variable was named with: a 1D reports its
-        // width alone and the mip count in w; its array the element count in y;
-        // an array of 2D, a cube array and a 3D the element count or the depth in
-        // z. The mip form takes the level in and the count out, and is what was
-        // asked for whenever the level was not the constant nought or the shader
-        // read a component past the ones the shape's no-mip form reports - the mip
-        // count always, the depth of a shape that has none - where a 4-wide
-        // variable has the component either way.
+        // Mip count is always in w; depth or array size in z. The mip form is used
+        // when the level is not constant 0 or a component past the no-mip form's
+        // outputs is read.
         ResourceDimension? dimension = resource.Dimension;
         bool hasDepth = dimension is ResourceDimension.Texture2DArray
             or ResourceDimension.TextureCubeArray or ResourceDimension.Texture3D;
@@ -3599,9 +3020,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// any() and all() over a vector comparison compile to a tree of ors or ands
-    /// over its lanes. Written back lane by lane fxc reduces them one at a time;
-    /// as the intrinsic over the vector it pairs them up the way it did originally.
+    /// Recovers any()/all() from a tree of ors/ands over a vector comparison's lanes.
     /// </summary>
     private bool TryCompileAnyAll(Operation root, out string compiled)
     {
@@ -3630,8 +3049,7 @@ public sealed class NodeCompiler
         {
             return false;
         }
-        // Lane order is immaterial to the intrinsic, and component order is what
-        // lets the swizzle drop away.
+        // Lane order doesn't matter; component order lets the swizzle drop.
         leaves.Sort((a, b) => LaneOf(a).CompareTo(LaneOf(b)));
         for (int i = 1; i < leaves.Count; i++)
         {
@@ -3654,9 +3072,7 @@ public sealed class NodeCompiler
 
     private string CompileComparison(List<HlslTreeNode> components, ComparisonNode first)
     {
-        // A bool constant tested against zero is the bool itself: `if (flag)` is
-        // what was written, and `flag != 0` compares an int, which costs fxc a movc
-        // to make one of the bool first.
+        // A bool tested against zero is the bool itself: `flag != 0` costs a movc.
         if (components.Count == 1
             && first.Comparison is IfComparison.NE or IfComparison.EQ
             && first.Right is ConstantNode { Value: 0 }
@@ -3667,17 +3083,8 @@ public sealed class NodeCompiler
             string flag = Compile(first.Left);
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
         }
-        // Two comparisons compared for equality are the bools they came from, not
-        // the masks they wrote. A mask is all ones or all zeroes, so one mask
-        // equalling another answers exactly what one bool equalling the other does,
-        // and `(a == b) == (c < d)` is what the shader said - a bitonic sort's
-        // `(a > b) == ascending`, say. Read as the values they are, the masks leak
-        // into the text: `((a == b) ? -1 : 0) == ((c < d) ? -1 : 0)` for the one
-        // ieq. Bracketed because a comparison binds no tighter than this one does.
-        //
-        // Both sides, because a mask compared against anything else is the mask: a
-        // comparison against zero is the negation of the condition and is written
-        // where that is recognised, not here.
+        // Two masks compared for equality compare as bools: `(a == b) == (c < d)`.
+        // Only when both sides are comparisons.
         if (first.Comparison is IfComparison.EQ or IfComparison.NE
             && components.Cast<ComparisonNode>().All(
                 c => c.Left is ComparisonNode && c.Right is ComparisonNode))
@@ -3686,15 +3093,8 @@ public sealed class NodeCompiler
             string rightBool = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
             return $"({leftBool}) {first.Comparison.ToHlslString()} ({rightBool})";
         }
-        // Through CompileOperand, since a comparison binds tighter than the bitwise
-        // operators and the conditional: `(x & 0x7f800000) == 0x7f800000` is a bit
-        // test, and written without the brackets it is `x & (a == b)`, which is a
-        // different expression and not one HLSL will even accept on a float.
-        // A constant vector in an unsigned comparison is an unsigned one. Left as
-        // int, `i >= int3(2, 4, 8)` against a uint is the signed/unsigned mismatch
-        // fxc resolves by assuming unsigned and warns about; the cast below does not
-        // help, because the other side already being unsigned is what makes it think
-        // nothing needs saying.
+        // CompileOperand brackets bitwise operands: == binds tighter than &.
+        // Constants in an unsigned comparison are uint, avoiding a mismatch warning.
         bool wasAssigningToUnsigned = _assigningToUnsigned;
         _assigningToUnsigned = first.IsUnsigned;
         string left;
@@ -3708,12 +3108,9 @@ public sealed class NodeCompiler
         {
             _assigningToUnsigned = wasAssigningToUnsigned;
         }
-        // ult and ilt both read as `a < b`, and HLSL takes the signedness from the
-        // operands, so the unsigned form has to say so at one of them - the usual
-        // promotion then carries it to the other, which is why one side already
-        // being unsigned is enough. Where neither is, the cast goes on the side that
-        // is not a constant: `(uint)0 <= x` is a tautology fxc warns about. As wide
-        // as the comparison, since a bare (uint) over two components is X3014.
+        // HLSL takes signedness from the operands; one unsigned side suffices. The
+        // cast goes on a non-constant side (`(uint)0 <= x` draws a warning) and is
+        // as wide as the comparison (X3014).
         if (first.IsUnsigned
             && !IsUnsignedAlready(first.Left)
             && !IsUnsignedAlready(first.Right))
@@ -3728,8 +3125,7 @@ public sealed class NodeCompiler
                 right = $"(uint{size}){right}";
             }
         }
-        // Equality either way round is the same test, and fxc's schedule puts
-        // its operands either way round.
+        // Equality operands go in canonical order.
         if (first.Comparison is IfComparison.EQ or IfComparison.NE
             && CanReorder(components.Select(c => c.Inputs[0]), components.Select(c => c.Inputs[1]), products: true)
             && SortsAfter(first.Left, left, first.Right, right))
@@ -3740,10 +3136,7 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Whether HLSL already reads a value as unsigned, so that it needs no cast of
-    /// its own: a variable or a register declared uint, or an expression one of
-    /// those reaches. `1664525 * k.x + 1013904223` over a uint4 k is unsigned
-    /// arithmetic by promotion, and casting anything in it says nothing new.
+    /// Whether HLSL already reads a value as unsigned, directly or by promotion.
     /// </summary>
     private bool IsUnsignedAlready(HlslTreeNode node)
     {
@@ -3758,12 +3151,10 @@ public sealed class NodeCompiler
                 return true;
             case RegisterInputNode register:
                 return IsUnsignedRegister(register);
-            // The branches of a select, not the condition: `c ? a : b` takes its
-            // type from a and b, and c is a bool by then whatever it was.
+            // The branches, not the condition.
             case MoveConditionalOperation select:
                 return IsUnsignedAlready(select.Inputs[1]) || IsUnsignedAlready(select.Inputs[2]);
-            // Through the operations that promote: an unsigned operand makes the
-            // whole of one unsigned, whichever side it is on.
+            // Operations that promote to unsigned.
             case AddOperation or SubtractOperation or MultiplyOperation
                 or ShiftLeftOperation or MinimumOperation or MaximumOperation
                 or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
@@ -3774,20 +3165,13 @@ public sealed class NodeCompiler
         }
     }
 
-    /// <summary>
-    /// Whether a register holds an unsigned integer: a constant buffer variable
-    /// declared uint, an input whose signature types it one, or a thread id, which
-    /// is a uint without being declared anything.
-    /// </summary>
     private bool IsUnsignedRegister(RegisterInputNode register)
     {
         return _registers.GetDeclaredType(register.RegisterComponentKey) == DeclaredType.Uint;
     }
 
     /// <param name="componentBase">
-    /// Which component of its register the thing being named starts at. A float3
-    /// packed after a float sits at .yzw of its register, and naming that eyePos.yzw
-    /// asks for components the variable has not got - it is eyePos.xyz.
+    /// The register component the variable starts at: a float3 at .yzw is eyePos.xyz.
     /// </param>
     private static string GetAstSourceSwizzleName(IEnumerable<IHasComponentIndex> inputs,
         int registerSize, 
@@ -3797,11 +3181,7 @@ public sealed class NodeCompiler
     {
         if (registerSize == 1 || registerSize > 4)
         {
-            // A scalar has no components to pick, but it can still be spread:
-            // `dp2 r0.z, sigma.ww, sigma.ww` is 2 * sigma * sigma, and written
-            // `dot(sigma, sigma)` it is sigma * sigma, since a dot of two scalars is
-            // one product. The width the caller asks for is the width the value has
-            // to be, and `sigma.xx` is how a scalar is made two wide.
+            // A scalar can still be spread to the requested width: `sigma.xx`.
             return promoteToVectorSize is > 1 and <= 4 && registerSize == 1
                 ? "." + new string('x', promoteToVectorSize)
                 : "";

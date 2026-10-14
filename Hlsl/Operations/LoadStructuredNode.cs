@@ -13,34 +13,22 @@ public class LoadStructuredNode : Operation
     public HlslTreeNode ByteOffset => Inputs[1];
     public HlslTreeNode Value => Inputs[2];
 
-    // ld_raw: the address is a byte offset into a buffer with no elements, and
-    // reads out as Load, Load2, Load3 or Load4 rather than a subscript.
+    // ld_raw: the address is a byte offset; written as Load/Load2/Load3/Load4.
     public bool IsRaw { get; init; }
 
-    // And whether that raw memory is groupshared. HLSL can declare a raw buffer and
-    // not raw groupshared, so this one is written as a subscript into the array it
-    // has to be declared as - and its address is the element, not the byte offset
-    // the instruction carried. It stays raw for every other purpose: what it reads
-    // is bits, and a reader wanting a float reinterprets rather than converts.
+    // Raw groupshared: HLSL has no raw groupshared, so it is written as a
+    // subscript with an element address, but still reads bits.
     public bool IsGroupShared { get; init; }
 
-    // The offset within the element, from the instruction rather than from the node
-    // the operand became: what that node is depends on how the graph was reduced,
-    // and this is a fact about the load.
+    // From the instruction, not the operand node, which depends on reduction.
     public int ElementByteOffset { get; init; }
 
-    // Whether what it reads is an integer, from the element type the reflection
-    // data gives the buffer - or from the member the byte offset falls in, where
-    // the element is a struct. Null where nothing says, which leaves the value to
-    // be typed by its readers.
+    // From reflection (the element, or the struct member at the offset); null if
+    // unknown, leaving the value to be typed by its readers.
     public bool? IsIntegerElement { get; init; }
 
-    // And whether that integer is unsigned, asked of the same member. HLSL reads an
-    // atomic's overload and a comparison's ordering from the type of what it is
-    // given, and an atomic takes its value through a statement rather than through
-    // the node graph - so the readers cannot be asked and the buffer is the only
-    // thing that knows. A uint loaded into an int variable and handed to
-    // InterlockedMin is a signed/unsigned mismatch that fxc resolves its own way.
+    // From the same member: atomics and comparisons pick signedness from the
+    // type, and an atomic's operand bypasses the node graph's readers.
     public bool? IsUnsignedElement { get; init; }
 
     public override string Mnemonic => IsRaw ? "ld_raw" : "ld_structured";

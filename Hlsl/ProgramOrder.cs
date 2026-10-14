@@ -6,43 +6,23 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// What became of a register component either side of an instruction: what last
-/// wrote it, and what first reads it.
+/// For the instruction writer, which has no notion of a value: the last writer and
+/// first reader of a register component around an instruction. Only the walk; callers
+/// classify what they get back.
 ///
-/// The instruction writer keeps one HLSL variable per register and has no notion of
-/// a value, so every question about what a register is holding has to be answered by
-/// reading the instructions around it. Three of those questions were being answered
-/// by three walks of their own, each calling IndexOf to find where to start; this is
-/// the walking, in one place, with the position looked up once.
-///
-/// Only the walk. What a reader makes of what it reads, and what a writer put there,
-/// are questions about HLSL's own types that the writer answers - see GetConsumedKind
-/// and GetProducedKind - and the component an operand reads is settled by the
-/// signature of the intrinsic it is going to be written as, which is further into the
-/// writer still. So the operand's components come in as a function and the kinds stay
-/// out of here entirely: callers get the instruction back and ask their own question
-/// of it.
-///
-/// In program order, straight through the branches, which is what it was before and
-/// is sound only because of how it is used: the first reader of a value is nearly
-/// always on the value's own path, since fxc puts a use next to what makes it and
-/// flattens a small branch into a movc rather than jumping. A movc says nothing about
-/// what it carries, so the rules built on this stay conservative where two paths
-/// disagree. Anything added here that is not conservative in that direction wants a
-/// real reaching-definitions pass instead.
+/// Walks in program order straight through branches. Sound only because fxc keeps a
+/// use near its definition and flattens small branches to movc, and the callers stay
+/// conservative; anything less conservative needs real reaching definitions.
 /// </summary>
 public sealed class ProgramOrder
 {
     private readonly IList<Instruction> _instructions;
 
-    /// <summary>The components a source operand reads, which only the writer knows:
-    /// a load's address is as wide as the resource has dimensions whatever the
-    /// destination mask says.</summary>
+    /// <summary>Supplied by the writer: e.g. a load's address width follows the
+    /// resource, not the destination mask.</summary>
     private readonly Func<D3D10Instruction, int, int[]> _sourceComponents;
 
-    /// <summary>Where each instruction sits, so that a walk starting at one does not
-    /// have to find it first. First occurrence, the way IndexOf answered: a phase
-    /// unrolled into a copy per run can hold the same instruction twice.</summary>
+    /// <summary>First occurrence: an unrolled phase can hold an instruction twice.</summary>
     private readonly Dictionary<D3D10Instruction, int> _positions;
 
     public ProgramOrder(ShaderModel shader, Func<D3D10Instruction, int, int[]> sourceComponents)
@@ -60,10 +40,7 @@ public sealed class ProgramOrder
     }
 
     /// <summary>
-    /// The last instruction before this one to write a register component, or null
-    /// where nothing did. What put a value in a register is the only thing that says
-    /// what the value is, the register itself holding a texel address here and a
-    /// colour there.
+    /// The last earlier instruction to write a register component, or null.
     /// </summary>
     public D3D10Instruction LastWriterOf(D3D10Instruction before, RegisterKey register, int component)
     {
@@ -83,10 +60,8 @@ public sealed class ProgramOrder
     }
 
     /// <summary>
-    /// The first instruction after this one to read a register component, with the
-    /// operand it reads it as, or null where nothing reads it before something writes
-    /// over it. What reads a value is what says what it was, where the instruction
-    /// that made it does not - a dword out of a buffer is whatever was stored there.
+    /// The first later reader of a register component and its operand, or null if it
+    /// is overwritten first.
     /// </summary>
     public (D3D10Instruction Reader, int OperandIndex)? FirstReaderOf(
         D3D10Instruction after, RegisterKey register, int component)
@@ -110,9 +85,7 @@ public sealed class ProgramOrder
                 }
                 return (next, operand);
             }
-            // The read comes first, because an instruction can write the register it
-            // read: a mad over r0.x into r0.x is a read and then the end of what was
-            // in it.
+            // Reads checked first: `mad r0.x, r0.x, ...` reads, then overwrites.
             if (Writes(next, register, component))
             {
                 return null;
@@ -122,9 +95,8 @@ public sealed class ProgramOrder
     }
 
     /// <summary>
-    /// Whether a double instruction reads a register pair as a double before anything
-    /// writes over it. A pair is a double because something read it as one, there
-    /// being no other mark of it: `asdouble` costs no instruction.
+    /// Whether a register pair is read as a double before being overwritten; nothing
+    /// else marks a double, since `asdouble` costs no instruction.
     /// </summary>
     public bool IsReadAsDouble(D3D10Instruction after, RegisterKey register, int pair)
     {
@@ -144,9 +116,7 @@ public sealed class ProgramOrder
                 {
                     continue;
                 }
-                // Which pair of the operand each value of the instruction reads. fxc
-                // repeats a double operand's pair across the four swizzle slots, so
-                // the nth double is at slot 2n.
+                // fxc repeats a double's pair in the swizzle: the nth double is at slot 2n.
                 byte[] swizzle = next.GetSourceSwizzleComponents(operand);
                 for (int value = 0; value < next.ValueCount; value++)
                 {
@@ -156,8 +126,7 @@ public sealed class ProgramOrder
                     }
                 }
             }
-            // Either half ends the pair, as above: a dmul over r0.xy into r0.xy reads
-            // it and then writes it.
+            // Either half ends the pair, after the reads.
             if (Writes(next, register, pair * 2) || Writes(next, register, pair * 2 + 1))
             {
                 return false;
@@ -167,14 +136,7 @@ public sealed class ProgramOrder
     }
 
     /// <summary>
-    /// Where the instruction sits, or null for one that is not in this phase at all.
-    ///
-    /// Both walks answer "nothing found" for that rather than reading from the top of
-    /// the shader, which is what looking the position up with IndexOf used to do: not
-    /// finding it gave -1, and a walk from one past that starts at the first
-    /// instruction and answers about a part of the program the caller never asked
-    /// about. Nothing in the corpus reaches it either way. Saying nothing is the
-    /// direction every rule built on this already leans.
+    /// Null for an instruction outside this phase; the walks then find nothing.
     /// </summary>
     private int? PositionOf(D3D10Instruction instruction)
     {
@@ -189,8 +151,7 @@ public sealed class ProgramOrder
             && (instruction.GetWriteMask(destination) & (1 << component)) != 0;
     }
 
-    /// <summary>Whether an operand reads the register at all - a source operand, and
-    /// one naming a register rather than an immediate.</summary>
+    /// <summary>A source operand naming the register, not an immediate.</summary>
     private static bool ReadsAt(D3D10Instruction instruction, int operandIndex, RegisterKey register)
     {
         return !instruction.IsDestinationOperand(operandIndex)

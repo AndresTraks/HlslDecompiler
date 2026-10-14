@@ -21,11 +21,8 @@ public sealed class ConstantCompiler
         }
 
         string components = string.Join(", ", group.Select(CompileConstant));
-        // A vector of integers is an int vector. `t0 >> float2(8, 16)` does not
-        // compile, and the shift amounts were integers all along. An unsigned one
-        // where what it is going into is unsigned: `uint3 t = i + int3(2, 3, 4)`
-        // converts silently where it could say what it is. Not for a negative
-        // constant, which is a number no uint holds and reads as its wraparound.
+        // Integer vectors are int (`t0 >> float2(8, 16)` does not compile), or uint
+        // where the target is unsigned and no component is negative.
         string type = group.All(c => c.IntegerValue != null)
             ? (unsigned && group.All(c => c.IntegerValue >= 0) ? "uint" : "int")
             : "float";

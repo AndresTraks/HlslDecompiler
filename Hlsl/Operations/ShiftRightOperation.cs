@@ -1,9 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// ishr and ushr. The two differ in what fills the top bits, and HLSL decides that
-// from the type of the value rather than from the operator - so the unsigned form
-// has to say so at the value, or it shifts in copies of the sign bit instead of
-// zeroes and a hash comes out as its own complement.
+// ishr and ushr. HLSL picks the fill from the value's type, so ushr must cast it.
 public class ShiftRightOperation : Operation
 {
     public ShiftRightOperation(HlslTreeNode value, HlslTreeNode amount, bool isUnsigned)

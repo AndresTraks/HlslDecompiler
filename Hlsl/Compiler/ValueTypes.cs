@@ -6,40 +6,23 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// The evidence about a value's type, kept apart because the questions asked of
-/// it want different parts: what made it, which decides how it computes and
-/// whether reading it as the other type reinterprets it, and what reads it, which
-/// decides what a variable holding it is declared.
+/// The evidence about a value's type. Made decides how it computes and whether
+/// reading it as the other type reinterprets it; Consumed decides its declaration.
 /// </summary>
 internal sealed record TypeFacts(
     bool? Reads, bool? Made, bool? Consumed, bool Bits,
     bool? MadeUnsigned, bool? ConsumedUnsigned, bool? IndexesABuffer);
 
 /// <summary>
-/// What a value is, asked of the value rather than of the register it sits in.
-///
-/// fxc reuses a register freely, so the register says nothing: a float4 of texture
-/// offsets was declared int4 for the loop counter that took its x over after the
-/// loop. What a value is comes from three places, in this order - what reads it,
-/// where the readers agree; the operation that made it, where they do not; and
-/// nothing at all, which leaves the register's own type to answer.
-///
-/// These lived in StatementFinalizer, which is the pass that cuts the value graph
-/// into statements and had no other business holding a type system. They are what
-/// NodeCompiler and HlslAstWriter ask when they need to know whether to declare a
-/// variable int or float, whether to write asfloat or a cast, and whether an
-/// integer is a number or a float's bits.
+/// What a value is, asked of the value rather than of the register it sits in,
+/// since fxc reuses registers freely. Answered by the readers where they agree,
+/// else by the operation that made it, else null (the register's own type).
 /// </summary>
 internal static class ValueTypes
 {
     /// <summary>
-    /// Works out the facts for every value the statements reach, before anything
-    /// takes the graph apart. The questions below are answered from the readers a
-    /// value has, and the passes after the parse take readers away: the statement
-    /// finalizer moves them onto the variables it makes, and templates replace
-    /// them. Asked afterwards, a value's readers were gone and it no longer knew
-    /// what it was - across the corpus, a few hundred of the answers the writers
-    /// got had become "nothing says" where the parse had known.
+    /// Records the facts for every reachable value. Must run before the finalizer
+    /// and templates take readers away, since the answers depend on them.
     /// </summary>
     internal static void Record(IEnumerable<HlslTreeNode> roots)
     {
@@ -59,9 +42,7 @@ internal static class ValueTypes
                 pending.Push(input);
             }
         }
-        // Worked out for all of them before any is stored: the answers for one
-        // value ask about others, and must see the graph as it is, not half
-        // answered already.
+        // All computed before any is stored: answers for one value ask about others.
         var facts = values.Select(value => new TypeFacts(
             value.ConsumesInteger, MadeType(value), InstructionParser.GetConsumedType(value),
             IsBitsValue(value, HlslTreeNode.NewNodeSet()),
@@ -73,12 +54,9 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Hands what a template replaced on to what it built in its place. A template
-    /// rewrites a value as another of the same type - `a * b + c` as an add of a
-    /// multiply - so the nodes it makes are what the node was, and asked live they
-    /// had readers that said nothing yet. Not the nodes that say what they are
-    /// themselves: a comparison makes a mask, a conversion its target, a constant
-    /// is settled when it is made, and a variable says so on its declaration.
+    /// Copies the replaced node's facts onto the nodes a template built for it,
+    /// skipping nodes whose type is self-evident (comparisons, conversions,
+    /// constants, variables).
     /// </summary>
     internal static void Inherit(HlslTreeNode replaced, HlslTreeNode replacement)
     {
@@ -112,20 +90,12 @@ internal static class ValueTypes
         value.Types is TypeFacts facts ? facts.Consumed : InstructionParser.GetConsumedType(value);
 
     /// <summary>
-    /// Whether a value is an integer, from the value rather than the register it
-    /// was in: fxc reuses a register, and a float4 of texture offsets was declared
-    /// int4 for the loop counter that took r0.x over after the loop. What reads
-    /// the value decides where the readers agree; the operation that made it
-    /// otherwise - an integer add makes an integer, a conversion what it converts
-    /// to; and null - the register's own type - where neither says, as for a load,
-    /// whose operands are integers whatever it loads, or an immediate nothing reads
-    /// as either.
+    /// Whether a value is an integer: by its readers where they agree, else by its
+    /// maker, else null (the register's own type).
     /// </summary>
     internal static bool? IsIntegerValue(HlslTreeNode value)
     {
-        // Bits are an integer and nothing else could be meant, so they are not put
-        // to the readers: an integer add of two packed half floats read by a float
-        // multiply was typed by the multiply and then computed in floats.
+        // Bits are always an integer; a float reader must not retype them.
         if (IsBitsValue(value))
         {
             return true;
@@ -140,12 +110,8 @@ internal static class ValueTypes
         {
             return consumedType ?? madeType;
         }
-        // A variable declared integer but read by nothing the graph can see - only by
-        // the stores a value leaves a statement through, which are not output edges -
-        // still holds an integer. The value an interlocked operation reads out of the
-        // resource is one, and stored on into another: left asking its (absent) readers,
-        // it printed as a float and the store into it converted back. Left null where
-        // nothing says integer, which keeps the float the writers have always written.
+        // A variable read only by statement stores (not output edges), e.g. an
+        // interlocked result, still holds an integer if declared one.
         if (value is TempVariableNode variable && variable.IsInteger)
         {
             return true;
@@ -154,12 +120,9 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether an integer value is unsigned, decided the way its integer-ness is:
-    /// by the readers where they agree, by what made it otherwise. ult and ilt both
-    /// read as `a &lt; b`, and HLSL takes the signedness from the operands rather
-    /// than from the operator, so a value only ever used unsigned is better declared
-    /// uint than cast at each use. Null where nothing says either way, which leaves
-    /// the int the writer has always declared.
+    /// Whether an integer value is unsigned: by readers, else maker, else null (int).
+    /// HLSL takes signedness from operands, not the operator (ult and ilt are both
+    /// `a &lt; b`), so a value used only unsigned is declared uint.
     /// </summary>
     internal static bool? IsUnsignedValue(HlslTreeNode value)
     {
@@ -171,14 +134,8 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether the only thing that reads a value is a buffer subscript, which is an
-    /// index and so unsigned. Weaker evidence than the rest and asked last: being
-    /// used as an index says how it is used, not what it is, so a value something
-    /// made signed stays signed - `(int)sv_position.x` is an ftoi and keeps a
-    /// negative, whatever it goes on to index. Where nothing else says anything, an
-    /// index computed from a thread id has no other reader at all, and left with no
-    /// opinion it was declared int and then compared against a uint with a ult a few
-    /// lines later.
+    /// Whether a value is used as a buffer address, hence unsigned. Weakest evidence,
+    /// asked last: a value made signed (`(int)sv_position.x`) stays signed.
     /// </summary>
     private static bool? IndexesABuffer(HlslTreeNode value)
     {
@@ -189,9 +146,8 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// What the readers of a value agree its signedness is, looking through the
-    /// operations that are the same instruction either way - a move, a phi, an add,
-    /// a bitwise operator - or null where they disagree or none of them says.
+    /// The signedness the readers agree on, looking through sign-neutral operations;
+    /// null where they disagree or none says.
     /// </summary>
     private static bool? ConsumedAsUnsigned(HlslTreeNode value)
     {
@@ -227,37 +183,27 @@ internal static class ValueTypes
         return unsigned;
     }
 
-    /// <summary>Whether this reader of the node reads it as unsigned, or null where
-    /// it says nothing about signedness.</summary>
     private static bool? ReadsAsUnsigned(HlslTreeNode reader, HlslTreeNode node)
     {
         switch (reader)
         {
-            // ieq and ine are the same comparison either way, so only the ordered
-            // ones say anything.
+            // ieq and ine are sign-neutral; only ordered comparisons say anything.
             case ComparisonNode { IsInteger: true, Comparison: IfComparison.LT
                 or IfComparison.LE or IfComparison.GT or IfComparison.GE } comparison:
                 return comparison.IsUnsigned;
-            // What is shifted, not by how much: ushr and ishr differ in what fills
-            // the top bits of the value.
+            // Only the shifted value, not the shift amount.
             case ShiftRightOperation shift when ReferenceEquals(shift.Value, node):
                 return shift.IsUnsigned;
-            // umin and umax read both operands as unsigned, imin and imax as signed.
             case MinimumOperation minimum:
                 return minimum.IsUnsigned;
             case MaximumOperation maximum:
                 return maximum.IsUnsigned;
-            // udiv is the only integer divide there is - there is no signed opcode
-            // for it - so an integer quotient or remainder is unsigned.
+            // udiv is the only integer divide; there is no signed opcode.
             case DivisionOperation or ModuloOperation when reader.ReadsIntegers == true:
                 return true;
-            // ineg, which is meaningless on an unsigned value.
             case NegateOperation when IsIntegerValue(reader) == true:
                 return false;
-            // utof and itof, which answer the same float and read their source
-            // differently. A value every reader turns into a float with a utof is
-            // unsigned, and declaring it so is what keeps the one conversion one
-            // instruction: an int among them splits the utof and costs an itof.
+            // utof vs itof: declaring the source uint keeps a utof one instruction.
             case ConvertOperation { SourceUnsigned: bool sourceUnsigned } convert
                 when ReferenceEquals(convert.Value, node):
                 return sourceUnsigned;
@@ -267,14 +213,12 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether the reader is the same instruction signed or unsigned, so that what
-    /// reads its result is what knows. imin and umin used to be here because the
-    /// parse made one node of both; the node says which now, above.
+    /// Whether the reader is the same instruction signed or unsigned, so its own
+    /// readers decide.
     /// </summary>
     private static bool IsSignNeutral(HlslTreeNode reader, HlslTreeNode value)
     {
-        // A select carries its branches and not its condition: which way the test
-        // went says nothing about the number it chose between.
+        // A select carries its branches, not its condition.
         if (reader is MoveConditionalOperation select)
         {
             return !ReferenceEquals(select.Inputs[0], value);
@@ -286,13 +230,10 @@ internal static class ValueTypes
             or BitwiseNotOperation;
     }
 
-    /// <summary>What the operation that made a value makes it, signed or unsigned,
-    /// or null where the operation does not say.</summary>
     private static bool? MadeUnsigned(HlslTreeNode value)
     {
         return value switch
         {
-            // ftou and ftoi.
             ConvertOperation convert => convert.TargetType switch
             {
                 "uint" => true,
@@ -302,98 +243,62 @@ internal static class ValueTypes
             ShiftRightOperation shift => shift.IsUnsigned,
             MinimumOperation minimum => minimum.IsUnsigned,
             MaximumOperation maximum => maximum.IsUnsigned,
-            // ubfe fills the top of the field with zeroes and ibfe with its sign.
             BitFieldExtractOperation extract => extract.IsUnsigned,
             DivisionOperation or ModuloOperation when value.ReadsIntegers == true => true,
             NegateOperation => false,
-            // What the buffer holds. Asked of the maker because an atomic reads its
-            // value through a statement, which the node graph does not carry, so a
-            // value only an atomic reads has no readers to be asked.
+            // Asked of the maker: an atomic reads through a statement, not an edge.
             LoadStructuredNode load => load.IsUnsignedElement,
-            // msad4 sums differences of bytes into a uint4 - and takes one as the
-            // accumulator, so a second msad over the first declared its variable int4
-            // and handed it back through a conversion.
             Msad4Node => true,
-            // The two words asuint takes a double apart into are uints.
             DoubleBitsNode => true,
             _ => null,
         };
     }
 
     /// <summary>
-    /// Whether an operation computes in integers, which is what decides how it reads
-    /// its operands - asked of the operation, not of what reads its result. A float
-    /// multiply whose result only ushr and and go on to read is still a float
-    /// multiply: asked of its readers, it was taken for an integer one, and the bits
-    /// it was handed lost the asint that made them bits.
+    /// Whether an operation computes in integers. Asked of the operation, not its
+    /// readers: a float multiply read only by integer ops is still a float multiply.
     /// </summary>
     internal static bool? ComputesInIntegers(HlslTreeNode operation)
     {
         return Made(operation);
     }
 
-    /// <summary>
-    /// Whether what reads a value reads it as an integer, where the readers agree -
-    /// as they were before anything took them away.
-    /// </summary>
+    /// <summary>Whether the value's original readers agree it is an integer.</summary>
     internal static bool? ReadAsInteger(HlslTreeNode value)
     {
         return Consumed(value);
     }
 
     /// <summary>
-    /// What the operation that made a value makes, from that operation alone. Null
-    /// where it does not say - a move, a phi, an immediate - which is where the
-    /// readers are the only thing that knows.
+    /// Whether the making operation alone makes an integer; null for a move, phi or
+    /// immediate, where only the readers know.
     /// </summary>
     private static bool? MadeType(HlslTreeNode value)
     {
         return value switch
         {
             ConvertOperation convert => convert.TargetType is "int" or "uint",
-            // Conversions too, and for the same reason: what they read and what they
-            // make are opposite, so the operation's own ConsumesInteger below would
-            // answer the wrong question. f16tof32 unpacking two halves into a
-            // float2 had them written as an int2, which truncates them.
+            // These read and make opposite types, so ReadsIntegers would be wrong.
             FloatToHalfOperation => true,
             HalfToFloatOperation => false,
-            // And asdouble, which takes uints and makes a double.
             BitsToDoubleOperation => false,
-            // And the other way: a word of a double is a uint.
             DoubleBitsNode => true,
             ConstantNode constant => constant.IntegerValue != null,
-            // A select of two constants makes what its arms are, and constants
-            // have their kind already settled: a movc between two floats makes a
-            // float, and an `and` folded over a condition between two integers -
-            // the 1.0f's bits of an isinf test, say - makes an integer whatever
-            // the bits are. Mixed arms say nothing.
+            // A select of two constants makes what its arms are; mixed arms say nothing.
             MoveConditionalOperation { Source1: ConstantNode first, Source2: ConstantNode second }
                 => first.IntegerValue != null && second.IntegerValue != null ? true
                     : first.IntegerValue == null && second.IntegerValue == null ? false
                     : (bool?)null,
-            // A comparison makes a mask, all ones or all zeroes, which is an
-            // integer: a variable holding one beside the -1 the other branch moved
-            // in was declared float, and the -1 printed as the NaN its bits are.
+            // A comparison makes a mask (all ones or zeroes), an integer.
             ComparisonNode => true,
-            // A byte address buffer hands back uints whatever was stored, and a
-            // structured one hands back what its element type says, which is
-            // asked of the reflection data elsewhere.
+            // Raw buffers return uints; structured, typed and consumed loads take
+            // the type from the resource, not the instruction.
             LoadStructuredNode { IsRaw: true } => true,
             LoadStructuredNode load => load.IsIntegerElement,
-            // And a typed load from the view's return type, for the same reason: the
-            // instruction reads an address and says nothing about the texel.
             ResourceLoadNode load => load.IsIntegerTexel,
-            // A consume is the same question again: the instruction reads a slot,
-            // and the buffer's element type is what says what comes back.
             ConsumeNode consume => consume.IsIntegerElement,
-            // What resinfo and bufinfo report is whatever the instruction asked for
-            // them as: a size in texels or a count of elements is a uint, and the
-            // same measurement taken as a float is one.
             ResourceInfoNode info => info.ReturnType == D3D10ResInfoReturnType.Uint,
-            // A bitwise operator says nothing about what it was given - it carries
-            // bits along - but what it makes is an integer whatever went in: HLSL
-            // has no other type it could be. Left saying nothing, four masks came
-            // out as a float4, and every integer use of them stopped compiling.
+            // Bitwise ops make an integer whatever they read: HLSL has no other type.
             BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
                 or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
                 or BitFieldExtractOperation or BitFieldInsertOperation => true,
@@ -403,15 +308,9 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether an integer value is a float's bits rather than a number. The two
-    /// are the same type and want opposite things of a float reader: a loop
-    /// counter is converted, a packed pair of half floats is reinterpreted, and
-    /// nothing in the type says which.
-    ///
-    /// Bits enter the graph one way - an integer operation reading a float, which
-    /// is where the decompiler writes an asint - and spread from there through the
-    /// integer operations that carry them. A constant is not bits: `x &amp; 255` is
-    /// bits because x is, not because 255 is.
+    /// Whether an integer value is a float's bits (reinterpreted by a float reader)
+    /// rather than a number (converted). Bits enter where a bitwise op reads a float
+    /// and spread through integer ops; constants are never bits.
     /// </summary>
     internal static bool IsBitsValue(HlslTreeNode value)
     {
@@ -423,29 +322,14 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether a value standing where a float is wanted is to be reinterpreted
-    /// rather than converted: bits, or the dwords a byte address buffer hands back,
-    /// which are uints whatever was stored and are read as a float with asfloat.
-    /// Converted instead, a float's bits came back as the number they happen to
-    /// make. Not bits in the variable's sense - the variable holding them is a
-    /// uint, and rightly.
+    /// Whether a value where a float is wanted is reinterpreted (asfloat) rather
+    /// than converted: bits, raw buffer dwords, or integer results read as float.
     /// </summary>
     internal static bool IsReinterpretedAsFloat(HlslTreeNode value)
     {
-        // Read as a float and made as an integer without a conversion between:
-        // those bits are a float's, and converting them hands out the number they
-        // happen to make. A variable so read is declared for it already - see
-        // IsBitsVariable; this is the same answer for a value inlined into the
-        // float's expression, where an `and`-folded select reached a float output
-        // through a move and its integer bits converted instead of selecting 1.0.
-        // A constant is never the source of bits: its own typing is settled when
-        // it is made, and the fold that wrote `x + x` as `2 * x` must not see its
-        // 2 read as the denormal its bits are.
-        // Not a typed load of an integer texel. That one is reinterpreted where it
-        // is compiled, off the view's return type, so answering yes here as well
-        // put an asfloat around an asfloat: `asfloat(asfloat(depth.Load(p).x))`.
-        // The load began saying what it makes when the view was asked rather than
-        // the instruction, which is what made this question reach it at all.
+        // An integer-texel load is reinterpreted where it is compiled; answering
+        // yes here too would write asfloat(asfloat(...)). Constants are excluded:
+        // a folded `2 * x` must not read its 2 as a denormal.
         if (value is ResourceLoadNode { IsIntegerTexel: true })
         {
             return false;
@@ -460,18 +344,13 @@ internal static class ValueTypes
         {
             return temp.IsBits;
         }
-        // Asked of the operation rather than of the readers, so that this can be
-        // what the readers are answered with.
+        // Asked of the maker, not the readers, which this answer feeds.
         if (MadeType(value) != true || !visited.Add(value))
         {
             return false;
         }
-        // Bits enter the graph through a bitwise operator or a shift reading a
-        // float, and nowhere else - that read is the asint the writer puts there.
-        // An integer add or a conversion reading one converts it, and the integer
-        // that comes out is a number: `(int)(16 * x)` is an address, and
-        // `3 * n - 7` is arithmetic on a uniform. A constant is never the source
-        // of either, whatever type it was given.
+        // Only a bitwise op or shift reading a float makes bits (the writer's asint);
+        // arithmetic or a conversion reading one makes a number.
         bool reinterprets = value is BitwiseAndOperation or BitwiseOrOperation
             or BitwiseXorOperation or BitwiseNotOperation
             or ShiftLeftOperation or ShiftRightOperation
@@ -496,9 +375,7 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Whether the variable a value is assigned to holds bits: it is an integer
-    /// variable, and either the value is bits already or it is a float being
-    /// reinterpreted on the way in.
+    /// Whether an integer variable assigned this value holds a float's bits.
     /// </summary>
     internal static bool IsBitsVariable(HlslTreeNode value, bool isInteger)
     {
@@ -507,17 +384,8 @@ internal static class ValueTypes
     }
 
     /// <summary>
-    /// Integer arithmetic whose result a float operation reads without converting
-    /// it. Those bits are a float's: a shader that wanted the number they make
-    /// would have put an itof or a utof between, and this one did not. bit_field
-    /// assembles a float from a mantissa and an exponent with an iadd and
-    /// multiplies what comes out.
-    ///
-    /// The two questions IsIntegerValue asks disagree here - the maker says
-    /// integer and the readers say float - and taking the readers' answer turns
-    /// the bits into whatever number they happen to be. What tells this apart from
-    /// an extracted field, which is a number and is read as one, is that the field
-    /// has a conversion in front of it, so its readers say integer too.
+    /// Integer arithmetic read by a float operation with no itof/utof between: the
+    /// result is a float's bits (e.g. a float assembled from mantissa and exponent).
     /// </summary>
     private static bool IsIntegerMadeReadAsFloat(HlslTreeNode value)
     {

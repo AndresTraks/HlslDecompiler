@@ -17,30 +17,20 @@ public class InstructionParser
     private int _instructionPointer;
     private IntegerOperandAnalysis _integerOperandAnalysis;
 
-    // The immediates a mov or movc writes, with their bits: the instruction says
-    // nothing about their type, so they are typed after parsing by what reads them.
+    // mov/movc immediates, typed after parsing by what reads them.
     private readonly List<(ConstantNode Constant, uint Bits)> _polymorphicImmediates = [];
     private readonly Dictionary<HlslTreeNode, bool> _storedTypes =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// The values that are doubles. A double is not something a value can be asked -
-    /// an addition of two of them is the same node as an addition of two floats - and
-    /// not something the register can be asked either, because fxc reuses a register
-    /// for a double in one place and a float in another and a set of register
-    /// components has no notion of when. It is a fact about the value, recorded where
-    /// the value is made, and what needs it is everything that has to tell a register
-    /// pair holding a double from one holding two numbers: the plain mov fxc copies a
-    /// double's raw halves with, the join a double operand reads a pair of dwords
-    /// through, and the split a store of one takes it apart with.
+    /// The values that are doubles, recorded where made: neither the node (a double
+    /// add looks like a float add) nor the register (fxc reuses it) can say so.
     /// </summary>
     private readonly HashSet<HlslTreeNode> _doubleValues =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// The register components holding the high word of a double that is keyed at
-    /// the component below them. Kept apart from the values above because a word
-    /// nothing reads must not exist: see ParseAssignmentInstruction.
+    /// Components holding a double's high word (the double is keyed one below).
     /// </summary>
     private readonly HashSet<RegisterComponentKey> _doubleHighWords = [];
 
@@ -77,13 +67,9 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// A hull shader is several programs under one name, and its bytecode runs them
-    /// together: the declarations they share, then the phase that runs once per
-    /// output control point, then the fork and join phases that compute the patch's
-    /// own constants. HLSL writes that as two functions, so each is parsed on its
-    /// own - shared declarations and one phase's instructions - and gets a register
-    /// state of its own. They have to: both phases write o0, and in one of them that
-    /// is a control point's position and in the other a tessellation factor.
+    /// Parses the control point and patch constant phases separately, each with
+    /// the shared declarations and its own register state (both write o0 with
+    /// different meanings).
     /// </summary>
     public static HullShaderAst ParseHullShader(ShaderModel shader)
     {
@@ -116,18 +102,11 @@ public class InstructionParser
             }
             if (_registerState.Linkage.HasLinkage)
             {
-                // Each body is a method of its own: statements of their own, parsed
-                // against the same declarations the main program parsed (its inputs
-                // and constants are what the bodies read), and joined back to the
-                // classes by the writer.
+                // Each body is parsed as its own method against main's declarations.
                 IList<IStatement> mainStatements = _statements;
                 Stack<IStatement> mainStack = _currentStatements;
-                // What the declarations leave in the map where main parsed: every
-                // read is a RegisterInputNode naming the register itself - the
-                // inputs, the constant buffers, the resources, the samplers. A body
-                // starts from those and from none of main's values: what it reads
-                // before it writes is a parameter, and a parameter is named for the
-                // register, never for whatever main last left in one.
+                // A body starts from the declared inputs only, never from main's
+                // values: what it reads before writing is a parameter.
                 var declared = new Dictionary<RegisterComponentKey, HlslTreeNode>();
                 if (mainStatements.Count != 0)
                 {
@@ -144,11 +123,7 @@ public class InstructionParser
                 {
                     _statements = [];
                     _currentStatements = new Stack<IStatement>();
-                    // Stands in for main's dcl instructions, which seeded the same
-                    // reads and are not re-parsed here: the body's first instruction
-                    // joins it the way main's first joined the first dcl, and its
-                    // declaration entries are nothing by the time the statements are
-                    // finalized.
+                    // Stands in for main's dcl instructions, which are not re-parsed.
                     InsertStatement(new AssignmentStatement(declared));
                     _instructionPointer = body.First;
                     while (_instructionPointer < body.Last)
@@ -235,10 +210,7 @@ public class InstructionParser
 
     private void ParseInstruction(D3D10Instruction instruction)
     {
-        // Which run of an instanced phase this is comes out as the number it is,
-        // because the phase was unrolled into a copy per run. The register it is read
-        // through wants no declaration of its own: it stands for nothing HLSL can
-        // name, and every read of it is already a constant.
+        // vForkInstanceID needs no declaration: unrolled phases read it as a constant.
         if (instruction.Opcode == D3D10Opcode.DclInput
             && instruction.GetOperandType(0) == OperandType.InputForkInstanceID)
         {
@@ -250,8 +222,6 @@ public class InstructionParser
         if (instruction.HasDestination
             && instruction.GetOperandType(instruction.GetDestinationParamIndex().Value) == OperandType.IndexableTemp)
         {
-            // A write to a local array is a store into memory, not a register
-            // assignment: see IndexableTempStoreStatement.
             InsertIndexableTempStore(instruction);
         }
         else if (instruction.HasDestination
@@ -261,9 +231,7 @@ public class InstructionParser
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
             && instruction.Opcode != D3D10Opcode.Udiv
-            // An interlocked operation that keeps what it found writes a register
-            // as well as the resource, and is still a statement: it has an effect,
-            // and the order it runs in is the whole point of it.
+            // imm_atomic_* writes a register but is an ordered side effect.
             && !instruction.Opcode.IsImmediateAtomic())
         {
             ParseAssignmentInstruction(instruction);
@@ -318,18 +286,12 @@ public class InstructionParser
                 case D3D10Opcode.CutStream:
                     InsertRestartStrip(instruction.Stream);
                     break;
-                // One stream is the ordinary geometry shader and the only one the
-                // writer has a name for; the instruction names it because shader
-                // model 5 allows up to four.
                 case D3D10Opcode.EmitThenCut:
                 case D3D10Opcode.EmitThenCutStream:
                     InsertAppend(instruction.Stream);
                     InsertRestartStrip(instruction.Stream);
                     break;
-                // Shader model 5 allows four. Each is a parameter of its own with its
-                // own output registers, and the stream travels with the instruction, so
-                // a write of one stream's o1 is a different register from a write of
-                // the other's.
+                // Each stream has its own output registers; see D3D10RegisterKey.Stream.
                 case D3D10Opcode.DclStream:
                     _registerState.DeclareStream(instruction.GetParamRegisterNumber(0));
                     break;
@@ -346,9 +308,7 @@ public class InstructionParser
                             var registerKey = new D3D10RegisterKey(OperandType.Temp, registerNumber);
                             int writeMask = 1; // declare only first component here, expand later
                             _registerState.DeclareRegister(registerKey, writeMask);
-                            // No seed value: a temp has no meaning until it is written.
-                            // Seeding one made component 0 asymmetric with the rest and
-                            // leaked into the output as a bare register name.
+                            // No seed value: a temp has no meaning until written.
                         }
                         break;
                     }
@@ -402,9 +362,7 @@ public class InstructionParser
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareResource(registerKey, instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken(), instruction.ResourceSampleCount);
-                        // Every component, not just the first: a sample names the
-                        // resource with the swizzle that picks its result, and reading
-                        // t2.xyzw wants all four of them to exist.
+                        // All four: a sample reads the resource swizzled (t2.xyzw).
                         for (int component = 0; component < 4; component++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, component);
@@ -417,8 +375,6 @@ public class InstructionParser
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareResource(registerKey,
                             instruction.GetResourceDimension(), instruction.GetResourceReturnTypeToken());
-                        // Every component, the way a texture is declared: a load
-                        // names the view with the swizzle that picks its result.
                         for (int component = 0; component < 4; component++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, component);
@@ -428,10 +384,8 @@ public class InstructionParser
                     }
                 case D3D10Opcode.StoreUAVTyped:
                     {
-                        // store_uav_typed u0, coordinate, value: a texel rather than
-                        // an element and an offset within it, so the address is as
-                        // wide as the resource has dimensions and the components
-                        // written are the resource's own.
+                        // store_uav_typed u0, coordinate, value: the coordinate is
+                        // as wide as the resource's dimensions.
                         RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
                         var output = new RegisterInputNode(destinationKeys[0]);
                         int dimensions = _registerState.GetResourceDimensionSize(
@@ -464,9 +418,7 @@ public class InstructionParser
                     }
                 case D3D10Opcode.CustomData:
                     {
-                        // Four floats a row. The class of custom data is in the
-                        // opcode token and the only one fxc emits here is an
-                        // immediate constant buffer.
+                        // Immediate constant buffer, the only customdata fxc emits.
                         uint[] data = instruction.CustomData ?? [];
                         for (int row = 0; row + 3 < data.Length; row += 4)
                         {
@@ -483,10 +435,7 @@ public class InstructionParser
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegister(registerKey, 0xF);
-                        // Every component, the way a texture is declared. A gather
-                        // names its channel on the sampler's swizzle - `s0.w` gathers
-                        // the alpha channel - and reading only the x component asked
-                        // for a component of the sampler that was never seeded.
+                        // All four: a gather picks its channel by sampler swizzle (s0.w).
                         for (int component = 0; component < 4; component++)
                         {
                             var destinationKey = new RegisterComponentKey(registerKey, component);
@@ -513,22 +462,13 @@ public class InstructionParser
                 case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
                     {
                         var registerKey = instruction.GetParamRegisterKey(0);
-                        // Raw shared memory declares a size in bytes and nothing
-                        // else - no stride, no count - because fxc gives this shape
-                        // to a groupshared variable that is not an array. HLSL says
-                        // that by declaring the variable without a subscript, so it
-                        // is recorded as raw and RegisterState.IsGroupSharedScalar
-                        // decides whether it can be written that way; where it
-                        // cannot - a raw variable wider than one register - it stays
-                        // as many four byte elements as the size holds.
+                        // fxc uses raw for a non-array groupshared variable; it is
+                        // modelled as dword elements and RegisterState.IsGroupSharedScalar
+                        // decides whether it can be written without a subscript.
                         uint bytes = instruction.GetParamIndexImmediate32(1, 0);
                         _registerState.DeclareThreadGroupSharedMemory(registerKey,
                             sizeof(uint), bytes / sizeof(uint), isRaw: true);
-                        // One access can name up to four dwords, and the operand
-                        // carries a component per dword whatever the element is a
-                        // single one. Seeding by the declared stride left anything
-                        // but the first unseeded, and a two component load went
-                        // looking for a component of the register that is not there.
+                        // One access can read up to four dwords, so seed that many.
                         for (uint component = 0; component < Math.Min(bytes / sizeof(uint), 4); component++)
                         {
                             var sharedComponent = new RegisterComponentKey(registerKey, (int)component);
@@ -567,17 +507,13 @@ public class InstructionParser
                     {
                         RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
                         var output = new RegisterInputNode(destinationKeys[0]);
-                        // Address and offset are the same for every component of the
-                        // element; the value stored is not.
                         HlslTreeNode address = GetInputs(instruction, destinationKeys[0].ComponentIndex)[0];
                         HlslTreeNode[] values = destinationKeys
                             .Select(key => GetInputs(instruction, key.ComponentIndex)[2])
                             .ToArray();
                         SplitStoredDoubles(values);
                         RecordStoredType(instruction, values);
-                        // Storing at a slot an alloc took is the second half of an
-                        // Append, and is written as one rather than as a subscripted
-                        // store - which an append buffer does not have.
+                        // A store at an alloc'd slot completes an Append.
                         if (address is AppendSlotNode appendSlot
                             && appendSlot.Buffer.RegisterComponentKey.RegisterKey.Number
                                 == instruction.GetParamRegisterNumber(0))
@@ -597,23 +533,14 @@ public class InstructionParser
                     }
                 case D3D10Opcode.ImmAtomicConsume:
                     {
-                        // The slot goes in a register, and every load from a consume
-                        // buffer is a component of the call that took it - there is
-                        // no other way to read one - so nothing ends up reading this
-                        // and the assignment goes away as dead.
+                        // On a consume buffer the loads through the slot become the
+                        // Consume() call; on a counter UAV the slot is a plain value.
                         var consumeKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(1), 0);
-                        // A buffer that only keeps a counter gives the slot back and
-                        // nothing else: the element is read through a subscript, so
-                        // the slot is a value the shader goes on to use rather than
-                        // half of a Consume.
                         HlslTreeNode slot = IsConsumeBuffer(instruction.GetParamRegisterKey(1))
                             ? new ConsumeSlotNode(new RegisterInputNode(consumeKey))
                             : new BufferCounterNode(new RegisterInputNode(consumeKey), isIncrement: false);
-                        // Which instruction took the slot. Two calls are independent in
-                        // the graph - neither reads what the other left - so this is the
-                        // only thing that says which consumed first, and with a consume
-                        // buffer the order is the whole difference between them.
+                        // The only thing ordering two otherwise independent consumes.
                         StampSourceInstruction(slot, FirstWrittenComponent(instruction));
                         var slotKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
                         _registerState.DeclareRegisterWrite(slotKey, instruction.GetWriteMask(0));
@@ -624,19 +551,11 @@ public class InstructionParser
                     }
                 case D3D10Opcode.ImmAtomicAlloc:
                     {
-                        // imm_atomic_alloc takes the next slot and the store
-                        // addressed by it puts the element there: together they are
-                        // one Append. The store is not always the instruction after -
-                        // what is appended is computed between the two whenever it
-                        // reads nothing the alloc needed - so the slot is recorded
-                        // here and the store makes the call, the way a consume's slot
-                        // waits for the loads that read it.
+                        // alloc + the store at its slot form one Append(), made by the
+                        // store since code may sit between them. On a counter UAV the
+                        // slot is a plain value.
                         var appendKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(1), 0);
-                        // Only an append buffer has no other spelling. A structured
-                        // one that keeps a counter takes the slot the same way and
-                        // stores through a subscript, which is an ordinary store, so
-                        // the slot is a value rather than half of an Append.
                         HlslTreeNode appendSlot = IsAppendBuffer(instruction.GetParamRegisterKey(1))
                             ? new AppendSlotNode(new RegisterInputNode(appendKey))
                             : new BufferCounterNode(new RegisterInputNode(appendKey), isIncrement: true);
@@ -667,39 +586,26 @@ public class InstructionParser
                 case D3D10Opcode.ImmAtomicExch:
                 case D3D10Opcode.ImmAtomicCmpExch:
                     {
-                        // atomic_iadd u0, address, value, and atomic_cmp_store with a
-                        // compare between the two. The destination is the resource
-                        // itself and carries no write mask, so there are no
-                        // destination keys to walk - one statement, not one per
-                        // component.
-                        //
-                        // The imm_ forms keep what the resource held and put it in a
-                        // register, which goes in front of everything else - so the
-                        // resource is the second operand there, and every source is
-                        // one further along.
+                        // atomic_iadd u0, address, value (cmp_store has a compare before
+                        // the value). One statement; the resource has no write mask.
+                        // imm_ forms put the original-value register first.
                         bool keepsOriginal = instruction.Opcode.IsImmediateAtomic();
                         int first = keepsOriginal ? 1 : 0;
                         var resourceKey = new RegisterComponentKey(
                             instruction.GetParamRegisterKey(first), 0);
-                        // A typed view written by an interlocked operation holds a
-                        // scalar, and is declared as one.
                         _registerState.DeclareAtomicTarget(resourceKey.RegisterKey);
                         var destination = new RegisterInputNode(resourceKey);
                         bool hasCompare = instruction.Opcode
                             is D3D10Opcode.AtomicCmpStore or D3D10Opcode.ImmAtomicCmpExch;
-                        // A structured resource addresses an element and a byte offset
-                        // within it, both components of the one operand; a byte address
-                        // one has only the offset. A typed texture addresses a texel by
-                        // a coordinate, as many components as it has dimensions, and
-                        // has no byte offset to name a member with.
+                        // Structured: element + byte offset; raw: offset; typed: a
+                        // coordinate per dimension.
                         int addressWidth = _registerState.GetAtomicAddressWidth(
                             resourceKey.RegisterKey);
                         HlslTreeNode[] coordinates = addressWidth > 1
                             ? [.. Enumerable.Range(0, addressWidth)
                                 .Select(component => GetInputs(instruction, component)[first])]
                             : null;
-                        // The same node the coordinate starts with, so that a rewrite
-                        // of one is a rewrite of the other.
+                        // Shares the node with coordinates[0] so rewrites hit both.
                         HlslTreeNode address = coordinates?[0] ?? GetInputs(instruction, 0)[first];
                         HlslTreeNode elementByteOffset =
                             _registerState.IsRawResource(resourceKey.RegisterKey) || coordinates != null
@@ -725,8 +631,6 @@ public class InstructionParser
                             var originalKey = (D3D10RegisterKey)instruction.GetParamRegisterKey(0);
                             _registerState.DeclareRegisterWrite(
                                 originalKey, instruction.GetWriteMask(0));
-                            // One component: an atomic is over a single value, whatever
-                            // the mask on the register it lands in says.
                             SetActiveOutput(
                                 new RegisterComponentKey(originalKey, FirstWrittenComponent(instruction)),
                                 original);
@@ -735,8 +639,7 @@ public class InstructionParser
                     }
                 case D3D10Opcode.StoreRaw:
                     {
-                        // store_raw u0.xy, byteOffset, value: a byte offset in place of
-                        // an element and an offset, otherwise a structured store.
+                        // store_raw u0.xy, byteOffset, value.
                         RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
                         var output = new RegisterInputNode(destinationKeys[0]);
                         HlslTreeNode address = GetInputs(instruction, destinationKeys[0].ComponentIndex)[0];
@@ -747,9 +650,7 @@ public class InstructionParser
                         RecordStoredType(instruction, values);
                         if (IsGroupSharedResource(instruction, 0))
                         {
-                            // Each dword the store covers is an element of the array
-                            // groupshared memory is declared as, so one store of a
-                            // pair is two assignments rather than one of a pair.
+                            // One assignment per dword element.
                             for (int value = 0; value < values.Length; value++)
                             {
                                 InsertStatement(new StoreStructuredStatement(output,
@@ -776,14 +677,10 @@ public class InstructionParser
                     });
                     break;
                 case D3D10Opcode.DclGlobalFlags:
-                    // Only the one flag the source has to say again. The rest
-                    // are what fxc worked out about the shader and writes back
-                    // for itself.
+                    // The only flag the source states; fxc derives the rest.
                     _registerState.ForceEarlyDepthStencil = instruction.GetGlobalFlags()
                         .HasFlag(D3D10GlobalFlags.ForceEarlyDepthStencil);
                     break;
-                // What a patch is and how the tessellator divides it, which HLSL
-                // says with the [domain(...)] attribute and the patch's own size.
                 case D3D10Opcode.DclInputControlPointCount:
                     _registerState.InputControlPointCount = instruction.ControlPointCount;
                     break;
@@ -800,14 +697,10 @@ public class InstructionParser
                     _registerState.TessellatorOutputPrimitive =
                         instruction.TessellatorOutputPrimitive;
                     break;
-                // The bound on a factor. The shader clamps to it as well - the min is
-                // in the instructions - but the bound is a declaration of its own,
-                // and comes back only as the attribute.
                 case D3D10Opcode.DclHSMaxTessFactor:
                     _registerState.MaxTessFactor = BitConverter.Int32BitsToSingle(instruction.GetParamInt(0));
                     break;
-                // A phase boundary. One phase at a time reaches this parser, so the
-                // markers are only the seams they were split along.
+                // Phases were already split by HullShaderPhases.
                 case D3D10Opcode.HsDecls:
                 case D3D10Opcode.HsControlPointPhase:
                 case D3D10Opcode.HsForkPhase:
@@ -816,15 +709,11 @@ public class InstructionParser
                 case D3D10Opcode.DclIndexRange:
                     _registerState.DeclareIndexRange(instruction);
                     break;
-                // How many times the phase runs, each run knowing which it is. The
-                // phase is parsed once per instance, so by the time the body is
-                // reached this has already been acted on.
+                // Already applied: the phase is unrolled per instance.
                 case D3D10Opcode.DclHSForkPhaseInstanceCount:
                 case D3D10Opcode.DclHSJoinPhaseInstanceCount:
                     break;
-                // The shape of the dynamic linkage is read off these three
-                // declarations before anything is parsed - see LinkageModel. Here
-                // they are instructions the walk still has to walk past.
+                // Already read by LinkageModel.
                 case D3D10Opcode.DclFunctionBody:
                 case D3D10Opcode.DclFunctionTable:
                 case D3D10Opcode.DclInterface:
@@ -849,21 +738,15 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Where the uniforms a preshader reads are put, when the shader does not read
-    /// them itself: past every float constant register any shader model has, so
-    /// that none of them is one the shader reads for something else.
+    /// Register base for preshader-only uniforms, past any real float constant.
     /// </summary>
     private const int PreshaderInputBase = 0x2000;
 
     private readonly Dictionary<RegisterComponentKey, HlslTreeNode> _preshaderOutputs = [];
 
     /// <summary>
-    /// The constants an fx_2_0 preshader computes, as what it computes them from.
-    /// The shader's own table lists only the uniforms it reads as they are, and the
-    /// preshader's lists those it reads, in a table of its own. One the shader reads
-    /// as well is the same uniform and is named once; the rest are declared beside
-    /// the shader's. Each register the preshader writes is then the expression it
-    /// wrote there, and every read of it is that expression.
+    /// Replaces each constant an fx_2_0 preshader writes with its expression.
+    /// Preshader inputs the shader also reads share its declaration.
     /// </summary>
     private void ParsePreshaderComment(D3D9Instruction instruction)
     {
@@ -918,10 +801,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// A sampler the constant table does not name - there is no table, as in a
-    /// shader assembled by hand or one rewritten from ps_1_x - is named for its
-    /// register, and its type is the one its dcl gives it. The constant table
-    /// comes first, so a sampler it names is already declared by here.
+    /// Declares a sampler the constant table did not (e.g. no table), named for its
+    /// register and typed by its dcl.
     /// </summary>
     private void DeclareUnnamedSampler(D3D9Instruction instruction)
     {
@@ -1039,14 +920,8 @@ public class InstructionParser
         }
     }
 
-    /// <summary>
-    /// Unwinds to the innermost enclosing block of the given kind. Statements parsed
-    /// inside a block sit on top of it and have to come off first.
-    /// </summary>
-    /// <param name="isOpen">
-    /// Extra condition the block must satisfy - used to skip a block that has already
-    /// been closed, so a nested one does not get closed twice.
-    /// </param>
+    /// <summary>Unwinds to the innermost enclosing block of the given kind.</summary>
+    /// <param name="isOpen">Skips blocks already closed.</param>
     private T UnwindTo<T>(Func<T, bool> isOpen = null) where T : class, IStatement
     {
         while (true)
@@ -1059,11 +934,7 @@ public class InstructionParser
         }
     }
 
-    /// <summary>
-    /// The component an instruction's destination mask names. An atomic writes one
-    /// value, so the mask has one bit - but it need not be x: fxc puts the result
-    /// wherever the register is free.
-    /// </summary>
+    /// <summary>The lowest component in the destination mask (not always x).</summary>
     private static int FirstWrittenComponent(D3D10Instruction instruction)
     {
         int writeMask = instruction.GetWriteMask(0);
@@ -1077,7 +948,6 @@ public class InstructionParser
         return 0;
     }
 
-    /// <summary>Whether a register names a buffer elements are consumed from.</summary>
     private bool IsConsumeBuffer(RegisterKey registerKey)
     {
         return _registerState.ResourceDefinitions.Any(d => d.BindPoint == registerKey.Number
@@ -1090,7 +960,6 @@ public class InstructionParser
             && d.ShaderInputType == D3DShaderInputType.UavAppendStructured);
     }
 
-    /// <summary>The instruction after the one being parsed, or null at the end.</summary>
     private D3D10Instruction NextInstruction()
     {
         return _instructionPointer + 1 < _shaderModel.Instructions.Count
@@ -1098,7 +967,6 @@ public class InstructionParser
             : null;
     }
 
-    /// <summary>Whether an operand reads the given register.</summary>
     private static bool ReadsRegister(D3D10Instruction instruction, int operandIndex, RegisterKey registerKey)
     {
         return instruction.GetOperandType(operandIndex) != OperandType.Immediate32
@@ -1107,8 +975,7 @@ public class InstructionParser
 
     private void InsertStatement(IStatement statement)
     {
-        // A block that has already been closed cannot take more statements, and nor
-        // can a statement that is not a block at all.
+        // Closed blocks and non-blocks take no more statements.
         if (_currentStatements.Count != 0 && IsClosed(_currentStatements.Peek()))
         {
             _currentStatements.Pop();
@@ -1158,9 +1025,7 @@ public class InstructionParser
         InsertStatement(clip);
     }
 
-    // discard_nz drops the pixel when its condition holds. Written as clip() when
-    // the condition is the "value is negative" test clip() actually means, and as a
-    // guarded discard otherwise.
+    // clip(x) when the condition is x < 0, else a guarded discard.
     private void InsertDiscard(D3D10Instruction instruction)
     {
         HlslTreeNode condition = GetConditionNode(instruction);
@@ -1182,16 +1047,12 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// A call through an interface. The body it runs reads its arguments straight out
-    /// of the caller's registers - so the call site hands over what those registers
-    /// hold right here, whole registers at a time - and leaves its result in the one
-    /// register the body writes, which every later read of it then finds as the call.
+    /// A call through an interface. Arguments are the caller's parameter registers
+    /// (whole registers); the result is the body's return register.
     /// </summary>
     private void InsertInterfaceCall(D3D10Instruction instruction)
     {
-        // The function index sits in front as a dword of its own, and the interface
-        // operand behind it carries the interface and the instance - the layout
-        // AsmWriter prints as fp1[2][0].
+        // Function index dword, then the fp operand: interface, instance (fp1[2][0]).
         int function = (int)instruction.OperandTokens.Tokens[0];
         int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
         int instance = (int)instruction.OperandTokens.Tokens[3];
@@ -1224,9 +1085,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Binds every register the loop body writes to a phi at the loop header, so that
-    /// the body's expressions read the loop-carried value rather than the value from
-    /// before the loop. <see cref="EndLoop"/> closes each phi with its backedge.
+    /// Binds each register the loop body writes to a header phi; <see cref="EndLoop"/>
+    /// adds the backedge.
     /// </summary>
     private void SeedLoopHeaderPhis(LoopStatement loop)
     {
@@ -1240,8 +1100,7 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Registers written between the loop instruction at the current pointer and its
-    /// matching end. Read-only: it must not disturb parser state.
+    /// Registers written in the loop at the current pointer. Must not touch parser state.
     /// </summary>
     private IEnumerable<RegisterComponentKey> ScanLoopBodyDestinations()
     {
@@ -1313,8 +1172,7 @@ public class InstructionParser
     {
         int loopRegisterNumber = instruction.GetParamRegisterNumber(countParamIndex);
         ConstantIntRegister countRegister = _registerState.FindConstantIntRegister(loopRegisterNumber);
-        // A defi gives the count outright. Otherwise iN is a uniform, and the count
-        // is its x component - still a bounded loop, just not a constant one.
+        // From a defi, else the x of a uniform iN.
         uint? repeatCount = countRegister?[0];
         var loop = new LoopStatement(repeatCount, ActiveOutputs) { HasLoopCounter = hasLoopCounter };
         if (repeatCount == null)
@@ -1337,9 +1195,7 @@ public class InstructionParser
         RegisterKey registerKey = instruction.GetParamRegisterKey(0);
         HlslTreeNode condition = GetActiveOutput(new RegisterComponentKey(registerKey, component));
 
-        // Two conditions combined are a condition: `if (a < b && c < d)`, and not
-        // `if ((a < b && c < d) != 0)`, which fxc compiles with a compare and an
-        // and the original had no need of.
+        // `if (a < b && c < d)`, not `if ((a < b && c < d) != 0)`.
         if (instruction.TestNonZero && condition is LogicalAndOperation or LogicalOrOperation)
         {
             return condition;
@@ -1350,8 +1206,6 @@ public class InstructionParser
         {
             comparison = conditionComparison;
         }
-        // A float comparison feeding a branch reads as the condition itself rather
-        // than as a value tested against zero.
         else if (condition is GreaterEqualOperation greaterEqual)
         {
             comparison = new ComparisonNode(greaterEqual.Inputs[0], greaterEqual.Inputs[1], IfComparison.GE);
@@ -1363,20 +1217,12 @@ public class InstructionParser
                 IsBitsTest = true,
             };
         }
-        // if_z, breakc_z and the rest take the branch when the register is zero, which
-        // for a comparison mask is when the comparison does not hold.
+        // _z forms branch when the comparison does not hold.
         return instruction.TestNonZero ? comparison : comparison.Inverted();
     }
 
-    /// <summary>
-    /// <c>sincos dstSin, dstCos, src</c> writes two registers from one source. Either
-    /// destination may be null when the shader only wants one of the two results.
-    /// </summary>
-    // udiv writes the quotient to its first destination and the remainder to its
-    // second, either of which may be null when only one is wanted.
-    // imul writes the high half of the product to its first destination and the low
-    // half to its second. fxc leaves the high one null for an ordinary 32 bit
-    // multiply, which is the only form HLSL has a way of saying.
+    // imul hi, lo, a, b: fxc leaves hi null for a plain 32-bit multiply, the only
+    // form HLSL can express.
     private void ParseIntegerMultiplyInstruction(D3D10Instruction instruction)
     {
         const int HighDestinationIndex = 0;
@@ -1419,6 +1265,7 @@ public class InstructionParser
         }
     }
 
+    // udiv quotient, remainder, a, b; either destination may be null.
     private void ParseIntegerDivideInstruction(D3D10Instruction instruction)
     {
         const int DividendIndex = 2;
@@ -1457,10 +1304,7 @@ public class InstructionParser
         }
     }
 
-    // One component of an integer operand, with its modifier: `imul null, r3.y,
-    // r1.z, -r1.z` is -(k * k), and reading the register without the negation
-    // made it k * k - the wrong sign on a Gaussian's exponent, and nothing to say
-    // so, since the interpreter's trials happened not to run the loop.
+    // One component of an integer operand, with its modifier (`-r1.z`).
     private HlslTreeNode GetInputComponent(D3D10Instruction instruction, int operandIndex, int component)
     {
         if (instruction.GetOperandType(operandIndex) == OperandType.Immediate32)
@@ -1473,6 +1317,7 @@ public class InstructionParser
         return ApplyModifier(input, instruction.GetOperandModifier(operandIndex));
     }
 
+    // sincos sin, cos, src; either destination may be null.
     private void ParseSinCosInstruction(D3D10Instruction instruction)
     {
         const int sourceIndex = 2;
@@ -1514,14 +1359,12 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// A <c>ret</c> inside a block returns early. The one at the end of the shader is
-    /// implicit - <see cref="StatementFinalizer"/> turns the final assignment into the
-    /// return - so emitting a statement for it as well would duplicate the value.
+    /// Only a <c>ret</c> inside a block is a statement; the final one is implicit
+    /// (<see cref="StatementFinalizer"/> makes the return).
     /// </summary>
     private void InsertReturn()
     {
-        // A closed block stays on the stack until the next statement displaces it, so
-        // it does not count: a ret after `endloop` is at the top level.
+        // A closed block still on the stack does not count (ret after endloop).
         bool insideOpenBlock = _currentStatements.Any(s =>
             (s is IfStatement || s is LoopStatement || s is SwitchStatement) && !IsClosed(s));
         if (!insideOpenBlock)
@@ -1529,21 +1372,15 @@ public class InstructionParser
             return;
         }
 
-        // An assignment immediately before the ret produced the value being returned,
-        // so it becomes the return rather than standing as its own statement.
+        // An assignment right before the ret becomes the return.
         if (ActiveStatement is AssignmentStatement assignment)
         {
             _currentStatements.Pop();
             IList<IStatement> sequence = ActiveStatementSequence;
             if (sequence.Count != 0 && ReferenceEquals(sequence[sequence.Count - 1], assignment))
             {
-                // Its inputs as well as its outputs: a return whose two are the same
-                // dictionary says it assigns nothing on the way out, which is true of
-                // a return added after a statement and false of one that replaced
-                // it. Told the first, the writer read every output as carried through
-                // unchanged and wrote none of them - so a shader returning a struct
-                // that set its fields and returned early from inside an if lost every
-                // one of those writes, and returned whatever the struct held.
+                // Keep the assignment's inputs: identical inputs and outputs would
+                // tell the writer the return assigns nothing.
                 var replacement = new ReturnStatement(assignment.Inputs, assignment.Outputs);
                 sequence[sequence.Count - 1] = replacement;
                 _currentStatements.Push(replacement);
@@ -1556,13 +1393,9 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The value the mask stands for. It is the bit pattern of what is wanted, so
-    /// against a float comparison it is read as those bits rather than as whatever
-    /// the operand typing made of them: step masks with 0x3f800000, which is 1.0f
-    /// and not 1065353216. Against an integer comparison the number is the number.
+    /// What `and cond, value` selects. A constant is the bit pattern of the value
+    /// (step masks with 0x3f800000, i.e. 1.0f).
     /// </summary>
-    // What a condition selects. A constant is the bit pattern of the value wanted
-    // and is read back as that; anything else is already the value.
     private HlslTreeNode MaskedValue(HlslTreeNode condition, HlslTreeNode value, D3D10Instruction instruction)
     {
         return value is ConstantNode mask ? AsMaskedValue(condition, mask, instruction) : value;
@@ -1578,22 +1411,12 @@ public class InstructionParser
         }
         if (isInteger)
         {
-            // Against an integer comparison the number is the number - unless the
-            // and writes a float output. What an output is handed are its own
-            // bytes, and the output signature says what they are: an isinf() test
-            // anded with the bits of 1.0f selects the float 1.0, and printing the
-            // number those bits make - 1065353216 - selects that instead.
+            // An integer, unless written to a float output (isinf() & 1.0f bits).
             return WritesFloatOutput(instruction) ? AsFloatBits(mask) : mask;
         }
-        // A float comparison anded with an integer immediate: the bits of the float
-        // step() selects - 0x3f800000 for 1.0 - or an integer the shader selects
-        // outright, `lum > threshold ? 1u : 0u`. The operand analysis calls both
-        // integer, since a mask is bits, so the number itself has to say. Read as
-        // a float, a small integer is a denormal, and no shader selects one of
-        // those: the 1 printed as 0.000000 and the histogram bin it fed was always
-        // zero. Read as an integer, a float's bits are an eight digit number no
-        // shader selects either. So the bits of a normal float are that float and
-        // anything smaller is the integer it is.
+        // Against a float comparison it may be float bits (step) or an integer
+        // (`c ? 1u : 0u`). Normal-float bit patterns read as floats; anything
+        // smaller would be a denormal, so it is the integer.
         const int SmallestNormalFloatBits = 0x00800000;
         int bits = mask.IntegerValue.Value;
         return (bits & 0x7FFFFFFF) >= SmallestNormalFloatBits
@@ -1606,7 +1429,6 @@ public class InstructionParser
         return new ConstantNode(BitConverter.Int32BitsToSingle(mask.IntegerValue.Value));
     }
 
-    // Whether the instruction writes an output the signature types as a float.
     private bool WritesFloatOutput(D3D10Instruction instruction)
     {
         int? destination = instruction.GetDestinationParamIndex();
@@ -1629,8 +1451,7 @@ public class InstructionParser
         return false;
     }
 
-    // The condition that holds where this one does not, or null where it is not
-    // one this can turn round.
+    // The negated condition, or null if it cannot be inverted.
     private static HlslTreeNode InvertCondition(HlslTreeNode node)
     {
         switch (node)
@@ -1656,11 +1477,8 @@ public class InstructionParser
         }
     }
 
-    // A comparison result. GE is still modelled as an operation rather than a
-    // ComparisonNode, unlike every other comparison, so it has to be named here.
-    // Two conditions combined are a condition too: any() over a bool4 is an or of
-    // ors, and reading the outer one as bitwise costs fxc an `and ..., 1` to make
-    // a bool of the mask again.
+    // GE is an operation rather than a ComparisonNode. Combined conditions count
+    // too: any() over a bool4 is an or of ors.
     private static bool IsCondition(HlslTreeNode node)
     {
         return node is ComparisonNode || node is GreaterEqualOperation
@@ -1668,13 +1486,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// `and` and `or` combine comparison masks, which a shader may mean in two
-    /// different ways. Two conditions are a logical operator. A condition anded with
-    /// anything else is the `cond ? value : 0` idiom that step() and friends compile
-    /// to - a comparison writes all ones or all zeroes, so anding with it selects
-    /// the value or nothing. Where the value is a constant it is the bit pattern of
-    /// what was wanted and is read back as that; where it is computed it stands as
-    /// it is, and has to, since HLSL will not and a float (X3082).
+    /// and/or/xor: two conditions are a logical operator; a condition anded with a
+    /// value is `cond ? value : 0` (HLSL cannot and a float, X3082); else bitwise.
     /// </summary>
     private HlslTreeNode CreateLogicalOperation(
         D3D10Opcode opcode, HlslTreeNode[] inputs, D3D10Instruction instruction)
@@ -1700,9 +1513,6 @@ public class InstructionParser
             }
         }
 
-        // Neither operand is a condition, so this is the bitwise use of the opcode
-        // rather than the logical one. The registers involved are typed as integers,
-        // which is what makes the operator legal in the output.
         return opcode switch
         {
             D3D10Opcode.And => new BitwiseAndOperation(inputs[0], inputs[1]),
@@ -1731,10 +1541,8 @@ public class InstructionParser
         SwitchStatement switchStatement = UnwindTo<SwitchStatement>(s => !s.IsParsed);
         switchStatement.IsParsed = true;
 
-        // A register assigned in any case leaves the switch as a join over every case
-        // that assigns it, plus the value that was live on entry. A register first
-        // written inside a case still has to be carried out, or later reads of it
-        // find nothing.
+        // Join each register over the cases that assign it plus its entry value;
+        // registers first written inside a case are carried out too.
         var caseValues = new Dictionary<RegisterComponentKey, List<HlslTreeNode>>();
         foreach (SwitchCase switchCase in switchStatement.Cases)
         {
@@ -1807,16 +1615,12 @@ public class InstructionParser
                 {
                     continue;
                 }
-                // Still open, meaning it is the one this loop seeded at its header:
-                // a branch join carries two values already and is not this loop's to
-                // close. Two loops in a row over a register assigned in an if before
-                // them reach here with one of those.
+                // Only a one-input phi is this loop's header phi; a branch join
+                // already has two.
                 if (parentNode is PhiNode headerPhi
                     && !headerPhi.IsLoopHeader
                     && headerPhi.Inputs.Count == 1)
                 {
-                    // Close the phi seeded at the header. The loop's output stays the
-                    // phi, so code after the loop reads the loop-carried value.
                     headerPhi.SetBackedgeValue(node);
                 }
                 else
@@ -1851,9 +1655,7 @@ public class InstructionParser
 
     private void SwitchToElseBranch()
     {
-        // An else belongs to the nearest if that is still open. A nested if that
-        // has already been closed stays on the stack until the next statement
-        // displaces it, and taking that one would overwrite its own else branch.
+        // The nearest open if; a closed nested if may still be on the stack.
         IfStatement ifStatement = UnwindTo<IfStatement>(i => !i.IsParsed);
         ifStatement.IsTrueParsed = true;
         ifStatement.FalseBody = [];
@@ -1865,9 +1667,7 @@ public class InstructionParser
         ifStatement.IsTrueParsed = true;
         ifStatement.IsParsed = true;
 
-        // fxc writes a continue as an if with nothing in its true branch. A branch
-        // that assigns nothing carries no outputs of its own, and every register
-        // keeps whatever reached the if.
+        // A branch may be empty (fxc's continue is an if with an empty true branch).
         var trueOutputs = BranchOutputs(ifStatement.TrueBody);
         var falseOutputs = BranchOutputs(ifStatement.FalseBody);
 
@@ -1937,8 +1737,6 @@ public class InstructionParser
         {
             if (d3D10RegisterKey.ImmediateDouble != null)
             {
-                // The double the read component's pair names, the same as the read
-                // of any other operand.
                 return new DoubleConstantNode(
                     d3D10RegisterKey.ImmediateDouble[registerComponent.ComponentIndex / 2]);
             }
@@ -1960,12 +1758,8 @@ public class InstructionParser
                 registerComponent.RegisterKey, registerComponent.ComponentIndex - 1),
                 out HlslTreeNode pairedDouble))
         {
-            // The upper half of a pair a double sits in, read as a 32-bit value of
-            // its own: what is there is the double's high word. Whatever the
-            // register held at that component before is stale - the double
-            // instruction wrote over it - and read as that a uint2 load's high word
-            // was stored back unchanged beside a multiply of the low one, or there
-            // was nothing there at all and the parse stopped.
+            // A read of a double's upper component is its high word; the old
+            // value there is stale.
             return new DoubleBitsNode(pairedDouble, 1);
         }
         return ActiveOutputs[registerComponent];
@@ -1975,9 +1769,7 @@ public class InstructionParser
     {
         InsertAssignment();
         ActiveOutputs[registerComponent] = value;
-        // A write of either half ends whatever double was in the pair: the upper
-        // component holds a word of its own now, or the lower one does and there is
-        // no double left for the upper one to be the high word of.
+        // A write of either half ends the double in that pair.
         _doubleHighWords.Remove(registerComponent);
         if (registerComponent.ComponentIndex % 2 == 0)
         {
@@ -2017,15 +1809,9 @@ public class InstructionParser
         {
             SetActiveOutput(output.Key, output.Value);
         }
-        // The upper component of every pair a double went into, recorded after the
-        // writes rather than keyed like one. The instruction wrote both halves of
-        // the pair and the double is keyed at the lower one, so what the upper one
-        // holds is the double's high word - but keying a value there would make it
-        // an output of the statement and a second reader of the double, and what
-        // reads a value is what decides whether the writer names it or writes it
-        // inline: half the double fixtures grew a variable for a word no store ever
-        // asked for. Recorded instead, the word is made where something reads it
-        // and nowhere else - see GetActiveOutput.
+        // Record the high words instead of keying a value there: a keyed value
+        // would be a second reader of the double and force it into a variable.
+        // GetActiveOutput makes the word only where it is read.
         foreach (RegisterComponentKey destinationKey in doubleDestinations)
         {
             _doubleHighWords.Add(new RegisterComponentKey(
@@ -2037,23 +1823,14 @@ public class InstructionParser
     {
         int index = instruction.GetDestinationParamIndex().Value;
         int mask = instruction.GetDestinationWriteMask();
-        // A double lives across two components and the tree holds one value for
-        // each, so a double destination is keyed at the lower component of every
-        // pair it writes and the upper ones get no value of their own. The pairs
-        // are aligned - .xy and .zw - so what is left of the mask is bits 0 and 2.
+        // A double is keyed at the lower component of its aligned pair (.xy, .zw).
         if (instruction is D3D10Instruction d3d10)
         {
             mask = d3d10.WritesDoubles
                 ? mask & 0b0101
                 : GetMovedDoubleMask(d3d10, GetStructuredValueMask(d3d10, mask));
-            // An output written through an index - `mov o[r0.x + 0].x` - where the
-            // index is a value already known. fxc writes the tessellation factors of
-            // a patch this way when they are all computed the same, one phase run per
-            // factor, and the run's own number is what the index holds; the phase is
-            // unrolled into a copy per run, so by here the number is a constant and
-            // the register is the one that run writes. Left to the operand, the
-            // register number decoded from a relative index is meaningless - it named
-            // an output the signature has never heard of.
+            // `mov o[r0.x + 0].x` in an unrolled fork phase: the index is a known
+            // constant, so resolve the real output register.
             if (ResolveRelativeOutputKey(d3d10, index) is RegisterKey resolved)
             {
                 return MaskedComponentKeys(resolved, mask);
@@ -2074,8 +1851,7 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The output register a relative-addressed write reaches, or null where the
-    /// operand is not one or the index is not a value this parser already holds.
+    /// The output a relative write reaches, or null unless the index is a known constant.
     /// </summary>
     private RegisterKey ResolveRelativeOutputKey(D3D10Instruction instruction, int operandIndex)
     {
@@ -2103,9 +1879,7 @@ public class InstructionParser
         return new D3D10RegisterKey(OperandType.Output, (int)indices[0].Immediate + offset);
     }
 
-    // The number an index holds, through the moves fxc puts in the way: it reads
-    // vForkInstanceID into a register of its own and indexes by that, so the number
-    // is a move or two away from the index.
+    // Looks through the movs fxc copies vForkInstanceID with.
     private static ConstantNode IndexConstant(HlslTreeNode value)
     {
         while (value is MoveOperation move)
@@ -2116,11 +1890,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Whether the value an instruction writes at a destination is a double. The
-    /// double instructions say so by their opcode; a structured load by the member it
-    /// reads; and a mov by what it is moving, which is the only way to tell - fxc
-    /// assembles a double vector out of plain movs of the raw halves, and nothing
-    /// about `mov r0.zw, r0.xxxy` says it carries one number rather than two floats.
+    /// Whether a destination gets a double: by opcode, by structured member, or for
+    /// a mov by its source value (`mov r0.zw, r0.xxxy` may move one double).
     /// </summary>
     private bool IsDoubleResult(D3D10Instruction instruction, RegisterComponentKey destinationKey)
     {
@@ -2143,10 +1914,7 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Whether a mov is carrying a double: the value sitting at the component it
-    /// reads is one. Asked of the live value rather than of the register, so a
-    /// register that held a double earlier and holds a float now answers for the
-    /// float.
+    /// Whether a mov's live source value is a double (the value, not the register).
     /// </summary>
     private bool IsMovedDouble(D3D10Instruction instruction, int destinationComponent)
     {
@@ -2170,10 +1938,7 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The components of a mov that begin a value, where it is copying doubles. fxc
-    /// moves a double as the two raw components it is - `mov r0.zw, r0.xxxy` puts the
-    /// pair at r0.xy into the pair at r0.zw - and keyed a value to each of them the
-    /// upper one asked for a half no value was ever keyed at.
+    /// The mov's mask with the upper half of each moved double removed.
     /// </summary>
     private int GetMovedDoubleMask(D3D10Instruction instruction, int mask)
     {
@@ -2184,8 +1949,6 @@ public class InstructionParser
         int valueMask = mask;
         for (int pair = 0; pair < 4; pair += 2)
         {
-            // Both halves of an aligned pair, and the lower one carrying a double:
-            // anything else is the mov of floats it looks like.
             if ((mask & (0b11 << pair)) == (0b11 << pair) && IsMovedDouble(instruction, pair))
             {
                 valueMask &= ~(1 << (pair + 1));
@@ -2195,10 +1958,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// One component of an msad4, with the two words of its source recovered. HLSL
-    /// takes the source as a uint2 and the instruction as four windows sliding a byte
-    /// at a time along the eight bytes they make, so fxc builds the windows in front
-    /// of the instruction and there is nothing else the operand can be written as.
+    /// One component of an msad4, recovering the uint2 source from the four
+    /// byte-sliding windows fxc builds in front of the instruction.
     /// </summary>
     private HlslTreeNode CreateMsad4Node(D3D10Instruction instruction, int componentIndex)
     {
@@ -2215,14 +1976,8 @@ public class InstructionParser
                 "msad over windows this does not recognise as a uint2");
         }
         var node = new Msad4Node(inputs[0], low, high, inputs[2], lane);
-        // The node reads the two words, so the bfi over each window is read by nothing
-        // from here on. The register it was written to says nothing about that - the
-        // msad overwrites it, and a value a register no longer holds is only as dead as
-        // the graph says - so left attached it counts as a reader of the shifts under
-        // it, and the writer went on naming `uint3 t0 = source >> uint3(8, 16, 24)` for
-        // a value nothing reads. Only the windows themselves: what they read is either
-        // the two words, which the node reads now, or the shifts, which fall out as
-        // unread assignments on their own once nothing holds them here.
+        // Detach the now-unread windows so they stop counting as readers of the
+        // shifts under them; those then fall out as dead on their own.
         for (int window = 1; window < windows.Length; window++)
         {
             if (windows[window].Outputs.Count == 0)
@@ -2234,13 +1989,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The windows of an msad4 whose result is read at some lanes only. fxc builds
-    /// just the windows those lanes need and packs them to the front of the
-    /// register: `m.x + m.w` is `msad r0.xy` over the low word and the window three
-    /// bytes along, and the component is no longer the lane. Each window says which
-    /// lane it is by how far it slides - the low word as it stands is lane 0, a bfi
-    /// of 8n bits over the low word shifted by 8n is lane n - and every one of them
-    /// has to agree on the two words.
+    /// An msad4 read at some lanes only: fxc packs just those windows to the front
+    /// (`m.x + m.w` is `msad r0.xy`), so each window's slide gives its lane.
     /// </summary>
     private bool TryGetCompactedMsadSource(D3D10Instruction instruction, HlslTreeNode[] windows,
         int componentIndex, out HlslTreeNode low, out HlslTreeNode high, out int lane)
@@ -2286,7 +2036,6 @@ public class InstructionParser
             {
                 return false;
             }
-            // Packed in order, a lane apiece.
             if (windowLane <= previousLane)
             {
                 return false;
@@ -2297,8 +2046,7 @@ public class InstructionParser
                 lane = windowLane;
             }
         }
-        // Lane 0 alone reads the low word and nothing of the high one, so there is
-        // no high word to find and any will do.
+        // Lane 0 alone reads no high word; any will do.
         if (high == null && previousLane == 0)
         {
             high = new ConstantNode(0);
@@ -2307,11 +2055,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The two words an msad's windows were built from. The first window is the low
-    /// word as it stands; each of the others shifts it down by a byte more and fills
-    /// the top that empties with the bottom of the high word - a bfi of that many bits
-    /// at the complementary offset. Anything else is not this shape and is not an
-    /// msad4 that can be written.
+    /// The two words of the windows: window n is bfi(8n, 32-8n, high, low >> 8n),
+    /// or one of fxc's folded forms of that.
     /// </summary>
     private bool TryGetMsadSource(D3D10Instruction instruction, int operand,
         HlslTreeNode[] windows, out HlslTreeNode low, out HlslTreeNode high)
@@ -2322,25 +2067,18 @@ public class InstructionParser
         {
             return true;
         }
-        // Nothing inserted over the top of any window: the high word was zero, so
-        // there was nothing to insert and fxc folded the bfi away. Asked of all three
-        // together, since a real high word needs one at every window and a zero one
-        // needs none - a shader with some of each is not this shape.
+        // A zero high word: fxc drops every bfi.
         if (AllWindowsAreShiftsOf(windows, low))
         {
             high = new ConstantNode(0);
             return true;
         }
-        // Where the high word is the known one, fxc adds it in rather than inserting
-        // it: the top of a shifted low word is zeroes, so an or is an add and an add
-        // of a literal is one instruction where the bfi was three operands of them.
+        // A literal high word is added instead of inserted.
         if (TryGetAddedMsadSource(windows, low, ref high))
         {
             return true;
         }
-        // And the other way about: the low word known and the high one not, so fxc
-        // shifts the low word itself and inserts the register over the top of the
-        // number that comes to.
+        // A literal low word is pre-shifted by fxc.
         if (TryGetInsertedOverConstantLow(windows, ref low, ref high))
         {
             return true;
@@ -2368,16 +2106,9 @@ public class InstructionParser
         return high != null;
     }
 
-    // Through the moves fxc leaves between a value and where it is read.
     /// <summary>
-    /// The windows as fxc folds them where it knows both words: four literals, each
-    /// the eight byte source shifted down by one byte more than the last. The low word
-    /// is the first of them and the high word's bottom three bytes are the top three
-    /// of the last; the high word's fourth byte slides past the end of the windows and
-    /// is no part of what msad4 computes, so zero stands in for it. The literal that
-    /// comes back is therefore not always the one the shader was written with, and is
-    /// always one that computes the same thing - fxc folds it to these same four
-    /// windows again.
+    /// Both words literal: four folded windows. The high word's top byte never
+    /// reaches msad4, so it comes back as zero (equivalent, maybe not the original).
     /// </summary>
     private static bool TryGetFoldedMsadSource(D3D10Instruction instruction, int operand,
         ref HlslTreeNode low, ref HlslTreeNode high)
@@ -2386,10 +2117,7 @@ public class InstructionParser
         {
             return false;
         }
-        // The bits, from the instruction rather than off the nodes. An immediate's
-        // thirty-two bits are typed by what consumes them and these reach the graph as
-        // floats, which is lossy for a number this size: 0x08010203 came back as
-        // 0x08010200, and the sliding relation below then holds for nothing.
+        // Bits from the instruction: the nodes hold them as lossy floats.
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operand);
         var values = new uint[4];
         for (int window = 0; window < 4; window++)
@@ -2411,11 +2139,7 @@ public class InstructionParser
         return true;
     }
 
-    /// <summary>
-    /// Whether a window's value is the low word shifted down by that many bits - the
-    /// shift fxc emits where the low word is a register, or the number that shift comes
-    /// to where it is a literal and fxc did it itself.
-    /// </summary>
+    /// <summary>Whether a window's value is `low >> bits`.</summary>
     private static bool IsLowWordShiftedBy(HlslTreeNode value, HlslTreeNode low, int bits)
     {
         if (Unwrap(value) is ShiftRightOperation shift)
@@ -2427,14 +2151,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The windows where the low word is the literal: fxc shifts it down itself, so
-    /// each window's value is the number that comes to and the register holding the
-    /// high word is inserted over the top of it.
-    ///
-    /// The low word has to be read as the bits it is. An immediate a mov carried here
-    /// is typed by whatever reads it, which happens after parsing, so until then it is
-    /// a float - and 0x01020304 is 2.4e-38 as one, which is zero as a number. The
-    /// constant the node reads from is replaced with those bits for the same reason.
+    /// A literal low word, pre-shifted per window, with the high register inserted.
+    /// Read as exact bits: an untyped mov immediate is still a float here.
     /// </summary>
     private bool TryGetInsertedOverConstantLow(
         HlslTreeNode[] windows, ref HlslTreeNode low, ref HlslTreeNode high)
@@ -2470,10 +2188,7 @@ public class InstructionParser
         return true;
     }
 
-    // A constant's thirty-two bits where they are known exactly: one already typed as
-    // an integer, or one a mov carried in and the parser recorded on the way past. A
-    // float constant is none of those and says so, rather than handing back a number
-    // that is not what the bits are.
+    // A constant's exact bits (integer-typed or a recorded mov immediate), else null.
     private int? AsExactImmediate(HlslTreeNode node)
     {
         if (Unwrap(node) is not ConstantNode constant)
@@ -2495,12 +2210,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The windows as fxc builds them where the high word is a literal and the low one
-    /// is not: each is the low word shifted down and the high word's contribution added
-    /// on, since the top of the shifted word is zeroes and an or of a literal into
-    /// zeroes is an add of it. The last window carries three bytes of the high word,
-    /// which is all of it that msad4 ever reads, and the other two have to agree with
-    /// those - so the shape is checked rather than taken on the strength of one window.
+    /// A literal high word: each window is `(low >> 8n) + literal`. All three
+    /// windows must agree on the high word.
     /// </summary>
     private static bool TryGetAddedMsadSource(
         HlslTreeNode[] windows, HlslTreeNode low, ref HlslTreeNode high)
@@ -2550,6 +2261,7 @@ public class InstructionParser
         return true;
     }
 
+    // Through the moves fxc leaves between a value and where it is read.
     private static HlslTreeNode Unwrap(HlslTreeNode node)
     {
         while (node is MoveOperation move)
@@ -2567,13 +2279,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The components of a structured load or store that begin a value of the
-    /// element, where the element holds doubles. A double is eight bytes and the
-    /// components count in four, so two of them carry one number: a load of a
-    /// StructuredBuffer&lt;double&gt; is `ld_structured r0.xy` for the one value, and
-    /// keyed a value to each component the second one named a member of the element
-    /// that is not there. Unchanged for every other instruction and every element
-    /// without a double in it, which is all but a handful of shaders.
+    /// A structured load/store mask with the upper half of each double member removed
+    /// (`ld_structured r0.xy` loads one double).
     /// </summary>
     private int GetStructuredValueMask(D3D10Instruction instruction, int mask)
     {
@@ -2596,10 +2303,8 @@ public class InstructionParser
         int elementByteOffset = instruction.GetOperandType(ByteOffsetOperand) == OperandType.Immediate32
             ? instruction.GetParamInt(ByteOffsetOperand, 0)
             : 0;
-        // Which part of the element a component is: a load says so on its resource
-        // operand, whose swizzle picks the member each destination component takes,
-        // and a store by the mask's own position - `store_structured u0.xyz, i,
-        // l(8), ...` writes the element from byte eight on.
+        // A load maps components through the resource swizzle; a store by mask
+        // position.
         byte[] swizzle = instruction.Opcode == D3D10Opcode.LdStructured
             ? instruction.GetSourceSwizzleComponents(resourceOperand)
             : null;
@@ -2791,17 +2496,13 @@ public class InstructionParser
             case Opcode.Crs:
                 return CreateCrossProductNode(instruction, componentIndex);
             case Opcode.Sgn:
-                // The two registers after the value are scratch space the hardware
-                // wanted and nothing reads, so they are not operands of the result.
+                // The two registers after the value are hardware scratch, not operands.
                 return ReadingFloats(new SignOperation(
                     GetInputComponents(instruction, 1, componentIndex + 1)[componentIndex]));
             case Opcode.Nrm:
                 return CreateNormalizeOutputNode(instruction, componentIndex);
             case Opcode.Dst:
-                // The fixed-function distance step: [1, a.y * b.y, a.z, b.w]. The
-                // component being written decides which parts of the sources to
-                // read, so the reads are per component here, and two of the four
-                // results are the sources themselves.
+                // dst: [1, a.y * b.y, a.z, b.w].
                 switch (componentIndex)
                 {
                     case 0:
@@ -2827,17 +2528,13 @@ public class InstructionParser
     {
         HlslTreeNode node = CreateD3D10InstructionTree(instruction, destinationKey);
         node.ConsumesInteger ??= GetConsumedType(instruction.Opcode);
-        // Where the value came from, so that the components of one instruction can
-        // be told from two that share a register. The position in the shader: no
-        // two instructions have the same, and every component of this one does.
         StampSourceInstruction(node, destinationKey.ComponentIndex);
         return node;
     }
 
     /// <summary>
-    /// Marks a value with the instruction being parsed, unless it is a value that
-    /// was read rather than computed - an operand carries the instruction that made
-    /// it, not the one reading it.
+    /// Marks a computed value with the instruction position, telling apart the
+    /// components of one instruction from two sharing a register. Reads are not marked.
     /// </summary>
     private void StampSourceInstruction(HlslTreeNode node, int component)
     {
@@ -2848,9 +2545,7 @@ public class InstructionParser
         }
     }
 
-    // What an instruction makes of the operands it reads. itof reads integers and
-    // ftoi floats, whatever their results; a mov or movc passes bits along and the
-    // bitwise operators treat them as bits, so neither says anything.
+    // Whether an instruction reads its operands as integers; null for bit carriers.
     private static bool? GetConsumedType(D3D10Opcode opcode)
     {
         switch (opcode)
@@ -2864,20 +2559,16 @@ public class InstructionParser
                 return null;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
-            // A conversion into a double reads an integer the same way one into a
-            // float does; itod of a loop counter is the counter and not its bits.
             case D3D10Opcode.IToD:
             case D3D10Opcode.UToD:
                 return true;
             case D3D10Opcode.Ftoi:
             case D3D10Opcode.Ftou:
-            // The float whose nearest half float it takes the bits of.
             case D3D10Opcode.F32ToF16:
                 return false;
             case D3D10Opcode.F16ToF32:
                 return true;
-            // A buffer load or store reads its address as an integer, whatever the
-            // buffer holds.
+            // The address is an integer whatever the buffer holds.
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreStructured:
@@ -2889,18 +2580,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Types the immediates moved into registers by what goes on to read them. The
-    /// register rule types them by the register, and a register fxc reuses - a loop
-    /// counter in one place, a sample offset in another - gets one type for both,
-    /// so -1.0f moved into it printed as the -1082130432 of its bits. The readers of
-    /// this particular value know better, and where they all agree, they win.
-    /// </summary>
-    /// <summary>
-    /// What a buffer store reads the value it is given as, kept for the immediates
-    /// nothing else types. A store is a statement rather than a node, so it is not
-    /// in the graph the reader walk below follows, and a value whose only reader is
-    /// one had nobody to ask: `output[i] = c ? x : -1` into an int buffer wrote the
-    /// -1 as the float its bits are, which is NaN, which is not HLSL at all.
+    /// Records how a buffer store reads its values; a store is a statement, so the
+    /// reader walk in GetConsumedType cannot see it otherwise.
     /// </summary>
     private void RecordStoredType(D3D10Instruction instruction, HlslTreeNode[] values)
     {
@@ -2913,11 +2594,8 @@ public class InstructionParser
         }
         for (int i = 0; i < values.Length; i++)
         {
-            // A literal the store is handed itself, rather than through a mov, was
-            // typed by the opcode, and store_structured is not an integer one: the
-            // bits 0x7F7FFFFF stored into a uint array came out as the float they
-            // spell, 3.4e38, which the array then converted. Into integer memory it
-            // is the integer its bits are - the same thirty-two bits either way.
+            // A direct literal was typed float by the opcode; into integer memory
+            // it is the integer of the same bits.
             if (kind == ValueKind.Integer
                 && values[i] is ConstantNode { IntegerValue: null } literal
                 && !_polymorphicImmediates.Any(p => ReferenceEquals(p.Constant, literal)))
@@ -2928,16 +2606,16 @@ public class InstructionParser
         }
     }
 
+    /// <summary>
+    /// Types mov'd immediates by their readers when they agree, since a reused
+    /// register's type can be wrong for this particular value.
+    /// </summary>
     private void ResolvePolymorphicImmediates()
     {
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
         {
             bool? consumedAsInteger = GetConsumedType(constant, _storedTypes);
-            // Bits that are a NaN as a float were not a float the source wrote - HLSL
-            // has no NaN literal - so where the readers do not say, they are the
-            // integer they are. A -1 flag carried through a movc into the condition
-            // of another, which only asks whether its bits are zero, came out as
-            // `NaN`: an undeclared identifier to fxc.
+            // HLSL has no NaN literal, so NaN bits are an integer.
             if (consumedAsInteger == null && constant.IntegerValue == null
                 && float.IsNaN(BitConverter.UInt32BitsToSingle(bits)))
             {
@@ -2965,9 +2643,8 @@ public class InstructionParser
         }
     }
 
-    // What the readers of a value agree it is, looking through the nodes that
-    // merely carry it - moves, conditional moves, phis, and a sign or absolute
-    // modifier - or null where they disagree or there are none.
+    // What the readers of a value agree it is, looking through carrier nodes;
+    // null where they disagree or there are none.
     internal static bool? GetConsumedType(
         HlslTreeNode value, IReadOnlyDictionary<HlslTreeNode, bool> storedTypes = null)
     {
@@ -2978,8 +2655,6 @@ public class InstructionParser
         while (pending.Count != 0)
         {
             HlslTreeNode node = pending.Pop();
-            // A store reads what it is given and is not a node, so it says so here
-            // rather than by being one of the outputs below.
             if (storedTypes != null && storedTypes.TryGetValue(node, out bool stored))
             {
                 if (type != null && type != stored)
@@ -2994,11 +2669,7 @@ public class InstructionParser
                 {
                     continue;
                 }
-                // A bitwise operator says nothing about what it was given either -
-                // it carries the bits along - so the type comes from whatever reads
-                // what it made. Stopping at one left the zero branch of a movc two
-                // ands away from its readers untyped, and it printed as 0.000000 in
-                // an expression of integers.
+                // Bitwise operators carry bits too.
                 bool carries = reader is MoveOperation or MoveConditionalOperation or PhiNode
                     or NegateOperation or AbsoluteOperation
                     or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
@@ -3036,9 +2707,6 @@ public class InstructionParser
 
         switch (instruction.Opcode)
         {
-            // The four components are the four windows of one call, so the component
-            // decides the value rather than which part of the source is read - and the
-            // source has to be read back out of the windows fxc built.
             case D3D10Opcode.MSAD:
                 return CreateMsad4Node(instruction, componentIndex);
             case D3D10Opcode.DclInputPS:
@@ -3119,9 +2787,6 @@ public class InstructionParser
             case D3D10Opcode.BFRev:
             case D3D10Opcode.F32ToF16:
             case D3D10Opcode.F16ToF32:
-            // The double precision arithmetic, which is the arithmetic it is named
-            // after: the type is what the operands are, not what the operation does,
-            // and the pairing of components is already off the keys by here.
             case D3D10Opcode.DAdd:
             case D3D10Opcode.DMul:
             case D3D10Opcode.DDiv:
@@ -3192,25 +2857,15 @@ public class InstructionParser
                         case D3D10Opcode.Xor:
                             return CreateLogicalOperation(instruction.Opcode, inputs, instruction);
                         case D3D10Opcode.Not:
-                            // A not of a comparison mask is the comparison the other way,
-                            // and of conditions combined, De Morgan's: all() the other
-                            // way is any() of the comparisons the other way. Of anything
-                            // else, the bits flipped. Flipped, the not of an all() was
-                            // `~(all(m))`, a bitwise not of a bool - -2 where all held,
-                            // which a test takes for true - and `any(m) && !all(m)` came
-                            // back as `any(m) ? ~(all(m)) : 0`, true whenever any held.
+                            // A not of a condition inverts it (De Morgan); `~` on a
+                            // bool would give -2, which tests true.
                             return InvertCondition(inputs[0]) ?? new BitwiseNotOperation(inputs[0]);
-                        // Float comparisons, like their integer counterparts, only
-                        // ever feed a branch or a movc, so they read as conditions.
                         case D3D10Opcode.LT:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.LT);
                         case D3D10Opcode.Eq:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.EQ);
                         case D3D10Opcode.Ne:
                             return new ComparisonNode(inputs[0], inputs[1], IfComparison.NE);
-                        // The integer comparisons, marked as such: the mask one
-                        // writes is an integer where a float comparison writes the
-                        // bits of a float.
                         case D3D10Opcode.Ilt:
                         case D3D10Opcode.ULT:
                             return new ComparisonNode(
@@ -3253,10 +2908,7 @@ public class InstructionParser
                                 int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
                                     ? instruction.GetParamInt(2, 0)
                                     : 0;
-                                // A load from a consume buffer is a component of the
-                                // Consume that took the slot: the address is what the
-                                // consume left, and the byte offset says which
-                                // component of the element this is.
+                                // A load at a consume slot is a component of Consume().
                                 if (inputs[0] is ConsumeSlotNode slot
                                     && IsConsumeBuffer(instruction.GetParamRegisterKey(3)))
                                 {
@@ -3272,16 +2924,8 @@ public class InstructionParser
                                 return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
                                 {
                                     ElementByteOffset = elementByteOffset,
-                                    // The component the resource operand selects is
-                                    // which part of the element this load is, so the
-                                    // member it reads is the one at that address and
-                                    // not the one the element starts with. Groupshared
-                                    // memory has no reflection data to ask, and holds
-                                    // what the writer declares it as - the rule the
-                                    // analysis answers by. A uint array an atomic
-                                    // reaches holds a float's bits where the shader
-                                    // stores one, and a float read back out of it was
-                                    // converted from the integer those bits are.
+                                    // The member at offset + selected component. Groupshared
+                                    // has no reflection, so the analysis decides.
                                     IsIntegerElement = instruction.GetOperandType(3) == OperandType.ThreadGroupSharedMemory
                                         ? _integerOperandAnalysis.GetStructuredElementKind(instruction) == ValueKind.Integer
                                         : _registerState.IsIntegerStructuredMember(
@@ -3295,15 +2939,8 @@ public class InstructionParser
                                 };
                             }
                         case D3D10Opcode.LdRaw:
-                            // ld_raw dst, byteOffset, t#: the offset stands where an
-                            // element index would, and there is no offset within one.
-                            // Out of groupshared memory it is an array subscript
-                            // instead, because HLSL has no raw groupshared to Load.
-                            // The resource swizzle there says which dword after the
-                            // address this component reads, and each is an element
-                            // of its own - so the resource is read whole, at the one
-                            // component the declaration seeded, and the swizzle goes
-                            // into the subscript.
+                            // ld_raw dst, byteOffset, t#. Groupshared has no Load, so
+                            // it is a subscript with the swizzle's dword folded in.
                             if (IsGroupSharedResource(instruction, 2))
                             {
                                 var sharedKey = instruction.GetParamRegisterKey(2);
@@ -3313,11 +2950,7 @@ public class InstructionParser
                                     new ConstantNode(0),
                                     GetActiveOutput(new RegisterComponentKey(sharedKey, 0)))
                                 {
-                                    // Raw memory holds bits whichever it is, so a
-                                    // reader wanting a float reinterprets rather
-                                    // than converts: left structured, the
-                                    // 1069547520 a 1.5f was stored as multiplied
-                                    // as itself.
+                                    // Raw bits: a float reader reinterprets, not converts.
                                     IsRaw = true,
                                     IsGroupShared = true,
                                 };
@@ -3367,10 +3000,7 @@ public class InstructionParser
                             return new MoveOperation(inputs[0]);
                         case D3D10Opcode.DMovC:
                             return new MoveConditionalOperation(inputs[0], inputs[1], inputs[2]);
-                        // fma rounds the once where a multiply and an add round
-                        // twice, so it is the intrinsic and not the arithmetic: fxc
-                        // compiles `a * b + c` on doubles to dmul and dadd, and only
-                        // a written fma() to this.
+                        // Rounds once, so only a written fma() produces it.
                         case D3D10Opcode.DFMA:
                             return new FusedMultiplyAddOperation(inputs[0], inputs[1], inputs[2]);
                         case D3D10Opcode.DRCP:
@@ -3395,15 +3025,9 @@ public class InstructionParser
                             return new BitCountOperation(inputs[0]);
                         case D3D10Opcode.FirstBitLo:
                             return new FirstBitLowOperation(inputs[0]);
-                        // firstbit_hi counts from the top and firstbithigh counts
-                        // from the bottom, so the instruction is the subtraction
-                        // rather than the call: written as the nodes it is made of,
-                        // the subtraction binds like any other and the pattern fxc
-                        // guards it with is a pattern over ordinary arithmetic. The
-                        // two differ only where there is no bit to find - the
-                        // instruction answers 0xffffffff and the subtraction 32 -
-                        // and that is the case the guard exists to handle, so the
-                        // template that puts firstbithigh back takes it away again.
+                        // firstbit_hi counts from the top: 31 - firstbithigh(x). They
+                        // differ only for x == 0, which fxc's guard (matched by a
+                        // template) handles.
                         case D3D10Opcode.FirstBitHi:
                         case D3D10Opcode.FirstBitSHi:
                             return new SubtractOperation(
@@ -3432,10 +3056,7 @@ public class InstructionParser
             case D3D10Opcode.EvalSnapped:
             case D3D10Opcode.EvalCentroid:
                 {
-                    // The attribute, and where to evaluate it: a sample index in one
-                    // component, an offset in two, or nothing at all for the
-                    // centroid. The place is the same for every component of the
-                    // result, the way a sample's coordinate is.
+                    // Place: a sample index, a two-component offset, or none (centroid).
                     EvaluateAttributeAt place = instruction.Opcode switch
                     {
                         D3D10Opcode.EvalSnapped => EvaluateAttributeAt.Snapped,
@@ -3444,9 +3065,7 @@ public class InstructionParser
                     };
                     bool isSnapped = place == EvaluateAttributeAt.Snapped;
                     HlslTreeNode value = GetInputs(instruction, componentIndex)[0];
-                    // A snapped offset is written as an immediate, and it is a
-                    // count of sixteenths of a pixel rather than the float those
-                    // bits spell.
+                    // Immediate places are integers (a snapped offset is in 1/16 pixels).
                     const int PlaceParamIndex = 2;
                     int places = place switch
                     {
@@ -3495,10 +3114,7 @@ public class InstructionParser
         const int AddressParamIndex = 1;
         const int ResourceParamIndex = 2;
 
-        // The resource operand's swizzle says which channel of the texel each
-        // component of the result is: `ld r0.z, r0.z, t2.x` puts the red channel
-        // in z. Reading it at the first component alone named the result by the
-        // destination, and a Texture2D<float> came out read as `.z`.
+        // The resource swizzle picks the channel: `ld r0.z, r0.z, t2.x` reads red.
         var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent] as RegisterInputNode;
         bool isUnorderedAccessView = instruction.Opcode == D3D10Opcode.LdUAVTyped;
         ResourceDefinition definition = _registerState.ResourceDefinitions
@@ -3507,18 +3123,13 @@ public class InstructionParser
                 : D3DShaderInputType.Texture))
             .FirstOrDefault(d => d.BindPoint == resource.RegisterComponentKey.RegisterKey.Number);
 
-        // Load reads a texel directly, so it takes the mip level alongside the
-        // coordinates: a 2D texture is addressed by an int3. A buffer has no mips
-        // and is addressed by its index alone, and a multisampled texture has none
-        // either - it takes the sample index as an argument of its own instead.
-        // A writable view has the one level, so its load takes no mip either.
+        // Load appends the mip level to the coordinates (Texture2D: int3), except
+        // for buffers, multisampled textures and UAVs.
         bool multisampled = instruction.Opcode == D3D10Opcode.LDMS;
         int addressLength = definition?.Dimension == ResourceDimension.Buffer
             ? 1
             : (definition?.GetDimensionSize() ?? 2)
                 + (multisampled || isUnorderedAccessView ? 0 : 1);
-        // The address is in texels, so an immediate operand holds integers rather
-        // than the floats those same bits would spell.
         HlslTreeNode[] address = instruction.GetOperandType(AddressParamIndex) == OperandType.Immediate32
             ? [.. Enumerable.Range(0, addressLength)
                 .Select(i => (HlslTreeNode)new ConstantNode((int)instruction.GetParamInt(AddressParamIndex, i)))]
@@ -3539,10 +3150,7 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// bufinfo r0.x, t0: how many elements the buffer holds, or how many bytes a
-    /// byte address one does. One number, with no mip level to ask it at - the
-    /// resource operand's swizzle routes it rather than choosing between
-    /// measurements the way a resinfo's does.
+    /// bufinfo r0.x, t0: the element count (bytes for a raw buffer). No mip level.
     /// </summary>
     private ResourceInfoNode CreateBufferInfoNode(D3D10Instruction instruction, int outputComponent)
     {
@@ -3562,27 +3170,21 @@ public class InstructionParser
         const int MipLevelParamIndex = 1;
         const int ResourceParamIndex = 2;
 
-        // The resource operand's swizzle says which measurement each component of
-        // the result is, the same way a sample's says which channel.
+        // The resource swizzle picks the measurement per component.
         var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent] as RegisterInputNode;
-        // A mip level is an integer, whatever bits an immediate holds.
         HlslTreeNode mipLevel = instruction.GetOperandType(MipLevelParamIndex) == OperandType.Immediate32
             ? new ConstantNode((int)instruction.GetParamInt(MipLevelParamIndex, 0))
             : GetInputComponents(instruction, MipLevelParamIndex, 1)[0];
         return new ResourceInfoNode(resource, mipLevel, outputComponent, instruction.ResInfoReturnType);
     }
 
-    // sampleinfo dest, resource: how many samples the resource has, with no mip
-    // level to ask it at and the resource one operand earlier than resinfo has it.
-    // The mip level is a constant zero here so that it joins the resinfo of the
-    // same texture, which is the one GetDimensions call the two came from.
+    // sampleinfo dest, resource. Mip level 0 so it joins the resinfo of the same
+    // GetDimensions call.
     private HlslTreeNode CreateSampleInfoNode(D3D10Instruction instruction, int outputComponent)
     {
         const int ResourceParamIndex = 1;
 
-        // The rasterizer asks about the render target, which is no resource and has
-        // no declaration to look up: reading it as a register found nothing seeded
-        // under that name and threw.
+        // The rasterizer (render target) has no declaration to look up.
         if (instruction.GetOperandType(ResourceParamIndex) == OperandType.Rasterizer)
         {
             return new RenderTargetSampleCountNode(outputComponent);
@@ -3601,16 +3203,13 @@ public class InstructionParser
         };
     }
 
-    // samplepos dest, resource, sampleIndex: the position of one sample within the
-    // pixel, which is a float2 whichever component is asked for.
+    // samplepos dest, resource, sampleIndex: a float2.
     private SamplePositionNode CreateSamplePositionNode(D3D10Instruction instruction, int outputComponent)
     {
         const int ResourceParamIndex = 1;
         const int SampleIndexParamIndex = 2;
 
-        // The rasterizer carries a swizzle picking x or y of the float2 the way a
-        // resource operand does, but nothing seeds it as a register, so the node is
-        // made from the operand itself.
+        // The rasterizer is not seeded as a register; build the node from the operand.
         var resource = instruction.GetOperandType(ResourceParamIndex) == OperandType.Rasterizer
             ? new RegisterInputNode(
                 GetParamRegisterComponentKey(instruction, ResourceParamIndex, outputComponent))
@@ -3629,11 +3228,7 @@ public class InstructionParser
         if (instruction is D3D9Instruction d3D9Instruction)
         {
             const int SamplerParamIndex = 2;
-            // A shader model 1 tex names no sampler, and before ps_1_4 no
-            // coordinate either: both are the destination register's own number,
-            // because a texture stage is what it writes to. Nothing here reads a
-            // shader that way yet, and the operand a ps_2_0 texld would have
-            // walks off the end of one that has two parameters or one.
+            // SM1 tex has no sampler operand (the destination's number is the stage).
             if (_shaderModel.MajorVersion == 1)
             {
                 throw new NotImplementedException(
@@ -3685,18 +3280,13 @@ public class InstructionParser
         }
         else
         {
-            // gather4_po takes its offset from a register, in an operand of its own
-            // between the coordinate and the texture, so everything after it is one
-            // further along.
+            // gather4_po has an offset operand before the texture.
             bool hasProgrammableOffset = ((D3D10Instruction)instruction).Opcode
                 is D3D10Opcode.Gather4Po or D3D10Opcode.Gather4PoC;
             int TextureParamIndex = hasProgrammableOffset ? 3 : 2;
             int SamplerParamIndex = hasProgrammableOffset ? 4 : 3;
 
-            // The resource operand carries the swizzle that says which channel each
-            // component of the result comes from - `t2.yzxw` puts the red channel in
-            // z. Keeping only the first component threw that away and read the
-            // channel the destination happened to be written to.
+            // The resource swizzle picks each component's channel (`t2.yzxw`).
             var textureComponents = GetInputComponents(instruction, TextureParamIndex, 4);
             var texture = textureComponents[outputComponent] as RegisterInputNode;
             var textureDefinition = _registerState.ResourceDefinitions
@@ -3710,7 +3300,6 @@ public class InstructionParser
             int dimension = textureDefinition.GetDimensionSize();
             HlslTreeNode[] texCoords = GetInputComponents(instruction, TextureCoordsParamIndex, dimension);
 
-            // Everything past the sampler is what distinguishes the variant.
             const int ExtraParamIndex = 4;
             TextureLoadControls controls = ((D3D10Instruction)instruction).Opcode switch
             {
@@ -3720,8 +3309,6 @@ public class InstructionParser
                 D3D10Opcode.SampleC => TextureLoadControls.Compare,
                 D3D10Opcode.SampleCLZ => TextureLoadControls.Compare | TextureLoadControls.LevelZero,
                 D3D10Opcode.Gather4 => TextureLoadControls.Gather,
-                // A gather that compares: four texels tested against one value, the
-                // way a comparison sample tests the one it reads.
                 D3D10Opcode.Gather4C => TextureLoadControls.Gather | TextureLoadControls.Compare,
                 D3D10Opcode.Gather4Po =>
                     TextureLoadControls.Gather | TextureLoadControls.ProgrammableOffset,
@@ -3730,9 +3317,7 @@ public class InstructionParser
                 D3D10Opcode.Lod => TextureLoadControls.CalculateLod,
                 _ => TextureLoadControls.None,
             };
-            // lod puts the clamped level in x and the unclamped one in y, and the
-            // resource swizzle picks between them - the only thing that tells
-            // CalculateLevelOfDetail from CalculateLevelOfDetailUnclamped.
+            // lod writes clamped in x and unclamped in y; the swizzle picks which.
             if (controls.HasFlag(TextureLoadControls.CalculateLod)
                 && instruction.GetSourceSwizzleComponents(TextureParamIndex)[0] == 1)
             {
@@ -3741,8 +3326,6 @@ public class InstructionParser
             HlslTreeNode[] derivativeX = null;
             HlslTreeNode[] derivativeY = null;
             HlslTreeNode scalarArgument = null;
-            // The offset is the operand before the texture, and as wide as the
-            // texture has dimensions - two for a Texture2D.
             HlslTreeNode[] offsets = hasProgrammableOffset
                 ? GetInputComponents(instruction, TextureParamIndex - 1, dimension)
                 : null;
@@ -3755,10 +3338,7 @@ public class InstructionParser
                 || controls.HasFlag(TextureLoadControls.Bias)
                 || controls.HasFlag(TextureLoadControls.Compare))
             {
-                // Only these carry one more operand. gather4 takes the same operands
-                // as sample, so reading a fifth would run off the end. A comparison
-                // gather with a register offset has both, and the value compared
-                // against is last of all.
+                // Only these have a fifth operand; with a po offset it comes last.
                 scalarArgument = GetInputComponents(
                     instruction, hasProgrammableOffset ? ExtraParamIndex + 1 : ExtraParamIndex, 1)[0];
             }
@@ -3772,17 +3352,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Says of a node that it reads floats. CreateInstructionTree types the tree's
-    /// root by the opcode and nothing below it, which is enough while an instruction
-    /// makes one node. A dot product makes a sum of products, and the products are
-    /// what read the operands: left saying nothing, they left their operands typed
-    /// by the register those were in, and fxc reuses registers. A texture load into
-    /// the r0 that had held a thread id came out as an int2, which truncates it.
-    /// </summary>
-    /// <summary>
-    /// Whether a raw load or store reaches groupshared memory rather than a buffer.
-    /// A ByteAddressBuffer is something HLSL can say and a groupshared one is not,
-    /// so only the second has to be turned back into an array subscript.
+    /// Whether a raw access reaches groupshared memory, which HLSL can only write as
+    /// an array subscript.
     /// </summary>
     private static bool IsGroupSharedResource(D3D10Instruction instruction, int operandIndex)
     {
@@ -3791,13 +3362,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The element a raw groupshared access names, from the byte address it carries.
-    /// fxc gives a groupshared variable that is not an array this shape, and the
-    /// only way to declare one in HLSL is as an array of four byte elements, so the
-    /// element is the address over four - folded where the address is the literal
-    /// it almost always is, since the address of a variable's component is a
-    /// constant offset. One access can reach several dwords, and each of them is an
-    /// element of its own, so which one it is counts on top.
+    /// The dword element index (address / 4 + dword) of a raw groupshared access,
+    /// folded when the address is a literal.
     /// </summary>
     private static HlslTreeNode GroupSharedElementOfByteAddress(HlslTreeNode byteAddress, int dword)
     {
@@ -3813,6 +3379,11 @@ public class InstructionParser
         return dword == 0 ? element : new AddOperation(element, new ConstantNode(dword));
     }
 
+    /// <summary>
+    /// Marks an inner node as reading floats. CreateInstructionTree types only the
+    /// root, so the products of a dot product would otherwise take the type of a
+    /// reused register.
+    /// </summary>
     private static T ReadingFloats<T>(T node) where T : HlslTreeNode
     {
         node.ConsumesInteger ??= false;
@@ -3847,13 +3418,8 @@ public class InstructionParser
             ReadingFloats(new AddOperation(addition, addend)));
     }
 
-    // A matrix product is a dot product per row against consecutive registers:
-    // m4x4 o0, v0, c0 is the dot of v0 with c0 for o0.x, with c1 for o0.y, and so
-    // on, which is the same tree fxc builds out of the dp4s it writes instead. The
-    // first number in the mnemonic is how wide the vector and each row are; the
-    // second is how many rows there are, and the row is the component being
-    // written. The matrix operand names the first register and is read without its
-    // swizzle, the way the interpreter reads it.
+    // mNxM: component `row` is dot(v, c[base + row]) over N columns. The matrix
+    // operand is read without its swizzle.
     private HlslTreeNode CreateMatrixProductNode(D3D9Instruction instruction, int row)
     {
         int columns = instruction.Opcode is Opcode.M4x3 or Opcode.M4x4 ? 4 : 3;
@@ -3874,8 +3440,6 @@ public class InstructionParser
             ReadingFloats(new AddOperation(addition, addend)));
     }
 
-    // Each component of a cross product is a difference of two products of the
-    // other two components, and crs writes nothing into the fourth.
     private HlslTreeNode CreateCrossProductNode(D3D9Instruction instruction, int componentIndex)
     {
         if (componentIndex >= 3)
@@ -3913,9 +3477,7 @@ public class InstructionParser
             .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
     }
 
-    // `lit src` reads n.l from x, n.h from y and the specular power from w, whatever
-    // component is being written, so the source is read three times over rather than
-    // once per destination component.
+    // `lit src` reads x (n.l), y (n.h) and w (power) for every component.
     private HlslTreeNode CreateLitOutputNode(D3D9Instruction instruction, int outputComponent)
     {
         return new LitOutputNode(
@@ -3955,11 +3517,7 @@ public class InstructionParser
         return inputs;
     }
 
-    // cb0[r0.x + 1] reads an array element chosen at run time. The immediate is the
-    // register that element zero of the read would sit at, and the array may start
-    // further back in the buffer, so the difference is added to the index.
-    // icb[r0.x + 0] reads the immediate constant buffer, which has one index
-    // rather than a buffer and an element.
+    // icb[r0.x + 0]: one index, no buffer number.
     private HlslTreeNode GetImmediateConstantBufferInput(
         D3D10Instruction instruction,
         int operandIndex,
@@ -3979,6 +3537,7 @@ public class InstructionParser
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }
 
+    // cb0[r0.x + 1]: the immediate is where element zero of the read would sit.
     private HlslTreeNode GetDynamicConstantBufferInput(
         D3D10Instruction instruction,
         int operandIndex,
@@ -3998,13 +3557,11 @@ public class InstructionParser
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         var componentKey = new RegisterComponentKey(registerKey, swizzle[componentIndex]);
 
-        // Indexed by registers, as the bytecode does; where that is the element times
-        // the rows of a matrix, ParsedIdioms takes the multiplication off.
+        // Indexed by registers; ParsedIdioms removes a matrix-rows multiplier.
         return new RelativeAddressNode(componentKey, index);
     }
 
-    // v[r0.x][0] reads a vertex of a geometry shader input chosen at run time. The
-    // second index names the register, so it is the vertex that is dynamic.
+    // v[r0.x][0]: a dynamically indexed vertex of a GS/HS input.
     private HlslTreeNode GetDynamicVertexInput(
         D3D10Instruction instruction,
         int operandIndex,
@@ -4018,10 +3575,7 @@ public class InstructionParser
             new D3D10RegisterKey(indexType, indexNumber), indexComponent));
 
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
-        // A vertex shader indexes the run of input registers a dcl_indexrange
-        // declared and writes `v[r0.x + 0]`, one index, where a geometry shader
-        // writes `v[r0.x][0]` and the second index names the register. The
-        // immediate beside the index is the first register of the run.
+        // A VS dcl_indexrange read `v[r0.x + base]` has one index: the register.
         if (operandIndices.Length == 1)
         {
             return new RelativeAddressNode(
@@ -4031,16 +3585,13 @@ public class InstructionParser
                 index);
         }
 
-        // The vertex is the index register plus the immediate beside it: an instanced
-        // fork phase reads `vicp[r0.x + 1]` with r0.x = -vForkInstanceID, and without
-        // the 1 its two runs read patch[0] and patch[-1] for patch[1] and patch[0].
+        // Add the immediate: `vicp[r0.x + 1]`.
         if (operandIndices[VertexIndex].Immediate != 0)
         {
             index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate));
         }
 
-        // Any vertex will do to find the declaration; they share one. A point the
-        // control point phase wrote is keyed apart from one of the patch it read.
+        // Vertex 0 stands for all; control point outputs are keyed apart from inputs.
         int register = (int)operandIndices[1].Immediate;
         var registerKey = instruction.GetOperandType(operandIndex) == OperandType.OutputControlPoint
             ? D3D10RegisterKey.CreateControlPointOutput(register, 0)
@@ -4049,12 +3600,10 @@ public class InstructionParser
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }
 
-    // `c0[a0.x]` picks an array element at run time. Reading it as plain c0 would
-    // silently decompile a different shader, so the index is modelled instead.
+    // The shared aL node, so that the components of c0[aL] group together.
     private LoopCounterNode _loopCounter;
 
-    // A structured buffer element can be wider than one component, and any of them
-    // can be read, so each needs a value before the first load.
+    // Seed every component of a structured element before the first load.
     private void SeedResourceComponents(D3D10RegisterKey registerKey)
     {
         int components = _registerState.GetStructuredBufferComponents(registerKey);
@@ -4072,8 +3621,6 @@ public class InstructionParser
         _registerState.MarkIndexedConstant(inputKey.RegisterKey);
         if (relativeType == RegisterType.Loop)
         {
-            // aL counts the enclosing loop. One shared node stands for the register,
-            // so that the components of c0[aL] group into a single expression.
             _loopCounter ??= new LoopCounterNode();
             return new RelativeAddressNode(inputKey, _loopCounter);
         }
@@ -4089,14 +3636,11 @@ public class InstructionParser
             instruction.GetRelativeParamComponent(parameterIndex));
         HlslTreeNode address = GetActiveOutput(addressKey);
 
-        // Indexed by registers, as the DXBC read is; ParsedIdioms takes off the
-        // element's stride where the mova was handed the element times the rows.
+        // Indexed by registers; ParsedIdioms removes a matrix-rows multiplier.
         return new RelativeAddressNode(inputKey, address);
     }
 
-    // The element an x# operand names: a literal, a register, or a register plus a
-    // literal, as cb0[r0.x + 2] is. Whatever the shader indexes an array with is an
-    // integer, so a literal is one too.
+    // The element an x# operand names: literal, register, or register + literal.
     private HlslTreeNode GetIndexableTempElementIndex(D3D10Instruction instruction, int operandIndex)
     {
         const int ElementIndex = 1;
@@ -4123,9 +3667,7 @@ public class InstructionParser
         RegisterComponentKey[] destinationKeys = GetDestinationKeys(instruction).ToArray();
         HlslTreeNode[] values = [.. destinationKeys.Select(key =>
         {
-            // A mov's value is its source itself: wrapping it in a move would give
-            // the source a consumer, and a value consumed by nothing but a store is
-            // meant to be written into it inline.
+            // No MoveOperation wrapper, so a store-only value can be written inline.
             HlslTreeNode value = instruction.Opcode == D3D10Opcode.Mov
                 ? GetInputs(instruction, key.ComponentIndex)[0]
                 : CreateInstructionTree(instruction, key);
@@ -4139,9 +3681,8 @@ public class InstructionParser
     {
         int numInputs = GetNumInputs(instruction.Opcode);
         var inputs = new HlslTreeNode[numInputs];
-        // Which value of the instruction is being built, where that is not the
-        // component it is written at: a double takes two components, so dtof's
-        // second result is written at .y and reads the double at .zw.
+        // With doubles the value ordinal differs from the component (dtof's .y
+        // reads the double at .zw).
         int destinationComponent = componentIndex;
         int valueOrdinal = instruction.HasDoubleOperands
             ? instruction.GetValueOrdinal(componentIndex)
@@ -4152,11 +3693,8 @@ public class InstructionParser
             var operandType = instruction.GetOperandType(inputParameterIndex);
             if (instruction.HasDoubleOperands)
             {
-                // Where the instruction writes doubles, the operand pair read is
-                // the destination's own: the double written at .zw is read from
-                // the second pair of every double operand, whether or not it is
-                // the instruction's first value. A comparison answers a value per
-                // pair and reads its operands one pair per value.
+                // Double writes read the destination's own pair; other double
+                // instructions read one pair per value.
                 componentIndex = instruction.IsDoubleOperand(inputParameterIndex)
                     ? instruction.WritesDoubles
                         ? destinationComponent
@@ -4177,34 +3715,22 @@ public class InstructionParser
             }
             if (operandIndices.Any(index => index.IsRelative))
             {
-                // The register number decoded from a relative operand is meaningless,
-                // so the element has to be modelled rather than read.
                 inputs[i] = operandType switch
                 {
                     OperandType.ConstantBuffer => GetDynamicConstantBufferInput(
                         instruction, inputParameterIndex, componentIndex, operandIndices),
                     OperandType.ImmediateConstantBuffer => GetImmediateConstantBufferInput(
                         instruction, inputParameterIndex, componentIndex, operandIndices),
-                    // A control point of a patch is read the way a vertex of a
-                    // primitive is - `vicp[2][0]` is which control point then which
-                    // register of it - so a hull shader that loops over its control
-                    // points rather than being unrolled reaches here, and used to
-                    // stop the parse outright.
                     OperandType.Input or OperandType.InputControlPoint or OperandType.OutputControlPoint
                         => GetDynamicVertexInput(
                             instruction, inputParameterIndex, componentIndex, operandIndices),
                     _ => throw new NotImplementedException(
                         $"Dynamically indexed {operandType} in {instruction.Opcode}"),
                 };
-                // A relative operand carries a modifier like any other, and this
-                // path used to return before applying it: `mov o1.xyz,
-                // -v[r0.x + 0][1].xyzx` came out without the negation.
                 inputs[i] = ApplyModifier(
                     inputs[i], instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
-            // Which run of an instanced phase this is, which the unrolling settled:
-            // every copy of the body reads it as the number of its own run.
             if (operandType == OperandType.InputForkInstanceID)
             {
                 inputs[i] = new ConstantNode(instruction.ForkInstance ?? 0);
@@ -4212,9 +3738,6 @@ public class InstructionParser
             }
             if (operandType == OperandType.Immediate64)
             {
-                // The operand holds two doubles and the component being read names
-                // a pair of its slots, which is one of them. A double instruction
-                // has already said which of its values this is by here.
                 byte[] doubleSwizzle = instruction.GetSourceSwizzleComponents(inputParameterIndex);
                 var doubleConstant = new DoubleConstantNode(instruction.GetParamDouble(
                     inputParameterIndex, doubleSwizzle[componentIndex] / 2));
@@ -4225,14 +3748,9 @@ public class InstructionParser
             }
             if (operandType == OperandType.Immediate32)
             {
-                // An immediate's 32 bits are typed by the instruction consuming them.
-                // A mov consumes nothing - the register it writes is the best guess
-                // for now, and what reads the value decides once the graph is whole.
-                // And the bits a bitwise operation takes that no float literal
-                // spells - a denormal or a NaN - are the integer they are, whatever
-                // the other operand was taken for: `or r0.y, r1.x, l(1)` over a
-                // member of a mixed structured load wrote `t1 | 0.000000`, the 1
-                // read as the denormal its bits make.
+                // Typed by the consuming instruction; mov immediates are retyped
+                // later by their readers. Denormal/NaN bits in a bitwise op and
+                // addresses are integers.
                 uint immediateBits = (uint)instruction.GetParamInt(inputParameterIndex, componentIndex);
                 bool notAFloat = (instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
                         && IntegerOperandAnalysis.IsDenormalOrNaN(immediateBits))
@@ -4263,19 +3781,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// The double a double operand's register pair holds: the value at the lower
-    /// component where that one is a double already, and the bits of both
-    /// components joined where it is not.
-    ///
-    /// A pair holds a double already where a double instruction wrote it or a
-    /// member declared one was loaded into it, which is what the parser's record of
-    /// doubles says. Where neither did, the two components are two values of their
-    /// own - a uint2 member loaded into the pair, say - and what the instruction
-    /// reads is a double built out of their bits. That is `asdouble`, and it costs
-    /// no instruction: reading a register pair as a double is free, so the only
-    /// thing that says a join happened is that the pair was not a double before it.
-    /// Read as the lower component alone the high word went missing, and a dmul of
-    /// the pair came back as a single multiply of the low word.
+    /// The double a register pair holds: the lower value if already a double, else
+    /// asdouble(low, high) of the two components (an implicit, free join).
     /// </summary>
     private HlslTreeNode ReadDoublePair(
         D3D10Instruction instruction, int inputParameterIndex, int componentIndex, HlslTreeNode low)
@@ -4286,9 +3793,7 @@ public class InstructionParser
         {
             return low;
         }
-        // The pair's upper slot, which fxc writes beside the lower one: a double
-        // operand repeats its pair across the four swizzle slots - .xyxy for the
-        // double at x - so the high word of the double at slot n is at slot n + 1.
+        // The swizzle repeats the pair (.xyxy), so the high word is at slot n + 1.
         RegisterComponentKey highKey = GetParamRegisterComponentKey(
             instruction, inputParameterIndex, componentIndex + 1);
         var joined = new BitsToDoubleOperation(low, GetActiveOutput(highKey));
@@ -4297,15 +3802,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// A double a store is writing out as the two dwords it is made of. A store
-    /// names the components of the element it writes, so one that names both halves
-    /// of the pair a double sits in is taking it apart: the high word is keyed at
-    /// the upper component already, and this is what makes the lower one the low
-    /// word rather than the double itself.
-    ///
-    /// Where the element's member is a double nothing names the upper half - the
-    /// load and the store of a `StructuredBuffer&lt;double&gt;` key one value to the
-    /// pair, which is what the element holds - so that store is left alone.
+    /// Where a store writes both halves of a double as dwords, makes the lower one
+    /// the low word. A double member keys only one value and is left alone.
     /// </summary>
     private void SplitStoredDoubles(HlslTreeNode[] values)
     {
@@ -4321,14 +3819,8 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// Whether the pair a component begins is a double already, rather than two
-    /// 32-bit values a double instruction is about to read as one. Two things say
-    /// so, and both have to be asked: the parser's record, which holds every double
-    /// an instruction wrote or a member declared one was loaded into, and the
-    /// declaration, for the one operand that is read without being written. A
-    /// constant buffer variable declared double is read straight off the register
-    /// pair it occupies - `dmul r0.xy, r0.xy, cb0[0].zw` - and its two components
-    /// name the one variable, so joined they came out as `asdouble(scale, scale)`.
+    /// Whether the pair a component begins is already a double: recorded as one, or
+    /// a constant buffer variable declared double (`cb0[0].zw`).
     /// </summary>
     private bool HoldsDouble(RegisterComponentKey registerComponent, HlslTreeNode value)
     {
@@ -4566,28 +4058,21 @@ public class InstructionParser
             case D3D10Opcode.ImmAtomicUMax:
             case D3D10Opcode.ImmAtomicUMin:
             case D3D10Opcode.ImmAtomicExch:
-                // The resource, the address and the value: the destination register
-                // is not a source, and the resource is read as one here only so that
-                // the operands after it line up.
+                // Resource, address, value: the resource counts only so later
+                // operands line up.
                 return 3;
             case D3D10Opcode.ImmAtomicCmpExch:
-            // The width, the offset, the bits going in and the value they go into.
             case D3D10Opcode.BFI:
                 return 4;
-            // The coordinate and the value; the resource is the destination operand.
             case D3D10Opcode.StoreUAVTyped:
                 return 2;
-            // The coordinate and the view.
             case D3D10Opcode.LdUAVTyped:
                 return 2;
-            // The attribute and where to evaluate it.
             case D3D10Opcode.EvalSampleIndex:
             case D3D10Opcode.EvalSnapped:
                 return 2;
-            // The centroid takes no saying where.
             case D3D10Opcode.EvalCentroid:
                 return 1;
-            // The width, the offset and the value.
             case D3D10Opcode.UBFE:
             case D3D10Opcode.IBFE:
             case D3D10Opcode.IMad:
@@ -4597,7 +4082,6 @@ public class InstructionParser
             case D3D10Opcode.LdStructured:
             case D3D10Opcode.StoreStructured:
             case D3D10Opcode.AtomicCmpStore:
-            // The reference, the windows of the source, and what to add.
             case D3D10Opcode.MSAD:
             case D3D10Opcode.DMovC:
             case D3D10Opcode.DFMA:
@@ -4607,7 +4091,6 @@ public class InstructionParser
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.LdRaw:
             case D3D10Opcode.StoreRaw:
-            // The resource and which of its samples.
             case D3D10Opcode.SamplePos:
                 return 2;
             case D3D10Opcode.SampleInfo:
@@ -4629,9 +4112,7 @@ public class InstructionParser
         else if (instruction is D3D10Instruction d3d10Instruction
             && d3d10Instruction.GetOperandComponentSelection(paramIndex) == D3D10OperandNumComponents.Operand1Component)
         {
-            // A one component operand - vPrim, vThreadIDInGroupFlattened - has only
-            // its x, whichever component of the result it is read for: `and r0.xyz,
-            // vPrim, l(3, 1, 2, 0)` reads the one value three times.
+            // A scalar operand (vPrim) is x for every component.
             componentIndex = 0;
         }
         else
@@ -4639,10 +4120,7 @@ public class InstructionParser
             byte[] swizzle = instruction.GetSourceSwizzleComponents(paramIndex);
             componentIndex = swizzle[component];
         }
-        // A hull shader reads a patch constant it computed itself: a join phase's
-        // vpc6 is what a fork phase wrote to o6, and the two are one function here.
-        // Read as a register of its own it was a value from nowhere, and the writer
-        // put the write of it after the reads, since nothing connected them.
+        // A join phase's vpc6 is what a fork phase wrote to o6 (one function here).
         if (_shaderModel.Type == ShaderType.Hull
             && registerKey is D3D10RegisterKey { OperandType: OperandType.InputPatchConstant } patchConstant)
         {

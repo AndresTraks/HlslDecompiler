@@ -10,11 +10,9 @@ public class AssignmentStatement : IStatement
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
     /// <summary>
-    /// For each output register this statement writes, the temp assignments whose
-    /// value it wants as this statement computes it rather than as the register
-    /// held it before - the same record as TempAssignmentNode.DependsOnNewValueOf,
-    /// for a reader that is not itself an assignment. Taken at lowering, because
-    /// afterwards a read of either value is the same variable name.
+    /// Per output, the temp assignments whose new value it reads, as in
+    /// TempAssignmentNode.DependsOnNewValueOf. Taken at lowering, after which old and
+    /// new value read as the same name.
     /// </summary>
     public Dictionary<RegisterComponentKey, List<TempAssignmentNode>> OutputDependsOnNewValueOf { get; } = [];
 
@@ -38,6 +36,5 @@ public class AssignmentStatement : IStatement
         return keys + " = " + values;
     }
 
-    /// <summary>Nothing: an assignment's values are the entries of its maps.</summary>
     public IEnumerable<HeldSlot> HeldSlots => [];
 }

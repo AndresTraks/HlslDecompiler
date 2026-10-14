@@ -1,8 +1,6 @@
 ﻿namespace HlslDecompiler.Hlsl;
 
-// fma(a, b, c), which rounds once where a multiply and an add round twice. Only
-// the double precision dfma is it: fxc compiles float arithmetic to mad, which is
-// the two roundings and is written as the arithmetic.
+// fma(a, b, c) from dfma only; float mad is written as arithmetic.
 public class FusedMultiplyAddOperation : Operation
 {
     public FusedMultiplyAddOperation(HlslTreeNode factor1, HlslTreeNode factor2, HlslTreeNode addend)

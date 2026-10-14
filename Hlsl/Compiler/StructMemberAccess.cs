@@ -11,9 +11,7 @@ public sealed record StructMemberAccess(string Name, ShaderTypeInfo TypeInfo, in
     public bool IsMatrix => TypeInfo.Rows > 1 && TypeInfo.Columns > 1;
     public int Width => TypeInfo.Rows * TypeInfo.Columns;
 
-    // A matrix takes a register per column, or per row where the constant table
-    // says it was packed by row - the same rule a matrix outside a struct follows,
-    // and one copy of it.
+    // A register per column, or per row when packed row_major.
     private bool IsRowMajor => TypeInfo.ParameterClass == ParameterClass.MatrixRows;
     /// <summary>How many components the register holding one row or column has.</summary>
     public int MatrixRowWidth => IsRowMajor ? TypeInfo.Columns : TypeInfo.Rows;
@@ -22,7 +20,6 @@ public sealed record StructMemberAccess(string Name, ShaderTypeInfo TypeInfo, in
     {
         return RegisterState.MatrixRegisterName(TypeInfo, Name, row);
     }
-    // The component of its register the member starts at: a float packed after a
-    // float3 sits at .w, and a swizzle naming it is rebased onto the member.
+    // A float packed after a float3 starts at .w; swizzles are rebased onto it.
     public int ComponentBase => StartOffset % 4;
 }

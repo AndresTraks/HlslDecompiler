@@ -3,14 +3,8 @@
 namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// cmp tests its value against zero, and -abs(x) reaches zero only where x is
-/// zero, so a cmp over one is asking whether x is one particular number.
-/// `-abs(address) >= 0 ? 1 : 0` says that the way the bytecode has to; the source
-/// it came from said `address == 0`.
-///
-/// The comparison templates never see this one, because a cmp carries no
-/// comparison node - the `>= 0` is put there by the writer when it compiles the
-/// operation - so the rewrite belongs at the cmp itself.
+/// `-abs(x) >= 0 ? a : b` is `x == 0 ? a : b`. Matched on the cmp itself, which
+/// has no comparison node for the comparison templates to see.
 /// </summary>
 public class CompareAbsoluteWithZeroTemplate : NodeTemplate<CompareOperation>
 {

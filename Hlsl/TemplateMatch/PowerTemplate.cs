@@ -1,16 +1,8 @@
 ﻿namespace HlslDecompiler.Hlsl.TemplateMatch;
 
 /// <summary>
-/// Puts pow back together.
-///
-/// There is no power instruction, so fxc writes `pow(x, y)` as
-/// `exp2(log2(x) * y)` - which is what HLSL defines it to be, and what it
-/// compiles back to. Left as the two instructions it reads as a trick rather
-/// than as the one thing it is.
-///
-/// Only the bare multiply. `exp2(log2(x) * a + b)` is a pow scaled by an
-/// exponential, which is two operations and says so; colour_grade has one and
-/// keeps it.
+/// Recovers pow(x, y) from `exp2(log2(x) * y)`. Only the bare multiply:
+/// `exp2(log2(x) * a + b)` is left as is.
 /// </summary>
 public class PowerTemplate : NodeTemplate<ExponentialOperation>
 {

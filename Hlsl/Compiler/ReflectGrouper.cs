@@ -4,15 +4,9 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// Components that are a reflection. HLSL defines `reflect(i, n)` as
-/// `i - 2 * dot(i, n) * n`, and that is what fxc writes: a dot, an add of the
-/// result to itself, and a mad per component with the scale negated. Written out
-/// it is two statements of vector algebra that the reader has to recognise.
-///
-/// The incident and the normal are taken from the dot rather than from the
-/// components, because the incident may be a negation the components express by
-/// subtracting: `n * -s - l` is `reflect(-l, n)`, and the `-l` the dot was taken
-/// over is the node to hand back.
+/// Components that are `reflect(i, n)` = `i - 2 * dot(i, n) * n`. The operands
+/// come from the dot, since the components may express a negated incident by
+/// subtracting (`n * -s - l` is `reflect(-l, n)`).
 /// </summary>
 public class ReflectGrouper
 {

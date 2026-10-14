@@ -77,13 +77,8 @@ public class NodeGrouper
         {
             HlslTreeNode node1 = nodes[groupStart];
             HlslTreeNode node2 = nodes[nodeIndex];
-            // Against the first for whether they are one expression, and against
-            // every assignment already in the group for whether one reads what
-            // another writes: as one statement every lane reads the old values.
-            // A parallax march's step went `t1.xzwy = float4(t0.z + t1.x, t1.zw -
-            // t0.xy, Sample(t1.zw))` - the sample at the coordinate before the step,
-            // because the sample was asked only against the x lane, which it does
-            // not read, and not against the zw it does.
+            // Shape is checked against the first node; dependencies against every
+            // member, since one statement's lanes all read the old values.
             if (CanGroupComponents(node1, node2) == false
                 || ReadsWithinGroup(nodes, groupStart, nodeIndex))
             {
@@ -95,18 +90,9 @@ public class NodeGrouper
         return groups;
     }
 
-    // Whether the assignment at nodeIndex and one already in the group - the
-    // first of them included, for the run's first lane is exactly the one a
-    // second write to the register reads back - want each other's new value,
-    // which two statements in order give and one does not, its lanes all
-    // reading the values from before it. A lane reading another's old value is
-    // what one statement gives, and is left be: `t1.xywz = float4(t1.xyz, t4)`
-    // moves z into w as it writes z. A vertex shader's texture unpack
-    // wrote ch1 and ch3 as one `t4.zx = float2(...)` although ch3 is built on
-    // ch1 through the raw minus its multiple between them: the record names
-    // ch1, which is the group's first lane, and asking every member except the
-    // first let the pair group - the one statement read a value it wrote, and
-    // the variable it shares was declared below the read of ch1.
+    // Whether the assignment at nodeIndex and any group member (the first included)
+    // need each other's new value, which one statement cannot give. Reading another
+    // lane's old value is fine: `t1.xywz = float4(t1.xyz, t4)`.
     private static bool ReadsWithinGroup(List<HlslTreeNode> nodes, int groupStart, int nodeIndex)
     {
         if (nodes[nodeIndex] is not TempAssignmentNode added)
@@ -124,27 +110,18 @@ public class NodeGrouper
         return false;
     }
 
-    // Returns true if children differ at most by component index, meaning they can be combined, for example:
-    // n1 = a.x + b.x
-    // n2 = a.y + b.y
-    // =>
-    // n.xy = a.xy + b.xy
-    // n = a + b
+    // Whether children differ at most by component index, so `a.x + b.x` and
+    // `a.y + b.y` combine into `a.xy + b.xy`.
     public bool CanGroupComponents(HlslTreeNode node1, HlslTreeNode node2, bool allowMatrixColumn = false)
     {
-        // Two components reading the one node hold the one value, so they combine
-        // into a broadcast whatever the node is. Worth answering before the checks
-        // below, which reject whole node kinds rather than compare them.
+        // The same node is a broadcast; answered before checks that reject by kind.
         if (ReferenceEquals(node1, node2))
         {
             return true;
         }
 
-        // A component whose constant addend was folded away is still a component of
-        // the same instruction. `def c, 1, 0, 3, 4` added to a register writes four
-        // components with one add; the zero is arithmetic to AddZeroTemplate and
-        // nothing in a ConstantNode says it was holding the four together, so the
-        // sibling that lost it is recognised here instead.
+        // A component whose constant 0 addend or 1 factor was folded away is still
+        // a component of the same instruction.
         if (GroupsWithFoldedAddend(node1, node2) || GroupsWithFoldedAddend(node2, node1)
             || GroupsWithFoldedFactor(node1, node2) || GroupsWithFoldedFactor(node2, node1))
         {
@@ -156,11 +133,8 @@ public class NodeGrouper
             return false;
         }
 
-        // An attribute evaluation takes the input register itself and nothing else -
-        // fxc rejects an expression there, with an internal compiler error rather
-        // than a message - so two of them only group when they are one instruction.
-        // Two eval_centroid over different attributes would otherwise have become
-        // one call over a float4 constructed from both.
+        // An attribute evaluation must take the input register itself (fxc crashes
+        // on an expression), so two group only when they are one instruction.
         if (node1 is EvaluateAttributeOperation
             && !HlslTreeNode.IsSameInstruction(node1, node2))
         {
@@ -177,17 +151,11 @@ public class NodeGrouper
         {
             if (input1.RegisterComponentKey.RegisterKey.TypeEquals(input2.RegisterComponentKey.RegisterKey))
             {
-                // The whole key, not just the number: for a constant buffer the number
-                // is the buffer and the element is the offset, so cb0[4] and cb0[5]
-                // share a number. Two different constants then grouped as one register
-                // and `right.x * c.x + up.x * c.y` came out as dot(right.xx, c).
+                // The whole key: cb0[4] and cb0[5] share a register number.
                 if (input1.RegisterComponentKey.RegisterKey.Equals(
                     input2.RegisterComponentKey.RegisterKey))
                 {
-                    // And within a register, the same variable: fxc packs
-                    // `float roughness; float metallic;` into cb0[1].xy, and a mul
-                    // over the pair grouped as one read, which was named after the
-                    // first - `t3.yz * roughness`, where the y of it was metallic.
+                    // fxc packs several variables into one register.
                     return IsSameVariable(input1, input2);
                 }
 
@@ -201,11 +169,7 @@ public class NodeGrouper
 
         if (node1 is RelativeAddressNode relative1 && node2 is RelativeAddressNode relative2)
         {
-            // The index has to be the same node and not merely one that groups:
-            // c0[a0.x] and c0[a0.y] are two elements of the array rather than two
-            // components of one element. Left to the general rule below, the two
-            // index expressions group as components and three bone lookups come out
-            // as one.
+            // The same index node: c0[a0.x] and c0[a0.y] are two array elements.
             return relative1.RegisterComponentKey.RegisterKey.Equals(
                     relative2.RegisterComponentKey.RegisterKey)
                 && ReferenceEquals(relative1.Index, relative2.Index);
@@ -213,34 +177,22 @@ public class NodeGrouper
 
         if (node1 is DotProductOperation)
         {
-            // Two dot products are components of one thing only when they are two
-            // rows of one matrix against one vector - a matrix multiply. Anything
-            // looser groups unrelated rows, and two bone matrices merged as though
-            // they were rows of one. Recognising the pair here is what lets a per
-            // bone blend - `mul(p, bones[0]) * w.x + mul(p, bones[1]) * w.y` - group
-            // at all. Whether the rows then make a whole matrix in order is for the
-            // multiplication grouper at compile time; a run it does not take is
-            // written dot by dot.
+            // Only two rows of one matrix against one vector. Whether they make a
+            // whole matrix is decided by the multiplication grouper later.
             return node2 is DotProductOperation dot2
                 && MatrixMultiplicationGrouper.AreRowsOfOneMatrix((DotProductOperation)node1, dot2);
         }
 
         if (node1 is TempAssignmentNode assignment1 && node2 is TempAssignmentNode assignment2)
         {
-            // One reading what the other writes is two statements in order - unless
-            // one instruction wrote both, which read every operand before writing
-            // any lane, and so does one statement: continue_nested's `cmp r1, r2.x,
-            // r3, r1` tests the x it is about to overwrite, and split in two it was
-            // a named condition and two selects, two instructions dearer.
+            // One reading what the other writes needs two statements, unless one
+            // instruction wrote both (it read every operand before writing).
             if ((assignment1.TempVariable.IsInputOf(assignment2.Value) || assignment2.TempVariable.IsInputOf(assignment1.Value))
                 && !HlslTreeNode.IsSameInstruction(assignment1.Value, assignment2.Value))
             {
                 return false;
             }
-            // Variables that disagree about their type do not share a declaration.
-            // Before they are numbered two temp variables compare equal, so without
-            // this a running sum and a count of the samples it took are declared as
-            // one float2 and the count is carried as a float.
+            // Unnumbered variables compare equal, so differing types must be checked.
             if (assignment1.TempVariable.IsInteger != assignment2.TempVariable.IsInteger
                 || assignment1.TempVariable.IsBits != assignment2.TempVariable.IsBits)
             {
@@ -261,17 +213,8 @@ public class NodeGrouper
                 && comparison1.Comparison == comparison2.Comparison;
         }
 
-        // Two components of one sample, which is the same operands throughout: the
-        // sampler, the coordinate, the texture, and the texel offsets that shift it.
-        // Asked as equivalence rather than through the grouping below, because grouping
-        // is deliberately looser than sameness where a constant is involved - a
-        // coordinate of uv and one of uv * 2 group, one having had its factor folded -
-        // and two samples of one texture at two coordinates are two instructions. Left
-        // to the grouping, `tex.Sample(s, uv).y` beside `tex.Sample(s, uv * 2).z` came
-        // out as one sample's `.yz`, dropping the second coordinate and computing
-        // something else; where both read the same channel it came out as a constructor
-        // of three arguments, which does not compile at all. The structured load below
-        // is careful about its address for the same reason.
+        // Components of one sample have equivalent operands, not merely groupable
+        // ones: uv and uv * 2 group, but are two samples.
         if (node1 is TextureLoadOutputNode textureload1 && node2 is TextureLoadOutputNode textureload2)
         {
             return textureload1.Controls == textureload2.Controls
@@ -280,9 +223,6 @@ public class NodeGrouper
                     textureload1.Texture, textureload2.Texture);
         }
 
-        // A typed load asks it too, and answered it the same way: `tex.Load(p).y` beside
-        // `tex.Load(p * 2).z` came out as one load's `.yz`, seventeen instructions in and
-        // twelve out.
         if (node1 is ResourceLoadNode resourceLoad1 && node2 is ResourceLoadNode resourceLoad2)
         {
             return SameSampleOffsets(resourceLoad1.SampleOffsets, resourceLoad2.SampleOffsets)
@@ -290,63 +230,34 @@ public class NodeGrouper
                     resourceLoad1.Resource, resourceLoad2.Resource);
         }
 
-        // The sample a samplepos asks about is one scalar for the whole float2, not
-        // a component of it. Two constants group as components whatever numbers
-        // they hold - a vector constant's components differ and still belong to one
-        // read - so `l(1)` and `l(2)` grouped, and both samples came out as one
-        // GetSamplePosition(1) answering all four components.
+        // Constants always group as components, so scalar operands that are not
+        // components (sample index, subscript, offset, address) need equality here.
         if (node1 is SamplePositionNode position1 && node2 is SamplePositionNode position2
             && !AreNodesEquivalent(position1.SampleIndex, position2.SampleIndex))
         {
             return false;
         }
 
-        // Two subscripts of one vector are components of one value only where they
-        // read it at the same index - the same node, and not merely one that groups
-        // alongside it. Two constants group as components whatever numbers they hold,
-        // so `v[1]` beside `v[2]` would come out as one read at the first of the two
-        // answering both components.
         if (node1 is VectorComponentNode select1 && node2 is VectorComponentNode select2
             && !ReferenceEquals(select1.Index, select2.Index))
         {
             return false;
         }
 
-        // Where in the element a structured load starts is not a component of what
-        // comes back: `l(32)` and `l(36)` are two reads, of two different members.
-        // Two constants group as components whatever numbers they hold, so the pair
-        // grouped as one read and the components of the second were named at the
-        // offset of the first - a load of `v[2].x` beside one of `v[2].yzw` came out
-        // as `v[2].xxyz`.
         if (node1 is LoadStructuredNode load1 && node2 is LoadStructuredNode load2)
         {
             if (load1.ElementByteOffset != load2.ElementByteOffset)
             {
                 return false;
             }
-            // And two loads are components of one value only where they read the same
-            // address - the same node, not merely one that groups alongside it. The
-            // components of a single load share their address node; two loads at two
-            // addresses are two reads, and grouping them made the subscript a vector.
-            // `tile[index + 1]` beside `tile[index + 2]` came out as
-            // `tile[index + int2(1, 2)]`, which is not an index HLSL has.
             if (!ReferenceEquals(load1.Address, load2.Address))
             {
                 return false;
             }
         }
 
-        // An idiom that is a node - a normalize, a reflect, a matrix multiply - is
-        // one call written once and swizzled, so two of its components are the same
-        // value only where they are components of the same call. The generic check
-        // below compares operands with CanGroupComponents, which answers whether two
-        // nodes could be components of one register - and `position.x` and
-        // `position.y` can, so it judged `mul(position.xy, M)` and
-        // `mul(position.yx, M)` one multiplication.
-        // vs_4_0/vector2_matrix22_multiply came out as
-        // `mul(position.xy, matrix_2x2).xyxy`, a different vector in its second half
-        // and an instruction cheaper for being wrong. Operands by reference here,
-        // which is what the components of one call share.
+        // Components of one call share operands by reference; the generic rule
+        // would merge `mul(p.xy, M)` with `mul(p.yx, M)`.
         if (node1 is NormalizeOutputNode or ReflectOutputNode or MatrixMultiplyOutputNode)
         {
             return node1.Inputs.Count == node2.Inputs.Count
@@ -355,11 +266,7 @@ public class NodeGrouper
                     .All(operands => ReferenceEquals(operands.First, operands.Second));
         }
 
-        // A call through an interface is one call written once and swizzled, so two
-        // of its components are components of one expression only where they are
-        // components of one call: the same interface, the same instance, the same
-        // method, one instruction. The general rule below compares operands, and
-        // two calls of one register through two interfaces would group as one.
+        // Components of one interface call: same interface, instance, method, instruction.
         if (node1 is InterfaceCallNode call1 && node2 is InterfaceCallNode call2)
         {
             return HlslTreeNode.IsSameInstruction(node1, node2)
@@ -368,10 +275,7 @@ public class NodeGrouper
                 && call1.FunctionIndex == call2.FunctionIndex;
         }
 
-        // Two lanes of one movc on one condition are one select between two vectors,
-        // whatever each vector is made of: `front ? float4(uv, 0, 1) : float4(0, uv,
-        // 1)` is a movc over two shuffled registers, and asked operand by operand -
-        // uv.x beside 0, 1 beside 1 - it came back as four selects, a lane each.
+        // Lanes of one movc on one condition are one select, whatever the arms are.
         if (node1 is MoveConditionalOperation movc1 && node2 is MoveConditionalOperation movc2
             && HlslTreeNode.IsSameInstruction(node1, node2)
             && (ReferenceEquals(movc1.Condition, movc2.Condition)
@@ -380,11 +284,7 @@ public class NodeGrouper
             return true;
         }
 
-        // Dot products scaled by the components of one vector are one multiply of the
-        // vector the dots make: texm3x3's three dots times the diffuse came back a
-        // component at a time, `float4(dot(a, n) * c.x, dot(b, n) * c.y, ...)`, three
-        // muls where `float3(dot(a, n), ...) * c.xyz` is one - the dots land in the
-        // lanes of one register whatever they are written as.
+        // Dots scaled by components of one vector: `float3(dot(a, n), ...) * c.xyz`.
         if (node1 is MultiplyOperation product1 && node2 is MultiplyOperation product2)
         {
             for (int dotSide = 0; dotSide < 2; dotSide++)
@@ -430,12 +330,8 @@ public class NodeGrouper
         {
             return false;
         }
-        // Only where the sibling is a plain read. The shape being recovered is a
-        // constant added to a whole register - `add r, c, v` - and there the
-        // component that lost its zero is a register or a variable. Where it is an
-        // expression, grouping buys nothing and the zero costs an instruction:
-        // screen_position's `(int)x + 1` beside `(int)y` went from 14 to 15 as a
-        // two wide add of int2(1, 0).
+        // Only a plain read (`add r, c, v`); for an expression the zero costs an
+        // instruction.
         if (node2 is not (TempVariableNode or RegisterInputNode))
         {
             return false;
@@ -448,18 +344,8 @@ public class NodeGrouper
     }
 
     /// <summary>
-    /// The same for a multiply, where the one that MultiplyOneTemplate folded away
-    /// is what held the components together. `mul r, c, v` with a 1 in one
-    /// component of c writes the whole register in one instruction.
-    /// </summary>
-    /// <summary>
-    /// Whether two sample output components read the one texel: the same sampler, the
-    /// same coordinate, the same gradients, offsets and level, out of the same texture.
-    ///
-    /// The texture operand is the exception, compared by register rather than by
-    /// component. Its component is which channel of the texel this output component
-    /// reads - what the swizzle on the view says - so the components of one sample
-    /// differ in it by design, and that is the only thing they may differ in.
+    /// Whether two sample output components read the one texel. The texture is
+    /// compared by register only: its component is the channel read, which differs.
     /// </summary>
     private static bool ReadsSameTexel(
         HlslTreeNode load1, HlslTreeNode load2,
@@ -484,12 +370,7 @@ public class NodeGrouper
                 }
                 continue;
             }
-            // The one node, before asking whether two of them say the same thing: the
-            // components of one load share their address, and AreNodesEquivalent is not
-            // reflexive over every kind of node - it ends in false for anything that is
-            // neither an operation nor a component of one, so an address holding a value
-            // carried round a loop answered false against itself, and the four components
-            // of a skinning matrix load stopped grouping into the dot products they were.
+            // Reference check first: AreNodesEquivalent is not reflexive (e.g. a phi).
             if (!ReferenceEquals(operand1, operand2)
                 && !AreNodesEquivalent(operand1, operand2))
             {
@@ -499,8 +380,6 @@ public class NodeGrouper
         return true;
     }
 
-    // The texel offsets of a sample_aoffimmi, which shift where it reads and are part
-    // of what it computes: two samples that differ only in them are two samples.
     private static bool SameSampleOffsets(int[] offsets1, int[] offsets2)
     {
         if (offsets1 == null || offsets2 == null)
@@ -510,15 +389,13 @@ public class NodeGrouper
         return offsets1.SequenceEqual(offsets2);
     }
 
+    /// <summary>
+    /// The same for a multiply whose constant factor of 1 was folded away.
+    /// </summary>
     private bool GroupsWithFoldedFactor(HlslTreeNode node1, HlslTreeNode node2)
     {
-        // The other component may be anything that groups with the factor - a
-        // light colour `saturate(d) * float4(1, 0.9, 0.8, 1)` loses its two ones
-        // and leaves saturate(d) in x and w, which read as a constructor of the
-        // saturate, a float2 product and the saturate again cost a mov. Not a
-        // constant, which is not a component of anything, and not a sum: a product
-        // beside a sum made one expression of both, `(t0 * float2(1, 0.25) +
-        // float2(0, 2)) * float2(0.5, 1)` for `float2(0.5 * t0.x, 0.25 * t0.y + 2)`.
+        // Not a constant (a component of nothing) or a sum: a product beside a sum
+        // would merge into one wrong expression.
         if (node1 is not MultiplyOperation multiply
             || node2 is MultiplyOperation or ConstantNode or AddOperation or SubtractOperation
                 or MultiplyAddOperation)
@@ -546,10 +423,7 @@ public class NodeGrouper
             return false;
         }
 
-        // The same kind of register before its number means anything: a matrix in
-        // c0 and c1 contains register number 1, and so - by number alone - did the
-        // texture coordinate t1, whose y was then taken for the matrix's own and
-        // folded into a three-wide dot with it.
+        // Register type first: t1 must not match a matrix in c0-c1 by number.
         if (!input1.RegisterComponentKey.RegisterKey.TypeEquals(input2.RegisterComponentKey.RegisterKey))
         {
             return false;
@@ -562,10 +436,7 @@ public class NodeGrouper
         }
         if (!IsMatrixConstantRegister(constant))
         {
-            // A matrix member of a struct: the declaration says Struct for every
-            // member it has, so what is at the register decides - and the two have
-            // to be in the one member of the one element, not merely in the one
-            // struct, or two matrices side by side gather as though they were one.
+            // A struct's matrix member: both must be in the same member and element.
             return _registers.TryGetStructMatrixAt(
                     input1.RegisterComponentKey, constant, out StructMemberAccess member1, out int element1)
                 && constant == _registers.FindConstant(input2)
@@ -595,9 +466,8 @@ public class NodeGrouper
             && IsMatrixConstantRegister(constantRegister);
     }
 
-    // Whether two components of one register belong to one declared variable, where
-    // fxc packs several into it: a constant buffer's `roughness` and `metallic`, or
-    // an input register's TEXCOORD0 and TEXCOORD1. Any other register is one value.
+    // Whether two components of one register belong to one declared variable, for
+    // constant buffer and input registers where fxc packs several.
     private bool IsSameVariable(RegisterInputNode input1, RegisterInputNode input2)
     {
         if (input1.RegisterComponentKey.RegisterKey is not D3D10RegisterKey key)
@@ -610,11 +480,6 @@ public class NodeGrouper
             ConstantDeclaration second = _registers.FindConstant(key, input2.RegisterComponentKey.ComponentIndex);
             return first == null || second == null || ReferenceEquals(first, second);
         }
-        // An input register packs two variables the way a constant does - TEXCOORD0 at
-        // v0.xy and TEXCOORD1 at v0.zw - and grouped as one read they were named after
-        // the first and rebased onto it. Where a later read component belongs to the
-        // earlier-packed variable, that rebase runs below its base: `float3(uv2, uv1.x)`
-        // over v0.zwx tried to name texcoord1's component minus two, off the end.
         if (key.OperandType == OperandType.Input)
         {
             return _registers.IsSameInputVariable(key,
@@ -666,43 +531,28 @@ public class NodeGrouper
             }
         }
 
-        // The render target's sample count is one number written into every
-        // component of the destination, so which component a read names says
-        // nothing about which value it is - `sampleinfo r0.yz, rasterizer.x` puts
-        // the same count in both. It carries a component index all the same, and
-        // the rule below read that as two values: a pair of components holding it
-        // was no broadcast, and the constructor over them came out an argument
-        // short of the float4 it was filling.
+        // The sample count is one value in every component, despite its index.
         if (node1 is RenderTargetSampleCountNode && node2 is RenderTargetSampleCountNode)
         {
             return true;
         }
 
-        // Two components of one multi output node share every input and are not
-        // the same value: normalize(n).x is not normalize(n).z. Comparing inputs
-        // alone said they were, and the cross product grouper - which finds the
-        // vectors by asking which factor of a product is which - took the first
-        // pairing that passed, and wrote cross(float3(t.x, n.yz), t.zyx).
+        // Components of one multi-output node share inputs but differ:
+        // normalize(n).x is not normalize(n).z.
         if (node1 is IHasComponentIndex indexed1 && node2 is IHasComponentIndex indexed2
             && indexed1.ComponentIndex != indexed2.ComponentIndex)
         {
             return false;
         }
 
-        // A relative read is the register it is offset from as well as the index:
-        // cb0[idx + 0] and cb0[idx + 1] share their index and are two rows of a
-        // matrix. Comparing the index alone made the three rows of a bone blended
-        // in from a row_major array one value, and the constructor wrote the whole
-        // blend once per component - a float4 of three float3s, which fxc refused.
+        // Base register too: cb0[idx + 0] and cb0[idx + 1] share their index.
         if (node1 is RelativeAddressNode relative1 && node2 is RelativeAddressNode relative2)
         {
             return relative1.RegisterComponentKey.Equals(relative2.RegisterComponentKey)
                 && AreNodesEquivalent(relative1.Index, relative2.Index);
         }
 
-        // A variable has no inputs to compare, so two of them compared equal
-        // whatever they were - t0.x was t3.x. Each component of a variable is one
-        // node that every reader points at, so the node itself says which it is.
+        // A variable has no inputs, so the generic rule would call any two equal.
         if (node1 is TempVariableNode variable1 && node2 is TempVariableNode variable2)
         {
             return ReferenceEquals(variable1, variable2)
@@ -710,11 +560,6 @@ public class NodeGrouper
                     && variable1.DeclarationIndex == variable2.DeclarationIndex);
         }
 
-        // A comparison names no register, no component and no operation, so
-        // nothing above reads it and two of them were never the same value: the
-        // test of a conditional move made every component group holding one a
-        // group of unlike values. It is the outcome asked for, the types read
-        // with, and both sides.
         if (node1 is ComparisonNode comparison1 && node2 is ComparisonNode comparison2)
         {
             return comparison1.Comparison == comparison2.Comparison
@@ -725,10 +570,6 @@ public class NodeGrouper
                 && AreNodesEquivalent(comparison1.Right, comparison2.Right);
         }
 
-        // Which interface, which instance and which method say which call a call
-        // node names as much as its arguments do: the general rule below compares
-        // arguments alone, and one register through two interfaces would answer
-        // that two calls are one value.
         if (node1 is InterfaceCallNode call1 && node2 is InterfaceCallNode call2)
         {
             return call1.InterfaceNumber == call2.InterfaceNumber

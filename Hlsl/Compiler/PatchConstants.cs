@@ -6,29 +6,20 @@ using HlslDecompiler.DirectXShaderModel;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// The values a hull shader computes once for a whole patch, which a domain shader
-/// reads through one struct parameter. They are not in the input signature - they
-/// have a chunk of their own - and the tessellation factors among them are in the
-/// signature whether the shader reads them or not, so a domain shader's parameter
-/// list is built from this rather than from what it declares.
+/// Per-patch values a hull shader writes and a domain shader reads as one struct.
+/// They have their own signature chunk, which lists the tessellation factors even
+/// when unread, so the domain shader's parameter is built from it, not from dcls.
 /// </summary>
 public static class PatchConstants
 {
     public const string ParameterName = "constants";
 
     /// <summary>
-    /// The name of the function a hull shader computes the patch constants in. Which
-    /// name the shader was written with is not in the bytecode - the attribute that
-    /// names it is compiled away - so any name will do as long as the attribute and
-    /// the definition agree on it.
+    /// The patch constant function. Its real name is not in the bytecode, so any
+    /// name works as long as the attribute and the definition agree.
     /// </summary>
     public const string FunctionName = "constants";
 
-    /// <summary>
-    /// What the struct is called. Named after the shader it appears in, the way
-    /// PS_IN and VS_OUT are: the hull shader returns it and the domain shader is
-    /// handed it.
-    /// </summary>
     public static string StructureName(ShaderType type)
     {
         return type == ShaderType.Hull ? "HS_CONST" : "DS_CONST";
@@ -38,8 +29,8 @@ public static class PatchConstants
     private const string InsideTessFactorSemantic = "SV_InsideTessFactor";
 
     /// <summary>
-    /// The field a signature element belongs to. The tessellation factors come one
-    /// element per edge and are one array in HLSL, so several elements share a name.
+    /// The tessellation factors are one element per edge but one array in HLSL,
+    /// so several elements share a field.
     /// </summary>
     public static string FieldName(RegisterSignature signature)
     {
@@ -56,7 +47,6 @@ public static class PatchConstants
             : signature.Name.ToLower() + signature.Index;
     }
 
-    /// <summary>How the field is read, subscript and all.</summary>
     public static string Reference(RegisterSignature signature, IEnumerable<RegisterSignature> all)
     {
         string field = FieldName(signature);
@@ -68,9 +58,8 @@ public static class PatchConstants
     }
 
     /// <summary>
-    /// One line per field, in the order that packs the way the bytecode is packed:
-    /// the tessellation factors take a register's x apiece and everything else fills
-    /// in around them, which is what fxc does when they are declared first.
+    /// Tessellation factors first: fxc then gives each a register's x and packs the
+    /// rest around them, matching the bytecode.
     /// </summary>
     public static IEnumerable<string> Fields(IList<RegisterSignature> signatures)
     {
@@ -83,10 +72,8 @@ public static class PatchConstants
             RegisterSignature first = field.First();
             int count = field.Count();
             string subscript = count > 1 ? $"[{count}]" : "";
-            // The index is part of the semantic where the field is one element:
-            // `float3 b210 : B210` is semantic B with index 210, and written `: B` two
-            // such fields were one semantic twice. An array's elements take theirs from
-            // their place in it.
+            // A single field carries its index (`: B210`); an array's elements take
+            // theirs from their position.
             string semantic = count == 1 && first.Index != 0 ? first.Name + first.Index : first.Name;
             yield return $"{TypeName(first)} {field.Key}{subscript} : {semantic};";
         }

@@ -21,10 +21,8 @@ public enum EffectStateValueType
 }
 
 /// <summary>
-/// A state an effect assigns: its name in HLSL, the block it is assigned in, what
-/// it takes, how many of that (a colour takes four), the names its values have,
-/// how many there are of it (one per render target, for most of a blend state),
-/// and whether one value written without a subscript sets all of them.
+/// A D3D10/11 effect state. Indices: how many there are (one per render target
+/// for most blend state); VectorScalar: one unsubscripted value sets them all.
 /// </summary>
 public sealed record EffectState(
     string Name,
@@ -36,9 +34,8 @@ public sealed record EffectState(
     bool VectorScalar = false);
 
 /// <summary>
-/// The runtime's table of states, which an assignment indexes - g_lvGeneral in
-/// FX11's EffectStates11.h, in the same order. The values a name stands for are
-/// the Direct3D 11 enumerations', which the effect compiler resolves the names to.
+/// The runtime's state table, in the order of g_lvGeneral in FX11's
+/// EffectStates11.h. Values are the D3D11 enumerations.
 /// </summary>
 public static class EffectStates
 {

@@ -10,20 +10,13 @@ using System.Text;
 namespace HlslDecompiler.Tests;
 
 /// <summary>
-/// Every edge in the node graph is stored twice - once in the consumer's Inputs and
-/// once in the producer's Outputs - and a great deal of the decompiler reads the
-/// second one. Whether a value is used at all, whether it leaves a statement, and
-/// which nodes a rewiring has to visit are all decided from Outputs.
-///
-/// So the two have to agree. A stale entry reads as a use that is not there, which
-/// keeps dead values alive and, once shared subexpressions are named from the same
-/// count, would name things nothing shares.
+/// Every edge is stored in both the consumer's Inputs and the producer's Outputs,
+/// and they must agree: a stale Outputs entry is a phantom use.
 /// </summary>
 [TestFixture]
 public class NodeGraphConsistencyTests
 {
-    // Its own names: taking RecompileTests.Shaders() as it stands would report these
-    // failures as Recompile(...) too.
+    // Renamed so failures are not reported as Recompile(...).
     public static IEnumerable<TestCaseData> Shaders()
     {
         foreach (TestCaseData data in RecompileTests.Shaders())
@@ -39,9 +32,7 @@ public class NodeGraphConsistencyTests
         string filename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
         ShaderModel shader = ReadShader(filename);
 
-        // A hull shader is two graphs, one per function, and each is parsed from a
-        // slice of the bytecode. Parsing the whole of one as if it were a single
-        // program declares the same output register twice and throws.
+        // A hull shader is one graph per phase; parsed whole it would throw.
         foreach ((ShaderModel phase, HlslAst ast) in Phases(shader))
         {
             CheckGraph(phase, ast);
@@ -67,11 +58,8 @@ public class NodeGraphConsistencyTests
 
     private static void CheckGraph(ShaderModel shader, HlslAst ast)
     {
-        // Parsing alone leaves the graph consistent; it is the finalizer that rewires
-        // it, so checking before this runs proves nothing.
-        // A compute or geometry shader returns nothing - it writes through a
-        // resource or a stream - and asking the finalizer for a return value it
-        // cannot build is the test's mistake, not the finalizer's.
+        // The finalizer is what rewires the graph. Compute and geometry shaders
+        // have no return value to ask it for.
         bool hasReturnValue = shader.Type is not ShaderType.Compute
             and not ShaderType.Geometry
             && ast.RegisterState.MethodOutputRegisters.Count != 0;

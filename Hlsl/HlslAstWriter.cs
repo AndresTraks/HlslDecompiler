@@ -2893,6 +2893,15 @@ public class HlslAstWriter : HlslWriter
                 // and its uint flags together, and as one float2 the flags were
                 // converted to a float on the way in - their bits gone.
                 || ValueTypes.IsIntegerValue(sibling) != ValueTypes.IsIntegerValue(candidate[0])
+                // A load's lanes are the lanes it loaded. A product of one of them
+                // groups with another through `* 1`, and is a different instruction:
+                // `tint = c * 2 + 1` named the load's y, z and w beside `2 * c.z` -
+                // a lane built on its neighbour, which came out as a constructor of
+                // declarations - and once that was refused, `t0 * float4(2, 1, 1, 1)`
+                // and a float3 of what was left, where the source is `2 * t0 + 1`.
+                || ((sibling is LoadStructuredNode || candidate[0] is LoadStructuredNode)
+                    && !(sibling is LoadStructuredNode && candidate[0] is LoadStructuredNode
+                        && HlslTreeNode.IsSameInstruction(sibling, candidate[0])))
                 || withinCandidate.Contains(sibling)
                 || Reachable([sibling]).Contains(candidate[0])
                 || SiblingOrder(sibling, candidate[0]) is not int siblingOrder

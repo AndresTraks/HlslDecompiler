@@ -454,12 +454,18 @@ public sealed class NodeCompiler
         // bits are the value, and converting them gives the number they happen to
         // make - a packed pair of half floats came back as three thousand million.
         // Every component, so that a constructor whose components are not all bits
-        // is left to reinterpret them one at a time.
+        // is left to reinterpret them one at a time. What goes inside is integers,
+        // and a constructor of them is an integer one: built as a float vector,
+        // four int variables were converted on the way in and asfloat reinterpreted
+        // the converted floats - `asfloat(float4(t0, t1, t2, t3))`, an itof where
+        // the bytecode moved bits.
         if (_readingAsFloat && components.All(c => ValueTypes.IsReinterpretedAsFloat(c)
             || IsIntegerRegisterReadAsFloat(c)
             || (_compileDepth == _floatArithmeticOperandDepth && IsIntegerVariableReadAsFloat(c))))
         {
+            bool wasAssigningToInteger = _assigningToInteger;
             _readingAsFloat = false;
+            _assigningToInteger = true;
             try
             {
                 return $"asfloat({CompileUnrecorded(components, promoteToVectorSize)})";
@@ -467,6 +473,7 @@ public sealed class NodeCompiler
             finally
             {
                 _readingAsFloat = true;
+                _assigningToInteger = wasAssigningToInteger;
             }
         }
 

@@ -117,6 +117,16 @@ public class RoundTripCostTests
             + "four-lane mad into three - while the mov that carried the 1.0 into "
             + "the register folds away, since a per-element store can hold the "
             + "immediate itself. The bounds were an array already and cost nothing."),
+        ["cs_5_0/group_shared_float4_bits"] = (16,
+            "Five instructions, all of them the missing raw spelling of "
+            + "cs_5_0/group_shared_tile: the float4 comes back as an array of four "
+            + "dwords, stored and loaded one element at a time - four "
+            + "store_structured and four ld_structured where the original had one "
+            + "store_raw and one ld_raw, the mov that carried the 1.0 folding into "
+            + "its store. What the fixture is for costs nothing: the four int "
+            + "elements read back through asfloat(int4(...)) recompile to the bit "
+            + "moves the original made, where a float4 constructor inside the "
+            + "asfloat was an itof."),
         ["ps_3_0/loop_counter_reuse"] = (53,
             "A loop over smoothstep, sign, fmod and clamp, and fxc unrolls it three "
             + "times over: the decompiled source marks a loop [loop] only where fxc "

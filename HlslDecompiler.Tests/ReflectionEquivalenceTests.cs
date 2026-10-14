@@ -83,6 +83,15 @@ public class ReflectionEquivalenceTests
             "The tile's same array-for-raw spelling, from the instruction writer: "
             + "one store and one load per dword of the float4 where the original "
             + "moves it whole.")],
+        ["cs_5_0/group_shared_float4_bits"] = [("ast",
+            "dcl_tgsm_structured 4, 4 where the original declared dcl_tgsm_raw 16 - "
+            + "a groupshared float4, the raw spelling HLSL does not have, as in "
+            + "cs_5_0/group_shared_tile. The four dwords and what is stored in them "
+            + "are the same; only the declaration differs."),
+            ("instruction",
+            "The same array-for-raw spelling of the float4, from the instruction "
+            + "writer: one store and one load per dword where the original moves "
+            + "the whole register at once.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

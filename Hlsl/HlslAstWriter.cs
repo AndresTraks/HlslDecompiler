@@ -569,7 +569,7 @@ public class HlslAstWriter : HlslWriter
                 (rootGroup.Key.RegisterKey as D3D10RegisterKey)?.Stream);
             // A partial write needs its mask: a scalar assigned to the member broadcasts.
             string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
-            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name}{componentMask} = {CompileOutput(rootGroup.Key.RegisterKey, nodes)};")));
+            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name}{componentMask} = {CompileOutput(rootGroup.Key, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {
@@ -1339,7 +1339,7 @@ public class HlslAstWriter : HlslWriter
         else if (!hasOutputStruct)
         {
             var single = outputs.Single();
-            string compiled = CompileOutput(single.Key.RegisterKey, single.Value);
+            string compiled = CompileOutput(single.Key, single.Value);
             WriteLine(condition == null
                 ? $"return {compiled};"
                 : $"if ({condition}) return {compiled};");
@@ -1357,7 +1357,7 @@ public class HlslAstWriter : HlslWriter
             {
                 RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
                 string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
-                string compiled = CompileOutput(rootGroup.Key.RegisterKey, rootGroup.Value);
+                string compiled = CompileOutput(rootGroup.Key, rootGroup.Value);
                 WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name}{componentMask} = {compiled};");
             }
             WriteLine();
@@ -1367,18 +1367,40 @@ public class HlslAstWriter : HlslWriter
 
     // Compiled in the output's signature type. An integer output must build an intN,
     // not a floatN: int-to-float-to-int is lossy for large values.
-    private string CompileOutput(RegisterKey outputKey, IEnumerable<HlslTreeNode> nodes)
+    private string CompileOutput(RegisterComponentKey outputKey, IEnumerable<HlslTreeNode> nodes)
     {
-        RegisterDeclaration declaration = _registers.RegisterDeclarations[outputKey];
+        // By component: a patch constant register can pack a float and a uint.
+        RegisterDeclaration declaration = _registers.GetOutputDeclaration(outputKey);
         // A half output needs no half cast on the way in.
         if (declaration.ResultModifier.HasFlag(ResultModifier.PartialPrecision))
         {
             nodes = nodes.Select(node =>
                 node is ConvertOperation { TargetType: "half" } cast ? cast.Value : node);
         }
+        HlslTreeNode[] values = [.. nodes];
+        // An SM4 output is written by a mov, which copies bits: a value of the
+        // other kind is reinterpreted, since fxc would have converted it with
+        // utof/ftou had the number been meant.
+        if (outputKey.RegisterKey is D3D10RegisterKey)
+        {
+            if (declaration.IsInteger && values.Any(_compiler.IsFloatValued))
+            {
+                string call = declaration.ComponentType == 2 ? "asint" : "asuint";
+                List<string> parts = [.. values.Select(v => _compiler.IsFloatValued(v)
+                    ? $"{call}({_compiler.CompileAsFloat([v])})"
+                    : _compiler.CompileAsInteger([v]))];
+                return parts.Count == 1 ? parts[0]
+                    : $"{(call == "asint" ? "int" : "uint")}{parts.Count}({string.Join(", ", parts)})";
+            }
+            if (!declaration.IsInteger && values.All(_compiler.IsIntegerValued)
+                && !values.All(v => v is ConstantNode))
+            {
+                return $"asfloat({_compiler.CompileAsInteger(values)})";
+            }
+        }
         return declaration.IsInteger
-            ? _compiler.CompileAsInteger(nodes)
-            : _compiler.CompileAsFloat(nodes);
+            ? _compiler.CompileAsInteger(values)
+            : _compiler.CompileAsFloat(values);
     }
 
     private void WriteSharedSubexpressions(IList<HlslTreeNode[]> roots)

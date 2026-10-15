@@ -134,7 +134,7 @@ public class RegisterDeclaration
     /// </summary>
     public string NameOverride { get; set; }
 
-    public string Name => NameOverride ?? Semantic.ToLower();
+    public string Name => NameOverride ?? Hlsl.HlslKeywords.Escape(Semantic.ToLower());
 
     /// <summary>
     /// Whether the register holds integers. Not asked of TypeName:

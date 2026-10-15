@@ -43,7 +43,7 @@ public static class PatchConstants
             return "inside";
         }
         return signature.Index == 0
-            ? signature.Name.ToLower()
+            ? HlslKeywords.Escape(signature.Name.ToLower())
             : signature.Name.ToLower() + signature.Index;
     }
 

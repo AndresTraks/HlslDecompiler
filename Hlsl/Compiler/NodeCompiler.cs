@@ -391,6 +391,26 @@ public sealed class NodeCompiler
             }
         }
 
+        // A float input read by iadd and the like: fxc would have converted it
+        // with ftoi had the number been meant.
+        if (_compileDepth == _integerArithmeticOperandDepth
+            && components.All(c => c is RegisterInputNode or RelativeAddressNode && IsFloatValued(c)))
+        {
+            bool wasReadingAsFloat = _readingAsFloat;
+            int wasIntegerArithmeticOperandDepth = _integerArithmeticOperandDepth;
+            _integerArithmeticOperandDepth = -1;
+            _readingAsFloat = true;
+            try
+            {
+                return $"{(_assigningToUnsigned ? "asuint" : "asint")}({CompileUnrecorded(components, promoteToVectorSize)})";
+            }
+            finally
+            {
+                _readingAsFloat = wasReadingAsFloat;
+                _integerArithmeticOperandDepth = wasIntegerArithmeticOperandDepth;
+            }
+        }
+
         if (components.Count > 1)
         {
             if (TryCompileVectorByMatrixProduct(components) is string product)
@@ -992,6 +1012,9 @@ public sealed class NodeCompiler
     // A conversion's operand or an array index deeper down is still an integer.
     private int _floatArithmeticOperandDepth = -1;
 
+    // Likewise for integer arithmetic, where a float input read directly is its bits.
+    private int _integerArithmeticOperandDepth = -1;
+
     // An integer variable read directly by float arithmetic holds a float's bits
     // (fxc reused the register), so it is read back with asfloat.
     private static bool IsIntegerVariableReadAsFloat(HlslTreeNode value)
@@ -1008,7 +1031,9 @@ public sealed class NodeCompiler
     {
         if (value is not RegisterInputNode register
             || register.RegisterComponentKey.RegisterKey is not D3D10RegisterKey
-                { OperandType: OperandType.ConstantBuffer or OperandType.Input })
+                { OperandType: OperandType.ConstantBuffer or OperandType.Input
+                    or OperandType.InputPatchConstant or OperandType.InputControlPoint
+                    or OperandType.OutputControlPoint })
         {
             return false;
         }
@@ -1042,12 +1067,13 @@ public sealed class NodeCompiler
 
     // Whether a value is a float, from the value itself: its readers here are
     // integer instructions by construction.
-    private bool IsFloatValued(HlslTreeNode node)
+    public bool IsFloatValued(HlslTreeNode node)
     {
         return node switch
         {
             TempVariableNode temp => !temp.IsInteger,
             RegisterInputNode register => IsFloatRegister(register),
+            RelativeAddressNode relative => DeclaredTypeOfVertexRead(relative) == DeclaredType.Float,
             ConvertOperation convert => convert.TargetType is not ("int" or "uint"),
             // These read one type and make the other.
             FloatToHalfOperation => false,
@@ -1058,6 +1084,32 @@ public sealed class NodeCompiler
             Operation operation => ValueTypes.ComputesInIntegers(operation) == false,
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// Whether a value is an integer, a register read with no recorded kind by
+    /// its declared type.
+    /// </summary>
+    public bool IsIntegerValued(HlslTreeNode node)
+    {
+        return ValueTypes.IsIntegerValue(node)
+            ?? (node switch
+            {
+                RegisterInputNode register => _registers.GetDeclaredType(register.RegisterComponentKey),
+                RelativeAddressNode relative => DeclaredTypeOfVertexRead(relative),
+                _ => DeclaredType.Unknown,
+            } is DeclaredType.Int or DeclaredType.Uint);
+    }
+
+    // A stage input read through a dynamic vertex index (`patch[i].id`).
+    private DeclaredType DeclaredTypeOfVertexRead(RelativeAddressNode relative)
+    {
+        return relative.RegisterComponentKey.RegisterKey is D3D10RegisterKey
+            {
+                OperandType: OperandType.Input or OperandType.InputControlPoint or OperandType.OutputControlPoint
+            }
+            ? _registers.GetDeclaredType(relative.RegisterComponentKey)
+            : DeclaredType.Unknown;
     }
 
     /// <summary>
@@ -1424,6 +1476,7 @@ public sealed class NodeCompiler
         bool wasReadingAsBits = _readingAsBits;
         bool wasAssignedDirectly = _assignedDirectlyToInteger;
         int wasFloatArithmeticOperandDepth = _floatArithmeticOperandDepth;
+        int wasIntegerArithmeticOperandDepth = _integerArithmeticOperandDepth;
         _assignedDirectlyToInteger = false;
         _readingAsBits = operation is BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
             or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
@@ -1441,6 +1494,12 @@ public sealed class NodeCompiler
                 or DivisionOperation or MultiplyAddOperation
             ? _compileDepth + 1
             : -1;
+        _integerArithmeticOperandDepth = !_readingAsFloat
+            && ValueTypes.ComputesInIntegers(operation) == true
+            && operation is AddOperation or SubtractOperation or MultiplyOperation
+                or DivisionOperation or MultiplyAddOperation
+            ? _compileDepth + 1
+            : -1;
         try
         {
             return CompileOperationOperands(operation, components, promoteToVectorSize);
@@ -1451,6 +1510,7 @@ public sealed class NodeCompiler
             _readingAsBits = wasReadingAsBits;
             _assignedDirectlyToInteger = wasAssignedDirectly;
             _floatArithmeticOperandDepth = wasFloatArithmeticOperandDepth;
+            _integerArithmeticOperandDepth = wasIntegerArithmeticOperandDepth;
         }
     }
 
@@ -2009,12 +2069,23 @@ public sealed class NodeCompiler
                     // converted them. Constants don't say their kind.
                     bool BranchIs(int input, bool floats) => components.All(c =>
                         c.Inputs[input] is not ConstantNode
-                        && (floats ? IsFloatValued(c.Inputs[input]) : ValueTypes.IsIntegerValue(c.Inputs[input]) == true));
+                        && (floats ? IsFloatValued(c.Inputs[input]) : IsIntegerValued(c.Inputs[input])));
                     string CompileBranch(int branch)
                     {
                         int other = 3 - branch;
                         IEnumerable<HlslTreeNode> nodes = components.Select(g => g.Inputs[branch]);
                         bool intoInteger = _assigningToInteger;
+                        if (intoInteger && components.Count > 1
+                            && components.Any(c => c.Inputs[branch] is not ConstantNode && IsFloatValued(c.Inputs[branch]))
+                            && components.Any(c => c.Inputs[branch] is not ConstantNode && IsIntegerValued(c.Inputs[branch])))
+                        {
+                            // Mixed, so each float component is reinterpreted by itself.
+                            string reinterpret = _assigningToUnsigned ? "asuint" : "asint";
+                            List<string> parts = [.. nodes.Select(n => n is not ConstantNode && IsFloatValued(n)
+                                ? $"{reinterpret}({CompileAsFloat([n])})"
+                                : CompileAsInteger([n]))];
+                            return $"{(_assigningToUnsigned ? "uint" : "int")}{parts.Count}({string.Join(", ", parts)})";
+                        }
                         if (!(intoInteger ? BranchIs(branch, true) && BranchIs(other, false)
                             : BranchIs(branch, false) && BranchIs(other, true)))
                         {

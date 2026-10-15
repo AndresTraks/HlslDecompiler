@@ -59,6 +59,42 @@ public class EquivalenceTests
             + "register holds the integer branch as its number and the float "
             + "branch as a float, and the store converts both. The AST writer, which "
             + "selects asint(t1) beside the uint, computes the same.")],
+        ["ds_5_0/mixed_bits_patch"] = [("instruction",
+            "The position. The instruction writer reads the uint patch constant in "
+            + "a mad as its number, where fxc wrote no utof because its bits were "
+            + "meant. The AST writer, which reads asfloat(constants.bits), computes "
+            + "the same.")],
+        ["gs_5_0/mixed_bits_vertex"] = [("instruction",
+            "A movc between a float input and an integer: the instruction writer "
+            + "converts the float operand where the movc copies its bits. The AST "
+            + "writer, which reinterprets it, computes the same.")],
+        ["gs_5_0/indexed_bits_read"] = [("instruction",
+            "The same movc the other way round: the instruction writer selects the "
+            + "uint id beside a float, so it is converted to a float where the movc "
+            + "copies its bits. The AST writer, which selects asfloat(id), computes "
+            + "the same.")],
+        ["hs_5_0/mixed_bits_patch"] = [("instruction",
+            "A movc between a float input and an integer: the instruction writer "
+            + "converts the float operand where the movc copies its bits. The AST "
+            + "writer, which reinterprets it, computes the same.")],
+        ["ps_5_0/integer_add_bits"] = [("instruction",
+            "An iadd of a float input and a uint: the instruction writer adds the "
+            + "float's value, not its bits, and the bfi result goes into the depth "
+            + "by conversion. The AST writer, which adds asint(texcoord), computes "
+            + "the same.")],
+        ["ps_5_0/mixed_select_target"] = [("instruction",
+            "The integer target. The instruction writer holds the sample index in a "
+            + "register declared float as its number, by convention, beside a "
+            + "float's bits, and the movc into the uint target converts both. The AST "
+            + "writer, which selects uint2(asuint(x), index), computes the same.")],
+        ["vs_4_0/keyword_semantic"] = [("instruction",
+            "A movc between a float input and an integer: the instruction writer "
+            + "converts the float operand where the movc copies its bits. The AST "
+            + "writer, which reinterprets it, computes the same.")],
+        ["vs_5_0/mixed_bits_outputs"] = [("instruction",
+            "A movc between a float input and an integer: the instruction writer "
+            + "converts the float operand where the movc copies its bits. The AST "
+            + "writer, which reinterprets it, computes the same.")],
     };
 
     private const int Trials = 8;

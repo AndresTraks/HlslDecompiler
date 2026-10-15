@@ -913,6 +913,13 @@ public abstract class HlslWriter
                     : "int"
                 : "float";
             int components = stride / sizeof(float);
+            _registers.ThreadGroupSharedTypes[register] = type;
+            // Reached at a computed offset: dwords, so any offset is an index.
+            if (_registers.DwordAddressedThreadGroupSharedMemory.Contains(register))
+            {
+                WriteLine($"groupshared {type} {_registers.GroupSharedName(register)}[{elements}][{components}];");
+                continue;
+            }
             // Wider than a float4: a struct of four-wide members plus the remainder.
             if (components > 4)
             {

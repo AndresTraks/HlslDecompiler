@@ -527,6 +527,9 @@ public class InstructionParser
                             ElementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
                                 ? instruction.GetParamInt(2, 0)
                                 : 0,
+                            ByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
+                                ? null
+                                : GetInputs(instruction, destinationKeys[0].ComponentIndex)[1],
                             Components = [.. destinationKeys.Select(k => k.ComponentIndex)],
                         });
                         break;
@@ -3168,8 +3171,12 @@ public class InstructionParser
     private ResourceInfoNode CreateBufferInfoNode(D3D10Instruction instruction, int outputComponent)
     {
         const int ResourceParamIndex = 1;
-        var resource = GetInputComponents(instruction, ResourceParamIndex, 4)[outputComponent]
-            as RegisterInputNode;
+        // Only the component this lane selects: a structured buffer seeds as many
+        // components as its stride holds, fewer than the four of `t2.xyzw`.
+        var resourceKey = new RegisterComponentKey(instruction.GetParamRegisterKey(ResourceParamIndex),
+            instruction.GetSourceSwizzleComponents(ResourceParamIndex)[outputComponent]);
+        var resource = (ActiveOutputs.TryGetValue(resourceKey, out HlslTreeNode active) ? active : null)
+            as RegisterInputNode ?? new RegisterInputNode(resourceKey);
         return new ResourceInfoNode(resource, new ConstantNode(0), outputComponent,
             D3D10ResInfoReturnType.Uint)
         {

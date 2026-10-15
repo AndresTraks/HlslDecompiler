@@ -636,6 +636,17 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
+    /// A dword of dword-addressed groupshared memory: `g0[i][offset / 4 + c]`.
+    /// </summary>
+    private string SharedDword(D3D10Instruction instruction, int bufferOperand, int component)
+    {
+        string dword = instruction.GetOperandType(2) == OperandType.Immediate32
+            ? (instruction.GetParamInt(2, 0) / 4 + component).ToString(CultureInfo.InvariantCulture)
+            : $"(uint)({GetOperandName(instruction, 2)}).x / 4 + {component}";
+        return $"{GetOperandName(instruction, bufferOperand)}[{GetOperandName(instruction, 1)}][{dword}]";
+    }
+
+    /// <summary>
     /// The shadow of the double a mov copies into two components of a non-temp
     /// register (an output), or null.
     /// </summary>
@@ -2539,10 +2550,31 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         read.Add(elementSwizzle[loaded[value]]);
                     }
+                    // Groupshared reached at a computed offset is declared as dwords.
+                    if (_registers.IsDwordAddressedThreadGroupSharedMemory(buffer))
+                    {
+                        List<string> dwords = [.. read.Select(c => SharedDword(instruction, 3, c))];
+                        string sharedType = _registers.ThreadGroupSharedTypes.TryGetValue(
+                            buffer.Number, out string declared) ? declared : "float";
+                        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                            dwords.Count == 1 ? dwords[0] : $"{sharedType}{dwords.Count}({string.Join(", ", dwords)})");
+                        break;
+                    }
                     // Groupshared wider than a register is a struct; the offset picks the member.
                     if (_registers.ThreadGroupSharedMember(buffer, offset)
                         is var (sharedName, sharedComponents, sharedBase))
                     {
+                        // Starting in one member and ending in the next: per component.
+                        var lanes = read.Select(c => _registers.ThreadGroupSharedMember(buffer, offset + c * 4)).ToList();
+                        if (lanes.Any(lane => lane?.Name != sharedName))
+                        {
+                            List<string> parts = [.. lanes.Select(lane => lane.Value.Components == 1
+                                ? $"{element}.{lane.Value.Name}"
+                                : $"{element}.{lane.Value.Name}.{"xyzw"[lane.Value.ComponentBase]}")];
+                            WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
+                                parts.Count == 1 ? parts[0] : $"float{parts.Count}({string.Join(", ", parts)})");
+                            break;
+                        }
                         string sharedSwizzle = sharedComponents == 1
                             ? ""
                             : Rebased(
@@ -3025,6 +3057,17 @@ public class HlslSimpleWriter : HlslWriter
                     for (int value = 0; value < masked.Count; value += storePerElement)
                     {
                         written.Add(masked[value]);
+                    }
+                    if (_registers.IsDwordAddressedThreadGroupSharedMemory(buffer))
+                    {
+                        // The value's name is masked to the components written, in order.
+                        string stored = GetOperandName(instruction, 3);
+                        for (int k = 0; k < written.Count; k++)
+                        {
+                            WriteLine("{0} = {1};", SharedDword(instruction, 0, written[k]),
+                                written.Count == 1 ? stored : $"({stored}).{"xyzw"[k]}");
+                        }
+                        break;
                     }
                     IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
                         buffer, element, instruction.GetParamInt(2, 0), written);

@@ -328,6 +328,28 @@ public sealed class RegisterState
         };
     }
 
+    /// <summary>
+    /// The array member a byte offset falls in, for an index computed at run time:
+    /// its path, bytes per element (packed tight), and where the offset lands.
+    /// Arrays of scalars and vectors only; null otherwise.
+    /// </summary>
+    public (string Path, int ElementBytes, int Index, int Component, int Components)?
+        FindStructuredArrayMember(RegisterKey resourceKey, int byteOffset)
+    {
+        if (FindStructuredElementType(resourceKey)?.MemberInfo is not { Count: > 0 } members
+            || FindStructuredMember(members, byteOffset, 0) is not var (member, path, offset)
+            || member.TypeInfo.NumElements <= 1
+            || member.TypeInfo.Rows > 1
+            || member.TypeInfo.MemberInfo is { Count: > 0 })
+        {
+            return null;
+        }
+        int components = Math.Max(member.TypeInfo.Columns, 1);
+        int bytes = components * 4;
+        int inMember = byteOffset - offset;
+        return (path, bytes, inMember / bytes, inMember % bytes / 4, components);
+    }
+
     /// <summary>The type at a byte address in the element, and its member's offset.</summary>
     private (ShaderTypeInfo Type, int ByteOffset)? FindStructuredTypeAt(
         RegisterKey resourceKey, int byteAddress)
@@ -601,6 +623,13 @@ public sealed class RegisterState
 
     // fxc gives raw storage to a non-array groupshared variable, structured to an array.
     public ISet<int> RawThreadGroupSharedMemory { get; } = new HashSet<int>();
+
+    // Structured groupshared memory some access reaches at a computed byte offset (a
+    // two-dimensional array): declared as dwords, `g0[element][dword]`.
+    public ISet<int> DwordAddressedThreadGroupSharedMemory { get; } = new HashSet<int>();
+
+    // The scalar type each groupshared variable is declared with.
+    public IDictionary<int, string> ThreadGroupSharedTypes { get; } = new Dictionary<int, string>();
 
     public LinkageModel Linkage { get; set; }
 
@@ -2052,6 +2081,19 @@ public sealed class RegisterState
         {
             RawThreadGroupSharedMemory.Add(registerKey.Number);
         }
+        else if (_shaderModel.Instructions.OfType<D3D10Instruction>().Any(instruction =>
+            instruction.Opcode is D3D10Opcode.LdStructured or D3D10Opcode.StoreStructured
+            && instruction.GetOperandType(2) != OperandType.Immediate32
+            && Equals(instruction.GetParamRegisterKey(instruction.Opcode == D3D10Opcode.LdStructured ? 3 : 0), registerKey)))
+        {
+            DwordAddressedThreadGroupSharedMemory.Add(registerKey.Number);
+        }
+    }
+
+    public bool IsDwordAddressedThreadGroupSharedMemory(RegisterKey registerKey)
+    {
+        return registerKey is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory } key
+            && DwordAddressedThreadGroupSharedMemory.Contains(key.Number);
     }
 
     /// <summary>

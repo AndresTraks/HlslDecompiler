@@ -705,10 +705,25 @@ public class HlslAstWriter : HlslWriter
         string compiledDestination = _registers.GetRegisterName(destinationKey);
         HlslTreeNode address = Reduce(storeStructured.Address);
         HlslTreeNode[] storedValues = [.. storeStructured.Values.Select(Reduce)];
+        HlslTreeNode byteOffset = storeStructured.ByteOffset == null ? null : Reduce(storeStructured.ByteOffset);
         // Stores bypass GroupAssignments, so they hoist here (e.g. a GetDimensions
         // result, which cannot be an expression).
-        WriteSharedSubexpressions([storedValues, [address]]);
+        WriteSharedSubexpressions(byteOffset == null
+            ? [storedValues, [address]]
+            : [storedValues, [address], [byteOffset]]);
         string compiledAddress = _compiler.Compile(address);
+        // Dword-addressed groupshared memory: one dword per component.
+        if (_registers.IsDwordAddressedThreadGroupSharedMemory(destinationKey))
+        {
+            bool? sharedIntegers = CreateIntegerOperandAnalysis().IsIntegerThreadGroupSharedMemory(destinationKey.Number);
+            for (int i = 0; i < storedValues.Length; i++)
+            {
+                string dword = _compiler.CompileGroupSharedDword(compiledDestination, compiledAddress,
+                    byteOffset, storeStructured.ElementByteOffset, storeStructured.Components[i]);
+                WriteLine($"{dword} = {CompileStoredValue([storedValues[i]], sharedIntegers)};");
+            }
+            return;
+        }
         bool storesIntegers = storedValues.All(v => ValueTypes.IsIntegerValue(v) == true);
         string compiledValue = storesIntegers
             ? _compiler.CompileAsInteger(storedValues)
@@ -741,6 +756,13 @@ public class HlslAstWriter : HlslWriter
             ? CreateIntegerOperandAnalysis().IsIntegerThreadGroupSharedMemory(bufferKey.Number)
             : _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset);
         compiledValue = CompileStoredValue(storedValues, holdsIntegers);
+        // An array member indexed by a variable: the offset is computed.
+        if (_compiler.CompileDynamicMember(bufferKey, $"{compiledDestination}[{compiledAddress}]",
+            byteOffset, storeStructured.Components) is string dynamicMember)
+        {
+            WriteLine($"{dynamicMember} = {compiledValue};");
+            return;
+        }
         IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
             bufferKey, $"{compiledDestination}[{compiledAddress}]",
             storeStructured.ElementByteOffset, storeStructured.Components);
@@ -3259,7 +3281,9 @@ public class HlslAstWriter : HlslWriter
                 : noMipComponents);
             foreach (TempVariableNode variable in variables)
             {
+                // GetDimensions' integer out parameters are uint.
                 variable.IsInteger = info.ReturnType == D3D10ResInfoReturnType.Uint;
+                variable.IsUnsigned = variable.IsInteger;
             }
             assignments.Add([.. call.Select(component =>
             {

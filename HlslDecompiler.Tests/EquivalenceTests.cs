@@ -59,6 +59,26 @@ public class EquivalenceTests
             + "register holds the integer branch as its number and the float "
             + "branch as a float, and the store converts both. The AST writer, which "
             + "selects asint(t1) beside the uint, computes the same.")],
+        ["cs_5_0/bufinfo_swizzle"] = [("instruction",
+            "The raw buffer's byte count, stored as asfloat. bufinfo leaves it in a "
+            + "register declared float, where the instruction writer keeps it as the "
+            + "number it is, by convention, so the store takes the number's bits. The "
+            + "AST writer, which stores asfloat(count), computes the same.")],
+        ["cs_5_0/member_array_index"] = [("instruction",
+            "The element written. The instruction writer names struct members by the "
+            + "store's immediate offset only, so an array member indexed by a variable "
+            + "is written at w[0]. The AST writer, which recovers w[k] from the computed "
+            + "offset, computes the same.")],
+        ["ps_5_0/coverage_select_bits"] = [("instruction",
+            "The stencil reference. The and of a float's bits leaves an integer in a "
+            + "register declared float, where the instruction writer keeps it as the "
+            + "number it is, by convention, so the output converts it. The AST writer, "
+            + "which ands asint(c.x), computes the same.")],
+        ["ps_5_0/raw_load_constructor"] = [("instruction",
+            "The raw words read as floats. Load4 fills a register declared float, "
+            + "where the instruction writer keeps the integers as the numbers they are, "
+            + "by convention, so they are converted where the original reads their bits. "
+            + "The AST writer, which reads asfloat(t.xy), computes the same.")],
         ["cs_5_0/double_bits_select"] = [("instruction",
             "The double. The structured load's two words go into a register "
             + "declared float, so the instruction writer converts them as numbers, "

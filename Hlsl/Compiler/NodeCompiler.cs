@@ -657,6 +657,97 @@ public sealed class NodeCompiler
         return $"{Compile(others, components.Count)} * {Compile(factors, components.Count)}";
     }
 
+    /// <summary>
+    /// A structured access at a computed byte offset: an array member indexed by a
+    /// variable, the offset being the member's plus the index times the element
+    /// size (`e.w[k]`). Null where the offset is an immediate. Throws where the
+    /// offset reaches no array member, rather than write the wrong element.
+    /// </summary>
+    public string CompileDynamicMember(RegisterKey resourceKey, string element,
+        HlslTreeNode byteOffset, IList<int> components)
+    {
+        if (byteOffset == null || byteOffset is ConstantNode)
+        {
+            return null;
+        }
+        HlslTreeNode variable = byteOffset;
+        int constant = 0;
+        if (byteOffset is AddOperation add
+            && add.Inputs.FirstOrDefault(i => i is ConstantNode { IntegerValue: not null }) is ConstantNode addend)
+        {
+            constant = addend.IntegerValue.Value;
+            variable = ReferenceEquals(add.Inputs[0], addend) ? add.Inputs[1] : add.Inputs[0];
+        }
+        if (_registers.FindStructuredArrayMember(resourceKey, constant)
+                is not var (path, bytes, index, component, width)
+            || components.Any(c => component + c >= width))
+        {
+            throw new NotImplementedException(
+                $"A structured access at a computed byte offset outside an array member ({resourceKey}).");
+        }
+        string indexText = CompileElementIndex(variable, bytes);
+        if (index != 0)
+        {
+            indexText = $"{indexText} + {index}";
+        }
+        bool whole = components.Count == width
+            && components.Select((c, i) => component + c == i).All(x => x);
+        string swizzle = width == 1 || whole
+            ? ""
+            : "." + string.Concat(components.Select(c => "xyzw"[component + c]));
+        return $"{element}.{path}[{indexText}]{swizzle}";
+    }
+
+    /// <summary>
+    /// A component of dword-addressed groupshared memory: `g0[i][dword]`, the dword
+    /// being the byte offset over four plus the component.
+    /// </summary>
+    public string CompileGroupSharedDword(string name, string address, HlslTreeNode byteOffset,
+        int elementByteOffset, int component)
+    {
+        string dword;
+        if (byteOffset == null || byteOffset is ConstantNode)
+        {
+            dword = (elementByteOffset / 4 + component).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            dword = CompileElementIndex(byteOffset, 4);
+            if (component != 0)
+            {
+                dword = $"{dword} + {component}";
+            }
+        }
+        return $"{name}[{address}][{dword}]";
+    }
+
+    // A byte offset as an element index: `k << 2` or `k * 4` over 4-byte elements
+    // is k, fxc's bfi for a masked shift is the masked index; else a division.
+    private string CompileElementIndex(HlslTreeNode offset, int bytes)
+    {
+        int shift = System.Numerics.BitOperations.Log2((uint)bytes);
+        bool powerOfTwo = 1 << shift == bytes;
+        switch (offset)
+        {
+            case ShiftLeftOperation { Amount: ConstantNode { IntegerValue: int amount } } left
+                when powerOfTwo && amount == shift:
+                return CompileAsInteger([left.Value]);
+            case MultiplyOperation product
+                when product.Inputs.FirstOrDefault(i => i is ConstantNode { IntegerValue: int m } && m == bytes)
+                    is HlslTreeNode size:
+                return CompileAsInteger([ReferenceEquals(product.Inputs[0], size) ? product.Inputs[1] : product.Inputs[0]]);
+            case BitFieldInsertOperation
+            {
+                Width: ConstantNode { IntegerValue: int bits },
+                Offset: ConstantNode { IntegerValue: int at },
+                Value: ConstantNode { IntegerValue: 0 },
+            } insert when powerOfTwo && at == shift:
+                return $"({CompileAsInteger([insert.Insert])} & {(1 << bits) - 1})";
+            default:
+                return $"({CompileAsInteger([offset])}) / {bytes}";
+        }
+    }
+
     private int CountUngroupedOperands(List<HlslTreeNode> components)
     {
         int ungrouped = 0;
@@ -1400,6 +1491,12 @@ public sealed class NodeCompiler
             {
                 compiled = $"as{integerType}({compiled})";
             }
+            // A float constructor read as floats: an integer variable in it holds
+            // bits, as one read directly by float arithmetic does.
+            else if (type == "float" && _readingAsFloat && group.All(IsIntegerVariableReadAsFloat))
+            {
+                compiled = $"asfloat({compiled})";
+            }
             // A broadcast whose text stays scalar is repeated once per component;
             // a constructor does not pad scalars.
             int copies = group.Count > 1 && BroadcastsScalar(group) ? group.Count : 1;
@@ -1929,6 +2026,17 @@ public sealed class NodeCompiler
                     string castType = components.Count > 1
                         ? convert.TargetType + components.Count
                         : convert.TargetType;
+                    // utof of an int: HLSL would convert it as signed (itof), so it
+                    // goes through uint first.
+                    if (convert.SourceUnsigned == true && convert.TargetType is "float" or "double"
+                        && value.Any(IsSignedAlready))
+                    {
+                        string uintType = components.Count > 1 ? $"uint{components.Count}" : "uint";
+                        compiledValue = isSingleTerm || IsBracketed(compiledValue)
+                            ? $"({uintType}){compiledValue}"
+                            : $"({uintType})({compiledValue})";
+                        isSingleTerm = true;
+                    }
                     return isSingleTerm || IsBracketed(compiledValue)
                         ? $"({castType}){compiledValue}"
                         : $"({castType})({compiledValue})";
@@ -2002,6 +2110,17 @@ public sealed class NodeCompiler
                             : addressInputs);
                     var resource = (RegisterInputNode)components[0].Inputs[2];
                     RegisterKey resourceKey = resource.RegisterComponentKey.RegisterKey;
+                    if (_registers.IsDwordAddressedThreadGroupSharedMemory(resourceKey))
+                    {
+                        string shared = _registers.GetRegisterName(resourceKey);
+                        List<string> dwords = [.. components.Select(g => CompileGroupSharedDword(shared, address,
+                            ((LoadStructuredNode)g).ByteOffset, ((LoadStructuredNode)g).ElementByteOffset,
+                            ((IHasComponentIndex)g.Inputs[2]).ComponentIndex))];
+                        string sharedType = _registers.ThreadGroupSharedTypes.TryGetValue(
+                            resourceKey.Number, out string declared) ? declared : "float";
+                        return dwords.Count == 1 ? dwords[0]
+                            : $"{sharedType}{dwords.Count}({string.Join(", ", dwords)})";
+                    }
                     if (load.IsGroupShared)
                     {
                         // Raw groupshared memory is declared as an array (or a scalar).
@@ -2020,6 +2139,12 @@ public sealed class NodeCompiler
                     // The swizzle goes after the subscript; components come from the
                     // resource operand. The byte offset picks a matrix row or a member.
                     string element = $"{_registers.GetRegisterName(resourceKey)}[{address}]";
+                    if (CompileDynamicMember(resourceKey, element, load.ByteOffset,
+                        [.. components.Select(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex)])
+                        is string dynamicMember)
+                    {
+                        return dynamicMember;
+                    }
                     string members = _registers.NameStructuredMembers(resourceKey, element,
                         load.ElementByteOffset,
                         [.. components.Select(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex)]);
@@ -2032,6 +2157,18 @@ public sealed class NodeCompiler
                     if (_registers.ThreadGroupSharedMember(resourceKey, load.ElementByteOffset)
                         is var (memberName, memberComponents, memberBase))
                     {
+                        // A load can start in one member and end in the next (.w of
+                        // m0 and the float m4): then each component names its own.
+                        var lanes = components.Select(g => _registers.ThreadGroupSharedMember(resourceKey,
+                            load.ElementByteOffset + ((IHasComponentIndex)g.Inputs[2]).ComponentIndex * 4)).ToList();
+                        if (lanes.Any(lane => lane?.Name != memberName))
+                        {
+                            List<string> parts = [.. lanes.Select(lane => lane.Value.Components == 1
+                                ? $"{element}.{lane.Value.Name}"
+                                : $"{element}.{lane.Value.Name}.{"xyzw"[lane.Value.ComponentBase]}")];
+                            return parts.Count == 1 ? parts[0]
+                                : $"{(IsFloatValued(components[0]) ? "float" : "int")}{parts.Count}({string.Join(", ", parts)})";
+                        }
                         return $"{element}.{memberName}" + GetAstSourceSwizzleName(
                             components.Select(g => (IHasComponentIndex)g.Inputs[2]),
                             memberComponents,
@@ -2142,7 +2279,9 @@ public sealed class NodeCompiler
                                 : CompileAsInteger([n]))];
                             return $"{(_assigningToUnsigned ? "uint" : "int")}{parts.Count}({string.Join(", ", parts)})";
                         }
-                        if (!(intoInteger ? BranchIs(branch, true) && BranchIs(other, false)
+                        // Into an integer, a float branch is bits even beside constants.
+                        bool otherIsConstant = components.All(c => c.Inputs[other] is ConstantNode);
+                        if (!(intoInteger ? BranchIs(branch, true) && (BranchIs(other, false) || otherIsConstant)
                             : BranchIs(branch, false) && BranchIs(other, true)))
                         {
                             return Compile(nodes, components.Count);
@@ -3275,6 +3414,24 @@ public sealed class NodeCompiler
     /// <summary>
     /// Whether HLSL already reads a value as unsigned, directly or by promotion.
     /// </summary>
+    /// <summary>
+    /// Whether a value compiles to an int: an int variable or cast, or arithmetic
+    /// over one with no uint operand (int + uint is uint).
+    /// </summary>
+    private bool IsSignedAlready(HlslTreeNode node)
+    {
+        return node switch
+        {
+            TempVariableNode variable => variable.IsInteger && !variable.IsUnsigned && !variable.IsBool && !variable.IsBits,
+            TempAssignmentNode assignment => IsSignedAlready(assignment.TempVariable),
+            ConvertOperation { TargetType: "int" } => true,
+            AddOperation or SubtractOperation or MultiplyOperation
+                or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation or ShiftLeftOperation
+                => !node.Inputs.Any(IsUnsignedAlready) && node.Inputs.Any(IsSignedAlready),
+            _ => false,
+        };
+    }
+
     private bool IsUnsignedAlready(HlslTreeNode node)
     {
         switch (node)

@@ -20,6 +20,10 @@ public class StoreStructuredStatement : IStatement
 
     // Which struct members the store reaches.
     public int ElementByteOffset { get; init; }
+
+    // The byte offset as a value, where it is not an immediate (an array member
+    // indexed by a variable); null otherwise.
+    public HlslTreeNode ByteOffset { get; set; }
     public int[] Components { get; init; } = [];
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
@@ -36,6 +40,7 @@ public class StoreStructuredStatement : IStatement
     public IEnumerable<HeldSlot> HeldSlots =>
     [
         HeldSlot.Named(() => Address, value => Address = value),
+        HeldSlot.Named(() => ByteOffset, value => ByteOffset = value),
         HeldSlot.Named(() => Values),
     ];
 }

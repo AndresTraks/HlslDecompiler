@@ -1804,6 +1804,19 @@ public class InstructionParser
             }
             newOutputs[destinationKey] = instructionTree;
         }
+        // A double moved into an output is its two words, like a store's: nothing
+        // reads an output back, so the high word is keyed too.
+        foreach (RegisterComponentKey destinationKey in doubleDestinations.ToList())
+        {
+            if (destinationKey.RegisterKey.IsOutput)
+            {
+                HlslTreeNode value = newOutputs[destinationKey];
+                newOutputs[destinationKey] = new DoubleBitsNode(value, 0);
+                newOutputs[new RegisterComponentKey(destinationKey.RegisterKey, destinationKey.ComponentIndex + 1)]
+                    = new DoubleBitsNode(value, 1);
+                doubleDestinations.Remove(destinationKey);
+            }
+        }
 
         foreach (var output in newOutputs)
         {
@@ -3796,10 +3809,25 @@ public class InstructionParser
         // The swizzle repeats the pair (.xyxy), so the high word is at slot n + 1.
         RegisterComponentKey highKey = GetParamRegisterComponentKey(
             instruction, inputParameterIndex, componentIndex + 1);
-        var joined = new BitsToDoubleOperation(low, GetActiveOutput(highKey));
+        HlslTreeNode high = GetActiveOutput(highKey);
+        // One join per pair of values, so its readers share it like any value.
+        if (!_joinedDoubles.TryGetValue(low, out List<BitsToDoubleOperation> joins))
+        {
+            joins = [];
+            _joinedDoubles[low] = joins;
+        }
+        if (joins.FirstOrDefault(j => ReferenceEquals(j.Inputs[1], high)) is BitsToDoubleOperation shared)
+        {
+            return shared;
+        }
+        var joined = new BitsToDoubleOperation(low, high);
         _doubleValues.Add(joined);
+        joins.Add(joined);
         return joined;
     }
+
+    private readonly Dictionary<HlslTreeNode, List<BitsToDoubleOperation>> _joinedDoubles =
+        new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// Where a store writes both halves of a double as dwords, makes the lower one

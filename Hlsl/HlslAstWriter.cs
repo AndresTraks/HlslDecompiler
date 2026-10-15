@@ -625,8 +625,13 @@ public class HlslAstWriter : HlslWriter
         string coordinate = _compiler.CompileAsInteger(coordinates);
         RegisterKey typedKey = ((RegisterInputNode)storeTyped.Destination)
             .RegisterComponentKey.RegisterKey;
-        string value = CompileStoredValue(
-            values, _registers.GetTextureDefinition(typedKey)?.IsIntegerReturnType);
+        ResourceDefinition typed = _registers.GetTextureDefinition(typedKey);
+        // fxc writes all four; the view keeps only its own (an int2 buffer, two).
+        if (typed?.ReturnComponents is int width and >= 1 && width < values.Length)
+        {
+            values = values[..width];
+        }
+        string value = CompileStoredValue(values, typed?.IsIntegerReturnType);
         WriteLine($"{destination}[{coordinate}] = {value};");
     }
 
@@ -1396,6 +1401,17 @@ public class HlslAstWriter : HlslWriter
                 && !values.All(v => v is ConstantNode))
             {
                 return $"asfloat({_compiler.CompileAsInteger(values)})";
+            }
+            // Mixed: each integer component is reinterpreted by itself, unless
+            // compiling as a float already reinterprets it.
+            bool Unreinterpreted(HlslTreeNode v) => v is not ConstantNode
+                && _compiler.IsIntegerValued(v) && !ValueTypes.IsReinterpretedAsFloat(v);
+            if (!declaration.IsInteger && values.Length > 1 && values.Any(Unreinterpreted))
+            {
+                List<string> parts = [.. values.Select(v => Unreinterpreted(v)
+                    ? $"asfloat({_compiler.CompileAsInteger([v])})"
+                    : _compiler.CompileAsFloat([v]))];
+                return $"float{parts.Count}({string.Join(", ", parts)})";
             }
         }
         return declaration.IsInteger

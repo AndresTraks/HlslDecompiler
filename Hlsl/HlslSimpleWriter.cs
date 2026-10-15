@@ -636,6 +636,32 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
+    /// The shadow of the double a mov copies into two components of a non-temp
+    /// register (an output), or null.
+    /// </summary>
+    private string MovedDoubleShadow(D3D10Instruction instruction)
+    {
+        if (instruction.GetParamRegisterKey(0) is D3D10RegisterKey { IsTempRegister: true }
+            || BitOperations.PopCount((uint)instruction.GetDestinationWriteMask()) != 2
+            || instruction.GetParamRegisterKey(1) is not D3D10RegisterKey { IsTempRegister: true } source
+            || !_liveDoublePairs.TryGetValue(instruction, out HashSet<(RegisterKey, int)> live))
+        {
+            return null;
+        }
+        int mask = instruction.GetDestinationWriteMask();
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+        int low = FirstComponent(mask);
+        int high = FirstComponent(mask & ~(1 << low));
+        if (swizzle[low] % 2 != 0 || swizzle[high] != swizzle[low] + 1
+            || !live.Contains((source, swizzle[low] / 2)))
+        {
+            return null;
+        }
+        string name = GetDoubleRegisterName(source);
+        return GetDoublePairMask(source) == 1 ? name : $"{name}.{"xy"[swizzle[low] / 2]}";
+    }
+
+    /// <summary>
     /// Writes a double stored into a non-double member as `asuint(d, e.x, e.y)`.
     /// False otherwise, including a store into a double member (a plain assignment).
     /// </summary>
@@ -865,6 +891,22 @@ public class HlslSimpleWriter : HlslWriter
         if (pairs.Count == 0)
         {
             return null;
+        }
+        // A double instruction reading a pair that holds bits, not a double (a plain
+        // mov shuffled them there): its shadow was never written, so join the bits.
+        if (!isDestination && !isMovedDouble && !isStructuredDouble
+            && !pairs.All(pair => _liveDoublePairs.TryGetValue(instruction, out var live)
+                && live.Contains((registerKey, pair))))
+        {
+            byte[] bitsSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            string register = _registers.GetRegisterName(registerKey);
+            List<string> joined = [.. Enumerable.Range(0, pairs.Count).Select(value =>
+            {
+                int low = instruction.GetValuePair(value) * 2;
+                return $"asdouble(asuint({register}.{"xyzw"[bitsSwizzle[low]]}), "
+                    + $"asuint({register}.{"xyzw"[bitsSwizzle[low + 1]]}))";
+            })];
+            return joined.Count == 1 ? joined[0] : $"double{joined.Count}({string.Join(", ", joined)})";
         }
         string name = GetDoubleRegisterName(registerKey);
         // Only the .xy pair: declared a scalar double.
@@ -2623,6 +2665,12 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     WriteResult(instruction, "{0} = asdouble({1}, {2});",
                         GetOperandName(instruction, 0), lowWord, highWord);
+                    break;
+                }
+                // A double's words moved out of its shadow into an output register.
+                if (MovedDoubleShadow(instruction) is string movedDouble)
+                {
+                    WriteLine("asuint({0}, {1}.x, {1}.y);", movedDouble, GetOperandName(instruction, 0));
                     break;
                 }
                 WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),

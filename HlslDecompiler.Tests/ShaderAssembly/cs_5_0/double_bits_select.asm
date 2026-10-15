@@ -1,0 +1,14 @@
+cs_5_0
+dcl_globalFlags refactoringAllowed | enableDoublePrecisionFloatOps
+dcl_resource_structured t0, 8
+dcl_uav_structured u0, 8
+dcl_input vThreadID.x
+dcl_temps 2
+dcl_thread_group 32, 1, 1
+ld_structured_indexable(structured_buffer, stride=8)(mixed,mixed,mixed,mixed) r0.xy, vThreadID.xx, l(0), t0.xy
+mov r0, r0.xyyx
+dlt r1.x, d(0.000000l, 0.000000l), r0.xy
+dmul r0.xy, r0.xy, d(3.000000l, 0.000000l)
+dmovc r0.xy, r1.x, r0.xy, r0.zw
+store_structured u0.xy, vThreadID.xx, l(0), r0.xy
+ret

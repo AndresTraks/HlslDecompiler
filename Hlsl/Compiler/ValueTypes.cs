@@ -203,6 +203,9 @@ internal static class ValueTypes
                 return true;
             case NegateOperation when IsIntegerValue(reader) == true:
                 return false;
+            // asdouble has only uint overloads.
+            case BitsToDoubleOperation:
+                return true;
             // utof vs itof: declaring the source uint keeps a utof one instruction.
             case ConvertOperation { SourceUnsigned: bool sourceUnsigned } convert
                 when ReferenceEquals(convert.Value, node):

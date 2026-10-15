@@ -2488,6 +2488,7 @@ public sealed class RegisterState
             var declaration = new RegisterDeclaration(registerKey, semantic, signature.Mask)
             {
                 ComponentType = signature.ComponentType,
+                MinPrecision = signature.MinPrecision,
                 InterpolationMode = instruction.GetInterpolationMode(),
             };
             // Not starting at x means packed above something, declared here or not

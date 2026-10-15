@@ -59,6 +59,12 @@ public class EquivalenceTests
             + "register holds the integer branch as its number and the float "
             + "branch as a float, and the store converts both. The AST writer, which "
             + "selects asint(t1) beside the uint, computes the same.")],
+        ["cs_5_0/double_bits_select"] = [("instruction",
+            "The double. The structured load's two words go into a register "
+            + "declared float, so the instruction writer converts them as numbers, "
+            + "by convention, and asdouble joins the converted values rather than "
+            + "the bits. The AST writer, which joins the loaded uints, computes the "
+            + "same.")],
         ["ds_5_0/mixed_bits_patch"] = [("instruction",
             "The position. The instruction writer reads the uint patch constant in "
             + "a mad as its number, where fxc wrote no utof because its bits were "

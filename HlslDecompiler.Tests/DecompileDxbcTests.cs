@@ -424,6 +424,12 @@ public class DecompileDxbcTests
     [TestCase("gs_5_0", "indexed_bits_read")]
     [TestCase("vs_4_0", "product_with_one")]
     [TestCase("ps_4_0", "loop_reused_register")]
+    [TestCase("ps_5_0", "min16_signature")]
+    [TestCase("cs_5_0", "double_bits_select")]
+    [TestCase("vs_5_0", "double_output_words")]
+    [TestCase("ds_5_0", "packed_patch_flags")]
+    [TestCase("ps_5_0", "mixed_bits_constructor")]
+    [TestCase("cs_5_0", "typed_view_width")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

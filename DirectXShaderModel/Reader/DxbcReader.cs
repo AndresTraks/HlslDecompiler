@@ -193,6 +193,22 @@ public class DxbcReader : BinaryReader
                 ReadSignatures(chunkOffset, OperandType.InputPatchConstant,
                     patchConstantSignatures);
             }
+            // With a stream and a minimum precision per element (min16float etc.).
+            else if (chunkType == "ISG1")
+            {
+                ReadSignatures(chunkOffset, OperandType.Input, inputSignatures,
+                    hasStream: true, hasMinPrecision: true);
+            }
+            else if (chunkType == "OSG1")
+            {
+                ReadSignatures(chunkOffset, OperandType.Output, outputSignatures,
+                    hasStream: true, hasMinPrecision: true);
+            }
+            else if (chunkType == "PSG1")
+            {
+                ReadSignatures(chunkOffset, OperandType.InputPatchConstant,
+                    patchConstantSignatures, hasStream: true, hasMinPrecision: true);
+            }
             else if (chunkType == "IFCE")
             {
                 interfaces = ReadInterfaces(chunkOffset + 8);
@@ -557,19 +573,24 @@ public class DxbcReader : BinaryReader
     }
 
     private void ReadSignatures(int chunkOffset, OperandType operandType,
-        IList<RegisterSignature> signatures, bool hasStream = false)
+        IList<RegisterSignature> signatures, bool hasStream = false, bool hasMinPrecision = false)
     {
         ReadInt32();
         int elementCount = ReadInt32();
         ReadInt32();
         long elementOffset = BaseStream.Position;
 
-        int elementSize = hasStream ? 28 : 24;
+        int elementSize = (hasStream ? 28 : 24) + (hasMinPrecision ? 4 : 0);
         for (int i = 0; i < elementCount; i++)
         {
             BaseStream.Position = elementOffset + i * elementSize;
             int stream = hasStream ? ReadInt32() : 0;
             RegisterSignature signature = ReadSignature(chunkOffset, operandType, stream);
+            if (hasMinPrecision)
+            {
+                BaseStream.Position = elementOffset + i * elementSize + elementSize - 4;
+                signature.MinPrecision = ReadInt32();
+            }
             signatures.Add(signature);
         }
     }

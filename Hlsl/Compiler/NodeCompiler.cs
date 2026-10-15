@@ -1142,13 +1142,19 @@ public sealed class NodeCompiler
     /// </summary>
     public bool IsIntegerValued(HlslTreeNode node)
     {
-        return ValueTypes.IsIntegerValue(node)
-            ?? (node switch
-            {
-                RegisterInputNode register => _registers.GetDeclaredType(register.RegisterComponentKey),
-                RelativeAddressNode relative => DeclaredTypeOfVertexRead(relative),
-                _ => DeclaredType.Unknown,
-            } is DeclaredType.Int or DeclaredType.Uint);
+        // An SM4 register holds what it is declared, however it is read after.
+        DeclaredType declared = node switch
+        {
+            RegisterInputNode { RegisterComponentKey.RegisterKey: D3D10RegisterKey } register
+                => _registers.GetDeclaredType(register.RegisterComponentKey),
+            RelativeAddressNode relative => DeclaredTypeOfVertexRead(relative),
+            _ => DeclaredType.Unknown,
+        };
+        if (declared is DeclaredType.Int or DeclaredType.Uint)
+        {
+            return true;
+        }
+        return ValueTypes.IsIntegerValue(node) == true;
     }
 
     // A stage input read through a dynamic vertex index (`patch[i].id`).

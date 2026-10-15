@@ -111,6 +111,9 @@ public class RegisterDeclaration
     // D3D_REGISTER_COMPONENT_TYPE from the signature: 1 uint32, 2 sint32, 3 float32.
     public int ComponentType { get; set; }
 
+    // D3D_MIN_PRECISION from an ISG1/OSG1/PSG1 signature; 0 is full precision.
+    public int MinPrecision { get; set; }
+
     public D3D10InterpolationMode InterpolationMode { get; init; }
 
     private string InterpolationModifier => InterpolationMode switch
@@ -155,6 +158,10 @@ public class RegisterDeclaration
                 && D3D10Instruction.IsThreadRegister(d3D10RegisterKey.OperandType))
             {
                 type = "uint";
+            }
+            else if (MinPrecision is 1 or 2 or 4 or 5)
+            {
+                type = MinPrecision switch { 1 => "min16float", 2 => "min10float", 4 => "min16int", _ => "min16uint" };
             }
             else if (ComponentType == 1)
             {

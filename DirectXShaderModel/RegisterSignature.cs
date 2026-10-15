@@ -27,6 +27,12 @@ public class RegisterSignature
     public int Stream { get; init; }
 
     /// <summary>
+    /// D3D_MIN_PRECISION: 0 full, 1 float16, 2 float 2.8, 4 sint16, 5 uint16.
+    /// Only ISG1/OSG1/PSG1 record it.
+    /// </summary>
+    public int MinPrecision { get; set; }
+
+    /// <summary>
     /// A patch constant keyed as an output, as a hull shader's phases write it;
     /// PCSG keys it as a domain shader input.
     /// </summary>
@@ -38,6 +44,7 @@ public class RegisterSignature
         {
             IsPatchConstant = true,
             Stream = Stream,
+            MinPrecision = MinPrecision,
         };
     }
 

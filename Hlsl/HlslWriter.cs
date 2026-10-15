@@ -113,7 +113,10 @@ public abstract class HlslWriter
                 ? signature.RegisterKey
                 : vertexKey?.WithAttribute(register) ?? D3D10RegisterKey.CreateGSInput(register, 0);
             var keyed = new RegisterSignature(key, signature.Name, signature.Index, signature.Mask,
-                signature.ValueType, signature.ComponentType, signature.ReadWriteMask);
+                signature.ValueType, signature.ComponentType, signature.ReadWriteMask)
+            {
+                MinPrecision = signature.MinPrecision,
+            };
             RegisterDeclaration declaration = FromSignature(keyed);
             // A register shared with a declared element holds both, each its own width.
             if (_registers.MethodInputRegisters.FirstOrDefault(d => IsInput(d) && Register(d) == register)
@@ -553,6 +556,7 @@ public abstract class HlslWriter
         return new RegisterDeclaration(signature.RegisterKey, semantic, signature.Mask)
         {
             ComponentType = signature.ComponentType,
+            MinPrecision = signature.MinPrecision,
         };
     }
 

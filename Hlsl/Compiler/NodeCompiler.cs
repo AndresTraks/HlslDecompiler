@@ -432,6 +432,10 @@ public sealed class NodeCompiler
                 {
                     return CompileOperation((Operation)components[0], components, promoteToVectorSize);
                 }
+                if (TryCompileProductWithOne(components) is string productWithOne)
+                {
+                    return productWithOne;
+                }
                 return CompileVectorConstructor(components, componentGroups);
             }
 
@@ -605,6 +609,52 @@ public sealed class NodeCompiler
             return false;
         }
         return components.All(c => Operation.IsSameKind(c, first) && c.Inputs.Count == first.Inputs.Count);
+    }
+
+    /// <summary>
+    /// `float4(a * b.xyz, b.w)` as `float4(a, 1) * b`: one mul, which fxc can fuse
+    /// with the add after it, where the constructor costs a mov beside the mul.
+    /// Only under an add: elsewhere the constructor is as cheap, and fxc folds a
+    /// negation or a constant into it. The first component must be a product, so
+    /// the parent brackets it as one.
+    /// </summary>
+    private string TryCompileProductWithOne(List<HlslTreeNode> components)
+    {
+        if (components[0] is not MultiplyOperation
+            || !components.All(IsFloatValued)
+            || !components.All(c => c.Outputs.Any(o => o is AddOperation))
+            || components.OfType<RegisterInputNode>().FirstOrDefault() is not RegisterInputNode passed)
+        {
+            return null;
+        }
+        RegisterKey vector = passed.RegisterComponentKey.RegisterKey;
+        bool OfVector(HlslTreeNode node) =>
+            node is RegisterInputNode register && register.RegisterComponentKey.RegisterKey.Equals(vector);
+        var factors = new List<HlslTreeNode>();
+        var others = new List<HlslTreeNode>();
+        foreach (HlslTreeNode component in components)
+        {
+            if (OfVector(component))
+            {
+                factors.Add(component);
+                others.Add(new ConstantNode(1f));
+            }
+            else if (component is MultiplyOperation product
+                && product.Inputs.FirstOrDefault(OfVector) is HlslTreeNode factor)
+            {
+                factors.Add(factor);
+                others.Add(product.Inputs[product.Inputs[1] == factor ? 0 : 1]);
+            }
+            else
+            {
+                return null;
+            }
+        }
+        if (_nodeGrouper.GroupComponents(factors).Count != 1)
+        {
+            return null;
+        }
+        return $"{Compile(others, components.Count)} * {Compile(factors, components.Count)}";
     }
 
     private int CountUngroupedOperands(List<HlslTreeNode> components)

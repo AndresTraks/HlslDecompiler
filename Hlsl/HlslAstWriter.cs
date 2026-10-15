@@ -679,10 +679,28 @@ public class HlslAstWriter : HlslWriter
         {
             return null;
         }
-        List<string> parts = [.. values.Select(v => Unreinterpreted(v)
-            ? $"asfloat({_compiler.CompileAsInteger([v])})"
-            : _compiler.CompileAsFloat([v]))];
-        return $"float{parts.Count}({string.Join(", ", parts)})";
+        // In runs of one kind, so lanes of one instruction stay one expression.
+        var parts = new List<string>();
+        for (int start = 0; start < values.Length;)
+        {
+            bool reinterpret = Unreinterpreted(values[start]);
+            int end = start + 1;
+            while (end < values.Length && Unreinterpreted(values[end]) == reinterpret
+                && (reinterpret || values[end] is not ConstantNode) && values[start] is not ConstantNode)
+            {
+                end++;
+            }
+            HlslTreeNode[] run = values[start..end];
+            string compiled = reinterpret
+                ? $"asfloat({_compiler.CompileAsInteger(run)})"
+                : _compiler.CompileAsFloat(run);
+            // A float constructor's arguments go straight into this one.
+            parts.Add(!reinterpret && NodeCompiler.ConstructorArguments(compiled, "float") is string arguments
+                ? arguments
+                : compiled);
+            start = end;
+        }
+        return $"float{values.Length}({string.Join(", ", parts)})";
     }
 
     // Raw store dwords: integers as is, floats as their bits.

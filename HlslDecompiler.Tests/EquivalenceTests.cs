@@ -69,6 +69,13 @@ public class EquivalenceTests
             + "store's immediate offset only, so an array member indexed by a variable "
             + "is written at w[0]. The AST writer, which recovers w[k] from the computed "
             + "offset, computes the same.")],
+        ["ps_4_0/switch_mixed_join"] = [("instruction",
+            "The switch's join register. Its cases leave a float's bits and "
+            + "integer arithmetic in a register declared float, where the "
+            + "instruction writer keeps the integers as the numbers they are, by "
+            + "convention, so the output converts them. The AST writer, which "
+            + "declares the integer lanes int and reads asfloat(t0), computes the "
+            + "same.")],
         ["ps_5_0/coverage_select_bits"] = [("instruction",
             "The stencil reference. The and of a float's bits leaves an integer in a "
             + "register declared float, where the instruction writer keeps it as the "

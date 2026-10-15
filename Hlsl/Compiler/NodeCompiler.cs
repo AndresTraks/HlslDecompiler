@@ -976,6 +976,20 @@ public sealed class NodeCompiler
             : compiled;
     }
 
+    /// <summary>
+    /// The arguments of text that is exactly one vector constructor of the given
+    /// scalar type (`float2(a, b)` gives `a, b`), else null.
+    /// </summary>
+    public static string ConstructorArguments(string text, string scalarType)
+    {
+        if (!IsConstructor(text) || !System.Text.RegularExpressions.Regex.IsMatch(text, $@"^{scalarType}[234]\("))
+        {
+            return null;
+        }
+        int open = text.IndexOf('(');
+        return text[(open + 1)..^1];
+    }
+
     // Whether the text is exactly one vector constructor.
     private static bool IsConstructor(string text)
     {
@@ -2009,7 +2023,27 @@ public sealed class NodeCompiler
                 {
                     // A cast binds tightly: `(int)a + b` converts only a.
                     var value = components.Select(g => g.Inputs[0]).ToList();
-                    string compiledValue = Compile(value);
+                    string compiledValue;
+                    // Lanes of one utof/itof over unlike values: an integer constructor,
+                    // `(float2)uint2(a & 1, a >> 1)`.
+                    if (convert.SourceUnsigned != null && convert.TargetType is "float" or "double"
+                        && value.Count > 1 && _nodeGrouper.GroupComponents(value).Count > 1)
+                    {
+                        bool wasAssigningToUnsigned = _assigningToUnsigned;
+                        _assigningToUnsigned = convert.SourceUnsigned == true;
+                        try
+                        {
+                            compiledValue = CompileAsInteger(value);
+                        }
+                        finally
+                        {
+                            _assigningToUnsigned = wasAssigningToUnsigned;
+                        }
+                    }
+                    else
+                    {
+                        compiledValue = Compile(value);
+                    }
                     bool isSingleTerm = value[0] is RegisterInputNode
                         || value[0] is ConstantNode
                         || value[0] is TempVariableNode
@@ -2037,7 +2071,7 @@ public sealed class NodeCompiler
                             : $"({uintType})({compiledValue})";
                         isSingleTerm = true;
                     }
-                    return isSingleTerm || IsBracketed(compiledValue)
+                    return isSingleTerm || IsBracketed(compiledValue) || IsConstructor(compiledValue)
                         ? $"({castType}){compiledValue}"
                         : $"({castType})({compiledValue})";
                 }
@@ -3059,9 +3093,22 @@ public sealed class NodeCompiler
             {
                 compiled = $"asint({compiled})";
             }
-            // And raw buffer dwords into a float variable are reinterpreted.
-            else if (!tempAssignment.TempVariable.IsInteger
-                && components.All(a => ValueTypes.IsReinterpretedAsFloat(((TempAssignmentNode)a).Value)))
+            // Integer constants into a float variable are fxc's untyped immediates:
+            // the float their bits make (`1`, not 1065353216).
+            else if (!tempAssignment.TempVariable.IsInteger && !tempAssignment.TempVariable.IsDouble
+                && components.All(a => AssignedValue((TempAssignmentNode)a) is ConstantNode { IntegerValue: int bits }
+                    && float.IsNormal(BitConverter.Int32BitsToSingle(bits)) || AssignedValue((TempAssignmentNode)a) is ConstantNode { IntegerValue: 0 }))
+            {
+                List<string> floats = [.. components.Select(a => ConstantFormatter.Format(BitConverter.Int32BitsToSingle(
+                    ((ConstantNode)AssignedValue((TempAssignmentNode)a)).IntegerValue.Value)))];
+                compiled = floats.Distinct().Count() == 1 ? floats[0] : $"float{floats.Count}({string.Join(", ", floats)})";
+            }
+            // And integers into a float variable are its bits: raw buffer dwords, or
+            // the integer arithmetic fxc left in the register.
+            else if (!tempAssignment.TempVariable.IsInteger && !tempAssignment.TempVariable.IsDouble
+                && components.All(a => ValueTypes.IsReinterpretedAsFloat(((TempAssignmentNode)a).Value)
+                    || (((TempAssignmentNode)a).Value is not ConstantNode
+                        && IsIntegerValued(((TempAssignmentNode)a).Value))))
             {
                 compiled = $"asfloat({compiled})";
             }

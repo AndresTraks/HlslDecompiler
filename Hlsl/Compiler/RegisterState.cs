@@ -1074,6 +1074,13 @@ public sealed class RegisterState
     /// <summary>Name plus swizzle, except matrix registers (see MatrixRegisterComponents).</summary>
     public string GetRegisterComponents(RegisterComponentKey key, string swizzle)
     {
+        // By the component's own declaration: a scalar packed after an int3x3's
+        // rows (cb0[2].w) is in the matrix's register but not the matrix.
+        if (key.RegisterKey is D3D10RegisterKey { OperandType: OperandType.ConstantBuffer }
+            && FindConstantOfComponent(key) is { TypeInfo.Rows: <= 1 })
+        {
+            return GetRegisterName(key) + swizzle;
+        }
         return TryGetMatrixRegister(key.RegisterKey) is (ShaderTypeInfo typeInfo, string name, int register)
             ? MatrixRegisterComponents(typeInfo, name, register, swizzle)
             : GetRegisterName(key) + swizzle;

@@ -10,5 +10,5 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	for (uint t4 = 0; t4 < 4; t4 = t4 + 1) {
 		t3 = ((packed.x >> (t4 * 8)) & 255) > 128 ? t3 + 1 : t3;
 	}
-	return float4(t2 * asfloat(t1), (float)t3, (float)t0, 0);
+	return float4(t2 * asfloat(t1), (float2)uint2(t3, t0), 0);
 }

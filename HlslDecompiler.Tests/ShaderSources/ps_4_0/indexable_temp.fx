@@ -11,5 +11,5 @@ float4 main(nointerpolation uint4 texcoord : TEXCOORD) : SV_Target
 	int t0 = texcoord.x + selector & 3;
 	int t1 = x0[t0].x + 5;
 	x0[t0].x = t1;
-	return float4((float)t1, (float)(x0[3].x), (float)(x0[t0 + 1 & 3].x), (float)t0);
+	return float4((float)t1, (float2)int2(x0[3].x, x0[t0 + 1 & 3].x), (float)t0);
 }

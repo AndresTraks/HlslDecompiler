@@ -440,6 +440,10 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "coverage_select_bits")]
     [TestCase("ps_5_0", "raw_load_constructor")]
     [TestCase("ps_5_0", "dynamic_linkage_temps")]
+    [TestCase("ps_4_0", "switch_mixed_join")]
+    [TestCase("vs_4_0", "packed_matrix_scalar")]
+    [TestCase("gs_4_0", "conversion_lanes")]
+    [TestCase("vs_4_0", "vertex_id_lanes")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

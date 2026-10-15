@@ -203,7 +203,12 @@ public class NodeGrouper
 
         if (node1 is TempVariableNode tempVariable1 && node2 is TempVariableNode tempVariable2)
         {
-            return tempVariable1.DeclarationIndex == tempVariable2.DeclarationIndex;
+            // Unnumbered variables compare equal too, so a declaration made from
+            // this group must not join an integer to a float (int and uint may share).
+            return tempVariable1.DeclarationIndex == tempVariable2.DeclarationIndex
+                && (tempVariable1.DeclarationIndex != null
+                    || (tempVariable1.IsInteger == tempVariable2.IsInteger
+                        && tempVariable1.IsDouble == tempVariable2.IsDouble));
         }
 
         if (node1 is ComparisonNode comparison1 && node2 is ComparisonNode comparison2)
@@ -273,6 +278,16 @@ public class NodeGrouper
                 && call1.InterfaceNumber == call2.InterfaceNumber
                 && call1.InstanceIndex == call2.InstanceIndex
                 && call1.FunctionIndex == call2.FunctionIndex;
+        }
+
+        // Lanes of one conversion are one cast, whatever they convert: fxc keeps
+        // `(float2)uint2(a & 1, a >> 1)` one utof, and the arithmetic after it one op.
+        if (node1 is ConvertOperation convert1 && node2 is ConvertOperation convert2
+            && HlslTreeNode.IsSameInstruction(node1, node2)
+            && convert1.TargetType == convert2.TargetType
+            && convert1.SourceUnsigned == convert2.SourceUnsigned)
+        {
+            return true;
         }
 
         // Lanes of one movc on one condition are one select, whatever the arms are.

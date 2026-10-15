@@ -33,19 +33,19 @@ void main(CS_IN i)
 		int t5 = i.sv_groupindex < t4;
 		if (i.sv_groupindex < t4) {
 			uint t6 = t4 + i.sv_groupindex;
-			t0 = g1[i.sv_groupindex];
-			g1[i.sv_groupindex] = g1[t6] + t0;
-			int t7 = g0[i.sv_groupindex];
-			t6 = t7 + g0[t6];
+			float t7 = g1[i.sv_groupindex];
+			g1[i.sv_groupindex] = g1[t6] + t7;
+			int t8 = g0[i.sv_groupindex];
+			t6 = t8 + g0[t6];
 			g0[i.sv_groupindex] = t6;
 		}
 		GroupMemoryBarrierWithGroupSync();
 	}
 	if (i.sv_groupindex == 0) {
-		float t8 = g1[0];
-		luminance[i.sv_groupid.xy] = 0.015625 * t8;
-		uint t9 = g0[0];
-		InterlockedAdd(histogram[min(t9, 63)], 1);
+		float t9 = g1[0];
+		luminance[i.sv_groupid.xy] = 0.015625 * t9;
+		uint t10 = g0[0];
+		InterlockedAdd(histogram[min(t10, 63)], 1);
 	}
 	if (all(t2 < size) && step == 0) {
 		luminance[t2] = t3;

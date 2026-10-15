@@ -1006,15 +1006,14 @@ public class StatementFinalizer
         });
     }
 
-    // Type-mismatched merges, for SplitUncarriedLoopValues to revisit.
+    // Merges, for SplitUncarriedLoopValues to revisit.
     private readonly List<(LoopStatement Loop, IStatement PreLoop, TempVariableNode Carried,
-        TempVariableNode Own, List<TempAssignmentNode> Assignments)> _typeChangingCarries = [];
+        TempVariableNode Own, List<TempAssignmentNode> Assignments)> _loopMerges = [];
 
     private void ReplaceLoopVariable(TempVariableNode from, TempVariableNode to,
         LoopStatement loop, IStatement preLoop)
     {
-        if (!ReferenceEquals(from, to)
-            && (from.IsInteger != to.IsInteger || from.IsDouble != to.IsDouble))
+        if (!ReferenceEquals(from, to))
         {
             List<TempAssignmentNode> assignments = [];
             new StatementVisitor(loop.Body).Visit(statement =>
@@ -1022,19 +1021,19 @@ public class StatementFinalizer
                 assignments.AddRange(statement.Outputs.Values.OfType<TempAssignmentNode>()
                     .Where(a => ReferenceEquals(a.TempVariable, from) && !assignments.Contains(a)));
             });
-            _typeChangingCarries.Add((loop, preLoop, to, from, assignments));
+            _loopMerges.Add((loop, preLoop, to, from, assignments));
         }
         ReplaceTempVariable(from, to);
     }
 
     /// <summary>
-    /// Undoes a type-changing merge from <see cref="UseLoopVariablesInBody"/> where
-    /// the variable is dead at the loop head and after the loop: fxc only reused
-    /// the register, and e.g. an int load must not live in a float variable.
+    /// Undoes a merge from <see cref="UseLoopVariablesInBody"/> where the variable
+    /// is dead at the loop head and after the loop: fxc only reused the register,
+    /// so e.g. an int load need not live in a float variable.
     /// </summary>
     private void SplitUncarriedLoopValues()
     {
-        foreach (var carry in _typeChangingCarries)
+        foreach (var carry in _loopMerges)
         {
             VariableLiveness liveness = VariableLiveness.Analyze(_statements, exact: true);
             if (liveness.MayBeReadAfter(carry.Carried, carry.PreLoop)

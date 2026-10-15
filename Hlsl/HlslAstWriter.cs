@@ -602,7 +602,7 @@ public class HlslAstWriter : HlslWriter
                 {
                     string memberValue = CompileStoredValue(
                         [.. members.Select(i => values[i])],
-                        _registers.IsIntegerStructuredMember(appendKey, members[0]));
+                        _registers.IsIntegerStructuredMember(appendKey, members[0] * 4));
                     WriteLine($"{name} = {memberValue};");
                 }
                 WriteLine($"{destination}.Append({elementName});");
@@ -643,16 +643,19 @@ public class HlslAstWriter : HlslWriter
     {
         if (values.All(v => ValueTypes.IsIntegerValue(v) == true))
         {
-            // Into floats, an integer variable or raw-load bits go in as asfloat.
-            return destinationHoldsIntegers == false
-                && values.All(v => ValueTypes.IsReinterpretedAsFloat(v)
-                    || v is TempVariableNode { IsInteger: true, IsBool: false, IsBits: false })
+            // Into floats, integers go in as asfloat: a store copies bits, and fxc
+            // would have converted with utof had the number been meant.
+            return destinationHoldsIntegers == false && !values.All(v => v is ConstantNode)
                 ? $"asfloat({_compiler.CompileAsInteger(values)})"
                 : _compiler.CompileAsInteger(values);
         }
         // asuint only where the graph says float; an unknown value is left as is.
         // Into floats the store is a float context, so bare bits are reinterpreted.
         // Into integers, an untyped select is compiled as an integer select.
+        if (destinationHoldsIntegers == false && TryCompileMixedBits(values) is string mixed)
+        {
+            return mixed;
+        }
         return destinationHoldsIntegers == true
             && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
             ? CompileRawStoredValue(values)
@@ -661,6 +664,25 @@ public class HlslAstWriter : HlslWriter
                 : destinationHoldsIntegers == true && values.Any(v => v is MoveConditionalOperation)
                     ? _compiler.CompileAsInteger(values)
                     : _compiler.Compile(values);
+    }
+
+    /// <summary>
+    /// Floats beside integers, where a copy of bits goes into floats: each integer
+    /// component is reinterpreted by itself, unless compiling as a float already
+    /// reinterprets it. Null unless mixed.
+    /// </summary>
+    private string TryCompileMixedBits(HlslTreeNode[] values)
+    {
+        bool Unreinterpreted(HlslTreeNode v) => v is not ConstantNode
+            && _compiler.IsIntegerValued(v) && !ValueTypes.IsReinterpretedAsFloat(v);
+        if (values.Length < 2 || !values.Any(Unreinterpreted) || values.All(Unreinterpreted))
+        {
+            return null;
+        }
+        List<string> parts = [.. values.Select(v => Unreinterpreted(v)
+            ? $"asfloat({_compiler.CompileAsInteger([v])})"
+            : _compiler.CompileAsFloat([v]))];
+        return $"float{parts.Count}({string.Join(", ", parts)})";
     }
 
     // Raw store dwords: integers as is, floats as their bits.
@@ -1402,16 +1424,9 @@ public class HlslAstWriter : HlslWriter
             {
                 return $"asfloat({_compiler.CompileAsInteger(values)})";
             }
-            // Mixed: each integer component is reinterpreted by itself, unless
-            // compiling as a float already reinterprets it.
-            bool Unreinterpreted(HlslTreeNode v) => v is not ConstantNode
-                && _compiler.IsIntegerValued(v) && !ValueTypes.IsReinterpretedAsFloat(v);
-            if (!declaration.IsInteger && values.Length > 1 && values.Any(Unreinterpreted))
+            if (!declaration.IsInteger && TryCompileMixedBits(values) is string mixed)
             {
-                List<string> parts = [.. values.Select(v => Unreinterpreted(v)
-                    ? $"asfloat({_compiler.CompileAsInteger([v])})"
-                    : _compiler.CompileAsFloat([v]))];
-                return $"float{parts.Count}({string.Join(", ", parts)})";
+                return mixed;
             }
         }
         return declaration.IsInteger

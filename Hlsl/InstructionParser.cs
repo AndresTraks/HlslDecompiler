@@ -3763,10 +3763,11 @@ public class InstructionParser
             {
                 // Typed by the consuming instruction; mov immediates are retyped
                 // later by their readers. Denormal/NaN bits in a bitwise op and
-                // addresses are integers.
+                // addresses are integers, and so is the sign bit alone: -0.0 would
+                // print as 0.
                 uint immediateBits = (uint)instruction.GetParamInt(inputParameterIndex, componentIndex);
                 bool notAFloat = (instruction.Opcode is D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
-                        && IntegerOperandAnalysis.IsDenormalOrNaN(immediateBits))
+                        && (IntegerOperandAnalysis.IsDenormalOrNaN(immediateBits) || immediateBits == 0x80000000))
                     || instruction.IsAddressOperand(inputParameterIndex);
                 var constant = _integerOperandAnalysis.IsIntegerOperand(instruction) || notAFloat
                     ? new ConstantNode((int)immediateBits)

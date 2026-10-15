@@ -430,6 +430,9 @@ public class DecompileDxbcTests
     [TestCase("ds_5_0", "packed_patch_flags")]
     [TestCase("ps_5_0", "mixed_bits_constructor")]
     [TestCase("cs_5_0", "typed_view_width")]
+    [TestCase("cs_5_0", "integer_store_bits")]
+    [TestCase("cs_5_0", "mixed_store_bits")]
+    [TestCase("ds_5_0", "min16_patch_constant")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

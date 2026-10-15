@@ -65,6 +65,11 @@ public class EquivalenceTests
             + "by convention, and asdouble joins the converted values rather than "
             + "the bits. The AST writer, which joins the loaded uints, computes the "
             + "same.")],
+        ["cs_5_0/mixed_store_bits"] = [("instruction",
+            "The quotient. udiv leaves it in a register declared float, where the "
+            + "instruction writer keeps it as the number it is, by convention, so "
+            + "the float2 store converts it where the original stores its bits. "
+            + "The AST writer, which stores asfloat(q), computes the same.")],
         ["ds_5_0/mixed_bits_patch"] = [("instruction",
             "The position. The instruction writer reads the uint patch constant in "
             + "a mad as its number, where fxc wrote no utof because its bits were "

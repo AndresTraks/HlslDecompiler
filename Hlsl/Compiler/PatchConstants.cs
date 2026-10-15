@@ -81,12 +81,13 @@ public static class PatchConstants
 
     private static string TypeName(RegisterSignature signature)
     {
-        string type = signature.ComponentType switch
-        {
-            1 => "uint",
-            2 => "int",
-            _ => "float",
-        };
+        string type = RegisterSignature.MinPrecisionTypeName(signature.MinPrecision)
+            ?? signature.ComponentType switch
+            {
+                1 => "uint",
+                2 => "int",
+                _ => "float",
+            };
         int width = CountSetBits(signature.Mask);
         return width > 1 ? type + width : type;
     }

@@ -159,9 +159,9 @@ public class RegisterDeclaration
             {
                 type = "uint";
             }
-            else if (MinPrecision is 1 or 2 or 4 or 5)
+            else if (RegisterSignature.MinPrecisionTypeName(MinPrecision) is string minimum)
             {
-                type = MinPrecision switch { 1 => "min16float", 2 => "min10float", 4 => "min16int", _ => "min16uint" };
+                type = minimum;
             }
             else if (ComponentType == 1)
             {

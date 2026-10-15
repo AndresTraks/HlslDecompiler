@@ -32,6 +32,16 @@ public class RegisterSignature
     /// </summary>
     public int MinPrecision { get; set; }
 
+    /// <summary>The min16 type a minimum precision declares, or null for full.</summary>
+    public static string MinPrecisionTypeName(int minPrecision) => minPrecision switch
+    {
+        1 => "min16float",
+        2 => "min10float",
+        4 => "min16int",
+        5 => "min16uint",
+        _ => null,
+    };
+
     /// <summary>
     /// A patch constant keyed as an output, as a hull shader's phases write it;
     /// PCSG keys it as a domain shader input.

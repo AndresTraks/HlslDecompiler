@@ -169,6 +169,7 @@ public class LinkageModel
         }
 
         model.MainInstructionCount = labels[0].Index;
+        HashSet<RegisterKey> readAfterCalls = ReadAfterCalls(shader, model.MainInstructionCount);
         foreach (var label in labels)
         {
             FunctionBodyInfo body = model.BodyByLabel(label.Number);
@@ -176,7 +177,7 @@ public class LinkageModel
             body.Last = label.Index == labels[^1].Index
                 ? shader.Instructions.Count
                 : labels[labels.IndexOf(label) + 1].Index;
-            ReadSignature(shader, body);
+            ReadSignature(shader, body, readAfterCalls);
         }
 
         if (!ReadNames(model, shader))
@@ -192,7 +193,8 @@ public class LinkageModel
     /// Parameters are registers read before written, excluding globals (cbuffers,
     /// resources, samplers...); the result is the one register written.
     /// </summary>
-    private static void ReadSignature(ShaderModel shader, FunctionBodyInfo body)
+    private static void ReadSignature(ShaderModel shader, FunctionBodyInfo body,
+        HashSet<RegisterKey> readAfterCalls)
     {
         var written = new HashSet<RegisterKey>();
         for (int i = body.First; i < body.Last; i++)
@@ -233,12 +235,17 @@ public class LinkageModel
             }
         }
 
-        if (written.Count != 1)
+        // A body also writes its own temps; the result is the register the caller
+        // reads after a call.
+        List<RegisterKey> results = written.Count == 1
+            ? [.. written]
+            : [.. written.Where(readAfterCalls.Contains)];
+        if (results.Count != 1)
         {
             throw new NotImplementedException(
-                $"a function body writing {written.Count} registers");
+                $"a function body writing {written.Count} registers, {results.Count} read after a call");
         }
-        body.ReturnRegister = written.First();
+        body.ReturnRegister = results[0];
         if (body.ReturnRegister is not D3D10RegisterKey { OperandType: OperandType.Temp })
         {
             throw new NotImplementedException(
@@ -428,6 +435,42 @@ public class LinkageModel
         model.Classes.AddRange(classes
             .OrderBy(c => model.InterfaceTypes.IndexOf(c.Implements[0]))
             .ThenByDescending(c => c.TypeId));
+    }
+
+    /// <summary>
+    /// Temps the main program reads after an interface call before writing them:
+    /// where a body's result can be.
+    /// </summary>
+    private static HashSet<RegisterKey> ReadAfterCalls(ShaderModel shader, int mainInstructionCount)
+    {
+        var read = new HashSet<RegisterKey>();
+        for (int call = 0; call < mainInstructionCount; call++)
+        {
+            if (shader.Instructions[call] is not D3D10Instruction { Opcode: D3D10Opcode.InterfaceCall })
+            {
+                continue;
+            }
+            var written = new HashSet<RegisterKey>();
+            for (int i = call + 1; i < mainInstructionCount; i++)
+            {
+                var instruction = (D3D10Instruction)shader.Instructions[i];
+                int? destination = instruction.GetDestinationParamIndex();
+                for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+                {
+                    if (operand != destination
+                        && instruction.GetOperandType(operand) == OperandType.Temp
+                        && !written.Contains(instruction.GetParamRegisterKey(operand)))
+                    {
+                        read.Add(instruction.GetParamRegisterKey(operand));
+                    }
+                }
+                if (destination != null)
+                {
+                    written.Add(instruction.GetParamRegisterKey(destination.Value));
+                }
+            }
+        }
+        return read;
     }
 
     private static bool IsOutsideTheMethod(OperandType type) =>

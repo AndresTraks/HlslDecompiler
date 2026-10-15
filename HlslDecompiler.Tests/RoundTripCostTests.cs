@@ -67,6 +67,14 @@ public class RoundTripCostTests
             + "of a kind the writer has not got."),
 
         // fxc's doing.
+        ["ps_4_0/loop_reused_register"] = (46,
+            "One instruction, and a mov. The binary is shadow_pcf's golden as fxc "
+            + "compiled it: fxc hoisted `t - bias.w` out of the first loop, so it "
+            + "comes back as a variable declared between the sum's 0 and the "
+            + "counter's -1, and fxc then sets those two with two movs where it "
+            + "had one. The fixture is here for the register fxc reuses for a "
+            + "product's x and the second loop's sample: the dot is not a loop "
+            + "variable, and the product reads mul(texcoord, (float4x3)m)."),
         ["cs_5_0/group_shared_tile"] = (23,
             "Eight instructions, and the price of having no spelling for the "
             + "declaration. The original keeps a float4 and a uint2 in raw "

@@ -54,6 +54,7 @@ reworded ps_4_0/half_packing
 reworded ps_4_0/index_and_scale
 reworded ps_4_0/int_divide
 reworded ps_4_0/logical_and
+reworded ps_4_0/loop_reused_register
 reworded ps_4_0/packed_cbuffer
 reworded ps_4_0/packed_interpolator
 reworded ps_4_0/precedence_mix

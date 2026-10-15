@@ -353,6 +353,13 @@ public class StatementFinalizer
         });
     }
 
+    private bool IsUnreadLoopStart(HlslTreeNode reader, HlslTreeNode value)
+    {
+        return reader is PhiNode { IsLoopHeader: true, Outputs.Count: 0 } phi
+            && ReferenceEquals(phi.PreLoopValue, value)
+            && !IsRenderedByAnyStatement(phi);
+    }
+
     private void RemoveUnusedAssignments(IList<IStatement> statements)
     {
         for (int i = 0; i < statements.Count; i++)
@@ -390,8 +397,11 @@ public class StatementFinalizer
                     continue;
                 }
 
-                // Read only within this statement; a phi reader means it leaves.
-                if (assignmentNode.Outputs.All(v => v is not PhiNode && v.IsInputOf(assignment.Outputs.Values)))
+                // Read only within this statement; a phi reader means it leaves,
+                // unless it is a loop phi nothing reads: the loop writes the register
+                // before reading it, so fxc only reused it.
+                if (assignmentNode.Outputs.All(v => IsUnreadLoopStart(v, assignmentNode)
+                    || (v is not PhiNode && v.IsInputOf(assignment.Outputs.Values))))
                 {
                     // A local array store may inline the value only if it is the very
                     // next statement; a store between could change what it reads.

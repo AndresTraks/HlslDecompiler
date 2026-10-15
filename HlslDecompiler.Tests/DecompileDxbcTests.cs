@@ -423,6 +423,7 @@ public class DecompileDxbcTests
     [TestCase("vs_5_0", "plain_bits_outputs")]
     [TestCase("gs_5_0", "indexed_bits_read")]
     [TestCase("vs_4_0", "product_with_one")]
+    [TestCase("ps_4_0", "loop_reused_register")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

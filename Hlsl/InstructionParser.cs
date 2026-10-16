@@ -3580,10 +3580,37 @@ public class InstructionParser
             operands[component] = GetInputs(instruction, component);
         }
 
+        // An operand of literal and computed lanes is a vector fxc filled in with
+        // movs (float4(x, 1, 2, k) against a matrix row): the sum of products would
+        // lose the dot once `1 * b` folds. Trailing 1s (float4(xyz, 1)) fold where
+        // the dot templates look for them, so those stay products.
+        if (Enumerable.Range(0, 2).Any(side => IsFilledInVector([.. operands.Select(lanes => lanes[side])])))
+        {
+            return ReadingFloats(new DotProductOperation(
+                new GroupNode([.. operands.Select(lanes => lanes[0])]),
+                new GroupNode([.. operands.Select(lanes => lanes[1])])));
+        }
+
         return operands
             .Select(componentInput => (HlslTreeNode)ReadingFloats(
                 new MultiplyOperation(componentInput[0], componentInput[1])))
             .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    private static bool IsFilledInVector(HlslTreeNode[] lanes)
+    {
+        static ConstantNode Literal(HlslTreeNode lane) =>
+            lane as ConstantNode ?? (lane as MoveOperation)?.Inputs[0] as ConstantNode;
+        // A moved immediate is still its bits here.
+        static bool IsOne(ConstantNode literal) =>
+            literal.Value == 1 || literal.IntegerValue == 0x3F800000;
+        int lastComputed = Array.FindLastIndex(lanes, lane => Literal(lane) == null);
+        if (lastComputed < 0 || lanes.All(lane => Literal(lane) == null))
+        {
+            return false;
+        }
+        return lanes.Select((lane, index) => (Literal: Literal(lane), Index: index))
+            .Any(lane => lane.Literal != null && (lane.Index < lastComputed || !IsOne(lane.Literal)));
     }
 
     // `lit src` reads x (n.l), y (n.h) and w (power) for every component.

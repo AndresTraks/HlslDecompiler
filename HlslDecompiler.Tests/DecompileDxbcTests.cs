@@ -465,6 +465,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "nested_struct_name")]
     [TestCase("cs_5_0", "structured_float3x4")]
     [TestCase("gs_5_0", "struct_stream")]
+    [TestCase("cs_5_0", "filled_in_dot")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

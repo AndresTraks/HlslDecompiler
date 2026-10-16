@@ -947,10 +947,14 @@ public sealed class NodeCompiler
                 ? $"({shifted} & {maskText})"
                 : $"({value} & {keptText}) | ({shifted} & {maskText})";
         }
-        string maskExpression = $"(((1 << {CompileOperand(widths)}) - 1) << {CompileOperand(offsets)})";
+        // Masked before the shift, the form fxc folds back into one bfi; shifted
+        // then masked, it stays a shift, two ands and an or.
+        string widthMask = $"((1 << {CompileOperand(widths)}) - 1)";
+        string maskExpression = $"({widthMask} << {CompileOperand(offsets)})";
+        string inserted = $"(({insert} & {widthMask}) << {CompileOperand(offsets)})";
         return insertsIntoNothing
-            ? $"(({insert} << {CompileOperand(offsets)}) & {maskExpression})"
-            : $"({value} & ~{maskExpression}) | (({insert} << {CompileOperand(offsets)}) & {maskExpression})";
+            ? inserted
+            : $"({value} & ~{maskExpression}) | {inserted}";
     }
 
     private static bool AllIntegers(List<HlslTreeNode> nodes, out int[] values)

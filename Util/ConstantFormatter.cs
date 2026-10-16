@@ -43,8 +43,9 @@ public class ConstantFormatter
         int dot = exact.IndexOf('.');
         if (dot < 0)
         {
-            // fxc reads a bare literal as a 64-bit integer; a dot keeps it a float.
-            if (exact.Length - (exact[0] == '-' ? 1 : 0) >= 20)
+            // A bare literal from 2^32 is a syntax error to fxc, and from 2^31 a uint;
+            // a dot keeps it a float.
+            if (Math.Abs(value) >= 2147483648f)
             {
                 return exact + ".0";
             }

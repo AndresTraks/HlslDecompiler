@@ -34,6 +34,35 @@ public class FirstBitHighTemplate : NodeTemplate<MoveConditionalOperation>
             return new FirstBitHighOperation(signedHigh.Value, signedHigh.IsUnsigned);
         }
 
+        // Signed, converted before the select: fxc takes both arms to float, so -1
+        // is (float)0xffffffff and the position a utof.
+        if (select.Source1 is ConstantNode { Value: 4294967296f }
+            && select.Source2 is ConvertOperation { SourceUnsigned: true } convert
+            && Position(convert.Value) is FirstBitHighOperation convertedHigh
+            && select.Condition is ComparisonNode { Comparison: IfComparison.EQ } convertedTest
+            && ConstantMatcher.IsNegativeOne(convertedTest.Right)
+            && ReferenceEquals(Instruction(convertedTest.Left), convertedHigh))
+        {
+            return new ConvertOperation(
+                new FirstBitHighOperation(convertedHigh.Value, convertedHigh.IsUnsigned), convert.TargetType)
+            {
+                SourceUnsigned = true,
+            };
+        }
+
+        // Unsigned, converted before the select.
+        if (select.Source2 is ConstantNode { Value: 4294967296f }
+            && select.Source1 is ConvertOperation { SourceUnsigned: true } unsignedConvert
+            && Position(unsignedConvert.Value) is FirstBitHighOperation { IsUnsigned: true } convertedUnsigned
+            && TestsNonZero(select.Condition, convertedUnsigned.Value))
+        {
+            return new ConvertOperation(
+                new FirstBitHighOperation(convertedUnsigned.Value, isUnsigned: true), unsignedConvert.TargetType)
+            {
+                SourceUnsigned = true,
+            };
+        }
+
         // Unsigned: `x ? 31 - instruction : -1`.
         if (ConstantMatcher.IsNegativeOne(select.Source2)
             && Position(select.Source1) is FirstBitHighOperation { IsUnsigned: true } unsignedHigh

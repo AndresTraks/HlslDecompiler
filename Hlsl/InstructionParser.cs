@@ -1043,6 +1043,19 @@ public class InstructionParser
         {
             _currentStatements.Pop();
         }
+        // A memory write is ordered against the loads by instruction.
+        switch (statement)
+        {
+            case StoreStructuredStatement store:
+                store.SourceInstruction = _instructionPointer + 1;
+                break;
+            case StoreTypedStatement store:
+                store.SourceInstruction = _instructionPointer + 1;
+                break;
+            case AtomicStatement atomic:
+                atomic.SourceInstruction = _instructionPointer + 1;
+                break;
+        }
         ActiveStatementSequence.Add(statement);
         _currentStatements.Push(statement);
     }

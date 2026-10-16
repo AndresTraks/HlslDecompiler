@@ -375,6 +375,114 @@ public class HlslAstWriter : HlslWriter
 
     private IStatement _currentStatement;
 
+    /// <summary>
+    /// Before a store or atomic, or a block holding one, names the loads of the same
+    /// memory made earlier and read only after it: written out where they are read,
+    /// they would see the stored value.
+    /// </summary>
+    private void NameLoadsOverwrittenBy(IStatement statement)
+    {
+        // Each memory written, by its first write.
+        var writes = new Dictionary<RegisterKey, int>();
+        List<IStatement> within = [statement];
+        if (statement is IfStatement or LoopStatement or SwitchStatement)
+        {
+            new StatementVisitor([statement]).Visit(within.Add);
+        }
+        foreach (IStatement inner in within)
+        {
+            (HlslTreeNode destination, int written) = inner switch
+            {
+                StoreStructuredStatement store => (store.Destination, store.SourceInstruction),
+                StoreTypedStatement store => (store.Destination, store.SourceInstruction),
+                AtomicStatement atomic => (atomic.Destination, atomic.SourceInstruction),
+                _ => (null, 0),
+            };
+            if (destination is RegisterInputNode memory && written != 0)
+            {
+                RegisterKey key = memory.RegisterComponentKey.RegisterKey;
+                writes[key] = writes.TryGetValue(key, out int first) ? Math.Min(first, written) : written;
+            }
+        }
+        if (writes.Count == 0)
+        {
+            return;
+        }
+        List<IStatement> order = [];
+        new StatementVisitor(_functionStatements).Visit(order.Add);
+        // After the statement and everything inside it.
+        int position = order.FindIndex(s => ReferenceEquals(s, statement)) + within.Distinct().Count() - 1;
+        var roots = new List<HlslTreeNode>();
+        foreach (IStatement later in order.Skip(position + 1))
+        {
+            roots.AddRange(later.HeldNodes);
+            // What it writes, not what it carries.
+            roots.AddRange(later.Outputs
+                .Where(o => !(later.Inputs.TryGetValue(o.Key, out HlslTreeNode input) && ReferenceEquals(input, o.Value)))
+                .Select(o => o.Value));
+        }
+        var loads = new List<HlslTreeNode>();
+        var readers = new List<HlslTreeNode>();
+        var seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(roots.Where(root => root != null));
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!seen.Add(node) || node is TempVariableNode)
+            {
+                continue;
+            }
+            HlslTreeNode loaded = (node as LoadStructuredNode)?.Value ?? (node as ResourceLoadNode)?.Inputs[0];
+            if (loaded is RegisterInputNode resource
+                && writes.TryGetValue(resource.RegisterComponentKey.RegisterKey, out int instruction)
+                && node.SourceInstruction != 0 && node.SourceInstruction < instruction)
+            {
+                loads.Add(node);
+                continue;
+            }
+            readers.Add(node);
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        foreach (IGrouping<int, HlslTreeNode> load in loads.GroupBy(node => node.SourceInstruction))
+        {
+            HlslTreeNode[] lanes = [.. load.OrderBy(node => node.SourceComponent)];
+            TempVariableNode[] variables = CreateTempVariables(lanes);
+            HlslTreeNode[] group = [.. lanes.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))];
+            // By the inputs walked, not the loads' reader lists, which the finalizer
+            // may have cleared.
+            foreach (HlslTreeNode reader in readers)
+            {
+                for (int i = 0; i < reader.Inputs.Count; i++)
+                {
+                    int lane = Array.FindIndex(lanes, l => ReferenceEquals(l, reader.Inputs[i]));
+                    if (lane >= 0)
+                    {
+                        reader.Inputs[i] = variables[lane];
+                        variables[lane].Outputs.Add(reader);
+                    }
+                }
+            }
+            foreach (IStatement later in order.Skip(position + 1))
+            {
+                for (int i = 0; i < lanes.Length; i++)
+                {
+                    later.ReplaceHeldNode(lanes[i], variables[i]);
+                    foreach (var map in new[] { later.Outputs, later.Inputs })
+                    {
+                        foreach (var key in map.Where(o => ReferenceEquals(o.Value, lanes[i])).Select(o => o.Key).ToList())
+                        {
+                            map[key] = variables[i];
+                        }
+                    }
+                }
+            }
+            WriteLine(CompileAssignment(group));
+        }
+    }
+
     private void WriteStatement(IStatement statement)
     {
         IStatement outerStatement = _currentStatement;
@@ -391,6 +499,7 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteStatementOfKind(IStatement statement)
     {
+        NameLoadsOverwrittenBy(statement);
         if (statement is AssignmentStatement assignmentStatement)
         {
             WriteAssignmentStatement(assignmentStatement);

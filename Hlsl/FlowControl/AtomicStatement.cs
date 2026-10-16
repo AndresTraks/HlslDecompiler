@@ -12,6 +12,8 @@ namespace HlslDecompiler.Hlsl.FlowControl;
 public class AtomicStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
+    // Position of the writing instruction, as HlslTreeNode.SourceInstruction.
+    public int SourceInstruction { get; set; }
     public HlslTreeNode Address { get; set; }
     /// <summary>
     /// The texel coordinate on a typed texture, one component per dimension, the

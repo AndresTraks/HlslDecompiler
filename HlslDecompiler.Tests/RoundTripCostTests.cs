@@ -56,21 +56,7 @@ public class RoundTripCostTests
             + "statements they are. Fixing it means a register whose components "
             + "are not one vector expression being written as a declaration and "
             + "one assignment per instruction, by swizzle, which is a form the "
-            + "ast writer has not got - the same shape the particle_update entry "
-            + "above wants a struct typed variable for."),
-        ["cs_4_0/particle_update"] = (12,
-            "One instruction, and the price of naming the members. The original "
-            + "loads the whole particle in two sixteen byte loads, writes it back in "
-            + "two stores, and reads each member out of the registers in between. "
-            + "Written a member at a time - which is what the source said, and what "
-            + "makes it readable - fxc reloads the member that is read after a store "
-            + "to a different member of the same element. Was 13 while each load was "
-            + "written out at every use: the components one instruction wrote are "
-            + "named together now, so the sixteen bytes are read once and the "
-            + "members are swizzles of it, which is the 12 this entry predicted for "
-            + "naming them. The struct shaped temporary that would cost 10 - one "
-            + "under the original - wants a struct typed variable and a declaration "
-            + "of a kind the writer has not got."),
+            + "ast writer has not got."),
 
         // fxc's doing.
         ["ps_4_0/loop_reused_register"] = (46,

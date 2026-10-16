@@ -1478,6 +1478,11 @@ public class StatementFinalizer
     /// </summary>
     private void NameOutputLoadsBeforeWrites()
     {
+        // An output struct is assigned where the value is made, not at the return.
+        if (!_hasReturnValue || _hasOutputStruct)
+        {
+            return;
+        }
         List<IStatement> order = [];
         new StatementVisitor(_statements).Visit(order.Add);
         for (int i = 0; i < order.Count; i++)

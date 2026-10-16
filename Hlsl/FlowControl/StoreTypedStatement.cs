@@ -11,6 +11,8 @@ namespace HlslDecompiler.Hlsl;
 public class StoreTypedStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
+    // Position of the writing instruction, as HlslTreeNode.SourceInstruction.
+    public int SourceInstruction { get; set; }
     // One per resource dimension.
     public HlslTreeNode[] Coordinates { get; }
     public HlslTreeNode[] Values { get; }

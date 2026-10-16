@@ -8,6 +8,8 @@ namespace HlslDecompiler.Hlsl;
 public class StoreStructuredStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
+    // Position of the writing instruction, as HlslTreeNode.SourceInstruction.
+    public int SourceInstruction { get; set; }
     public HlslTreeNode Address { get; set; }
     // One per component written.
     public HlslTreeNode[] Values { get; }

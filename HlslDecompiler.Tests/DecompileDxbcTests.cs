@@ -507,6 +507,8 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "uav_atomic_integer")]
     [TestCase("ps_5_0", "switch_default_join")]
     [TestCase("ps_5_0", "uav_load_into_float")]
+    [TestCase("cs_5_0", "load_before_branch_store")]
+    [TestCase("cs_5_0", "raw_load_before_store")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

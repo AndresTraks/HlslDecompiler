@@ -446,6 +446,10 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "vertex_id_lanes")]
     [TestCase("hs_5_0", "output_patch_index")]
     [TestCase("hs_5_0", "join_instances")]
+    [TestCase("ps_5_0", "class_members")]
+    [TestCase("ps_5_0", "class_member_bits")]
+    [TestCase("ps_5_0", "class_array_members")]
+    [TestCase("ps_5_0", "class_member_ints")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

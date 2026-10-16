@@ -314,9 +314,14 @@ public class HlslSimpleWriter : HlslWriter
         LinkageModel.InterfaceInfo iface = _registers.Linkage.InterfaceByNumber(interfaceNumber);
         LinkageModel.MethodInfo method = iface.Methods[function];
         string arguments = string.Join(", ", method.Parameters.Select(GetLinkageArgumentName));
-        WriteLine("{0} = {1}.{2}({3});", GetTempRegisterName(method.ReturnRegister),
+        WriteLine("{0}{1} = {2}.{3}({4});", GetTempRegisterName(method.ReturnRegister),
+            LinkageResultMask(method.ReturnComponents),
             iface.InstanceExpression(instance), method.Name, arguments);
     }
+
+    // A float3 result fills r0.xyz.
+    private static string LinkageResultMask(int components) =>
+        components == 4 ? "" : "." + "xyzw"[..components];
 
     private string GetLinkageArgumentName(RegisterKey parameter)
     {
@@ -340,7 +345,8 @@ public class HlslSimpleWriter : HlslWriter
         FindMovedDoubles();
 
         foreach ((RegisterKey register, int writeMask) in FindTemporaryRegisterAssignments(
-            [.. _phaseShader.Instructions.Skip(body.First).Take(body.Last - body.First)]))
+            [.. _phaseShader.Instructions.Skip(body.First).Take(body.Last - body.First)
+                .Where(i => !_registers.Linkage.IsThisMove((D3D10Instruction)i))]))
         {
             WriteTemporaryVariableDeclaration(register, writeMask);
         }
@@ -354,7 +360,8 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         WriteLine();
-        WriteLine("return {0};", GetTempRegisterName(body.ReturnRegister));
+        WriteLine("return {0}{1};", GetTempRegisterName(body.ReturnRegister),
+            LinkageResultMask(body.ReturnComponents));
     }
 
     /// <summary>
@@ -436,7 +443,7 @@ public class HlslSimpleWriter : HlslWriter
             if (InterfaceCallDestination(d3d10) is RegisterKey returned
                 && Equals(returned, registerKey))
             {
-                mask |= 0b1111;
+                mask |= InterfaceCallMask(d3d10);
                 continue;
             }
             foreach (int destination in GetDestinationParamIndices(d3d10))
@@ -1325,6 +1332,14 @@ public class HlslSimpleWriter : HlslWriter
             (int)instruction.OperandTokens.Tokens[0]).ReturnRegister;
     }
 
+    // The components of an fcall's return register its result fills.
+    private int InterfaceCallMask(D3D10Instruction instruction)
+    {
+        return (1 << _registers.Linkage.MethodForCall(
+            (int)instruction.OperandTokens.Tokens[2],
+            (int)instruction.OperandTokens.Tokens[0]).ReturnComponents) - 1;
+    }
+
     private Dictionary<RegisterKey, int> FindTemporaryRegisterAssignments(IList<Instruction> instructions)
     {
         var tempRegisters = new Dictionary<RegisterKey, int>();
@@ -1333,9 +1348,9 @@ public class HlslSimpleWriter : HlslWriter
             if (instruction is D3D10Instruction call
                 && InterfaceCallDestination(call) is RegisterKey result)
             {
-                if (!tempRegisters.TryAdd(result, 0xF))
+                if (!tempRegisters.TryAdd(result, InterfaceCallMask(call)))
                 {
-                    tempRegisters[result] |= 0xF;
+                    tempRegisters[result] |= InterfaceCallMask(call);
                 }
                 continue;
             }
@@ -2272,6 +2287,11 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstruction(D3D10Instruction instruction)
     {
+        // Only addresses class data, which is read by name.
+        if (_registers.Linkage?.IsThisMove(instruction) == true)
+        {
+            return;
+        }
         int[] split = SplitPackedOutputMasks(instruction)
             ?? SplitDoubleElementMasks(instruction)
             ?? SplitGroupSharedRawMasks(instruction);
@@ -3857,6 +3877,15 @@ public class HlslSimpleWriter : HlslWriter
     private string GetOperandName(D3D10Instruction instruction, int operandIndex)
     {
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        // cb[this.x][this.y + row] reads the class's own members.
+        LinkageModel.ClassInfo classInfo = null;
+        int classRow = 0;
+        bool isClassData = _registers.Linkage?.TryGetClassData(
+            instruction, operandIndex, out classInfo, out classRow) == true;
+        if (isClassData)
+        {
+            registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, classInfo.DataRegister, classRow);
+        }
 
         // Each unrolled copy of an instanced phase knows its own instance number.
         if (registerKey.OperandType is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
@@ -3928,7 +3957,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             registerName = GetIndexableTempOperandName(instruction, operandIndex, operandIndices);
         }
-        else if (operandIndices.Any(i => i.IsRelative))
+        else if (!isClassData && operandIndices.Any(i => i.IsRelative))
         {
             registerName = GetDynamicOperandName(instruction, operandIndex, operandIndices, out dynamicMember);
             isPackedScalar = dynamicMember != null && dynamicMember.Width == 1;

@@ -4,21 +4,21 @@ using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 /// <summary>
-/// A call through an interface instance. Arguments are the whole registers the
-/// body reads as parameters, four components each.
+/// A call through an interface instance. Arguments are the registers the body
+/// reads as parameters, as wide as each is declared.
 /// </summary>
 public class InterfaceCallNode : HlslTreeNode, IHasComponentIndex
 {
-    private readonly int _argumentCount;
+    private readonly int[] _argumentWidths;
 
     public InterfaceCallNode(int interfaceNumber, int instanceIndex, int functionIndex,
-        HlslTreeNode[] arguments, int componentIndex)
+        HlslTreeNode[] arguments, int[] argumentWidths, int componentIndex)
     {
         foreach (HlslTreeNode argument in arguments)
         {
             AddInput(argument);
         }
-        _argumentCount = arguments.Length / 4;
+        _argumentWidths = argumentWidths;
         InterfaceNumber = interfaceNumber;
         InstanceIndex = instanceIndex;
         FunctionIndex = functionIndex;
@@ -30,14 +30,17 @@ public class InterfaceCallNode : HlslTreeNode, IHasComponentIndex
     public int FunctionIndex { get; }
     public int ComponentIndex { get; }
 
-    /// <summary>The arguments, four component reads per argument.</summary>
+    /// <summary>The component reads of all arguments, one after another.</summary>
     public System.Collections.Generic.IEnumerable<HlslTreeNode> Arguments => Inputs;
 
-    public int ArgumentCount => _argumentCount;
+    /// <summary>The component reads of each argument.</summary>
+    public System.Collections.Generic.IEnumerable<HlslTreeNode[]> ArgumentComponents =>
+        _argumentWidths.Select((width, argument) =>
+            Inputs.Skip(_argumentWidths.Take(argument).Sum()).Take(width).ToArray());
 
     public override string ToString()
     {
         return $"g{InterfaceNumber}[{InstanceIndex}].F{FunctionIndex}({string.Join(", ",
-            Arguments.Chunk(4).Select(a => a.First()))})";
+            ArgumentComponents.Select(a => a.First()))})";
     }
 }

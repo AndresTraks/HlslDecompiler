@@ -327,12 +327,6 @@ public abstract class HlslWriter
     private void WriteLinkageDeclarations()
     {
         LinkageModel linkage = _registers.Linkage;
-        if (linkage.Bodies.Any(b => b.Parameters.Count != 0)
-            && _registers.MethodInputRegisters.Count > 1)
-        {
-            throw new NotImplementedException(
-                "a linkage method argument named through an input struct");
-        }
 
         foreach (LinkageModel.InterfaceTypeInfo type in linkage.InterfaceTypes)
         {
@@ -348,7 +342,15 @@ public abstract class HlslWriter
             WriteLine();
         }
 
-        WriteLinkageClasses();
+        _registers.NamesInputsAsParameters = true;
+        try
+        {
+            WriteLinkageClasses();
+        }
+        finally
+        {
+            _registers.NamesInputsAsParameters = false;
+        }
 
         foreach (LinkageModel.InterfaceInfo iface in linkage.Interfaces)
         {
@@ -370,6 +372,15 @@ public abstract class HlslWriter
                 string.Join(", ", classInfo.Implements.Select(t => t.Name)));
             WriteLine("{");
             indent = "\t";
+            var compiler = new ConstantDeclarationCompiler();
+            foreach (D3D10ConstantDeclaration member in classInfo.Members)
+            {
+                WriteLine(compiler.Compile(member));
+            }
+            if (classInfo.Members.Count != 0)
+            {
+                WriteLine();
+            }
             bool first = true;
             foreach (LinkageModel.MethodInfo method in classInfo.Implements
                 .SelectMany(t => t.Methods))
@@ -405,13 +416,13 @@ public abstract class HlslWriter
                 throw new NotImplementedException(
                     "a linkage method argument with no input declaration");
             }
-            return $"{declaration.TypeName} {declaration.Name}";
+            return $"{declaration.ValueTypeName} {declaration.Name}";
         }));
         return $"{LinkageReturnTypeName(method)} {method.Name}({parameters})";
     }
 
     /// <summary>
-    /// Always float4; a body of any class computing an integer result throws
+    /// Floats, as wide as the caller reads; a body of any class computing an integer result throws
     /// rather than returning floats from an int4.
     /// </summary>
     private string LinkageReturnTypeName(LinkageModel.MethodInfo method)
@@ -430,7 +441,7 @@ public abstract class HlslWriter
                 }
             }
         }
-        return "float4";
+        return method.ReturnComponents == 1 ? "float" : $"float{method.ReturnComponents}";
     }
 
     /// <summary>
@@ -688,7 +699,7 @@ public abstract class HlslWriter
             {
                 // Written in their blocks below.
                 if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true }
-                    || IsNamedBuffer(declaration))
+                    || IsNamedBuffer(declaration) || IsClassMember(declaration))
                 {
                     continue;
                 }
@@ -880,6 +891,13 @@ public abstract class HlslWriter
                 WriteLine();
             }
         }
+    }
+
+    // Written in its class.
+    private bool IsClassMember(ConstantDeclaration declaration)
+    {
+        return _registers.Linkage != null
+            && _registers.Linkage.Classes.Any(c => c.Members.Contains(declaration));
     }
 
     // A named constant buffer, as against $Globals.

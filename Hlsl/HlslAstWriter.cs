@@ -27,6 +27,7 @@ public class HlslAstWriter : HlslWriter
 
     // Set while writing a linkage body: a return hands back this register.
     private RegisterKey _linkageReturnRegister;
+    private int _linkageReturnComponents;
 
     // Statements of the function being written (main or one linkage method).
     private IList<IStatement> _functionStatements;
@@ -138,6 +139,7 @@ public class HlslAstWriter : HlslWriter
     /// </summary>
     protected override void WriteLinkageMethodBody(LinkageModel.FunctionBodyInfo body)
     {
+        _linkageReturnComponents = body.ReturnComponents;
         WriteFunctionStatements(
             _ast.LinkageBodies.First(entry => ReferenceEquals(entry.Body, body)).Statements,
             hasReturnValue: true, hasOutputStruct: false, body.ReturnRegister);
@@ -1340,7 +1342,7 @@ public class HlslAstWriter : HlslWriter
             WriteLine(CompileAssignment(group));
         }
 
-        HlslTreeNode[] result = [.. Enumerable.Range(0, 4).Select(component =>
+        HlslTreeNode[] result = [.. Enumerable.Range(0, _linkageReturnComponents).Select(component =>
             ResultOf(returnStatement, new RegisterComponentKey(_linkageReturnRegister, component)))];
         List<HlslTreeNode[]> roots = [result];
         WriteSharedSubexpressions(roots);

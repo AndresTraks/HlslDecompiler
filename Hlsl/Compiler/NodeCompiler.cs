@@ -2960,16 +2960,17 @@ public sealed class NodeCompiler
 
         if (first is InterfaceCallNode call)
         {
-            // One call, swizzled. Arguments are whole registers (four components each).
+            // One call, swizzled.
             MarkMatched(components);
             LinkageModel.InterfaceInfo iface =
                 _registers.Linkage.InterfaceByNumber(call.InterfaceNumber);
-            string arguments = string.Join(", ", call.Arguments.Chunk(4)
-                .Select(argument => Compile([.. argument])));
+            string arguments = string.Join(", ", call.ArgumentComponents
+                .Select(argument => Compile(argument)));
+            LinkageModel.MethodInfo method = iface.Methods[call.FunctionIndex];
             string callSwizzle = GetAstSourceSwizzleName(
-                componentsWithIndices, 4, promoteToVectorSize);
+                componentsWithIndices, method.ReturnComponents, promoteToVectorSize);
             return $"{iface.InstanceExpression(call.InstanceIndex)}"
-                + $".{iface.Methods[call.FunctionIndex].Name}({arguments}){callSwizzle}";
+                + $".{method.Name}({arguments}){callSwizzle}";
         }
 
         if (first is LitOutputNode lit)

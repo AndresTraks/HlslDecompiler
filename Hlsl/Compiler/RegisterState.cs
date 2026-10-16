@@ -633,6 +633,12 @@ public sealed class RegisterState
 
     public LinkageModel Linkage { get; set; }
 
+    /// <summary>
+    /// Set while writing a linkage method: the inputs it reads are its parameters,
+    /// named without main's input struct.
+    /// </summary>
+    public bool NamesInputsAsParameters { get; set; }
+
     private ShaderModel _shaderModel;
 
     public RegisterState(ShaderModel shaderModel)
@@ -1416,7 +1422,7 @@ public sealed class RegisterState
                 {
                     return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
                 }
-                return MethodInputRegisters.Count == 1
+                return MethodInputRegisters.Count == 1 || NamesInputsAsParameters
                     ? inputDeclaration.Name
                     : "i." + inputDeclaration.Name;
             }
@@ -1546,7 +1552,7 @@ public sealed class RegisterState
                     {
                         return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
                     }
-                    if (MethodInputRegisters.Count == 1)
+                    if (MethodInputRegisters.Count == 1 || NamesInputsAsParameters)
                     {
                         return decl.Name;
                     }

@@ -1571,7 +1571,15 @@ public class AsmWriter
         {
             D3D10OperandTokenCollection.OperandIndex[] indices =
                 instruction.OperandTokens.GetOperandIndices(index);
-            registerNumber = indices[0].Immediate + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
+            // A class's data is in the buffer `this` names: cb[r1.y + 0][r1.x + 0].
+            string buffer = indices[0].IsRelative
+                ? "[" + FormatOperandIndex(instruction, index, 0, indices[0]) + "]"
+                : indices[0].Immediate.ToString();
+            registerNumber = buffer + "[" + FormatOperandIndex(instruction, index, 1, indices[1]) + "]";
+        }
+        else if (operandType == OperandType.ThisPointer)
+        {
+            registerNumber = $"[{instruction.GetParamRegisterNumber(index)}]";
         }
         else if (D3D10Instruction.IsThreadRegister(operandType))
         {
@@ -1699,6 +1707,7 @@ public class AsmWriter
             OperandType.FunctionBody => "fb",
             OperandType.FunctionTable => "ft",
             OperandType.Interface => "fp",
+            OperandType.ThisPointer => "this",
             OperandType.Stream => "m",
             // These carry no register number of their own.
             OperandType.OutputDepth => "oDepth",

@@ -118,6 +118,7 @@ public class InstructionParser
                         }
                     }
                 }
+                DeclareClassData(declared);
                 linkageBodies = [];
                 foreach (LinkageModel.FunctionBodyInfo body in _registerState.Linkage.Bodies)
                 {
@@ -208,8 +209,42 @@ public class InstructionParser
         }
     }
 
+    /// <summary>
+    /// Class member data reads like a constant buffer of its own, one per class.
+    /// </summary>
+    private void DeclareClassData(Dictionary<RegisterComponentKey, HlslTreeNode> declared)
+    {
+        foreach (LinkageModel.ClassInfo classInfo in _registerState.Linkage.Classes)
+        {
+            if (classInfo.Members.Count == 0)
+            {
+                continue;
+            }
+            foreach (D3D10ConstantDeclaration member in classInfo.Members)
+            {
+                _registerState.ConstantDeclarations.Add(member);
+            }
+            int rows = (classInfo.Members.Max(m => m.VariableOffset + m.VariableSize) + 15) / 16;
+            for (int row = 0; row < rows; row++)
+            {
+                var registerKey = new D3D10RegisterKey(OperandType.ConstantBuffer, classInfo.DataRegister, row);
+                _registerState.DeclareRegister(registerKey, 0xF);
+                for (int component = 0; component < 4; component++)
+                {
+                    var componentKey = new RegisterComponentKey(registerKey, component);
+                    declared[componentKey] = new RegisterInputNode(componentKey);
+                }
+            }
+        }
+    }
+
     private void ParseInstruction(D3D10Instruction instruction)
     {
+        // Only addresses class data, which is read by name.
+        if (_registerState.Linkage?.IsThisMove(instruction) == true)
+        {
+            return;
+        }
         // vForkInstanceID and vJoinInstanceID need no declaration: unrolled phases
         // read them as constants.
         if (instruction.Opcode == D3D10Opcode.DclInput
@@ -1063,19 +1098,26 @@ public class InstructionParser
         LinkageModel.MethodInfo method =
             _registerState.Linkage.MethodForCall(interfaceNumber, function);
 
+        // As wide as declared: a float3 input has no .w.
         var arguments = new List<HlslTreeNode>();
-        foreach (RegisterKey parameter in method.Parameters)
+        int[] argumentWidths = [.. method.Parameters.Select(parameter =>
+            _registerState.MethodInputRegisters.FirstOrDefault(d => d.RegisterKey.Equals(parameter))
+                is RegisterDeclaration declaration
+                ? 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)declaration.WriteMask)
+                : 4)];
+        for (int parameter = 0; parameter < method.Parameters.Count; parameter++)
         {
-            for (int component = 0; component < 4; component++)
+            for (int component = 0; component < argumentWidths[parameter]; component++)
             {
-                arguments.Add(GetActiveOutput(new RegisterComponentKey(parameter, component)));
+                arguments.Add(GetActiveOutput(
+                    new RegisterComponentKey(method.Parameters[parameter], component)));
             }
         }
 
-        for (int component = 0; component < 4; component++)
+        for (int component = 0; component < method.ReturnComponents; component++)
         {
             var callNode = new InterfaceCallNode(
-                interfaceNumber, instance, function, [.. arguments], component);
+                interfaceNumber, instance, function, [.. arguments], argumentWidths, component);
             callNode.SourceInstruction = _instructionPointer + 1;
             callNode.SourceComponent = component;
             SetActiveOutput(
@@ -3757,6 +3799,16 @@ public class InstructionParser
                 var patchKey = new D3D10RegisterKey(operandType, (int)operandIndices[0].Immediate + instanceOffset);
                 inputs[i] = ApplyModifier(
                     GetActiveOutput(new RegisterComponentKey(patchKey, patchSwizzle[componentIndex])),
+                    instruction.GetOperandModifier(inputParameterIndex));
+                continue;
+            }
+            if (_registerState.Linkage != null && _registerState.Linkage.TryGetClassData(
+                instruction, inputParameterIndex, out LinkageModel.ClassInfo classInfo, out int row))
+            {
+                byte[] memberSwizzle = instruction.GetSourceSwizzleComponents(inputParameterIndex);
+                var dataKey = new D3D10RegisterKey(OperandType.ConstantBuffer, classInfo.DataRegister, row);
+                inputs[i] = ApplyModifier(
+                    GetActiveOutput(new RegisterComponentKey(dataKey, memberSwizzle[componentIndex])),
                     instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }

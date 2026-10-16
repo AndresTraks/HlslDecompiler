@@ -153,6 +153,15 @@ public class RegisterDeclaration
         get
         {
             string centroid = ResultModifier.HasFlag(ResultModifier.Centroid) ? "centroid " : "";
+            return InterpolationModifier + centroid + ValueTypeName;
+        }
+    }
+
+    /// <summary>The type without interpolation modifiers, as a method parameter takes it.</summary>
+    public string ValueTypeName
+    {
+        get
+        {
             string type;
             if (RegisterKey is D3D10RegisterKey d3D10RegisterKey
                 && D3D10Instruction.IsThreadRegister(d3D10RegisterKey.OperandType))
@@ -176,7 +185,7 @@ public class RegisterDeclaration
                 type = ResultModifier.HasFlag(ResultModifier.PartialPrecision) ? "half" : "float";
             }
             string length = MaskedLength > 1 ? MaskedLength.ToString() : "";
-            return InterpolationModifier + centroid + type + length;
+            return type + length;
         }
     }
 

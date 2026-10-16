@@ -25,6 +25,9 @@ public class LinkageModel
         public List<RegisterKey> Parameters { get; } = [];
 
         public RegisterKey ReturnRegister { get; set; }
+        public int ReturnComponents { get; set; } = 4;
+
+        public ClassInfo Class { get; set; }
     }
 
     public class FunctionTableInfo
@@ -67,6 +70,9 @@ public class LinkageModel
         public List<RegisterKey> Parameters { get; } = [];
         public RegisterKey ReturnRegister { get; set; }
         public List<FunctionBodyInfo> Bodies { get; } = [];
+
+        /// <summary>The components the caller reads: float3 if only .xyz.</summary>
+        public int ReturnComponents { get; set; } = 4;
     }
 
     public class InterfaceTypeInfo
@@ -85,6 +91,41 @@ public class LinkageModel
         public List<InterfaceTypeInfo> Implements { get; } = [];
 
         public Dictionary<MethodInfo, FunctionBodyInfo> Bodies { get; } = [];
+
+        /// <summary>
+        /// Member data its bodies read through `this`, as cb[this.x][this.y + row]:
+        /// the kind each (row * 4 + component) is read as, and the members laid over
+        /// it, declared on a constant buffer number no shader binds.
+        /// </summary>
+        public SortedDictionary<int, ParameterType> DataComponents { get; } = [];
+        public int DataRegister { get; set; }
+        public List<D3D10ConstantDeclaration> Members { get; } = [];
+    }
+
+    /// <summary>Past the 14 slots a shader may bind.</summary>
+    private const int FirstClassDataRegister = 1000;
+
+    private const int RegisterSizeInBytes = 16;
+
+    // Movs of `this` into index registers; a body reads its data through them.
+    private readonly HashSet<D3D10Instruction> _thisMoves = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<D3D10Instruction, Dictionary<int, (ClassInfo Class, int Row)>> _classDataReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    public bool IsThisMove(D3D10Instruction instruction) => _thisMoves.Contains(instruction);
+
+    /// <summary>Whether an operand reads class member data, and which row of it.</summary>
+    public bool TryGetClassData(D3D10Instruction instruction, int operand,
+        out ClassInfo classInfo, out int row)
+    {
+        if (_classDataReads.TryGetValue(instruction, out var reads)
+            && reads.TryGetValue(operand, out var read))
+        {
+            (classInfo, row) = read;
+            return true;
+        }
+        (classInfo, row) = (null, 0);
+        return false;
     }
 
     public List<InterfaceInfo> Interfaces { get; } = [];
@@ -169,6 +210,13 @@ public class LinkageModel
         }
 
         model.MainInstructionCount = labels[0].Index;
+        // fxc inlines a call through an interface only one class implements.
+        if (shader.Instructions.Take(model.MainInstructionCount).Any(i =>
+            i is D3D10Instruction { Opcode: D3D10Opcode.Mov } move
+            && move.GetOperandType(1) == OperandType.ThisPointer))
+        {
+            throw new NotImplementedException("class data read outside a method (an inlined call)");
+        }
         HashSet<RegisterKey> readAfterCalls = ReadAfterCalls(shader, model.MainInstructionCount);
         foreach (var label in labels)
         {
@@ -177,7 +225,7 @@ public class LinkageModel
             body.Last = label.Index == labels[^1].Index
                 ? shader.Instructions.Count
                 : labels[labels.IndexOf(label) + 1].Index;
-            ReadSignature(shader, body, readAfterCalls);
+            model.ReadSignature(shader, body, readAfterCalls);
         }
 
         if (!ReadNames(model, shader))
@@ -186,6 +234,8 @@ public class LinkageModel
         }
         ReadMethods(model);
         ReadClasses(model);
+        model.ReadClassData(shader);
+        ReadReturnComponents(model, shader);
         return model;
     }
 
@@ -193,7 +243,7 @@ public class LinkageModel
     /// Parameters are registers read before written, excluding globals (cbuffers,
     /// resources, samplers...); the result is the one register written.
     /// </summary>
-    private static void ReadSignature(ShaderModel shader, FunctionBodyInfo body,
+    private void ReadSignature(ShaderModel shader, FunctionBodyInfo body,
         HashSet<RegisterKey> readAfterCalls)
     {
         var written = new HashSet<RegisterKey>();
@@ -202,6 +252,13 @@ public class LinkageModel
             var instruction = (D3D10Instruction)shader.Instructions[i];
             if (instruction.Opcode == D3D10Opcode.Ret)
             {
+                continue;
+            }
+            // Only addresses the body's data; neither an argument nor a result.
+            if (instruction.Opcode == D3D10Opcode.Mov
+                && instruction.GetOperandType(1) == OperandType.ThisPointer)
+            {
+                _thisMoves.Add(instruction);
                 continue;
             }
             if (instruction.Opcode == D3D10Opcode.InterfaceCall)
@@ -417,7 +474,9 @@ public class LinkageModel
                 int[] bodies = model.Tables.First(t => t.Number == iface.Tables[slot]).Bodies;
                 foreach (MethodInfo method in iface.Methods)
                 {
-                    classInfo.Bodies[method] = model.BodyByLabel(bodies[method.Function]);
+                    FunctionBodyInfo body = model.BodyByLabel(bodies[method.Function]);
+                    classInfo.Bodies[method] = body;
+                    body.Class = classInfo;
                 }
             }
         }
@@ -435,6 +494,219 @@ public class LinkageModel
         model.Classes.AddRange(classes
             .OrderBy(c => model.InterfaceTypes.IndexOf(c.Implements[0]))
             .ThenByDescending(c => c.TypeId));
+    }
+
+    /// <summary>
+    /// Follows `this` through the index registers each body moves it into, and
+    /// records the rows and components of its class's data the body reads, and as
+    /// what. Only data members: textures and samplers (this.z, .w) are not read.
+    /// </summary>
+    private void ReadClassData(ShaderModel shader)
+    {
+        var integerAnalysis = new IntegerOperandAnalysis(shader);
+        for (int i = 0; i < Classes.Count; i++)
+        {
+            Classes[i].DataRegister = FirstClassDataRegister + i;
+        }
+        foreach (FunctionBodyInfo body in Bodies)
+        {
+            // The `this` component each index register component holds.
+            var thisParts = new Dictionary<RegisterComponentKey, int>();
+            for (int i = body.First; i < body.Last; i++)
+            {
+                var instruction = (D3D10Instruction)shader.Instructions[i];
+                if (_thisMoves.Contains(instruction))
+                {
+                    RegisterKey destination = instruction.GetParamRegisterKey(0);
+                    byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+                    for (int component = 0; component < 4; component++)
+                    {
+                        if ((instruction.GetWriteMask(0) & (1 << component)) != 0)
+                        {
+                            thisParts[new RegisterComponentKey(destination, component)] = swizzle[component];
+                        }
+                    }
+                    continue;
+                }
+
+                for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+                {
+                    if (instruction.GetOperandType(operand) != OperandType.ConstantBuffer)
+                    {
+                        continue;
+                    }
+                    var indices = instruction.OperandTokens.GetOperandIndices(operand);
+                    if (!indices[0].IsRelative)
+                    {
+                        continue;
+                    }
+                    if (indices.Length != 2 || !indices[1].IsRelative || indices[0].Immediate != 0
+                        || ThisPart(instruction, operand, 0, thisParts) != 0
+                        || ThisPart(instruction, operand, 1, thisParts) != 1)
+                    {
+                        throw new NotImplementedException(
+                            "a constant buffer chosen by a register other than this");
+                    }
+                    if (body.Class == null)
+                    {
+                        throw new NotImplementedException("class data read by a body of no class");
+                    }
+                    int row = (int)indices[1].Immediate;
+                    ParameterType kind = ReadKind(instruction, integerAnalysis);
+                    foreach (byte component in instruction.GetSourceSwizzleComponents(operand).Distinct())
+                    {
+                        body.Class.DataComponents.TryAdd(row * 4 + component, kind);
+                    }
+                    if (!_classDataReads.TryGetValue(instruction, out var reads))
+                    {
+                        reads = [];
+                        _classDataReads[instruction] = reads;
+                    }
+                    reads[operand] = (body.Class, row);
+                }
+            }
+        }
+        foreach (ClassInfo classInfo in Classes)
+        {
+            LayOutMembers(classInfo);
+        }
+    }
+
+    private static int? ThisPart(D3D10Instruction instruction, int operand, int index,
+        Dictionary<RegisterComponentKey, int> thisParts)
+    {
+        (OperandType type, int number, byte component) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operand, index);
+        return thisParts.TryGetValue(
+            new RegisterComponentKey(new D3D10RegisterKey(type, number), component), out int part)
+            ? part
+            : null;
+    }
+
+    // Integers are uint unless a signed operation reads them.
+    private static ParameterType ReadKind(D3D10Instruction instruction, IntegerOperandAnalysis analysis)
+    {
+        if (instruction.Opcode is not (D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor or D3D10Opcode.Not)
+            && !analysis.IsIntegerOperand(instruction))
+        {
+            return ParameterType.Float;
+        }
+        return instruction.Opcode is D3D10Opcode.IShr or D3D10Opcode.Ilt or D3D10Opcode.Ige
+            or D3D10Opcode.IMin or D3D10Opcode.IMax or D3D10Opcode.IBFE or D3D10Opcode.IMul
+            or D3D10Opcode.IMad or D3D10Opcode.INeg or D3D10Opcode.IToF
+            ? ParameterType.Int
+            : ParameterType.Uint;
+    }
+
+    /// <summary>
+    /// One member per run of components read alike within a row. Unread ones before
+    /// the last read one are padding, so every member keeps its offset.
+    /// </summary>
+    private static void LayOutMembers(ClassInfo classInfo)
+    {
+        if (classInfo.DataComponents.Count == 0)
+        {
+            return;
+        }
+        int last = classInfo.DataComponents.Keys.Max();
+        int member = 0;
+        int padding = 0;
+        for (int start = 0; start <= last;)
+        {
+            bool read = classInfo.DataComponents.TryGetValue(start, out ParameterType kind);
+            int end = start + 1;
+            while (end <= last && end % 4 != 0
+                && classInfo.DataComponents.TryGetValue(end, out ParameterType next) == read
+                && (!read || next == kind))
+            {
+                end++;
+            }
+            int columns = end - start;
+            var type = new ShaderTypeInfo(
+                columns == 1 ? ParameterClass.Scalar : ParameterClass.Vector,
+                read ? kind : ParameterType.Float, 1, columns, 0, null);
+            classInfo.Members.Add(new D3D10ConstantDeclaration(
+                read ? $"m{member++}" : $"pad{padding++}", (short)classInfo.DataRegister,
+                columns * 4, start * 4, type, classInfo.Members.Count));
+            start = end;
+        }
+    }
+
+    /// <summary>
+    /// How much of each method's result main reads after calling it, before the
+    /// register is written again.
+    /// </summary>
+    private static void ReadReturnComponents(LinkageModel model, ShaderModel shader)
+    {
+        var read = new Dictionary<MethodInfo, int>();
+        for (int call = 0; call < model.MainInstructionCount; call++)
+        {
+            if (shader.Instructions[call] is not D3D10Instruction { Opcode: D3D10Opcode.InterfaceCall } fcall)
+            {
+                continue;
+            }
+            MethodInfo method = model.MethodForCall(
+                (int)fcall.OperandTokens.Tokens[2], (int)fcall.OperandTokens.Tokens[0]);
+            int components = read.GetValueOrDefault(method);
+            var written = new HashSet<int>();
+            for (int i = call + 1; i < model.MainInstructionCount && written.Count < 4; i++)
+            {
+                var instruction = (D3D10Instruction)shader.Instructions[i];
+                if (instruction.Opcode == D3D10Opcode.InterfaceCall)
+                {
+                    if (Equals(method.ReturnRegister, model.MethodForCall(
+                        (int)instruction.OperandTokens.Tokens[2],
+                        (int)instruction.OperandTokens.Tokens[0]).ReturnRegister))
+                    {
+                        break;
+                    }
+                    continue;
+                }
+                int? destination = instruction.GetDestinationParamIndex();
+                for (int operand = 0; operand < instruction.OperandTokens.OperandCount; operand++)
+                {
+                    if (operand == destination
+                        || instruction.GetOperandType(operand) != OperandType.Temp
+                        || !Equals(instruction.GetParamRegisterKey(operand), method.ReturnRegister))
+                    {
+                        continue;
+                    }
+                    foreach (byte component in instruction.GetSourceSwizzleComponents(operand))
+                    {
+                        if (!written.Contains(component))
+                        {
+                            components = Math.Max(components, component + 1);
+                        }
+                    }
+                }
+                if (destination != null
+                    && Equals(instruction.GetParamRegisterKey(destination.Value), method.ReturnRegister))
+                {
+                    for (int component = 0; component < 4; component++)
+                    {
+                        if ((instruction.GetWriteMask(destination.Value) & (1 << component)) != 0)
+                        {
+                            written.Add(component);
+                        }
+                    }
+                }
+            }
+            read[method] = components;
+        }
+        foreach (InterfaceInfo iface in model.Interfaces)
+        {
+            foreach (MethodInfo method in iface.Methods)
+            {
+                if (read.TryGetValue(method, out int components) && components != 0)
+                {
+                    method.ReturnComponents = components;
+                    foreach (FunctionBodyInfo body in method.Bodies)
+                    {
+                        body.ReturnComponents = components;
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

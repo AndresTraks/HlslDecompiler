@@ -14,6 +14,8 @@ public class IndexableTempStoreStatement : IStatement
     public HlslTreeNode Index { get; set; }
     public int[] Components { get; }
     public HlslTreeNode[] Values { get; }
+    // Declared int: a float stored into it is its bits.
+    public bool IsIntegerElement { get; init; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

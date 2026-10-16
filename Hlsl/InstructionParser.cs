@@ -3502,6 +3502,7 @@ public class InstructionParser
                 sampler, texCoords, outputComponent, texture,
                 controls, derivativeX, derivativeY, scalarArgument, offsets);
             node.SampleOffsets = ((D3D10Instruction)instruction).SampleOffsets;
+            node.IsIntegerTexel = textureDefinition.IsIntegerReturnType == true;
             return node;
         }
     }
@@ -3856,7 +3857,10 @@ public class InstructionParser
             return instruction.Saturate ? new SaturateOperation(value) : value;
         })];
         InsertStatement(new IndexableTempStoreStatement(
-            register, index, [.. destinationKeys.Select(key => key.ComponentIndex)], values, ActiveOutputs));
+            register, index, [.. destinationKeys.Select(key => key.ComponentIndex)], values, ActiveOutputs)
+        {
+            IsIntegerElement = _integerOperandAnalysis.IsIntegerIndexableTemp(register),
+        });
     }
 
     private HlslTreeNode[] GetInputs(D3D10Instruction instruction, int componentIndex)
@@ -3891,7 +3895,10 @@ public class InstructionParser
                 var load = new IndexableTempLoadNode(
                     (int)operandIndices[0].Immediate,
                     GetIndexableTempElementIndex(instruction, inputParameterIndex),
-                    swizzle[componentIndex]);
+                    swizzle[componentIndex])
+                {
+                    IsIntegerElement = _integerOperandAnalysis.IsIntegerIndexableTemp((int)operandIndices[0].Immediate),
+                };
                 inputs[i] = ApplyModifier(load, instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }

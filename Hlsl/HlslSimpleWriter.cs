@@ -4472,9 +4472,18 @@ public class HlslSimpleWriter : HlslWriter
 
     private DeclaredType DeclaredTypeOf(D3D10Instruction instruction, int operandIndex)
     {
+        RegisterKey key = instruction.GetParamRegisterKey(operandIndex);
+        // `cb0[r0.y + 8]`: the immediate names the array's base register.
+        const int ElementIndex = 1;
+        if (instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer
+            && instruction.IsRelativelyAddressed(operandIndex, ElementIndex))
+        {
+            D3D10OperandTokenCollection.OperandIndex[] indices = instruction.OperandTokens.GetOperandIndices(operandIndex);
+            key = new D3D10RegisterKey(OperandType.ConstantBuffer,
+                (int)indices[0].Immediate, (int)indices[ElementIndex].Immediate);
+        }
         return _registers.GetDeclaredType(new RegisterComponentKey(
-            instruction.GetParamRegisterKey(operandIndex),
-            instruction.GetSourceSwizzleComponents(operandIndex)[0]));
+            key, instruction.GetSourceSwizzleComponents(operandIndex)[0]));
     }
 
     private bool IsIntegerConstant(D3D10Instruction instruction, int operandIndex)

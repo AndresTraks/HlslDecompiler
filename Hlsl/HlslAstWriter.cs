@@ -933,7 +933,12 @@ public class HlslAstWriter : HlslWriter
         string mask = store.Components.Length == components
             ? ""
             : "." + string.Concat(store.Components.Select(c => "xyzw"[c]));
-        string value = _compiler.Compile(store.Values.Select(Reduce).ToList(), store.Values.Length);
+        List<HlslTreeNode> values = [.. store.Values.Select(Reduce)];
+        string value = !store.IsIntegerElement
+            ? _compiler.Compile(values, store.Values.Length)
+            : values.All(_compiler.IsFloatValued)
+                ? $"asint({_compiler.Compile(values, store.Values.Length)})"
+                : _compiler.CompileAsInteger(values);
         WriteLine($"x{store.Register}[{index}]{mask} = {value};");
     }
 

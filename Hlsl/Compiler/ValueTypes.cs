@@ -302,6 +302,8 @@ internal static class ValueTypes
             LoadStructuredNode { IsRaw: true } => true,
             LoadStructuredNode load => load.IsIntegerElement,
             ResourceLoadNode load => load.IsIntegerTexel,
+            TextureLoadOutputNode { IsIntegerTexel: true } => true,
+            IndexableTempLoadNode { IsIntegerElement: true } => true,
             ConsumeNode consume => consume.IsIntegerElement,
             ResourceInfoNode info => info.ReturnType == D3D10ResInfoReturnType.Uint,
             // Bitwise ops make an integer whatever they read: HLSL has no other type.

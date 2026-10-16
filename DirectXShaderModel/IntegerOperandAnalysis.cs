@@ -1249,9 +1249,11 @@ public sealed class IntegerOperandAnalysis
             ?.IsIntegerReturnType == true;
     }
 
+    // Integer where some store is an integer and none is float arithmetic: a mov
+    // of a float (bits copied, `b[j] = asuint(a[k])`) or an immediate says nothing.
     private bool IsIntegerIndexableTemp(int register, HashSet<RegisterComponentKey> integerRegisters)
     {
-        bool anyStore = false;
+        bool anyInteger = false;
         foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
         {
             if (instruction.Opcode.IsDeclaration() || !instruction.HasDestination)
@@ -1264,17 +1266,18 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
-            anyStore = true;
             if (instruction.Opcode.IsInteger())
             {
+                anyInteger = true;
                 continue;
             }
-            if (instruction.Opcode != D3D10Opcode.Mov
-                || instruction.GetOperandType(1) == OperandType.Immediate32
-                || instruction.GetOperandType(1) == OperandType.IndexableTemp)
+            if (instruction.Opcode != D3D10Opcode.Mov)
             {
-                // A float instruction, or a move whose source says nothing.
                 return false;
+            }
+            if (instruction.GetOperandType(1) is OperandType.Immediate32 or OperandType.IndexableTemp)
+            {
+                continue;
             }
             RegisterKey source = instruction.GetParamRegisterKey(1);
             int writeMask = instruction.GetDestinationWriteMask();
@@ -1288,14 +1291,13 @@ public sealed class IntegerOperandAnalysis
                 var sourceComponent = new RegisterComponentKey(source, swizzle[component]);
                 // Integer and not float as well: integer registers are shader-wide,
                 // and fxc reuses a register for an address and a float.
-                if (!integerRegisters.Contains(sourceComponent)
-                    || IsFloatTouched(sourceComponent))
+                if (integerRegisters.Contains(sourceComponent) && !IsFloatTouched(sourceComponent))
                 {
-                    return false;
+                    anyInteger = true;
                 }
             }
         }
-        return anyStore;
+        return anyInteger;
     }
 
     private HashSet<RegisterComponentKey> FindIntegerRegisters(ShaderModel shader)

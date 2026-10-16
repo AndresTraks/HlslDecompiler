@@ -13,6 +13,9 @@ public class TextureLoadOutputNode : HlslTreeNode, IHasComponentIndex
     // sample_aoffimmi's immediate texel offsets.
     public int[] SampleOffsets { get; set; }
 
+    // A gather from a Texture2D<uint> or <int> returns its integers.
+    public bool IsIntegerTexel { get; set; }
+
     private TextureLoadOutputNode(RegisterInputNode sampler, HlslTreeNode[] textureCoords, int componentIndex, RegisterInputNode texture)
     {
         AddInput(sampler);

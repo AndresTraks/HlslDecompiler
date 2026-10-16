@@ -1201,16 +1201,23 @@ public sealed class NodeCompiler
     /// </summary>
     private bool IsIntegerRegisterReadAsFloat(HlslTreeNode value)
     {
-        if (value is not RegisterInputNode register
-            || register.RegisterComponentKey.RegisterKey is not D3D10RegisterKey
+        // A relative read is typed by its array's base register.
+        RegisterComponentKey key = value switch
+        {
+            RegisterInputNode register => register.RegisterComponentKey,
+            RelativeAddressNode relative => relative.RegisterComponentKey,
+            _ => null,
+        };
+        if (key == null
+            || key.RegisterKey is not D3D10RegisterKey
                 { OperandType: OperandType.ConstantBuffer or OperandType.Input
                     or OperandType.InputPatchConstant or OperandType.InputControlPoint
                     or OperandType.OutputControlPoint })
         {
             return false;
         }
-        return _registers.GetDeclaredType(register.RegisterComponentKey) is DeclaredType.Int or DeclaredType.Uint
-            && ValueTypes.ReadAsInteger(register) == false;
+        return _registers.GetDeclaredType(key) is DeclaredType.Int or DeclaredType.Uint
+            && ValueTypes.ReadAsInteger(value) == false;
     }
 
     // An operand of a bitwise op or shift: a float is reinterpreted with asint,
@@ -1264,6 +1271,10 @@ public sealed class NodeCompiler
             HalfToFloatOperation => true,
             BitsToDoubleOperation => true,
             ComparisonNode => false,
+            IndexableTempLoadNode load => !load.IsIntegerElement,
+            // A select of two floats is one, whatever its recorded facts say.
+            MoveConditionalOperation select when IsFloatValued(select.Source1)
+                && IsFloatValued(select.Source2) => true,
             // Recorded facts, which templates hand on to the nodes they build.
             Operation operation => ValueTypes.ComputesInIntegers(operation) == false,
             _ => false,
@@ -3504,6 +3515,7 @@ public sealed class NodeCompiler
             TempVariableNode variable => variable.IsInteger && !variable.IsUnsigned && !variable.IsBool && !variable.IsBits,
             TempAssignmentNode assignment => IsSignedAlready(assignment.TempVariable),
             ConvertOperation { TargetType: "int" } => true,
+            IndexableTempLoadNode { IsIntegerElement: true } => true,
             AddOperation or SubtractOperation or MultiplyOperation
                 or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation or ShiftLeftOperation
                 => !node.Inputs.Any(IsUnsignedAlready) && node.Inputs.Any(IsSignedAlready),

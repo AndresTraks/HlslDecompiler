@@ -16,6 +16,8 @@ public class IndexableTempLoadNode : HlslTreeNode, IHasComponentIndex
     }
 
     public int Register { get; }
+    // Declared int: read where a float is wanted, it is the float's bits.
+    public bool IsIntegerElement { get; init; }
     public HlslTreeNode Index => Inputs[0];
     public int ComponentIndex { get; }
 

@@ -1218,9 +1218,21 @@ public sealed class NodeCompiler
     private string CompileIntegerOperand(IEnumerable<HlslTreeNode> components)
     {
         List<HlslTreeNode> list = components.ToList();
-        return IsFloatValued(list[0])
-            ? $"asint({Compile(list)})"
-            : CompileOperand(list);
+        if (IsFloatValued(list[0]))
+        {
+            return $"asint({Compile(list)})";
+        }
+        // A select's float branch is bits here too.
+        bool wasAssigningToInteger = _assigningToInteger;
+        _assigningToInteger = true;
+        try
+        {
+            return CompileOperand(list);
+        }
+        finally
+        {
+            _assigningToInteger = wasAssigningToInteger;
+        }
     }
 
     /// <summary>

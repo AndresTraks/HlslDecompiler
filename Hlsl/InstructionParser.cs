@@ -2718,7 +2718,8 @@ public class InstructionParser
     {
         foreach ((ConstantNode constant, uint bits) in _polymorphicImmediates)
         {
-            bool? consumedAsInteger = GetConsumedType(constant, _storedTypes);
+            bool? consumedAsInteger = GetConsumedType(constant, _storedTypes)
+                ?? OutputTypeCarrying(constant);
             // HLSL has no NaN literal, so NaN bits are an integer.
             if (consumedAsInteger == null && constant.IntegerValue == null
                 && float.IsNaN(BitConverter.UInt32BitsToSingle(bits)))
@@ -2745,6 +2746,47 @@ public class InstructionParser
                 }
             });
         }
+    }
+
+    // Integer where only moves, selects and joins carry the value, and only into
+    // integer outputs; else null. Never float: a join can hold it as bits.
+    private bool? OutputTypeCarrying(HlslTreeNode value)
+    {
+        var carried = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(value);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!carried.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode reader in node.Outputs)
+            {
+                if (reader is MoveOperation or PhiNode
+                    || (reader is MoveConditionalOperation && !ReferenceEquals(reader.Inputs[0], node)))
+                {
+                    pending.Push(reader);
+                }
+                else
+                {
+                    return null;
+                }
+            }
+        }
+        var types = new HashSet<bool>();
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var output in statement.Outputs)
+            {
+                if (output.Key.RegisterKey.IsOutput && carried.Contains(output.Value))
+                {
+                    types.Add(_integerOperandAnalysis.IsIntegerOutputSignature(output.Key));
+                }
+            }
+        });
+        return types.SetEquals([true]) ? true : null;
     }
 
     // What the readers of a value agree it is, looking through carrier nodes;

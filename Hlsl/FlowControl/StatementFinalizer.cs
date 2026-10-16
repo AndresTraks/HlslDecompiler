@@ -57,6 +57,10 @@ public class StatementFinalizer
         InsertTempVariableAssignments(_statements);
         LowerResolvedPhis();
         LoopRecovery.Recover(_statements);
+        if (_hasReturnValue)
+        {
+            LowerReturnedOutputJoins();
+        }
         SetReturnStatement(_statements);
         SplitUncarriedLoopValues();
         CoalesceCopies();
@@ -192,7 +196,9 @@ public class StatementFinalizer
                         && !ReferenceEquals(source, assignment.TempVariable))
                     .Select(assignment => (assignment.TempVariable, (TempVariableNode)Unmoved(assignment.Value)))];
                 if (copies.Count == 0
-                    || !copies.All(copy => CanCoalesce(copy.Copy, copy.Source, statement, statements, liveness)))
+                    || !copies.All(copy => CanCoalesce(copy.Copy, copy.Source, statement, statements, liveness))
+                    || SplitsAVector([.. copies.Select(copy => copy.Copy)], statement, statements)
+                    || SplitsAVector([.. copies.Select(copy => copy.Source)], statement, statements))
                 {
                     continue;
                 }
@@ -205,6 +211,34 @@ public class StatementFinalizer
                 break;
             }
         }
+    }
+
+    // Whether one instruction elsewhere assigns these lanes together with others of
+    // its register: merging only some leaves a vector named in two parts.
+    private static bool SplitsAVector(HashSet<TempVariableNode> variables, IStatement copyStatement,
+        List<IStatement> statements)
+    {
+        return statements.Any(statement =>
+        {
+            if (ReferenceEquals(statement, copyStatement))
+            {
+                return false;
+            }
+            List<KeyValuePair<RegisterComponentKey, TempAssignmentNode>> assignments = [.. statement.Outputs
+                .Where(output => output.Value is TempAssignmentNode)
+                .Select(output => KeyValuePair.Create(output.Key, (TempAssignmentNode)output.Value))];
+            return assignments.Any(inside => variables.Contains(inside.Value.TempVariable)
+                && assignments.Any(outside => !variables.Contains(outside.Value.TempVariable)
+                    && outside.Key.RegisterKey.Equals(inside.Key.RegisterKey)
+                    && OneInstruction(Unmoved(inside.Value.Value), Unmoved(outside.Value.Value))));
+        });
+    }
+
+    // Immediates are not stamped with their instruction; a register's two lanes of
+    // immediates in one statement are taken as one mov.
+    private static bool OneInstruction(HlslTreeNode a, HlslTreeNode b)
+    {
+        return HlslTreeNode.IsSameInstruction(a, b) || (a is ConstantNode && b is ConstantNode);
     }
 
     private static HlslTreeNode Unmoved(HlslTreeNode node)
@@ -539,7 +573,8 @@ public class StatementFinalizer
                 {
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
                     // Before the readers move to the variable: they are what types it.
-                    bool? isIntegerValue = ValueTypes.IsIntegerValue(tempValue);
+                    // Moved only into outputs, the signature types it before the register.
+                    bool? isIntegerValue = ValueTypes.IsIntegerValue(tempValue) ?? OutputTypeHolding(tempValue);
                     bool? isUnsignedValue = ValueTypes.IsUnsignedValue(tempValue);
                     bool isInteger = isIntegerValue
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
@@ -893,10 +928,6 @@ public class StatementFinalizer
             return;
         }
 
-        if (ReferenceEquals(statements, _statements))
-        {
-            LowerReturnedOutputJoins();
-        }
         if (lastStatement is AssignmentStatement)
         {
             statements[statements.Count - 1] =
@@ -946,58 +977,118 @@ public class StatementFinalizer
     /// </summary>
     private bool ReturnOnceAfter(IList<IStatement> statements, IfStatement ifStatement)
     {
-        if (ifStatement.TrueBody.Count == 0 || ifStatement.FalseBody.Count == 0
-            || ifStatement.TrueBody[^1] is not AssignmentStatement trueEnd
-            || ifStatement.FalseBody[^1] is not AssignmentStatement falseEnd)
+        if (FallThroughPaths(ifStatement).Count != 2)
         {
             return false;
         }
-        List<RegisterComponentKey> outputs = [.. trueEnd.Outputs.Keys
+        // An output assignment holds every active lane.
+        AssignmentStatement written = null;
+        new StatementVisitor(ifStatement.TrueBody).Visit(statement =>
+        {
+            if (statement is AssignmentStatement assignment && assignment.Outputs.Keys
+                .Any(key => key.RegisterKey.IsOutput && !IsCarried(assignment, key)))
+            {
+                written = assignment;
+            }
+        });
+        List<RegisterComponentKey> outputs = [.. (written?.Outputs.Keys ?? [])
             .Where(key => key.RegisterKey.IsOutput)
             .OrderBy(key => key.ComponentIndex)];
         // SM4+ only; a ps_3_0 return per branch costs nothing.
         if (outputs.Count == 0
             || outputs[0].RegisterKey is not D3D10RegisterKey
             || outputs.Select(key => key.RegisterKey).Distinct().Count() != 1
-            || !outputs.All(key => falseEnd.Outputs.ContainsKey(key))
-            || falseEnd.Outputs.Keys.Count(key => key.RegisterKey.IsOutput) != outputs.Count
-            // Written there, not carried in from before the if.
-            || outputs.Any(key => IsCarried(trueEnd, key) || IsCarried(falseEnd, key)))
+            // Written in every path, not carried in from before the if.
+            || !outputs.All(key => LastWrite(ifStatement.TrueBody, key) != null
+                && LastWrite(ifStatement.FalseBody, key) != null))
         {
             return false;
         }
-        TempVariableNode[] variables = [.. outputs.Select(key => new TempVariableNode
+        foreach (RegisterComponentKey key in outputs)
         {
-            IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(key) == true,
-        })];
-        for (int i = 0; i < outputs.Count; i++)
-        {
-            foreach (AssignmentStatement end in new[] { trueEnd, falseEnd })
+            var variable = new TempVariableNode
             {
-                end.Outputs[outputs[i]] = new TempAssignmentNode(variables[i], end.Outputs[outputs[i]])
-                {
-                    IsReassignment = true,
-                };
-            }
-            ifStatement.Outputs[outputs[i]] = variables[i];
+                IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(key) == true,
+            };
+            AssignJoinedOutput(ifStatement, key, variable);
+            ifStatement.Outputs[key] = variable;
         }
         return true;
     }
 
+    // The branches that reach the end of the if (an absent else is an empty one).
+    private static List<IList<IStatement>> FallThroughPaths(IfStatement ifStatement)
+    {
+        return [.. new[] { ifStatement.TrueBody, ifStatement.FalseBody ?? [] }
+            .Where(body => body.Count == 0 || body[^1] is not
+                (ReturnStatement or DiscardStatement or BreakStatement or ContinueStatement))];
+    }
+
+    // The body's last write of the lane when every path through it writes the lane:
+    // an assignment, or an if whose branches each write it. Null otherwise.
+    private static IStatement LastWrite(IList<IStatement> body, RegisterComponentKey key)
+    {
+        for (int i = body.Count - 1; i >= 0; i--)
+        {
+            IStatement statement = body[i];
+            if (statement is AssignmentStatement assignment)
+            {
+                if (assignment.Outputs.ContainsKey(key) && !IsCarried(assignment, key))
+                {
+                    return assignment;
+                }
+            }
+            else if (statement is IfStatement nested)
+            {
+                List<IList<IStatement>> paths = FallThroughPaths(nested);
+                int writing = paths.Count(path => Writes(path, key));
+                if (writing != 0)
+                {
+                    return writing == paths.Count && paths.All(path => LastWrite(path, key) != null)
+                        ? nested : null;
+                }
+            }
+            else if (Writes([statement], key))
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static bool Writes(IList<IStatement> statements, RegisterComponentKey key)
+    {
+        bool writes = false;
+        new StatementVisitor(statements).Visit(statement => writes |= statement is AssignmentStatement
+            && statement.Outputs.ContainsKey(key) && !IsCarried(statement, key));
+        return writes;
+    }
+
     // An if writing some output lanes, then later statements and the return: the
     // single-value return reads those lanes from the if's join. An if at the end
-    // returns in its branches instead (or via ReturnOnceAfter).
+    // returns in its branches instead (or via ReturnOnceAfter), but still returns
+    // lanes earlier ifs joined. A ret inside a block reads them the same way.
     private void FindReturnedOutputJoins()
     {
-        if (!_hasReturnValue || _hasOutputStruct || _statements.Count == 0
-            || _statements[^1] is IfStatement or ReturnStatement)
+        if (!_hasReturnValue || _hasOutputStruct || _statements.Count == 0)
         {
             return;
         }
-        IStatement last = _statements[^1];
+        List<IStatement> returns = [];
+        if (_statements[^1] is not ReturnStatement)
+        {
+            returns.Add(_statements[^1]);
+        }
         new StatementVisitor(_statements).Visit(statement =>
         {
-            if (statement is not IfStatement ifStatement)
+            if (statement is ReturnStatement)
+            {
+                returns.Add(statement);
+            }
+        });
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is not IfStatement ifStatement || ReferenceEquals(statement, _statements[^1]))
             {
                 return;
             }
@@ -1007,8 +1098,8 @@ public class StatementFinalizer
                     && output.Value is PhiNode { IsLoopHeader: false } join
                     && !(ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entry)
                         && ReferenceEquals(entry, join))
-                    && last.Outputs.TryGetValue(output.Key, out HlslTreeNode returned)
-                    && ReferenceEquals(returned, join))
+                    && returns.Any(r => r.Outputs.TryGetValue(output.Key, out HlslTreeNode returned)
+                        && ReferenceEquals(returned, join)))
                 {
                     _returnedOutputJoins[join] = ifStatement;
                 }
@@ -1044,19 +1135,16 @@ public class StatementFinalizer
     private static void AssignJoinedOutput(IfStatement ifStatement, RegisterComponentKey key,
         TempVariableNode variable)
     {
-        foreach (IList<IStatement> body in new[] { ifStatement.TrueBody, ifStatement.FalseBody })
+        foreach (IList<IStatement> body in FallThroughPaths(ifStatement))
         {
-            IStatement end = body?.Count > 0 ? body[^1] : null;
-            HlslTreeNode value = null;
-            end?.Outputs.TryGetValue(key, out value);
-            if (end is IfStatement nested && value is PhiNode
-                && !(nested.Inputs.TryGetValue(key, out HlslTreeNode entry) && ReferenceEquals(entry, value)))
+            IStatement write = LastWrite(body, key);
+            if (write is IfStatement nested)
             {
                 AssignJoinedOutput(nested, key, variable);
             }
-            else if (end is AssignmentStatement && value != null && !IsCarried(end, key))
+            else if (write != null)
             {
-                end.Outputs[key] = new TempAssignmentNode(variable, value) { IsReassignment = true };
+                write.Outputs[key] = new TempAssignmentNode(variable, write.Outputs[key]) { IsReassignment = true };
             }
             else
             {
@@ -1378,6 +1466,32 @@ public class StatementFinalizer
                 }
             }
         }
+    }
+
+    private bool? OutputTypeHolding(HlslTreeNode node)
+    {
+        if (_integerOperandAnalysis == null)
+        {
+            return null;
+        }
+        var types = new HashSet<bool>();
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var output in statement.Outputs)
+            {
+                HlslTreeNode value = output.Value;
+                while (value is MoveOperation move)
+                {
+                    value = move.Inputs[0];
+                }
+                if (output.Key.RegisterKey.IsOutput && ReferenceEquals(value, node)
+                    && !IsCarried(statement, output.Key))
+                {
+                    types.Add(_integerOperandAnalysis.IsIntegerOutputSignature(output.Key));
+                }
+            }
+        });
+        return types.Count == 1 ? types.Single() : null;
     }
 
     private IStatement[] FindHoldingStatements(HlslTreeNode node)

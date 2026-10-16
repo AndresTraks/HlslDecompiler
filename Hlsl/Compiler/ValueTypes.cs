@@ -292,6 +292,9 @@ internal static class ValueTypes
                 => first.IntegerValue != null && second.IntegerValue != null ? true
                     : first.IntegerValue == null && second.IntegerValue == null ? false
                     : (bool?)null,
+            // An integer arm beside an immediate (`and mask, bfi(...)`) makes an integer.
+            MoveConditionalOperation select when select.Source1 is ConstantNode != select.Source2 is ConstantNode
+                => MadeType(select.Source1 is ConstantNode ? select.Source2 : select.Source1) == true ? true : null,
             // A comparison makes a mask (all ones or zeroes), an integer.
             ComparisonNode => true,
             // Raw buffers return uints; structured, typed and consumed loads take

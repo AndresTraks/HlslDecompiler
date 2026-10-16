@@ -299,10 +299,11 @@ public class HlslAstWriter : HlslWriter
     private string CompileAssignment(HlslTreeNode[] group)
     {
         MarkPartialPrecision(group);
-        if (group[0] is TempAssignmentNode { IsReassignment: true }
+        // Lanes declared here may share the group with lanes nothing declares.
+        if (group.Any(node => node is TempAssignmentNode { IsReassignment: true })
             && group.All(node => node is TempAssignmentNode assignment
-                && !_everDeclaredVariables.Contains(assignment.TempVariable)
-                && !_declaredVariables.Contains(assignment.TempVariable)))
+                && !_declaredVariables.Contains(assignment.TempVariable)
+                && (!assignment.IsReassignment || !_everDeclaredVariables.Contains(assignment.TempVariable))))
         {
             foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
             {

@@ -82,6 +82,8 @@ reworded ps_5_0/environment_lighting
 reworded ps_5_0/frexp_mantissa
 reworded ps_5_0/gather_uint_texture
 reworded ps_5_0/gbuffer_write
+reworded ps_5_0/icb_signed_table
+reworded ps_5_0/icb_special_floats
 reworded ps_5_0/inf_select_shared
 reworded ps_5_0/int_output_select
 reworded ps_5_0/integer_texture_load

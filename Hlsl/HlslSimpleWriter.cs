@@ -4494,6 +4494,12 @@ public class HlslSimpleWriter : HlslWriter
             key = new D3D10RegisterKey(OperandType.ConstantBuffer,
                 (int)indices[0].Immediate, (int)indices[ElementIndex].Immediate);
         }
+        // `icb[r0.x + 4]`: the immediate is the row its array starts at.
+        else if (instruction.GetOperandType(operandIndex) == OperandType.ImmediateConstantBuffer)
+        {
+            key = new D3D10RegisterKey(OperandType.ImmediateConstantBuffer,
+                (int)instruction.OperandTokens.GetOperandIndices(operandIndex)[0].Immediate);
+        }
         return _registers.GetDeclaredType(new RegisterComponentKey(
             key, instruction.GetSourceSwizzleComponents(operandIndex)[0]));
     }

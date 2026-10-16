@@ -781,7 +781,8 @@ public abstract class HlslWriter
             foreach ((string name, int start, int length) in
                 _registers.ImmediateConstantBufferArrays())
             {
-                string type = _registers.ImmediateConstantBufferHoldsBits ? "uint4" : "float4";
+                bool holdsBits = _registers.ImmediateConstantBufferHoldsBits(start);
+                string type = holdsBits ? "int4" : "float4";
                 WriteLine("static const {0} {1}[{2}] =", type, name, length);
                 WriteLine("{");
                 indent = "	";
@@ -789,8 +790,8 @@ public abstract class HlslWriter
                     .Skip(start).Take(length))
                 {
                     string components = string.Join(", ", row.Value.Select(
-                        v => _registers.ImmediateConstantBufferHoldsBits
-                            ? $"0x{BitConverter.SingleToUInt32Bits(v):x8}"
+                        v => holdsBits
+                            ? $"{BitConverter.SingleToInt32Bits(v)}"
                             : v.ToString(CultureInfo.InvariantCulture)));
                     WriteLine($"{type}({components}),");
                 }

@@ -38,10 +38,21 @@ public sealed class RegisterState
 
     /// <summary>
     /// An integer table: small integers are denormal floats, which fxc flushes in a
-    /// float literal (so does NaN or infinity have no literal). Declared uint4 then.
+    /// float literal (so does NaN or infinity have no literal). Declared int4 then:
+    /// signed, as negative entries need, and a utof says (uint). Per array.
     /// </summary>
-    public bool ImmediateConstantBufferHoldsBits => ImmediateConstantBuffer
-        .Any(row => row.Value.Any(value => float.IsSubnormal(value) || !float.IsFinite(value)));
+    public bool ImmediateConstantBufferHoldsBits(int row)
+    {
+        foreach ((_, int start, int length) in ImmediateConstantBufferArrays())
+        {
+            if (row >= start && row < start + length)
+            {
+                return ImmediateConstantBuffer.Skip(start).Take(length)
+                    .Any(r => r.Value.Any(value => float.IsSubnormal(value) || !float.IsFinite(value)));
+            }
+        }
+        return false;
+    }
 
     public bool IsImmediateConstantBufferIdentity(int baseRow, int width)
     {
@@ -1717,7 +1728,9 @@ public sealed class RegisterState
         }
         if (registerComponent.RegisterKey is D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer })
         {
-            return ImmediateConstantBufferHoldsBits ? DeclaredType.Uint : DeclaredType.Float;
+            return ImmediateConstantBufferHoldsBits(registerComponent.RegisterKey.Number)
+                ? DeclaredType.Int
+                : DeclaredType.Float;
         }
         if (FindConstantOfComponent(registerComponent) is ConstantDeclaration constant)
         {

@@ -498,6 +498,9 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "local_array_select")]
     [TestCase("ps_5_0", "icb_integer_table")]
     [TestCase("ps_5_0", "utof_float_bits")]
+    [TestCase("ps_5_0", "icb_signed_table")]
+    [TestCase("ps_5_0", "icb_special_floats")]
+    [TestCase("ps_5_0", "icb_two_tables")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

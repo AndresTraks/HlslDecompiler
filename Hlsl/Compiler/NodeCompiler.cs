@@ -1708,6 +1708,8 @@ public sealed class NodeCompiler
                 or MoveOperation or MoveConditionalOperation => false,
             // itof reads an integer whatever its bits came from.
             ConvertOperation convert => convert.TargetType is "int" or "uint",
+            // These test a float, though they make a mask.
+            IsNotANumberOperation or IsInfiniteOperation or IsFiniteOperation => true,
             _ => (ValueTypes.ComputesInIntegers(operation) ?? ValueTypes.IsIntegerValue(operation)) != true,
         };
         _floatArithmeticOperandDepth = _readingAsFloat
@@ -3536,6 +3538,7 @@ public sealed class NodeCompiler
             TempAssignmentNode assignment => IsSignedAlready(assignment.TempVariable),
             ConvertOperation { TargetType: "int" } => true,
             IndexableTempLoadNode { IsIntegerElement: true } => true,
+            RelativeAddressNode relative => DeclaredTypeOfVertexRead(relative) == DeclaredType.Int,
             AddOperation or SubtractOperation or MultiplyOperation
                 or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation or ShiftLeftOperation
                 => !node.Inputs.Any(IsUnsignedAlready) && node.Inputs.Any(IsSignedAlready),

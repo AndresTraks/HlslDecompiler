@@ -19,7 +19,7 @@ PS_OUT main(PS_IN i)
 	o.sv_target = i.c;
 	o.sv_stencilref = asfloat(asint(i.c.x) & 255);
 	r0 = (0.5 < i.c.y) ? -1 : 0;
-	o.sv_coverage = (r0.x != 0) ? 15 : (int)i.c.z;
+	o.sv_coverage = (r0.x != 0) ? 15 : asint(i.c.z);
 
 	return o;
 }

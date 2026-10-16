@@ -26,7 +26,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	int4 r0;
 	r0.x = 0 + 1;
 	r0.x = r0.x & 3;
-	r0.y = (int)0;
+	r0.y = asint(0);
 	r0.xzw = asint(-(patch[r0.x].pos.xyz) + patch[r0.y].pos.xyz);
 	r0.x = asint(dot(asfloat(r0.xzw), asfloat(r0.xzw)));
 	r0.x = asint(sqrt(asfloat(r0.x)));
@@ -34,7 +34,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	o.edges[0] = asfloat(r0.x);
 	r0.x = 1 + 1;
 	r0.x = r0.x & 3;
-	r0.y = (int)1;
+	r0.y = asint(1);
 	r0.xzw = asint(-(patch[r0.x].pos.xyz) + patch[r0.y].pos.xyz);
 	r0.x = asint(dot(asfloat(r0.xzw), asfloat(r0.xzw)));
 	r0.x = asint(sqrt(asfloat(r0.x)));
@@ -42,7 +42,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	o.edges[1] = asfloat(r0.x);
 	r0.x = 2 + 1;
 	r0.x = r0.x & 3;
-	r0.y = (int)2;
+	r0.y = asint(2);
 	r0.xzw = asint(-(patch[r0.x].pos.xyz) + patch[r0.y].pos.xyz);
 	r0.x = asint(dot(asfloat(r0.xzw), asfloat(r0.xzw)));
 	r0.x = asint(sqrt(asfloat(r0.x)));
@@ -50,7 +50,7 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	o.edges[2] = asfloat(r0.x);
 	r0.x = 3 + 1;
 	r0.x = r0.x & 3;
-	r0.y = (int)3;
+	r0.y = asint(3);
 	r0.xzw = asint(-(patch[r0.x].pos.xyz) + patch[r0.y].pos.xyz);
 	r0.x = asint(dot(asfloat(r0.xzw), asfloat(r0.xzw)));
 	r0.x = asint(sqrt(asfloat(r0.x)));
@@ -68,10 +68,10 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	r0.x = asint(asfloat(r0.x) + patch[2].pos.z);
 	r0.x = asint(asfloat(r0.x) + patch[3].pos.z);
 	o.center.z = asfloat(r0.x) * 0.25;
-	r0.x = (int)0;
+	r0.x = asint(0);
 	r0.y = asint(max(o.edges[0].x, o.edges[2].x));
 	o.inside[0] = asfloat(r0.y);
-	r0.x = (int)1;
+	r0.x = asint(1);
 	r0.y = asint(max(o.edges[1].x, o.edges[3].x));
 	o.inside[1] = asfloat(r0.y);
 

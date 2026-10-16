@@ -30,7 +30,7 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch, uint sv_primitiveid : SV_Primitiv
 	o.edges[2] = patch[0].id;
 	o.inside = (float)(uint)patch[1].id;
 	r0 = (0 < patch[2].pos.x) ? -1 : 0;
-	o.bits = (r0.x != 0) ? (int)patch[2].pos.y : sv_primitiveid;
+	o.bits = (r0.x != 0) ? asint(patch[2].pos.y) : sv_primitiveid;
 
 	return o;
 }
@@ -45,11 +45,11 @@ HS_OUT main(InputPatch<HS_IN, 3> patch, uint sv_outputcontrolpointid : SV_Output
 	HS_OUT o;
 
 	int3 r0;
-	r0.x = (int)sv_outputcontrolpointid;
+	r0.x = asint(sv_outputcontrolpointid);
 	o.pos = patch[r0.x].pos;
 	r0.y = (0 < patch[r0.x].pos.w) ? -1 : 0;
 	r0.z = (int)sv_outputcontrolpointid + patch[r0.x].id;
-	o.id = (r0.y != 0) ? (int)patch[r0.x].pos.z : r0.z;
+	o.id = (r0.y != 0) ? asint(patch[r0.x].pos.z) : r0.z;
 
 	return o;
 }

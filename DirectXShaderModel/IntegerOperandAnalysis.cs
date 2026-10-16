@@ -1422,10 +1422,11 @@ public sealed class IntegerOperandAnalysis
                     }
                     foreach (RegisterComponentKey component in group)
                     {
-                        // Inputs and constants are typed by their declarations
-                        // only; a float input moved into an int register stays float.
+                        // Inputs, constants and outputs are typed by their declarations
+                        // only; a float input moved into an int register stays float,
+                        // and so does an output fed from a reused register.
                         if (component.RegisterKey is D3D10RegisterKey
-                            { OperandType: OperandType.Input or OperandType.ConstantBuffer })
+                            { OperandType: OperandType.Input or OperandType.ConstantBuffer or OperandType.Output })
                         {
                             continue;
                         }

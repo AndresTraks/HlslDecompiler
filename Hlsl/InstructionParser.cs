@@ -2748,10 +2748,12 @@ public class InstructionParser
         }
     }
 
-    // Integer where only moves, selects and joins carry the value, and only into
-    // integer outputs; else null. Never float: a join can hold it as bits.
+    // The signature's type where only moves, selects and joins carry the value into
+    // signature outputs; else null. Float only without a join: a join's variable
+    // can hold it as bits.
     private bool? OutputTypeCarrying(HlslTreeNode value)
     {
+        bool joined = false;
         var carried = HlslTreeNode.NewNodeSet();
         var pending = new Stack<HlslTreeNode>();
         pending.Push(value);
@@ -2767,6 +2769,7 @@ public class InstructionParser
                 if (reader is MoveOperation or PhiNode
                     || (reader is MoveConditionalOperation && !ReferenceEquals(reader.Inputs[0], node)))
                 {
+                    joined |= reader is PhiNode;
                     pending.Push(reader);
                 }
                 else
@@ -2780,13 +2783,14 @@ public class InstructionParser
         {
             foreach (var output in statement.Outputs)
             {
-                if (output.Key.RegisterKey.IsOutput && carried.Contains(output.Value))
+                if (output.Key.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Output }
+                    && carried.Contains(output.Value))
                 {
                     types.Add(_integerOperandAnalysis.IsIntegerOutputSignature(output.Key));
                 }
             }
         });
-        return types.SetEquals([true]) ? true : null;
+        return types.Count == 1 && (types.Single() || !joined) ? types.Single() : null;
     }
 
     // What the readers of a value agree it is, looking through carrier nodes;

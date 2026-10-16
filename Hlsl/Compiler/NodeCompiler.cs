@@ -1683,6 +1683,8 @@ public sealed class NodeCompiler
                 or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
                 or BitFieldExtractOperation or BitFieldInsertOperation
                 or MoveOperation or MoveConditionalOperation => false,
+            // itof reads an integer whatever its bits came from.
+            ConvertOperation convert => convert.TargetType is "int" or "uint",
             _ => (ValueTypes.ComputesInIntegers(operation) ?? ValueTypes.IsIntegerValue(operation)) != true,
         };
         _floatArithmeticOperandDepth = _readingAsFloat

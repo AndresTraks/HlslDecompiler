@@ -24,7 +24,7 @@ VS_OUT main(VS_IN i)
 	o.sv_position.z = dot(i.position, transpose(m)[2]);
 	o.sv_position.w = dot(i.position, transpose(m)[3]);
 	r0 = (0 < i.position.x) ? -1 : 0;
-	o.b = (r0.x != 0) ? (int)i.position.y : i.sv_vertexid;
+	o.b = (r0.x != 0) ? asint(i.position.y) : i.sv_vertexid;
 	o.id = i.sv_vertexid * 3 + 1;
 	o.f = asfloat(i.sv_vertexid | 1065353216);
 

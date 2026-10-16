@@ -587,6 +587,8 @@ public class StatementFinalizer
                     if (existing != null
                         && ((isIntegerValue != null && existing.IsInteger != isIntegerValue
                                 && !tempUsages.Any(u => u is PhiNode))
+                            // A select on a condition overwriting it holds a value.
+                            || (existing.IsBool && !HoldsOnlyACondition(tempValue, tempUsages))
                             || (!Reads(tempValue, existing)
                                 && !tempUsages.Any(u => u is PhiNode phi && Merges(phi, existing)))))
                     {

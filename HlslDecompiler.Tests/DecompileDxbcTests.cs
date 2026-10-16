@@ -485,6 +485,9 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "select_immediate_bits")]
     [TestCase("ps_5_0", "int_output_select")]
     [TestCase("ps_5_0", "return_after_discard")]
+    [TestCase("ps_5_0", "return_float_immediate")]
+    [TestCase("cs_5_0", "frexp_structured")]
+    [TestCase("gs_5_0", "select_overwrites_condition")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

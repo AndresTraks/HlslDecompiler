@@ -17,7 +17,7 @@ uint4 main(PS_IN i) : SV_Target
 		r0.x = asint(i.texcoord.x);
 	}
 	r1 = (4 < i.idx) ? -1 : 0;
-	r0.y = (r1.x != 0) ? 1065353216 : (int)i.texcoord.z;
+	r0.y = (r1.x != 0) ? 1065353216 : asint(i.texcoord.z);
 	r0.zw = asint(i.texcoord.zw);
 	o = r0;
 

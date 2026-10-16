@@ -1381,7 +1381,12 @@ public class HlslSimpleWriter : HlslWriter
         {
             return name;
         }
-        if (IsFloatValue(instruction))
+        // Only a temp holds an integer as a number. A float input or uniform is bits
+        // in an int register, and a float output keeps the bits it is given.
+        bool sourceIsTemp = instruction.GetOperandType(sourceIndex) is OperandType.Temp or OperandType.IndexableTemp;
+        if (IsFloatValue(instruction)
+            || (!sourceIsTemp && source == ComponentStorage.Numeric)
+            || (instruction.GetOperandType(0) == OperandType.Output && destination == ComponentStorage.Numeric))
         {
             return source == ComponentStorage.Integer ? $"asfloat({name})" : AsInt(name);
         }

@@ -113,10 +113,6 @@ public class EquivalenceTests
             + "a mad as its number, where fxc wrote no utof because its bits were "
             + "meant. The AST writer, which reads asfloat(constants.bits), computes "
             + "the same.")],
-        ["gs_5_0/mixed_bits_vertex"] = [("instruction",
-            "A movc between a float input and an integer: the instruction writer "
-            + "converts the float operand where the movc copies its bits. The AST "
-            + "writer, which reinterprets it, computes the same.")],
         ["gs_5_0/indexed_bits_read"] = [("instruction",
             "The same movc the other way round: the instruction writer selects the "
             + "uint id beside a float, so it is converted to a float where the movc "
@@ -136,14 +132,6 @@ public class EquivalenceTests
             + "register declared float as its number, by convention, beside a "
             + "float's bits, and the movc into the uint target converts both. The AST "
             + "writer, which selects uint2(asuint(x), index), computes the same.")],
-        ["vs_4_0/keyword_semantic"] = [("instruction",
-            "A movc between a float input and an integer: the instruction writer "
-            + "converts the float operand where the movc copies its bits. The AST "
-            + "writer, which reinterprets it, computes the same.")],
-        ["vs_5_0/mixed_bits_outputs"] = [("instruction",
-            "A movc between a float input and an integer: the instruction writer "
-            + "converts the float operand where the movc copies its bits. The AST "
-            + "writer, which reinterprets it, computes the same.")],
     };
 
     private const int Trials = 8;

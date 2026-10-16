@@ -3567,6 +3567,14 @@ public class HlslSimpleWriter : HlslWriter
             return _registers.GetRegisterName(
                 new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
         }
+        // Likewise a patch constant an unrolled join phase reads by its instance.
+        if (operandType == OperandType.InputPatchConstant && instruction.ForkInstance is int readInstance)
+        {
+            var readKey = new D3D10RegisterKey(
+                OperandType.InputPatchConstant, (int)operandIndices[0].Immediate + readInstance);
+            return _registers.GetRegisterName(new RegisterComponentKey(readKey,
+                instruction.GetSourceSwizzleComponents(operandIndex)[0]));
+        }
         // Control points are indexed like geometry shader vertices.
         if (operandType is OperandType.Input or OperandType.InputControlPoint
             or OperandType.OutputControlPoint)
@@ -3578,6 +3586,11 @@ public class HlslSimpleWriter : HlslWriter
                 var arrayKey = new D3D10RegisterKey(
                     OperandType.Input, (int)operandIndices[0].Immediate);
                 return $"{_registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0))}[{index}]";
+            }
+            // The vertex is the relative register plus the immediate (`vocp[r0.x + 3]`).
+            if (operandIndices[0].Immediate != 0)
+            {
+                index = $"{index} + {operandIndices[0].Immediate}";
             }
             // The member is found by component: two semantics can share a register.
             bool isOutputPatch = operandType == OperandType.OutputControlPoint;
@@ -3846,7 +3859,7 @@ public class HlslSimpleWriter : HlslWriter
         D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
 
         // Each unrolled copy of an instanced phase knows its own instance number.
-        if (registerKey.OperandType == OperandType.InputForkInstanceID)
+        if (registerKey.OperandType is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
         {
             return (instruction.ForkInstance ?? 0).ToString(_culture);
         }

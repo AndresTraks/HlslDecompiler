@@ -63,6 +63,7 @@ public class TemplateMatcher
             // First, so later stages see one canonical spelling of each value.
             NodeStage("Arithmetic identities",
                 new AddConstantsTemplate(),
+                new BitwiseConstantsTemplate(),
                 new ModuloConstantsTemplate(),
                 new AddNegateTemplate(),
                 new AddNegativeTemplate(),

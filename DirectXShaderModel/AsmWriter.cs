@@ -1693,6 +1693,7 @@ public class AsmWriter
             OperandType.InputPatchConstant => "vpc",
             OperandType.OutputControlPointID => "vOutputControlPointID",
             OperandType.InputForkInstanceID => "vForkInstanceID",
+            OperandType.InputJoinInstanceID => "vJoinInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
             OperandType.FunctionBody => "fb",

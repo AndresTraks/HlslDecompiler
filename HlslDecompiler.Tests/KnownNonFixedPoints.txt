@@ -38,6 +38,7 @@ reworded cs_5_0/integer_store_bits
 reworded cs_5_0/typed_view_width
 reworded ds_5_0/isoline_curve
 reworded hs_5_0/carried_constants
+reworded hs_5_0/output_patch_index
 reworded hs_5_0/patch_semantic_index
 reworded hs_5_0/split_control_points
 reworded ps_3_0/guarded_average

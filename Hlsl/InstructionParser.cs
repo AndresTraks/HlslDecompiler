@@ -210,9 +210,10 @@ public class InstructionParser
 
     private void ParseInstruction(D3D10Instruction instruction)
     {
-        // vForkInstanceID needs no declaration: unrolled phases read it as a constant.
+        // vForkInstanceID and vJoinInstanceID need no declaration: unrolled phases
+        // read them as constants.
         if (instruction.Opcode == D3D10Opcode.DclInput
-            && instruction.GetOperandType(0) == OperandType.InputForkInstanceID)
+            && instruction.GetOperandType(0) is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
         {
             return;
         }
@@ -1893,6 +1894,19 @@ public class InstructionParser
         }
         int offset = constant.IntegerValue ?? (int)constant.Value;
         return new D3D10RegisterKey(OperandType.Output, (int)indices[0].Immediate + offset);
+    }
+
+    // The value of an operand's first relative index register where it is a constant.
+    private int? RelativeIndexConstant(D3D10Instruction instruction, int operandIndex)
+    {
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+        var indexKey = new RegisterComponentKey(new D3D10RegisterKey(indexType, indexNumber), indexComponent);
+        return ActiveOutputs != null
+            && ActiveOutputs.TryGetValue(indexKey, out HlslTreeNode value)
+            && IndexConstant(value) is ConstantNode constant
+            ? constant.IntegerValue ?? (int)constant.Value
+            : null;
     }
 
     // Looks through the movs fxc copies vForkInstanceID with.
@@ -3733,6 +3747,19 @@ public class InstructionParser
                 inputs[i] = ApplyModifier(load, instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
+            // A patch constant indexed by an unrolled phase's instance is a constant
+            // index in each copy: `vpc[r0.x + 2]` with r0.x the join instance.
+            if (operandType == OperandType.InputPatchConstant
+                && operandIndices.Length == 1 && operandIndices[0].IsRelative
+                && RelativeIndexConstant(instruction, inputParameterIndex) is int instanceOffset)
+            {
+                byte[] patchSwizzle = instruction.GetSourceSwizzleComponents(inputParameterIndex);
+                var patchKey = new D3D10RegisterKey(operandType, (int)operandIndices[0].Immediate + instanceOffset);
+                inputs[i] = ApplyModifier(
+                    GetActiveOutput(new RegisterComponentKey(patchKey, patchSwizzle[componentIndex])),
+                    instruction.GetOperandModifier(inputParameterIndex));
+                continue;
+            }
             if (operandIndices.Any(index => index.IsRelative))
             {
                 inputs[i] = operandType switch
@@ -3751,7 +3778,7 @@ public class InstructionParser
                     inputs[i], instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
-            if (operandType == OperandType.InputForkInstanceID)
+            if (operandType is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
             {
                 inputs[i] = new ConstantNode(instruction.ForkInstance ?? 0);
                 continue;

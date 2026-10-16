@@ -643,9 +643,10 @@ public class D3D10Instruction : Instruction
     public override int GetSourceSwizzle(int srcIndex)
     {
         D3D10OperandNumComponents componentSelection = GetOperandComponentSelection(srcIndex);
+        // A one-component operand (vOutputControlPointID) gives its value to every lane.
         if (componentSelection == D3D10OperandNumComponents.Operand1Component)
         {
-            return (0 << 0) | (1 << 2) | (2 << 4) | (3 << 6);
+            return 0;
         }
         else if (componentSelection == D3D10OperandNumComponents.Operand4Component)
         {

@@ -1587,14 +1587,20 @@ public class D3D10Machine
                     return [.. Named($"OUTPUTPOINT{register}[{point}]").Select(BitConverter.SingleToUInt32Bits)];
                 }
             case OperandType.InputPatchConstant:
-                // In a hull shader, a join phase's vpc# is what a fork phase wrote
-                // to o#; fork and join run in one program.
-                if (_shader.Type == ShaderType.Hull)
                 {
-                    return _output[instruction.GetParamRegisterNumber(index)];
+                    // `vpc[r0.x + 2]` over a dcl_indexrange, as an instanced join reads.
+                    var indices = instruction.OperandTokens.GetOperandIndices(index);
+                    int patchRegister = indices.Length == 1 && indices[0].IsRelative
+                        ? (int)indices[0].Immediate + RelativeIndex(instruction, index, 0)
+                        : instruction.GetParamRegisterNumber(index);
+                    // In a hull shader, a join phase's vpc# is what a fork phase wrote
+                    // to o#; fork and join run in one program.
+                    if (_shader.Type == ShaderType.Hull)
+                    {
+                        return _output[Math.Clamp(patchRegister, 0, _output.Length - 1)];
+                    }
+                    return [.. Named($"vpc{patchRegister}").Select(BitConverter.SingleToUInt32Bits)];
                 }
-                return [.. Named($"vpc{instruction.GetParamRegisterNumber(index)}")
-                    .Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.InputDomainPoint:
                 return [.. Named("vDomain").Select(BitConverter.SingleToUInt32Bits)];
             case OperandType.Output:
@@ -1633,6 +1639,7 @@ public class D3D10Machine
                 return [.. Named("INNERCOVERAGE").Select(v => (uint)Math.Abs(v * 4) % 2)];
             // The phase was unrolled per instance; each copy carries its number.
             case OperandType.InputForkInstanceID:
+            case OperandType.InputJoinInstanceID:
                 {
                     uint instance = (uint)(instruction.ForkInstance ?? 0);
                     return [instance, instance, instance, instance];

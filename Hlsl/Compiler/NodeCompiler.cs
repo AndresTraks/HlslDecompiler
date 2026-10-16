@@ -679,7 +679,7 @@ public sealed class NodeCompiler
             constant = memberByteOffset;
         }
         if (_registers.FindStructuredArrayMember(resourceKey, constant)
-                is not var (path, bytes, index, component, width)
+                is not var (path, bytes, index, component, width, wordsPerValue)
             || components.Any(c => component + c >= width))
         {
             throw new NotImplementedException(
@@ -697,11 +697,13 @@ public sealed class NodeCompiler
         {
             indexText = $"{indexText} + {index}";
         }
-        bool whole = components.Count == width
-            && components.Select((c, i) => component + c == i).All(x => x);
-        string swizzle = width == 1 || whole
+        // A double's two dwords are one value.
+        int[] values = [.. components.Select(c => (component + c) / wordsPerValue).Distinct()];
+        int valueWidth = width / wordsPerValue;
+        bool whole = values.SequenceEqual(Enumerable.Range(0, valueWidth));
+        string swizzle = valueWidth == 1 || whole
             ? ""
-            : "." + string.Concat(components.Select(c => "xyzw"[component + c]));
+            : "." + string.Concat(values.Select(v => "xyzw"[v]));
         return $"{element}.{path}[{indexText}]{swizzle}";
     }
 

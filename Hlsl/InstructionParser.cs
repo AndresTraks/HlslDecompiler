@@ -1976,9 +1976,7 @@ public class InstructionParser
         if (instruction.Opcode == D3D10Opcode.LdStructured)
         {
             byte[] swizzle = instruction.GetSourceSwizzleComponents(3);
-            int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
-                ? instruction.GetParamInt(2, 0)
-                : 0;
+            int elementByteOffset = StructuredMemberOffset(instruction);
             return _registerState.IsDoubleStructuredMember(
                 instruction.GetParamRegisterKey(3),
                 elementByteOffset + swizzle[destinationKey.ComponentIndex] * 4);
@@ -2353,12 +2351,24 @@ public class InstructionParser
     }
 
     /// <summary>
+    /// Where a structured access's member is looked up: the immediate, or the
+    /// constant part of the computed offset's value, which lands in its array member.
+    /// </summary>
+    private int StructuredMemberOffset(D3D10Instruction instruction)
+    {
+        const int ByteOffsetOperand = 2;
+        return instruction.GetOperandType(ByteOffsetOperand) == OperandType.Immediate32
+            ? instruction.GetParamInt(ByteOffsetOperand, 0)
+            : RegisterState.MemberByteOffset(GetActiveOutput(
+                GetParamRegisterComponentKey(instruction, ByteOffsetOperand, 0)));
+    }
+
+    /// <summary>
     /// A structured load/store mask with the upper half of each double member removed
     /// (`ld_structured r0.xy` loads one double).
     /// </summary>
     private int GetStructuredValueMask(D3D10Instruction instruction, int mask)
     {
-        const int ByteOffsetOperand = 2;
         int resourceOperand = instruction.Opcode switch
         {
             D3D10Opcode.LdStructured => 3,
@@ -2374,9 +2384,7 @@ public class InstructionParser
         {
             return mask;
         }
-        int elementByteOffset = instruction.GetOperandType(ByteOffsetOperand) == OperandType.Immediate32
-            ? instruction.GetParamInt(ByteOffsetOperand, 0)
-            : 0;
+        int elementByteOffset = StructuredMemberOffset(instruction);
         // A load maps components through the resource swizzle; a store by mask
         // position.
         byte[] swizzle = instruction.Opcode == D3D10Opcode.LdStructured

@@ -503,13 +503,16 @@ public class HlslSimpleWriter : HlslWriter
 
     /// <summary>
     /// The byte offset a structured access's member is looked up at: the immediate,
-    /// or 0 where it is computed (a register's number is no offset).
+    /// or at a computed offset its array element's start, so a double is one.
     /// </summary>
-    private static int StructuredByteOffset(D3D10Instruction instruction)
+    private int StructuredByteOffset(D3D10Instruction instruction)
     {
-        return instruction.GetOperandType(2) == OperandType.Immediate32
-            ? instruction.GetParamInt(2, 0)
-            : 0;
+        if (instruction.GetOperandType(2) == OperandType.Immediate32)
+        {
+            return instruction.GetParamInt(2, 0);
+        }
+        int resourceOperand = instruction.Opcode == D3D10Opcode.LdStructured ? 3 : 0;
+        return ComputedOffsetMember(instruction, resourceOperand) is var (_, start, _, _, _) ? start : 0;
     }
 
     /// <summary>
@@ -517,7 +520,7 @@ public class HlslSimpleWriter : HlslWriter
     /// last (`iadd r0.x, r0.x, l(16)`), so the added immediate lands in it; with
     /// none, the member at 0.
     /// </summary>
-    private (string Path, int Start, int Bytes)? ComputedOffsetMember(
+    private (string Path, int Start, int Bytes, int First, int WordsPerValue)? ComputedOffsetMember(
         D3D10Instruction instruction, int resourceOperand)
     {
         RegisterKey buffer = instruction.GetParamRegisterKey(resourceOperand);
@@ -537,8 +540,10 @@ public class HlslSimpleWriter : HlslWriter
                 }
             }
         }
-        return _registers.FindStructuredArrayMember(buffer, added) is var (path, bytes, index, first, _)
-            ? (path, added - index * bytes - first * 4, bytes)
+        // Start is element 0's; First the dword the access starts at within its element.
+        return _registers.FindStructuredArrayMember(buffer, added)
+            is var (path, bytes, index, first, _, wordsPerValue)
+            ? (path, added - index * bytes - first * 4, bytes, first, wordsPerValue)
             : null;
     }
 
@@ -556,7 +561,7 @@ public class HlslSimpleWriter : HlslWriter
         {
             return null;
         }
-        if (ComputedOffsetMember(instruction, resourceOperand) is not var (path, start, bytes))
+        if (ComputedOffsetMember(instruction, resourceOperand) is not var (path, start, bytes, first, wordsPerValue))
         {
             throw new NotImplementedException(
                 $"A structured access at a computed byte offset outside an array member ({buffer}).");
@@ -567,10 +572,12 @@ public class HlslSimpleWriter : HlslWriter
             ? offset[..(offset.IndexOf('.') + 2)]
             : $"({offset}).x";
         string index = start == 0 ? $"{offset} / {bytes}" : $"({offset} - {start}) / {bytes}";
-        int width = bytes / 4;
-        string swizzle = width == 1 || components.Count == width
+        // Components count dwords from where the access starts; a double is two.
+        int[] values = [.. components.Select(c => (first + c) / wordsPerValue).Distinct()];
+        int valueWidth = bytes / 4 / wordsPerValue;
+        string swizzle = valueWidth == 1 || values.SequenceEqual(Enumerable.Range(0, valueWidth))
             ? ""
-            : "." + string.Concat(components.Select(c => "xyzw"[c]));
+            : "." + string.Concat(values.Select(v => "xyzw"[v]));
         return $"{element}.{path}[{index}]{swizzle}";
     }
 
@@ -899,6 +906,34 @@ public class HlslSimpleWriter : HlslWriter
     /// The shadow variable naming an operand's doubles, or null if it holds none.
     /// A source names one double per value computed; fxc puts the nth at slot 2n.
     /// </summary>
+    /// <summary>
+    /// A double fxc moved into an odd pair (`mov r0.yz, r0.zw`), which no shadow
+    /// covers: the shadow it was moved from, unless written since (the move itself
+    /// may overwrite its source's float side: r0.z here). Else null.
+    /// </summary>
+    private string MisalignedDoubleSource(D3D10Instruction reader, RegisterKey register, int low)
+    {
+        if (_programOrder?.LastWriterOf(reader, register, low) is not { Opcode: D3D10Opcode.Mov } move
+            || move.GetOperandType(1) != OperandType.Temp
+            || (move.GetWriteMask(0) & (0b11 << low)) != 0b11 << low)
+        {
+            return null;
+        }
+        byte[] swizzle = move.GetSourceSwizzleComponents(1);
+        int sourceLow = swizzle[low];
+        RegisterKey source = move.GetParamRegisterKey(1);
+        if (sourceLow % 2 != 0 || swizzle[low + 1] != sourceLow + 1
+            || !_liveDoublePairs.TryGetValue(move, out var live) || !live.Contains((source, sourceLow / 2))
+            || _programOrder.LastWriterOf(reader, source, sourceLow) is var since
+                && !ReferenceEquals(since, move)
+                && !ReferenceEquals(since, _programOrder.LastWriterOf(move, source, sourceLow)))
+        {
+            return null;
+        }
+        string name = GetDoubleRegisterName(source);
+        return GetDoublePairMask(source) == 1 ? name : $"{name}.{"xy"[sourceLow / 2]}";
+    }
+
     private string GetDoubleRegisterOperandName(D3D10Instruction instruction, int operandIndex)
     {
         bool isDestination = instruction.IsDestinationOperand(operandIndex);
@@ -947,6 +982,11 @@ public class HlslSimpleWriter : HlslWriter
         {
             int storeMask = DestinationMask(instruction) & 0b0101;
             byte[] storeSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+            if (storeMask == 1 && storeSwizzle[0] % 2 != 0
+                && MisalignedDoubleSource(instruction, registerKey, storeSwizzle[0]) is string movedFrom)
+            {
+                return movedFrom;
+            }
             for (int component = 0; component < 4; component += 2)
             {
                 if ((storeMask & (1 << component)) != 0)

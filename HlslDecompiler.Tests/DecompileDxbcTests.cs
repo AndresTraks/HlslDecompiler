@@ -455,6 +455,9 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "two_array_members")]
     [TestCase("cs_5_0", "float2_array_index")]
     [TestCase("cs_5_0", "shared_array_offset")]
+    [TestCase("cs_5_0", "double_array_index")]
+    [TestCase("cs_5_0", "double2_array_index")]
+    [TestCase("cs_5_0", "double_array_element")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

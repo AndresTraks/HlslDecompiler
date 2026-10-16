@@ -227,7 +227,9 @@ public sealed class RegisterState
                 return null;
             }
             (ShaderStructMemberInfo member, string path, int memberOffset) = found.Value;
-            int inMember = (byteOffset + components[i] * 4 - memberOffset) / 4;
+            // In values: a double takes two dwords, so d[2] is 16 bytes in.
+            int bytesPerValue = member.TypeInfo.ParameterType == ParameterType.Double ? 8 : 4;
+            int inMember = (byteOffset + components[i] * 4 - memberOffset) / bytesPerValue;
             // Matrix and array members span registers: split into register and
             // component (float 7 of a float4x4 is row 1's w).
             int stride = GetRegisterFloatCount(member.TypeInfo);
@@ -333,7 +335,7 @@ public sealed class RegisterState
     /// its path, bytes per element (packed tight), and where the offset lands.
     /// Arrays of scalars and vectors only; null otherwise.
     /// </summary>
-    public (string Path, int ElementBytes, int Index, int Component, int Components)?
+    public (string Path, int ElementBytes, int Index, int Component, int Components, int WordsPerValue)?
         FindStructuredArrayMember(RegisterKey resourceKey, int byteOffset)
     {
         if (FindStructuredElementType(resourceKey)?.MemberInfo is not { Count: > 0 } members
@@ -344,10 +346,12 @@ public sealed class RegisterState
         {
             return null;
         }
-        int components = Math.Max(member.TypeInfo.Columns, 1);
+        // Component and Components count dwords: a double takes two.
+        int wordsPerValue = member.TypeInfo.ParameterType == ParameterType.Double ? 2 : 1;
+        int components = Math.Max(member.TypeInfo.Columns, 1) * wordsPerValue;
         int bytes = components * 4;
         int inMember = byteOffset - offset;
-        return (path, bytes, inMember / bytes, inMember % bytes / 4, components);
+        return (path, bytes, inMember / bytes, inMember % bytes / 4, components, wordsPerValue);
     }
 
     /// <summary>
@@ -370,17 +374,25 @@ public sealed class RegisterState
                 return (null, 0, false);
             case ConstantNode { IntegerValue: int immediate }:
                 return (null, immediate, false);
+            // Nested, as a double's second dword is: `(16 - (j << 4)) + 8`.
             case AddOperation add
                 when add.Inputs.FirstOrDefault(i => i is ConstantNode { IntegerValue: not null })
                     is ConstantNode { IntegerValue: int addend } constant:
                 {
-                    HlslTreeNode variable = ReferenceEquals(add.Inputs[0], constant) ? add.Inputs[1] : add.Inputs[0];
-                    return (variable, addend, false);
+                    var inner = SplitByteOffset(
+                        ReferenceEquals(add.Inputs[0], constant) ? add.Inputs[1] : add.Inputs[0]);
+                    return (inner.Variable, inner.Constant + addend, inner.Subtracted);
                 }
             case SubtractOperation { Minuend: ConstantNode { IntegerValue: int minuend } } subtract:
-                return (subtract.Subtrahend, minuend, true);
+                {
+                    var inner = SplitByteOffset(subtract.Subtrahend);
+                    return (inner.Variable, minuend - inner.Constant, !inner.Subtracted);
+                }
             case SubtractOperation { Subtrahend: ConstantNode { IntegerValue: int subtrahend } } subtract:
-                return (subtract.Minuend, -subtrahend, false);
+                {
+                    var inner = SplitByteOffset(subtract.Minuend);
+                    return (inner.Variable, inner.Constant - subtrahend, inner.Subtracted);
+                }
             default:
                 return (byteOffset, 0, false);
         }

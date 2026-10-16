@@ -55,6 +55,12 @@ public class D3D10Instruction : Instruction
     // _opc: the structured UAV has an order-preserving counter.
     public bool HasOrderPreservingCounter { get; set; }
 
+    // [precise(...)]: the destination lanes the precise keyword covers.
+    public int PreciseMask { get; set; }
+
+    // _glc: the UAV is globallycoherent.
+    public bool IsGloballyCoherent { get; set; }
+
     // The texel offsets of sample_aoffimmi, or null.
     public int[] SampleOffsets { get; set; }
 

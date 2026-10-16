@@ -327,7 +327,7 @@ public class HlslAstWriter : HlslWriter
             && first.Value is not ConsumeNode and not ResourceInfoNode and not DoubleBitsNode
             && first.TempVariable.VariableSize is int size && group.Length < size)
         {
-            string type = first.TempVariable.TypeName;
+            string type = first.TempVariable.Qualifier + first.TempVariable.TypeName;
             // Compiling the variable is what numbers it.
             _compiler.Compile(group.Select(node => ((TempAssignmentNode)node).TempVariable));
             WriteLine($"{type}{size} {_registers.TemporaryPrefix}{first.TempVariable.DeclarationIndex};");
@@ -1326,7 +1326,7 @@ public class HlslAstWriter : HlslWriter
                     continue;
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
-                string type = variable.TypeName;
+                string type = variable.Qualifier + variable.TypeName;
                 WriteLine($"{type}{size} {_registers.TemporaryPrefix}{variable.DeclarationIndex};");
             }
         }
@@ -1809,6 +1809,7 @@ public class HlslAstWriter : HlslWriter
 
         // Out-parameter calls (GetDimensions etc.) have no expression form: always named.
         List<HlslTreeNode[]> resourceInfo = NameResourceInfo(order);
+        resourceInfo.AddRange(NamePreciseValues(registerGroups, order, roots));
         resourceInfo.AddRange(NameConsumes(order));
         resourceInfo.AddRange(NameDoubleBits(order));
 
@@ -3541,6 +3542,75 @@ public class HlslAstWriter : HlslWriter
             }
             TempVariableNode[] variables = CreateTempVariables(group);
             assignments.Add([.. group.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
+        }
+        return assignments;
+    }
+
+    private bool IsPrecise(HlslTreeNode node)
+    {
+        return node.SourceInstruction > 0
+            && node.SourceInstruction <= _phaseShader.Instructions.Count
+            && _phaseShader.Instructions[node.SourceInstruction - 1] is D3D10Instruction { PreciseMask: int mask }
+            && (mask & (1 << node.SourceComponent)) != 0;
+    }
+
+    /// <summary>
+    /// `precise` qualifies a variable, so each precise value read by something not
+    /// precise (or written to a register) is named, and its variable is precise.
+    /// </summary>
+    private List<HlslTreeNode[]> NamePreciseValues(IList<HlslTreeNode[]> registerGroups,
+        List<HlslTreeNode> order, HashSet<HlslTreeNode> roots)
+    {
+        if (!_phaseShader.Instructions.OfType<D3D10Instruction>().Any(i => i.PreciseMask != 0))
+        {
+            return [];
+        }
+        var assignments = new List<HlslTreeNode[]>();
+        foreach (HlslTreeNode[] group in registerGroups)
+        {
+            List<int> lanes = [];
+            for (int i = 0; i < group.Length; i++)
+            {
+                if (group[i] is TempAssignmentNode assignment)
+                {
+                    if (IsPrecise(assignment.Value))
+                    {
+                        assignment.TempVariable.IsPrecise = true;
+                    }
+                }
+                else if (IsPrecise(group[i]) && group[i] is Operation)
+                {
+                    lanes.Add(i);
+                }
+            }
+            if (lanes.Count == 0)
+            {
+                continue;
+            }
+            HlslTreeNode[] values = [.. lanes.Select(i => group[i])];
+            TempVariableNode[] variables = CreateTempVariables(values);
+            assignments.Add([.. values.Select((node, i) => (HlslTreeNode)NameSubexpression(node, variables[i]))]);
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                variables[i].IsPrecise = true;
+                group[lanes[i]] = variables[i];
+            }
+        }
+        HashSet<HlslTreeNode> reachable = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in order)
+        {
+            reachable.Add(node);
+        }
+        List<HlslTreeNode> tops = [.. order.Where(node => node is Operation
+            && !roots.Contains(node) && IsPrecise(node)
+            && node.Outputs.Any(reader => reachable.Contains(reader) && !IsPrecise(reader)))];
+        foreach (HlslTreeNode[] named in NameCandidates(tops, reachable, roots))
+        {
+            foreach (TempAssignmentNode assignment in named.OfType<TempAssignmentNode>())
+            {
+                assignment.TempVariable.IsPrecise = true;
+            }
+            assignments.Add(named);
         }
         return assignments;
     }

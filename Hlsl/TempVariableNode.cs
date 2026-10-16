@@ -29,6 +29,12 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // decides the casts.
     public bool IsBool { get; set; }
 
+    // Assigned by [precise] instructions: declared precise, so fxc keeps the
+    // operations as they are (no mul/add fused into a mad).
+    public bool IsPrecise { get; set; }
+
+    public string Qualifier => IsPrecise ? "precise " : "";
+
     // Holds a whole struct element, as Consume() returns one.
     public RegisterKey StructuredElementOf { get; set; }
 

@@ -1,4 +1,4 @@
-tbuffer Params
+tbuffer Params : register(t0)
 {
 	float4 tint;
 	float4 offset;

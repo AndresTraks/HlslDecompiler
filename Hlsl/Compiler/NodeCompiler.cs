@@ -2509,7 +2509,7 @@ public sealed class NodeCompiler
             return "";
         }
 
-        int dimension = texture.GetDimensionSize();
+        int dimension = texture.GetOffsetSize();
         string offsets = string.Join(", ", sampleOffsets.Take(dimension)
             .Select(o => o.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         return dimension > 1
@@ -3062,7 +3062,7 @@ public sealed class NodeCompiler
             }
             else
             {
-                type = tempAssignment.TempVariable.TypeName;
+                type = tempAssignment.TempVariable.Qualifier + tempAssignment.TempVariable.TypeName;
                 if (tempAssignment.TempVariable.VariableSize > 1)
                 {
                     type += tempAssignment.TempVariable.VariableSize;

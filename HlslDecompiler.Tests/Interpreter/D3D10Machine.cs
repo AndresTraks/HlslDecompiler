@@ -1112,7 +1112,10 @@ public class D3D10Machine
                     string asked = instruction.GetOperandType(1) == OperandType.Rasterizer
                         ? "rasterizer"
                         : $"t{instruction.GetParamRegisterNumber(1)}";
-                    return Pack([.. Named($"samplepos{asked}:{Ints(instruction, 2)[0]}")]);
+                    // fxc swizzles the resource (t0.yxxx) to pick the lanes.
+                    float[] position = [.. Named($"samplepos{asked}:{Ints(instruction, 2)[0]}")];
+                    byte[] swizzle = instruction.GetSourceSwizzleComponents(1);
+                    return Pack([.. swizzle.Select(c => position[c])]);
                 }
             case D3D10Opcode.Lod:
                 return LevelOfDetail(instruction);

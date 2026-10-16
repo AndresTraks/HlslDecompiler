@@ -3,7 +3,7 @@ cbuffer P : register(b1)
 	uint which;
 };
 
-tbuffer Table
+tbuffer Table : register(t0)
 {
 	float4 rows[4];
 };

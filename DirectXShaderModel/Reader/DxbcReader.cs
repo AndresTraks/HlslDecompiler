@@ -428,18 +428,23 @@ public class DxbcReader : BinaryReader
             operandTokens[i] = ReadUInt32();
         }
 
+        // Bit 16 of a UAV declaration is globallycoherent, not a sample count.
+        bool isUav = opcode is D3D10Opcode.DclUnorderedAccessViewTyped
+            or D3D10Opcode.DclUnorderedAccessViewRaw or D3D10Opcode.DclUnorderedAccessViewStructured;
         if (opcode is D3D10Opcode.DclResource or D3D10Opcode.DclUnorderedAccessViewTyped)
         {
             var resourceDimension = (ResourceDimension)((opcodeToken >> 11) & 0x1F);
-            int sampleCount = (int)((opcodeToken >> 16) & 0x7F);
+            int sampleCount = isUav ? 0 : (int)((opcodeToken >> 16) & 0x7F);
             return new D3D10Instruction(opcode, operandTokens, resourceDimension, _inputsAreVertexArrays)
             {
                 ResourceSampleCount = sampleCount,
+                IsGloballyCoherent = isUav && (opcodeToken & 0x10000) != 0,
             };
         }
 
         var instruction = new D3D10Instruction(opcode, operandTokens, _inputsAreVertexArrays);
         instruction.Saturate = !opcode.IsDeclaration() && (opcodeToken & 0x2000) != 0;
+        instruction.PreciseMask = opcode.IsDeclaration() ? 0 : (int)((opcodeToken >> 19) & 0xF);
         instruction.SampleOffsets = sampleOffsets;
         instruction.IndexableResourceDimension = indexableDimension;
         instruction.IndexableResourceStride = indexableStride;
@@ -449,6 +454,7 @@ public class DxbcReader : BinaryReader
         {
             // Bit 23, found from the bytecode rather than documentation.
             instruction.HasOrderPreservingCounter = (opcodeToken & 0x800000) != 0;
+            instruction.IsGloballyCoherent = (opcodeToken & 0x10000) != 0;
         }
         if (opcode.HasBooleanTest())
         {

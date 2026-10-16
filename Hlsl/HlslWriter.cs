@@ -745,7 +745,11 @@ public abstract class HlslWriter
                 .Where(d => d.IsTextureBuffer)
                 .GroupBy(d => d.BufferName))
             {
-                WriteLine($"tbuffer {textureBuffer.Key}");
+                ResourceDefinition binding = _registers.ResourceDefinitions?.FirstOrDefault(r =>
+                    r.ShaderInputType == D3DShaderInputType.TBuffer && r.Name == textureBuffer.Key);
+                WriteLine(binding == null
+                    ? $"tbuffer {textureBuffer.Key}"
+                    : $"tbuffer {textureBuffer.Key} : register(t{binding.BindPoint})");
                 WriteLine("{");
                 indent = "\t";
                 // Once per variable: the table lists one per register it occupies.
@@ -882,7 +886,8 @@ public abstract class HlslWriter
                     bool isView = resource.ShaderInputType is D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress;
                     slot = $" : register({(isView ? 't' : 'u')}{resource.BindPoint})";
                 }
-                WriteLine($"{typeName} {name}{slot};");
+                string coherent = IsGloballyCoherent(resource) ? "globallycoherent " : "";
+                WriteLine($"{coherent}{typeName} {name}{slot};");
                 declared++;
                 r += count - 1;
             }
@@ -891,6 +896,17 @@ public abstract class HlslWriter
                 WriteLine();
             }
         }
+    }
+
+    // Only the UAV's declaration says so; reflection does not.
+    private bool IsGloballyCoherent(ResourceDefinition resource)
+    {
+        return resource.ShaderInputType is not (D3DShaderInputType.Texture or D3DShaderInputType.Sampler
+                or D3DShaderInputType.Structured or D3DShaderInputType.ByteAddress)
+            && _shader.Instructions.OfType<D3D10Instruction>().Any(instruction =>
+                instruction.IsGloballyCoherent
+                && instruction.GetParamRegisterKey(0) is D3D10RegisterKey { Number: int slot }
+                && slot == resource.BindPoint);
     }
 
     // Written in its class.

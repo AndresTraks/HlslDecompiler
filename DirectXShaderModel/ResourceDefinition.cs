@@ -60,6 +60,18 @@ public class ResourceDefinition
         };
     }
 
+    // A texel offset has no lane for the array index.
+    public int GetOffsetSize()
+    {
+        return Dimension switch
+        {
+            ResourceDimension.Texture1DArray => 1,
+            ResourceDimension.Texture2DArray or ResourceDimension.Texture2DmsArray => 2,
+            ResourceDimension.TextureCubeArray => 3,
+            _ => GetDimensionSize(),
+        };
+    }
+
     /// <summary>
     /// How many components a typed resource returns: the reflection flags hold the
     /// count less one; the bytecode declaration always says four.

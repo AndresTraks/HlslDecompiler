@@ -4,7 +4,7 @@ cbuffer Lookup : register(b0)
 	float3 direction;
 };
 
-tbuffer Palette
+tbuffer Palette : register(t0)
 {
 	float4 entries[8];
 };

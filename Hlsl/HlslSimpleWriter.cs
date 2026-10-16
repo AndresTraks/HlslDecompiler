@@ -233,7 +233,10 @@ public class HlslSimpleWriter : HlslWriter
         // the writes, not the mask: one register may hold a double and a float mask.
         if (FindFloatWrittenComponents(registerKey) != 0)
         {
-            WriteLine("{0} {1};", writeMaskName, GetTempRegisterName(registerKey));
+            // Precise for every write, a superset of the [precise] lanes.
+            bool isPrecise = _phaseShader.Instructions.OfType<D3D10Instruction>().Any(instruction =>
+                instruction.PreciseMask != 0 && registerKey.Equals(instruction.GetParamRegisterKey(0)));
+            WriteLine("{0}{1} {2};", isPrecise ? "precise " : "", writeMaskName, GetTempRegisterName(registerKey));
         }
         WriteDoubleRegisterDeclaration(registerKey);
     }
@@ -3126,18 +3129,20 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.SampleInfo:
                 WriteSampleInfo(instruction);
                 break;
-            // The render target (rasterizer operand) has its own function.
+            // The render target (rasterizer operand) has its own function. The
+            // resource's swizzle picks the lanes (fxc writes t0.yxxx).
             case D3D10Opcode.SamplePos:
                 if (instruction.GetOperandType(1) == OperandType.Rasterizer)
                 {
-                    WriteResult(instruction, "{0} = GetRenderTargetSamplePosition({1});",
-                        GetOperandName(instruction, 0), GetOperandName(instruction, 2));
+                    WriteResult(instruction, "{0} = GetRenderTargetSamplePosition({1}){2};",
+                        GetOperandName(instruction, 0), GetOperandName(instruction, 2),
+                        SamplePositionSwizzle(instruction));
                     break;
                 }
-                WriteResult(instruction, "{0} = {1}.GetSamplePosition({2});",
+                WriteResult(instruction, "{0} = {1}.GetSamplePosition({2}){3};",
                     GetOperandName(instruction, 0),
                     _registers.GetRegisterName(instruction.GetParamRegisterKey(1)),
-                    GetOperandName(instruction, 2));
+                    GetOperandName(instruction, 2), SamplePositionSwizzle(instruction));
                 break;
             case D3D10Opcode.Log:
                 WriteResult(instruction, "{0} = log2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
@@ -4649,6 +4654,13 @@ public class HlslSimpleWriter : HlslWriter
         return instruction.GetSourceSwizzleName(TextureOperandIndex(instruction));
     }
 
+    // Bare when the lanes come in order (float2 into .x keeps x).
+    private static string SamplePositionSwizzle(D3D10Instruction instruction)
+    {
+        string swizzle = instruction.GetSourceSwizzleName(1);
+        return swizzle is ".x" or ".xy" ? "" : swizzle;
+    }
+
     private string GetSampleOffset(D3D10Instruction instruction)
     {
         if (instruction.SampleOffsets == null)
@@ -4656,7 +4668,7 @@ public class HlslSimpleWriter : HlslWriter
             return "";
         }
 
-        int dimension = GetTextureDimension(instruction);
+        int dimension = LoadedResource(instruction).GetOffsetSize();
         string offsets = string.Join(", ", instruction.SampleOffsets.Take(dimension).Select(o => o.ToString(_culture)));
         return dimension > 1
             ? $", int{dimension}({offsets})"
@@ -4696,8 +4708,13 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return null;
             }
-            // The address counts registers, not elements.
+            // The address counts registers from the block's start, not elements.
             string index = GetOperandName(instruction, 1);
+            int first = array.VariableOffset / 16;
+            if (first != 0)
+            {
+                index = $"({index} - {first})";
+            }
             if (array.RegistersPerElement > 1)
             {
                 index = $"{index} / {array.RegistersPerElement}";

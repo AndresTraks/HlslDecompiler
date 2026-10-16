@@ -468,6 +468,14 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "filled_in_dot")]
     [TestCase("ps_5_0", "bit_intrinsics")]
     [TestCase("cs_5_0", "bitfield_variable")]
+    [TestCase("ps_5_0", "nested_else_join")]
+    [TestCase("ps_5_0", "output_lanes_in_branches")]
+    [TestCase("cs_5_0", "globally_coherent")]
+    [TestCase("ps_5_0", "precise_values")]
+    [TestCase("vs_5_0", "precise_lane")]
+    [TestCase("ps_5_0", "tbuffer_register")]
+    [TestCase("ps_5_0", "sample_position_swizzle")]
+    [TestCase("ps_5_0", "array_texel_offsets")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

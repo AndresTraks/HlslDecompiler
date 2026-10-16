@@ -43,8 +43,14 @@ public class StatementFinalizer
         finalizer.FinalizeStatements();
     }
 
+    // Output lanes joined across an if and returned after later statements: no
+    // graph node reads them, the return does.
+    private readonly Dictionary<PhiNode, IfStatement> _returnedOutputJoins =
+        new(ReferenceEqualityComparer.Instance);
+
     private void FinalizeStatements()
     {
+        FindReturnedOutputJoins();
         RemoveUnusedAssignmentInputOutput();
         FindCarriedByJump();
         RemoveUnusedAssignments(_statements);
@@ -344,6 +350,7 @@ public class StatementFinalizer
             outputsToRemove = statement.Outputs
                 .Where(o => o.Value is PhiNode && o.Value.Outputs.Count == 0)
                 .Where(o => !IsRenderedByAnyStatement(o.Value))
+                .Where(o => !_returnedOutputJoins.ContainsKey((PhiNode)o.Value))
                 .ToList();
             foreach (var output in outputsToRemove)
             {
@@ -715,15 +722,17 @@ public class StatementFinalizer
                 if (variableByRegister.TryGetValue(output.Key, out TempVariableNode variable))
                 {
                     // May already be shared (two ifs in a row on one register).
-                    if (!ReferenceEquals(branchVariable, variable))
+                    if (assignment == null)
+                    {
+                        // A nested if's variable: its assignments are deeper in the body.
+                        ReplaceTempVariable(branchVariable, variable);
+                    }
+                    else if (!ReferenceEquals(branchVariable, variable))
                     {
                         branchVariable.Replace(variable);
                         // Replace does not reach held references.
                         ReplaceInStatementNodes(branchVariable, variable);
-                        if (assignment != null)
-                        {
-                            assignment.TempVariable = variable;
-                        }
+                        assignment.TempVariable = variable;
                     }
                 }
                 else
@@ -884,6 +893,10 @@ public class StatementFinalizer
             return;
         }
 
+        if (ReferenceEquals(statements, _statements))
+        {
+            LowerReturnedOutputJoins();
+        }
         if (lastStatement is AssignmentStatement)
         {
             statements[statements.Count - 1] =
@@ -969,6 +982,88 @@ public class StatementFinalizer
             ifStatement.Outputs[outputs[i]] = variables[i];
         }
         return true;
+    }
+
+    // An if writing some output lanes, then later statements and the return: the
+    // single-value return reads those lanes from the if's join. An if at the end
+    // returns in its branches instead (or via ReturnOnceAfter).
+    private void FindReturnedOutputJoins()
+    {
+        if (!_hasReturnValue || _hasOutputStruct || _statements.Count == 0
+            || _statements[^1] is IfStatement or ReturnStatement)
+        {
+            return;
+        }
+        IStatement last = _statements[^1];
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (statement is not IfStatement ifStatement)
+            {
+                return;
+            }
+            foreach (var output in ifStatement.Outputs)
+            {
+                if (output.Key.RegisterKey.IsOutput
+                    && output.Value is PhiNode { IsLoopHeader: false } join
+                    && !(ifStatement.Inputs.TryGetValue(output.Key, out HlslTreeNode entry)
+                        && ReferenceEquals(entry, join))
+                    && last.Outputs.TryGetValue(output.Key, out HlslTreeNode returned)
+                    && ReferenceEquals(returned, join))
+                {
+                    _returnedOutputJoins[join] = ifStatement;
+                }
+            }
+        });
+    }
+
+    // Each joined lane becomes a variable every branch assigns.
+    private void LowerReturnedOutputJoins()
+    {
+        foreach ((PhiNode join, IfStatement ifStatement) in _returnedOutputJoins)
+        {
+            RegisterComponentKey key = ifStatement.Outputs.First(o => ReferenceEquals(o.Value, join)).Key;
+            var variable = new TempVariableNode
+            {
+                IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(key) == true,
+            };
+            AssignJoinedOutput(ifStatement, key, variable);
+            new StatementVisitor(_statements).Visit(statement =>
+            {
+                foreach (var map in new[] { statement.Outputs, statement.Inputs })
+                {
+                    if (map.TryGetValue(key, out HlslTreeNode held) && ReferenceEquals(held, join))
+                    {
+                        map[key] = variable;
+                    }
+                }
+            });
+            ReplaceInStatementNodes(join, variable);
+        }
+    }
+
+    private static void AssignJoinedOutput(IfStatement ifStatement, RegisterComponentKey key,
+        TempVariableNode variable)
+    {
+        foreach (IList<IStatement> body in new[] { ifStatement.TrueBody, ifStatement.FalseBody })
+        {
+            IStatement end = body?.Count > 0 ? body[^1] : null;
+            HlslTreeNode value = null;
+            end?.Outputs.TryGetValue(key, out value);
+            if (end is IfStatement nested && value is PhiNode
+                && !(nested.Inputs.TryGetValue(key, out HlslTreeNode entry) && ReferenceEquals(entry, value)))
+            {
+                AssignJoinedOutput(nested, key, variable);
+            }
+            else if (end is AssignmentStatement && value != null && !IsCarried(end, key))
+            {
+                end.Outputs[key] = new TempAssignmentNode(variable, value) { IsReassignment = true };
+            }
+            else
+            {
+                // A lane one branch leaves as it was before the if.
+                throw new NotImplementedException("An output lane assigned in only some branches of an if.");
+            }
+        }
     }
 
     private static bool IsCarried(IStatement statement, RegisterComponentKey key)

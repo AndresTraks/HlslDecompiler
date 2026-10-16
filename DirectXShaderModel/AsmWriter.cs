@@ -611,6 +611,7 @@ public class AsmWriter
             case D3D10Opcode.DclUnorderedAccessViewTyped:
                 WriteInstruction(instruction,
                     $"dcl_uav_typed_{GetResourceDimensionName(instruction.GetResourceDimension())}"
+                        + (instruction.IsGloballyCoherent ? "_glc" : "")
                         + $" ({GetResourceReturnTypes(instruction)})", 1);
                 break;
             case D3D10Opcode.DclResourceStructured:
@@ -620,7 +621,8 @@ public class AsmWriter
                 WriteLine("dcl_resource_raw {0}", FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclUnorderedAccessViewRaw:
-                WriteLine("dcl_uav_raw {0}", FormatOperand(instruction, 0));
+                WriteLine("dcl_uav_raw{0} {1}", instruction.IsGloballyCoherent ? "_glc" : "",
+                    FormatOperand(instruction, 0));
                 break;
             case D3D10Opcode.DclSampler:
                 WriteLine("dcl_sampler {0}, mode_{1}", FormatOperand(instruction, 0),
@@ -706,7 +708,8 @@ public class AsmWriter
                 WriteLine("dcl_thread_group {0}, {1}, {2}", instruction.GetParamIndexImmediate32(0, 0), instruction.GetParamIndexImmediate32(0, 1), instruction.GetParamIndexImmediate32(0, 2));
                 break;
             case D3D10Opcode.DclUnorderedAccessViewStructured:
-                WriteLine("dcl_uav_structured{0} {1}, {2}",
+                WriteLine("dcl_uav_structured{0}{1} {2}, {3}",
+                    instruction.IsGloballyCoherent ? "_glc" : "",
                     instruction.HasOrderPreservingCounter ? "_opc" : "",
                     FormatOperand(instruction, 0), instruction.GetParamIndexImmediate32(1, 0));
                 break;
@@ -1348,6 +1351,13 @@ public class AsmWriter
         }
         mnemonic += arguments;
         string line = instruction.Saturate ? mnemonic + "_sat" : mnemonic;
+        if (instruction.PreciseMask != 0)
+        {
+            // Bare when it covers every written lane.
+            line += instruction.PreciseMask == instruction.GetWriteMask(0)
+                ? " [precise]"
+                : $" [precise({string.Concat(Enumerable.Range(0, 4).Where(c => (instruction.PreciseMask & (1 << c)) != 0).Select(c => "xyzw"[c]))})]";
+        }
         for (int i = 0; i < operandCount; i++)
         {
             line += " " + FormatOperand(instruction, i);

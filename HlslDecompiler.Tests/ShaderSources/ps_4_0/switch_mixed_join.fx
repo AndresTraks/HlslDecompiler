@@ -1,6 +1,6 @@
 float4 main(float4 c : C) : SV_Target
 {
-	uint t0 = (uint)asint(c.w) >> 30;
+	int t0;
 	float2 t1;
 	int t2;
 	switch ((uint)asint(c.w) >> 30) {

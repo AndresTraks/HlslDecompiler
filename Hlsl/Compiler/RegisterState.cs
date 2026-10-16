@@ -84,6 +84,21 @@ public sealed class RegisterState
         }
     }
 
+    // A read whose index is scaled (`icb[r0.x * 4 + 1]`) strides over rows: the
+    // immediates are fields of one array of structs, not separate arrays.
+    private bool _isImmediateConstantBufferStrided;
+
+    public void MarkImmediateConstantBufferStrided()
+    {
+        _isImmediateConstantBufferStrided = true;
+    }
+
+    /// <summary>The row the array read at this base starts at.</summary>
+    public int ImmediateConstantBufferArrayStart(int baseRow)
+    {
+        return ImmediateConstantBufferStarts().LastOrDefault(start => start <= baseRow);
+    }
+
     public string ImmediateConstantBufferName(int baseRow)
     {
         List<int> bases = ImmediateConstantBufferStarts();
@@ -93,8 +108,9 @@ public sealed class RegisterState
 
     private List<int> ImmediateConstantBufferStarts()
     {
-        List<int> bases = [.. _immediateConstantBufferBases.Keys.Where(
-            b => b >= 0 && b < ImmediateConstantBuffer.Count)];
+        List<int> bases = _isImmediateConstantBufferStrided
+            ? []
+            : [.. _immediateConstantBufferBases.Keys.Where(b => b >= 0 && b < ImmediateConstantBuffer.Count)];
         // Rows before the first read are still declared, keeping later bases in place.
         if (bases.Count == 0 || bases[0] != 0)
         {

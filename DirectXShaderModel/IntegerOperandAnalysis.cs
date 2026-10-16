@@ -350,11 +350,7 @@ public sealed class IntegerOperandAnalysis
     /// </summary>
     public ValueKind GetTypedLoadKind(D3D10Instruction load)
     {
-        const int ResourceIndex = 2;
-        ResourceDefinition definition = _shader.ResourceDefinitions?
-            .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.Texture
-                && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
-        return definition?.IsIntegerReturnType == true ? ValueKind.Integer : ValueKind.Float;
+        return LoadsIntegerTexels(_shader, load) ? ValueKind.Integer : ValueKind.Float;
     }
 
     /// <summary>
@@ -688,7 +684,7 @@ public sealed class IntegerOperandAnalysis
             {
                 produced = GetStructuredElementKind(instruction);
             }
-            else if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS)
+            else if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS or D3D10Opcode.LdUAVTyped)
             {
                 produced = GetTypedLoadKind(instruction);
             }
@@ -1244,8 +1240,11 @@ public sealed class IntegerOperandAnalysis
     {
         const int ResourceIndex = 2;
         int resource = load.GetParamRegisterNumber(ResourceIndex);
+        D3DShaderInputType type = load.Opcode == D3D10Opcode.LdUAVTyped
+            ? D3DShaderInputType.UavRWTyped
+            : D3DShaderInputType.Texture;
         return shader.ResourceDefinitions?
-            .FirstOrDefault(d => d.ShaderInputType == D3DShaderInputType.Texture && d.BindPoint == resource)
+            .FirstOrDefault(d => d.ShaderInputType == type && d.BindPoint == resource)
             ?.IsIntegerReturnType == true;
     }
 
@@ -1380,7 +1379,7 @@ public sealed class IntegerOperandAnalysis
                 AddDestinationComponents(instruction, integerRegisters);
             }
             // A texel of a Texture2D<uint>, typed only by reflection data.
-            if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS
+            if (instruction.Opcode is D3D10Opcode.LD or D3D10Opcode.LDMS or D3D10Opcode.LdUAVTyped
                 && LoadsIntegerTexels(shader, instruction))
             {
                 AddDestinationComponents(instruction, integerRegisters);

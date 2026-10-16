@@ -1255,7 +1255,7 @@ public class HlslSimpleWriter : HlslWriter
                 ? ValueKind.Integer
                 : ValueKind.Float,
             D3D10Opcode.LdStructured => _integerOperandAnalysis.GetStructuredElementKind(instruction),
-            D3D10Opcode.LD or D3D10Opcode.LDMS => _integerOperandAnalysis.GetTypedLoadKind(instruction),
+            D3D10Opcode.LD or D3D10Opcode.LDMS or D3D10Opcode.LdUAVTyped => _integerOperandAnalysis.GetTypedLoadKind(instruction),
             _ => instruction.Opcode.ProducedKind(),
         };
     }
@@ -2122,9 +2122,11 @@ public class HlslSimpleWriter : HlslWriter
     private string StoredImmediateBits(D3D10Instruction instruction)
     {
         if (instruction.GetOperandType(3) != OperandType.Immediate32
-            || !IsGroupSharedOperand(instruction, 0)
-            || !_integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(
-                instruction.GetParamRegisterKey(0).Number))
+            || (IsGroupSharedOperand(instruction, 0)
+                ? !_integerOperandAnalysis.IsIntegerThreadGroupSharedMemory(
+                    instruction.GetParamRegisterKey(0).Number)
+                // An integer element: the immediate's bits, not a float of them.
+                : _integerOperandAnalysis.GetStructuredElementKind(instruction) != ValueKind.Integer))
         {
             return null;
         }
@@ -3804,8 +3806,10 @@ public class HlslSimpleWriter : HlslWriter
         if (operandType == OperandType.ImmediateConstantBuffer)
         {
             // The immediate beside the index picks which array in the icb is read.
-            return $"{_registers.ImmediateConstantBufferName((int)operandIndices[0].Immediate)}"
-                + $"[{index}]";
+            int baseRow = (int)operandIndices[0].Immediate;
+            int rowOffset = baseRow - _registers.ImmediateConstantBufferArrayStart(baseRow);
+            return $"{_registers.ImmediateConstantBufferName(baseRow)}"
+                + $"[{(rowOffset == 0 ? index : $"{index} + {rowOffset}")}]";
         }
         // An indexed output range is only written by an instanced hull phase, which
         // was unrolled: the index is the instance, so name the register directly.

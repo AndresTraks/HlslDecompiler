@@ -501,6 +501,12 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "icb_signed_table")]
     [TestCase("ps_5_0", "icb_special_floats")]
     [TestCase("ps_5_0", "icb_two_tables")]
+    [TestCase("ps_5_0", "icb_struct_rows")]
+    [TestCase("ps_5_0", "declared_lane_order")]
+    [TestCase("ps_5_0", "uav_read_before_write")]
+    [TestCase("ps_5_0", "uav_atomic_integer")]
+    [TestCase("ps_5_0", "switch_default_join")]
+    [TestCase("ps_5_0", "uav_load_into_float")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

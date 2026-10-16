@@ -8,7 +8,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	int4 r1;
 	int4 r2;
 	r0 = asint(img[sv_dispatchthreadid.xy]);
-	r1.xy = asint(ib[sv_dispatchthreadid.x].xy);
+	r1.xy = ib[sv_dispatchthreadid.x].xy;
 	r2 = r1.xyxy & int4(1065353216, 1065353216, 1065353216, 1065353216);
 	r1.x = asint((float)r1.x);
 	r1 = asint(asfloat(r0) * asfloat(r1.x));

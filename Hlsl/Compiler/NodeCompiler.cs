@@ -1247,7 +1247,7 @@ public sealed class NodeCompiler
     /// </summary>
     public string CompileIntegerArgument(HlslTreeNode node, bool unsigned = false)
     {
-        string compiled = Compile(node);
+        string compiled = CompileAsInteger([node]);
         if (!IsFloatValued(node))
         {
             return compiled;
@@ -2673,8 +2673,10 @@ public sealed class NodeCompiler
             if (arrayKey.RegisterKey is D3D10RegisterKey immediateKey
                 && immediateKey.OperandType == OperandType.ImmediateConstantBuffer)
             {
+                int rowOffset = immediateKey.Number
+                    - _registers.ImmediateConstantBufferArrayStart(immediateKey.Number);
                 return $"{_registers.ImmediateConstantBufferName(immediateKey.Number)}"
-                    + $"[{index}]{swizzle}";
+                    + $"[{(rowOffset == 0 ? index : $"{index} + {rowOffset}")}]{swizzle}";
             }
 
             // Named from the declaration; the base register need not be the first:
@@ -3116,6 +3118,9 @@ public sealed class NodeCompiler
                 }
                 type += " ";
                 variableCompiled = $"{_registers.TemporaryPrefix}{tempAssignment.TempVariable.DeclarationIndex}";
+                // Declared whole, so the value goes in lane order; a reader compiled
+                // first may have numbered the lanes in its own order.
+                components = [.. components.OrderBy(a => ((TempAssignmentNode)a).TempVariable.ComponentIndex)];
             }
             bool wasAssigningToInteger = _assigningToInteger;
             bool wasAssigningToUnsigned = _assigningToUnsigned;
@@ -3173,6 +3178,8 @@ public sealed class NodeCompiler
             else if (!tempAssignment.TempVariable.IsInteger && !tempAssignment.TempVariable.IsDouble
                 && components.All(a => ValueTypes.IsReinterpretedAsFloat(((TempAssignmentNode)a).Value)
                     || (((TempAssignmentNode)a).Value is not ConstantNode
+                        // An integer texel load reinterprets itself where a float is wanted.
+                        and not ResourceLoadNode { IsIntegerTexel: true }
                         && IsIntegerValued(((TempAssignmentNode)a).Value))))
             {
                 compiled = $"asfloat({compiled})";

@@ -26,6 +26,12 @@ public class RoundTripCostTests
     internal static readonly Dictionary<string, (int Cost, string Reason)> KnownRegressions = new()
     {
         // The decompiler's doing.
+        ["ps_5_0/icb_struct_rows"] = (20,
+            "One instruction, and it is the field offsets. The original reads a "
+            + "static array of structs, whose fields fxc folds into the operand "
+            + "(icb[r0.x + 1]); written back as one int4 array indexed `t0 + 1` "
+            + "it computes the three field indices with an imad. Splitting the "
+            + "rows into one array per field, as before, read the wrong rows."),
         ["cs_5_0/struct_flags"] = (12,
             "One instruction, and it is the load of the struct. The original "
             + "reads pos and life with one sixteen byte load; read back, life is "

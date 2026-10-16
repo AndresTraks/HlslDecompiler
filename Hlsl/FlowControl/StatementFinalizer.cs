@@ -61,6 +61,7 @@ public class StatementFinalizer
         {
             LowerReturnedOutputJoins();
         }
+        NameOutputLoadsBeforeWrites();
         SetReturnStatement(_statements);
         SplitUncarriedLoopValues();
         CoalesceCopies();
@@ -1468,6 +1469,94 @@ public class StatementFinalizer
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// An output read from a UAV or groupshared memory that a later statement writes
+    /// is named where it is read: the return written after the store would read the
+    /// stored value instead.
+    /// </summary>
+    private void NameOutputLoadsBeforeWrites()
+    {
+        List<IStatement> order = [];
+        new StatementVisitor(_statements).Visit(order.Add);
+        for (int i = 0; i < order.Count; i++)
+        {
+            if (order[i] is not AssignmentStatement statement)
+            {
+                continue;
+            }
+            HashSet<RegisterKey> writtenLater = [.. order.Skip(i + 1).SelectMany(WrittenMemory)];
+            if (writtenLater.Count == 0)
+            {
+                continue;
+            }
+            foreach (var output in statement.Outputs.Where(o => o.Key.RegisterKey.IsOutput).ToList())
+            {
+                HlslTreeNode value = output.Value;
+                if (value is TempAssignmentNode or TempVariableNode or ConstantNode
+                    || IsCarried(statement, output.Key)
+                    || !ReadMemory(value).Overlaps(writtenLater))
+                {
+                    continue;
+                }
+                var variable = new TempVariableNode
+                {
+                    IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(output.Key) == true,
+                };
+                statement.Outputs[output.Key] = new TempAssignmentNode(variable, value);
+                foreach (IStatement later in order.Skip(i + 1))
+                {
+                    foreach (var map in new[] { later.Inputs, later.Outputs })
+                    {
+                        if (map.TryGetValue(output.Key, out HlslTreeNode held) && ReferenceEquals(held, value))
+                        {
+                            map[output.Key] = variable;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The UAVs and groupshared memory a statement writes.
+    private static IEnumerable<RegisterKey> WrittenMemory(IStatement statement)
+    {
+        HlslTreeNode destination = statement switch
+        {
+            StoreStructuredStatement store => store.Destination,
+            StoreTypedStatement store => store.Destination,
+            AtomicStatement atomic => atomic.Destination,
+            _ => null,
+        };
+        return destination is RegisterInputNode register ? [register.RegisterComponentKey.RegisterKey] : [];
+    }
+
+    // The UAVs and groupshared memory an expression loads from, short of variables.
+    private static HashSet<RegisterKey> ReadMemory(HlslTreeNode value)
+    {
+        var read = new HashSet<RegisterKey>();
+        var seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(value);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!seen.Add(node) || node is TempVariableNode)
+            {
+                continue;
+            }
+            HlslTreeNode loaded = (node as LoadStructuredNode)?.Value ?? (node as ResourceLoadNode)?.Inputs[0];
+            if (loaded is RegisterInputNode resource)
+            {
+                read.Add(resource.RegisterComponentKey.RegisterKey);
+            }
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        return read;
     }
 
     private bool? OutputTypeHolding(HlslTreeNode node)

@@ -1612,7 +1612,10 @@ public class InstructionParser
         switchStatement.IsParsed = true;
 
         // Join each register over the cases that assign it plus its entry value;
-        // registers first written inside a case are carried out too.
+        // registers first written inside a case are carried out too. With a
+        // default every path runs a case, which carries the entry value if it
+        // leaves the register alone.
+        bool hasDefault = switchStatement.Cases.Any(switchCase => switchCase.Label == null);
         var caseValues = new Dictionary<RegisterComponentKey, List<HlslTreeNode>>();
         foreach (SwitchCase switchCase in switchStatement.Cases)
         {
@@ -1637,7 +1640,8 @@ public class InstructionParser
         foreach (var caseValue in caseValues)
         {
             List<HlslTreeNode> joined = caseValue.Value;
-            if (switchStatement.Outputs.TryGetValue(caseValue.Key, out var parentNode)
+            if (!hasDefault
+                && switchStatement.Outputs.TryGetValue(caseValue.Key, out var parentNode)
                 && !joined.Contains(parentNode))
             {
                 joined = [.. joined, parentNode];
@@ -3715,9 +3719,29 @@ public class InstructionParser
         var registerKey = new D3D10RegisterKey(
             OperandType.ImmediateConstantBuffer, (int)operandIndices[0].Immediate);
         _registerState.DeclareImmediateConstantBufferRead(registerKey.Number);
+        if (IsScaledIndex(index))
+        {
+            _registerState.MarkImmediateConstantBufferStrided();
+        }
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         return new RelativeAddressNode(
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
+    }
+
+    // An index times a constant above one (a shift counts): a struct's stride.
+    private static bool IsScaledIndex(HlslTreeNode index)
+    {
+        while (index is MoveOperation move)
+        {
+            index = move.Inputs[0];
+        }
+        return index switch
+        {
+            ShiftLeftOperation shift => shift.Inputs[1] is ConstantNode { IntegerValue: > 0 },
+            MultiplyOperation multiply => multiply.Inputs.Any(input => input is ConstantNode constant
+                && (constant.IntegerValue ?? (int)constant.Value) > 1),
+            _ => false,
+        };
     }
 
     // cb0[r0.x + 1]: the immediate is where element zero of the read would sit.

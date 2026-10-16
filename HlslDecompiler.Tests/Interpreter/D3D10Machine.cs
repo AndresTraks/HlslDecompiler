@@ -164,8 +164,10 @@ public class D3D10Machine
     }
 
     // Integer constants are small and non-negative: float bits read as a uint would
-    // make a loop bound that never finishes.
-    private static uint ConstantWord(D3D10ConstantDeclaration declaration, float value)
+    // make a loop bound that never finishes. Under 4 in even trials, to reach switch
+    // cases; up to 16 in odd ones, past the thread ids (0-7), so a bounds check like
+    // `any(id >= size)` goes both ways.
+    private uint ConstantWord(D3D10ConstantDeclaration declaration, float value)
     {
         switch (declaration.TypeInfo.ParameterType)
         {
@@ -173,7 +175,9 @@ public class D3D10Machine
             case ParameterType.Uint:
             case ParameterType.Uint8:
             case ParameterType.Bool:
-                return (uint)Math.Abs(value * 2) % 4;
+                return _trial % 2 == 0
+                    ? (uint)Math.Abs(value * 2) % 4
+                    : (uint)Math.Abs(value * 8) % 17;
             default:
                 return BitConverter.SingleToUInt32Bits(value);
         }

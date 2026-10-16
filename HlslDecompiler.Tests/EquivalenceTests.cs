@@ -74,6 +74,12 @@ public class EquivalenceTests
             + "declared float (it also holds the position), where the instruction "
             + "writer keeps the integer as the number it is, by convention, so a "
             + "large id overflows going back. The AST writer computes the same.")],
+        ["ps_4_0/get_dimensions_mip"] = [("instruction",
+            "The texel address at a mip past the texture's levels, where its height "
+            + "is 0 and the udiv by it gives 0xFFFFFFFF. That lands in a register "
+            + "declared float, where the instruction writer keeps it as the number it "
+            + "is, by convention, which a float cannot hold. The AST writer computes "
+            + "the same.")],
         ["ps_4_0/switch_mixed_join"] = [("instruction",
             "The switch's join register. Its cases leave a float's bits and "
             + "integer arithmetic in a register declared float, where the "

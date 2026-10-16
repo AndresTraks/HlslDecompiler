@@ -45,6 +45,14 @@ public class D3D10Machine
     private readonly uint[] _stencilRef = new uint[4];
     private bool _wroteStencilRef;
 
+    // Dynamic linkage: where each fcall returns to, and the instances whose class
+    // data is loaded. A class's data sits in a buffer of its own past the 14 a
+    // shader binds; `this` points at it.
+    private const int ClassDataBuffer = 100;
+    private LinkageModel _linkage;
+    private readonly Stack<int> _calls = new();
+    private readonly HashSet<int> _boundSlots = [];
+
     public bool Discarded { get; private set; }
 
     private D3D10Machine(ShaderModel shader, int trial)
@@ -250,19 +258,28 @@ public class D3D10Machine
             switch (instruction.Opcode)
             {
                 case D3D10Opcode.Ret:
+                    if (_calls.Count != 0)
+                    {
+                        pc = _calls.Pop();
+                        continue;
+                    }
                     return;
                 case D3D10Opcode.RetC:
                     if (Test(instruction))
                     {
+                        if (_calls.Count != 0)
+                        {
+                            pc = _calls.Pop();
+                            continue;
+                        }
                         return;
                     }
                     pc++;
                     continue;
                 case D3D10Opcode.InterfaceCall:
-                    // The bound class is set at runtime, and fxc may reorder the
-                    // tables, so no body can be picked for both sides.
-                    throw new UnsupportedException(
-                        "a call through an interface, which class being bound decides");
+                    _calls.Push(pc + 1);
+                    pc = BodyStart(instructions, instruction);
+                    continue;
                 case D3D10Opcode.Discard:
                     Discarded |= Test(instruction);
                     pc++;
@@ -1607,7 +1624,11 @@ public class D3D10Machine
                 return _output[instruction.GetParamRegisterNumber(index)];
             case OperandType.ConstantBuffer:
                 {
-                    uint[][] buffer = Buffer(instruction.GetParamRegisterNumber(index));
+                    // A class's data is in the buffer `this` names: cb[r1.y + 0][r1.x + 0].
+                    uint[][] buffer = Buffer(instruction.IsRelativelyAddressed(index, 0)
+                        ? (int)instruction.OperandTokens.GetOperandIndices(index)[0].Immediate
+                            + RelativeIndex(instruction, index, 0)
+                        : instruction.GetParamRegisterNumber(index));
                     int offset = instruction.GetParamConstantBufferOffset(index)
                         + RelativeIndex(instruction, index, 1);
                     return buffer[Math.Clamp(offset, 0, buffer.Length - 1)];
@@ -1644,6 +1665,13 @@ public class D3D10Machine
                     uint instance = (uint)(instruction.ForkInstance ?? 0);
                     return [instance, instance, instance, instance];
                 }
+            case OperandType.ThisPointer:
+                {
+                    // .x the buffer, .y the row the instance's data starts at.
+                    int slot = instruction.GetParamRegisterNumber(index);
+                    LoadClassData(slot);
+                    return [(uint)(ClassDataBuffer + slot), 0, 0, 0];
+                }
             case OperandType.Sampler:
             case OperandType.Resource:
             case OperandType.UnorderedAccessView:
@@ -1651,6 +1679,84 @@ public class D3D10Machine
             default:
                 throw new UnsupportedException($"reading operand type {type}");
         }
+    }
+
+    /// <summary>
+    /// The body an fcall runs: that of the class bound to the instance. fxc may
+    /// number tables and class types differently in the decompilation, so the
+    /// class is picked by name, not by table.
+    /// </summary>
+    private int BodyStart(List<D3D10Instruction> instructions, D3D10Instruction call)
+    {
+        int function = (int)call.OperandTokens.Tokens[0];
+        LinkageModel.InterfaceInfo iface = Linkage().InterfaceByNumber((int)call.OperandTokens.Tokens[2]);
+        int instance = (int)call.OperandTokens.Tokens[3];
+        int table = iface.Tables[Array.IndexOf(iface.TableClasses, BoundClass(iface, instance))];
+        int body = _linkage.Tables.First(t => t.Number == table).Bodies[function];
+        return instructions.FindIndex(i => i.Opcode == D3D10Opcode.Label
+            && i.GetParamRegisterNumber(0) == body) + 1;
+    }
+
+    private LinkageModel Linkage()
+    {
+        if (_linkage != null)
+        {
+            return _linkage;
+        }
+        // Without class names (IFCE), the two sides have nothing to bind alike.
+        if (_shader.Interfaces == null)
+        {
+            throw new UnsupportedException("a call through an interface with no class names");
+        }
+        try
+        {
+            _linkage = LinkageModel.Read(_shader);
+        }
+        catch (NotImplementedException e)
+        {
+            throw new UnsupportedException($"linkage the decompiler cannot read: {e.Message}");
+        }
+        return _linkage;
+    }
+
+    // One of the classes the instance can hold, by its name and the trial.
+    private LinkageModel.ClassInfo BoundClass(LinkageModel.InterfaceInfo iface, int instance)
+    {
+        LinkageModel.ClassInfo[] classes = [.. iface.TableClasses
+            .DistinctBy(c => c.Name).OrderBy(c => c.Name, StringComparer.Ordinal)];
+        float pick = Named(iface.InstanceExpression(instance))[0];
+        return classes[(int)(Math.Abs(pick) * 1000) % classes.Length];
+    }
+
+    /// <summary>
+    /// Fills the data of the class bound at an interface slot, named by instance
+    /// and class so member layout is all that matters.
+    /// </summary>
+    private void LoadClassData(int slot)
+    {
+        if (!_boundSlots.Add(slot))
+        {
+            return;
+        }
+        // Slots follow the interfaces in order, one per array element.
+        int first = 0;
+        foreach (LinkageModel.InterfaceInfo iface in Linkage().Interfaces.OrderBy(i => i.Number))
+        {
+            int count = Math.Max(iface.InstanceArrayLength, 1);
+            if (slot < first + count)
+            {
+                string instance = iface.InstanceExpression(slot - first);
+                string name = $"{instance}:{BoundClass(iface, slot - first).Name}";
+                uint[][] buffer = Buffer(ClassDataBuffer + slot);
+                for (int row = 0; row < 64; row++)
+                {
+                    buffer[row] = [.. Named($"{name}[{row}]").Select(BitConverter.SingleToUInt32Bits)];
+                }
+                return;
+            }
+            first += count;
+        }
+        throw new UnsupportedException($"this[{slot}] past the interface slots");
     }
 
     // x0[r0.x + 1]: array, then element, clamped like a constant buffer index.

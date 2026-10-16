@@ -492,6 +492,12 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "select_uint_beside_select")]
     [TestCase("ps_5_0", "gather_uint_texture")]
     [TestCase("ps_5_0", "local_array_bits")]
+    [TestCase("ps_5_0", "cbuffer_relative_select")]
+    [TestCase("vs_5_0", "local_array_lanes")]
+    [TestCase("ps_5_0", "struct_int_members")]
+    [TestCase("cs_5_0", "local_array_select")]
+    [TestCase("ps_5_0", "icb_integer_table")]
+    [TestCase("ps_5_0", "utof_float_bits")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

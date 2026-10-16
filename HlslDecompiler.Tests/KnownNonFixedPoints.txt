@@ -28,6 +28,7 @@ reworded cs_5_0/group_shared_round2
 reworded cs_5_0/group_shared_tile
 reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack
+reworded cs_5_0/local_array_select
 reworded cs_5_0/local_array_window
 reworded cs_5_0/nested_struct_name
 reworded cs_5_0/prefix_flags

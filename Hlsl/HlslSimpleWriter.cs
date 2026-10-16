@@ -1169,8 +1169,8 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
-        // A constant buffer variable keeps its declared type.
-        if (instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer)
+        // A constant buffer variable keeps its declared type, as does a uint4 icb.
+        if (instruction.GetOperandType(operandIndex) is OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer)
         {
             return IsIntegerConstant(instruction, operandIndex)
                 ? ComponentStorage.Integer
@@ -1371,6 +1371,12 @@ public class HlslSimpleWriter : HlslWriter
         // Same declaration: carry the bits as they are (reading them as floats
         // would flush small integers to zero).
         ComponentStorage source = GetSourceStorage(instruction, sourceIndex);
+        // A float input stays one, though an integer op reads its bits elsewhere.
+        if (instruction.GetOperandType(sourceIndex) == OperandType.Input
+            && DeclaredTypeOf(instruction, sourceIndex) == DeclaredType.Float)
+        {
+            source = ComponentStorage.Numeric;
+        }
         ComponentStorage destination = GetDestinationStorage(instruction, 0);
         if (source == destination)
         {
@@ -1975,10 +1981,16 @@ public class HlslSimpleWriter : HlslWriter
         string size = length == 1 ? "" : length.ToString();
         string source = GetOperandName(instruction, 1);
         // `(int)` on an int register is a no-op; `(uint)` is not (utof != itof).
-        string reinterpreted = readAs == null
+        // Only a temp holds an integer as a number: a float input or uniform
+        // under itof/utof is its bits.
+        string reinterpreted = readAs is "int" or "uint"
+                && instruction.GetOperandType(1) is OperandType.Input or OperandType.ConstantBuffer
+                && DeclaredTypeOf(instruction, 1) == DeclaredType.Float
+            ? $"as{readAs}({source})"
+            : readAs == null
                 || (readAs == "int" && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
-            ? source
-            : $"({readAs}{size}){source}";
+                ? source
+                : $"({readAs}{size}){source}";
         WriteResult(instruction, "{0} = {1};",
             GetOperandName(instruction, 0), $"({convertTo}{size}){reinterpreted}");
     }
@@ -4488,7 +4500,7 @@ public class HlslSimpleWriter : HlslWriter
 
     private bool IsIntegerConstant(D3D10Instruction instruction, int operandIndex)
     {
-        return instruction.GetOperandType(operandIndex) == OperandType.ConstantBuffer
+        return instruction.GetOperandType(operandIndex) is OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer
             && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Bool or DeclaredType.Int or DeclaredType.Uint;
     }
 
@@ -4502,7 +4514,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        return instruction.GetOperandType(operandIndex) is OperandType.ConstantBuffer or OperandType.Input
+        return instruction.GetOperandType(operandIndex)
+                is OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer or OperandType.Input
             && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Int or DeclaredType.Uint;
     }
 

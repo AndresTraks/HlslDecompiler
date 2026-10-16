@@ -36,6 +36,13 @@ public sealed class RegisterState
 
     public bool IsImmediateConstantBufferRead => _immediateConstantBufferBases.Count != 0;
 
+    /// <summary>
+    /// An integer table: small integers are denormal floats, which fxc flushes in a
+    /// float literal (so does NaN or infinity have no literal). Declared uint4 then.
+    /// </summary>
+    public bool ImmediateConstantBufferHoldsBits => ImmediateConstantBuffer
+        .Any(row => row.Value.Any(value => float.IsSubnormal(value) || !float.IsFinite(value)));
+
     public bool IsImmediateConstantBufferIdentity(int baseRow, int width)
     {
         if (baseRow < 0 || baseRow + width > ImmediateConstantBuffer.Count)
@@ -195,10 +202,13 @@ public sealed class RegisterState
             return null;
         }
         List<string> named = [.. runs.Select(r => r.Name)];
-        // A float constructor would round double members.
+        // A float constructor would round double members, and convert integer ones.
+        List<int> addresses = [.. components.Select(c => byteOffset + c * 4)];
         string constructor = GetStructuredComponentsPerElement(resourceKey) == 2
             ? "double"
-            : "float";
+            : addresses.All(a => IsIntegerStructuredMember(resourceKey, a) == true)
+                ? addresses.All(a => IsUnsignedStructuredMember(resourceKey, a) == true) ? "uint" : "int"
+                : "float";
         return named.Count == 1
             ? named[0]
             : $"{constructor}{components.Count}({string.Join(", ", named)})";
@@ -1704,6 +1714,10 @@ public sealed class RegisterState
             && D3D10Instruction.IsThreadRegister(d3D10Key.OperandType))
         {
             return DeclaredType.Uint;
+        }
+        if (registerComponent.RegisterKey is D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer })
+        {
+            return ImmediateConstantBufferHoldsBits ? DeclaredType.Uint : DeclaredType.Float;
         }
         if (FindConstantOfComponent(registerComponent) is ConstantDeclaration constant)
         {

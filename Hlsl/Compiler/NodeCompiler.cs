@@ -1210,7 +1210,7 @@ public sealed class NodeCompiler
         };
         if (key == null
             || key.RegisterKey is not D3D10RegisterKey
-                { OperandType: OperandType.ConstantBuffer or OperandType.Input
+                { OperandType: OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer or OperandType.Input
                     or OperandType.InputPatchConstant or OperandType.InputControlPoint
                     or OperandType.OutputControlPoint })
         {
@@ -1299,15 +1299,27 @@ public sealed class NodeCompiler
         {
             return true;
         }
+        // Nor does a float one become an integer by being read as bits.
+        if (declared == DeclaredType.Float)
+        {
+            return false;
+        }
         return ValueTypes.IsIntegerValue(node) == true;
     }
 
-    // A stage input read through a dynamic vertex index (`patch[i].id`).
+    // A stage input read through a dynamic vertex index (`patch[i].id`), or a
+    // cbuffer array element (`n[j]`).
     private DeclaredType DeclaredTypeOfVertexRead(RelativeAddressNode relative)
     {
+        // The immediate constant buffer: float4, or uint4 holding an integer table.
+        if (relative.RegisterComponentKey.RegisterKey is D3D10RegisterKey { OperandType: OperandType.ImmediateConstantBuffer })
+        {
+            return _registers.GetDeclaredType(relative.RegisterComponentKey);
+        }
         return relative.RegisterComponentKey.RegisterKey is D3D10RegisterKey
             {
                 OperandType: OperandType.Input or OperandType.InputControlPoint or OperandType.OutputControlPoint
+                    or OperandType.ConstantBuffer
             }
             ? _registers.GetDeclaredType(relative.RegisterComponentKey)
             : DeclaredType.Unknown;
@@ -2082,6 +2094,12 @@ public sealed class NodeCompiler
                             _assigningToUnsigned = wasAssigningToUnsigned;
                         }
                     }
+                    // itof/utof of a float-declared value converts its bits.
+                    else if (convert.SourceUnsigned != null && convert.TargetType is "float" or "double"
+                        && value.All(IsFloatValued))
+                    {
+                        compiledValue = $"{(convert.SourceUnsigned == true ? "asuint" : "asint")}({Compile(value)})";
+                    }
                     else
                     {
                         compiledValue = Compile(value);
@@ -2357,8 +2375,10 @@ public sealed class NodeCompiler
                         }
                         // Into an integer, a float branch is bits even beside constants.
                         bool otherIsConstant = components.All(c => c.Inputs[other] is ConstantNode);
+                        // Into a float, an integer branch is bits beside a float constant.
+                        bool otherIsFloatConstant = components.All(c => c.Inputs[other] is ConstantNode { IntegerValue: null });
                         if (!(intoInteger ? BranchIs(branch, true) && (BranchIs(other, false) || otherIsConstant)
-                            : BranchIs(branch, false) && BranchIs(other, true)))
+                            : BranchIs(branch, false) && (BranchIs(other, true) || otherIsFloatConstant)))
                         {
                             return Compile(nodes, components.Count);
                         }

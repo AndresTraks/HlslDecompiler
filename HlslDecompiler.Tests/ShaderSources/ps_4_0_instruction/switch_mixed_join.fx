@@ -6,7 +6,7 @@ float4 main(float4 c : C) : SV_Target
 	r0.x = (uint)asint(c.w) >> 30;
 	switch (r0.x) {
 		case 0:
-		r0 = c;
+		r0 = asint(c);
 		break;
 		case 1:
 		r0 = asint(c + c);

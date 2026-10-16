@@ -175,6 +175,12 @@ public class NodeGrouper
                 && ReferenceEquals(relative1.Index, relative2.Index);
         }
 
+        // Lanes of one element of one local array: x0[i] and x1[i] are two values.
+        if (node1 is IndexableTempLoadNode array1 && node2 is IndexableTempLoadNode array2)
+        {
+            return array1.Register == array2.Register && AreNodesEquivalent(array1.Index, array2.Index);
+        }
+
         if (node1 is DotProductOperation)
         {
             // Only two rows of one matrix against one vector. Whether they make a
@@ -565,6 +571,12 @@ public class NodeGrouper
         {
             return relative1.RegisterComponentKey.Equals(relative2.RegisterComponentKey)
                 && AreNodesEquivalent(relative1.Index, relative2.Index);
+        }
+
+        if (node1 is IndexableTempLoadNode array1 && node2 is IndexableTempLoadNode array2)
+        {
+            return array1.Register == array2.Register && array1.ComponentIndex == array2.ComponentIndex
+                && AreNodesEquivalent(array1.Index, array2.Index);
         }
 
         // A variable has no inputs, so the generic rule would call any two equal.

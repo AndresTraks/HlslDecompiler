@@ -21,6 +21,9 @@ public class StoreStructuredStatement : IStatement
     // Which struct members the store reaches.
     public int ElementByteOffset { get; init; }
 
+    // As LoadStructuredNode's: the member, taken before the offset is a variable.
+    public int MemberByteOffset { get; init; }
+
     // The byte offset as a value, where it is not an immediate (an array member
     // indexed by a variable); null otherwise.
     public HlslTreeNode ByteOffset { get; set; }

@@ -64,11 +64,11 @@ public class EquivalenceTests
             + "register declared float, where the instruction writer keeps it as the "
             + "number it is, by convention, so the store takes the number's bits. The "
             + "AST writer, which stores asfloat(count), computes the same.")],
-        ["cs_5_0/member_array_index"] = [("instruction",
-            "The element written. The instruction writer names struct members by the "
-            + "store's immediate offset only, so an array member indexed by a variable "
-            + "is written at w[0]. The AST writer, which recovers w[k] from the computed "
-            + "offset, computes the same.")],
+        ["cs_5_0/shared_array_offset"] = [("instruction",
+            "The uint array member. Loaded into a register declared float (it "
+            + "also holds the float member), where the instruction writer keeps the "
+            + "integer as the number it is, by convention, so a large uint loses its "
+            + "low bits. The AST writer, which declares it uint, computes the same.")],
         ["ps_4_0/switch_mixed_join"] = [("instruction",
             "The switch's join register. Its cases leave a float's bits and "
             + "integer arithmetic in a register declared float, where the "

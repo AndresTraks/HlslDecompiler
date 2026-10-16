@@ -566,6 +566,8 @@ public class InstructionParser
                             ByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
                                 ? null
                                 : GetInputs(instruction, destinationKeys[0].ComponentIndex)[1],
+                            MemberByteOffset = RegisterState.MemberByteOffset(
+                                GetInputs(instruction, destinationKeys[0].ComponentIndex)[1]),
                             Components = [.. destinationKeys.Select(k => k.ComponentIndex)],
                         });
                         break;
@@ -2993,21 +2995,22 @@ public class InstructionParser
                                                 + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
                                     };
                                 }
+                                // The member at offset + selected component; a computed
+                                // offset's constant part lands in its array member.
+                                int memberStart = RegisterState.MemberByteOffset(inputs[1]);
+                                int memberByteOffset = memberStart
+                                    + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4;
                                 return new LoadStructuredNode(inputs[0], inputs[1], inputs[2])
                                 {
                                     ElementByteOffset = elementByteOffset,
-                                    // The member at offset + selected component. Groupshared
-                                    // has no reflection, so the analysis decides.
+                                    MemberByteOffset = memberStart,
+                                    // Groupshared has no reflection, so the analysis decides.
                                     IsIntegerElement = instruction.GetOperandType(3) == OperandType.ThreadGroupSharedMemory
                                         ? _integerOperandAnalysis.GetStructuredElementKind(instruction) == ValueKind.Integer
                                         : _registerState.IsIntegerStructuredMember(
-                                            instruction.GetParamRegisterKey(3),
-                                            elementByteOffset
-                                                + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
+                                            instruction.GetParamRegisterKey(3), memberByteOffset),
                                     IsUnsignedElement = _registerState.IsUnsignedStructuredMember(
-                                        instruction.GetParamRegisterKey(3),
-                                        elementByteOffset
-                                            + ((IHasComponentIndex)inputs[2]).ComponentIndex * 4),
+                                        instruction.GetParamRegisterKey(3), memberByteOffset),
                                 };
                             }
                         case D3D10Opcode.LdRaw:

@@ -502,6 +502,79 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     /// <summary>
+    /// The byte offset a structured access's member is looked up at: the immediate,
+    /// or 0 where it is computed (a register's number is no offset).
+    /// </summary>
+    private static int StructuredByteOffset(D3D10Instruction instruction)
+    {
+        return instruction.GetOperandType(2) == OperandType.Immediate32
+            ? instruction.GetParamInt(2, 0)
+            : 0;
+    }
+
+    /// <summary>
+    /// The array member a computed byte offset reaches. fxc adds a member's offset
+    /// last (`iadd r0.x, r0.x, l(16)`), so the added immediate lands in it; with
+    /// none, the member at 0.
+    /// </summary>
+    private (string Path, int Start, int Bytes)? ComputedOffsetMember(
+        D3D10Instruction instruction, int resourceOperand)
+    {
+        RegisterKey buffer = instruction.GetParamRegisterKey(resourceOperand);
+        int added = 0;
+        if (instruction.GetOperandType(2) == OperandType.Temp
+            && _programOrder?.LastWriterOf(instruction, instruction.GetParamRegisterKey(2),
+                instruction.GetSourceSwizzleComponents(2)[0]) is { Opcode: D3D10Opcode.IAdd } writer)
+        {
+            int component = instruction.GetSourceSwizzleComponents(2)[0];
+            for (int operand = 1; operand <= 2; operand++)
+            {
+                if (writer.GetOperandType(operand) == OperandType.Immediate32)
+                {
+                    added = writer.GetOperandComponentSelection(operand) == D3D10OperandNumComponents.Operand1Component
+                        ? writer.GetParamInt(operand)
+                        : writer.GetParamInt(operand, writer.GetSourceSwizzleComponents(operand)[component]);
+                }
+            }
+        }
+        return _registers.FindStructuredArrayMember(buffer, added) is var (path, bytes, index, first, _)
+            ? (path, added - index * bytes - first * 4, bytes)
+            : null;
+    }
+
+    /// <summary>
+    /// A structured access at a computed byte offset, read as its array member:
+    /// `e.w[(r0.x - 16) / 4]`. Null at an immediate offset or in groupshared memory;
+    /// throws where no array member is reached, rather than write the wrong one.
+    /// </summary>
+    private string DynamicStructuredMember(D3D10Instruction instruction, int resourceOperand,
+        string element, IList<int> components)
+    {
+        RegisterKey buffer = instruction.GetParamRegisterKey(resourceOperand);
+        if (instruction.GetOperandType(2) == OperandType.Immediate32
+            || instruction.GetOperandType(resourceOperand) == OperandType.ThreadGroupSharedMemory)
+        {
+            return null;
+        }
+        if (ComputedOffsetMember(instruction, resourceOperand) is not var (path, start, bytes))
+        {
+            throw new NotImplementedException(
+                $"A structured access at a computed byte offset outside an array member ({buffer}).");
+        }
+        // The name repeats the offset's component per lane written (`r0.yy`).
+        string offset = GetOperandName(instruction, 2);
+        offset = System.Text.RegularExpressions.Regex.IsMatch(offset, @"^\w+\.([xyzw])\1*$")
+            ? offset[..(offset.IndexOf('.') + 2)]
+            : $"({offset}).x";
+        string index = start == 0 ? $"{offset} / {bytes}" : $"({offset} - {start}) / {bytes}";
+        int width = bytes / 4;
+        string swizzle = width == 1 || components.Count == width
+            ? ""
+            : "." + string.Concat(components.Select(c => "xyzw"[c]));
+        return $"{element}.{path}[{index}]{swizzle}";
+    }
+
+    /// <summary>
     /// Whether the member at the mask's first component is a double; other members
     /// of the same element may be floats.
     /// </summary>
@@ -509,9 +582,7 @@ public class HlslSimpleWriter : HlslWriter
     {
         int mask = DestinationMask(instruction);
         int component = FirstComponent(mask);
-        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
-            ? instruction.GetParamInt(2, 0)
-            : 0;
+        int elementByteOffset = StructuredByteOffset(instruction);
         int elementComponent = resourceOperand == 3
             ? instruction.GetSourceSwizzleComponents(3)[component]
             : component;
@@ -713,9 +784,7 @@ public class HlslSimpleWriter : HlslWriter
             else if (instruction.Opcode == D3D10Opcode.LdStructured)
             {
                 byte[] resourceSwizzle = instruction.GetSourceSwizzleComponents(3);
-                int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
-                    ? instruction.GetParamInt(2, 0)
-                    : 0;
+                int elementByteOffset = StructuredByteOffset(instruction);
                 isDouble = _registers.IsDoubleStructuredMember(
                     instruction.GetParamRegisterKey(3),
                     elementByteOffset + resourceSwizzle[low] * 4)
@@ -2043,7 +2112,7 @@ public class HlslSimpleWriter : HlslWriter
             && _registers.IsUnsignedStructuredMember(
                 instruction.GetParamRegisterKey(0),
                 // Element offset plus the mask's first component.
-                instruction.GetParamInt(2, 0)
+                StructuredByteOffset(instruction)
                     + FirstComponent(DestinationMask(instruction)) * 4) == false
             ? AsInt(name)
             : $"asuint({name})";
@@ -2228,9 +2297,7 @@ public class HlslSimpleWriter : HlslWriter
             return null;
         }
         RegisterKey resourceKey = instruction.GetParamRegisterKey(resourceOperand);
-        int elementByteOffset = instruction.GetOperandType(2) == OperandType.Immediate32
-            ? instruction.GetParamInt(2, 0)
-            : 0;
+        int elementByteOffset = StructuredByteOffset(instruction);
         byte[] swizzle = resourceOperand == 3
             ? instruction.GetSourceSwizzleComponents(3)
             : null;
@@ -2558,7 +2625,7 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     string element = $"{GetOperandName(instruction, 3)}[{GetOperandName(instruction, 1)}]";
                     RegisterKey buffer = instruction.GetParamRegisterKey(3);
-                    int offset = instruction.GetParamInt(2, 0);
+                    int offset = StructuredByteOffset(instruction);
                     byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
                     int writeMask = DestinationMask(instruction);
                     // One entry per value read: a double takes two components.
@@ -2608,6 +2675,11 @@ public class HlslSimpleWriter : HlslWriter
                         }
                         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
                             $"{element}.{sharedName}{sharedSwizzle}");
+                        break;
+                    }
+                    if (DynamicStructuredMember(instruction, 3, element, read) is string dynamicRead)
+                    {
+                        WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), dynamicRead);
                         break;
                     }
                     if (loadPerElement == 1
@@ -3089,13 +3161,21 @@ public class HlslSimpleWriter : HlslWriter
                         }
                         break;
                     }
+                    if (DynamicStructuredMember(instruction, 0, element, written) is string dynamicWrite)
+                    {
+                        WriteLine("{0} = {1};", dynamicWrite,
+                            StoredImmediateBits(instruction)
+                                ?? StoredBits(instruction, 3)
+                                ?? GetOperandName(instruction, 3));
+                        break;
+                    }
                     IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
-                        buffer, element, instruction.GetParamInt(2, 0), written);
+                        buffer, element, StructuredByteOffset(instruction), written);
                     if (runs == null)
                     {
                         // A groupshared struct member, as for the load.
                         string storedMember = _registers.ThreadGroupSharedMember(
-                                buffer, instruction.GetParamInt(2, 0))
+                                buffer, StructuredByteOffset(instruction))
                             is var (storeName, _, _)
                             ? $".{storeName}"
                             : "";

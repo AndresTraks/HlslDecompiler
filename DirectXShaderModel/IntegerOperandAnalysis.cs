@@ -1184,13 +1184,23 @@ public sealed class IntegerOperandAnalysis
     }
 
     // The type of the struct members a structured load or store reaches. Unknown
-    // where they disagree, the offset is not an immediate, or a member is not scalar.
+    // where they disagree or a member is not scalar. A computed offset reaches an
+    // array member: typed where every array member is one type.
     private static StoredType ReachedMembersType(D3D10Instruction instruction, IList<ShaderStructMemberInfo> members)
     {
         const int OffsetIndex = 2;
         if (instruction.GetOperandType(OffsetIndex) != OperandType.Immediate32)
         {
-            return StoredType.Unknown;
+            StoredType[] arrayTypes = [.. members
+                .Where(m => m.TypeInfo.NumElements > 1 && m.TypeInfo.MemberInfo is not { Count: > 0 })
+                .Select(m => m.TypeInfo.ParameterType switch
+                {
+                    ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
+                    ParameterType.Float => StoredType.Float,
+                    _ => StoredType.Unknown,
+                })
+                .Distinct()];
+            return arrayTypes.Length == 1 ? arrayTypes[0] : StoredType.Unknown;
         }
         int byteOffset = instruction.GetParamInt(OffsetIndex, 0);
         IEnumerable<int> dwords;

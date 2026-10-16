@@ -774,11 +774,12 @@ public class HlslAstWriter : HlslWriter
         // Groupshared memory has no reflection; the integer analysis decides it.
         bool? holdsIntegers = bufferKey is D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
             ? CreateIntegerOperandAnalysis().IsIntegerThreadGroupSharedMemory(bufferKey.Number)
-            : _registers.IsIntegerStructuredMember(bufferKey, storeStructured.ElementByteOffset);
+            // A computed offset lands in its array member.
+            : _registers.IsIntegerStructuredMember(bufferKey, storeStructured.MemberByteOffset);
         compiledValue = CompileStoredValue(storedValues, holdsIntegers);
         // An array member indexed by a variable: the offset is computed.
         if (_compiler.CompileDynamicMember(bufferKey, $"{compiledDestination}[{compiledAddress}]",
-            byteOffset, storeStructured.Components) is string dynamicMember)
+            byteOffset, storeStructured.MemberByteOffset, storeStructured.Components) is string dynamicMember)
         {
             WriteLine($"{dynamicMember} = {compiledValue};");
             return;

@@ -23,6 +23,10 @@ public class LoadStructuredNode : Operation
     // From the instruction, not the operand node, which depends on reduction.
     public int ElementByteOffset { get; init; }
 
+    // Where the member is looked up, taken while a computed offset's constant part
+    // is still in sight: a variable later holds `(j << 2) + 4` whole.
+    public int MemberByteOffset { get; init; }
+
     // From reflection (the element, or the struct member at the offset); null if
     // unknown, leaving the value to be typed by its readers.
     public bool? IsIntegerElement { get; init; }

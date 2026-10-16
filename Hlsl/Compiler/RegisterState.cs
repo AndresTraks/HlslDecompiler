@@ -350,6 +350,42 @@ public sealed class RegisterState
         return (path, bytes, inMember / bytes, inMember % bytes / 4, components);
     }
 
+    /// <summary>
+    /// Where a structured access's member is looked up: the immediate, or a computed
+    /// offset's constant part, which lands in the array member (`(j << 4) + 16`).
+    /// </summary>
+    public static int MemberByteOffset(HlslTreeNode byteOffset) => SplitByteOffset(byteOffset).Constant;
+
+    /// <summary>
+    /// A byte offset as constant plus or minus a variable part: `(j << 2) + 16`, or
+    /// `20 - (j << 2)` for an index counting down. The variable is null for an
+    /// immediate.
+    /// </summary>
+    public static (HlslTreeNode Variable, int Constant, bool Subtracted) SplitByteOffset(
+        HlslTreeNode byteOffset)
+    {
+        switch (byteOffset)
+        {
+            case null:
+                return (null, 0, false);
+            case ConstantNode { IntegerValue: int immediate }:
+                return (null, immediate, false);
+            case AddOperation add
+                when add.Inputs.FirstOrDefault(i => i is ConstantNode { IntegerValue: not null })
+                    is ConstantNode { IntegerValue: int addend } constant:
+                {
+                    HlslTreeNode variable = ReferenceEquals(add.Inputs[0], constant) ? add.Inputs[1] : add.Inputs[0];
+                    return (variable, addend, false);
+                }
+            case SubtractOperation { Minuend: ConstantNode { IntegerValue: int minuend } } subtract:
+                return (subtract.Subtrahend, minuend, true);
+            case SubtractOperation { Subtrahend: ConstantNode { IntegerValue: int subtrahend } } subtract:
+                return (subtract.Minuend, -subtrahend, false);
+            default:
+                return (byteOffset, 0, false);
+        }
+    }
+
     /// <summary>The type at a byte address in the element, and its member's offset.</summary>
     private (ShaderTypeInfo Type, int ByteOffset)? FindStructuredTypeAt(
         RegisterKey resourceKey, int byteAddress)
@@ -1877,7 +1913,6 @@ public sealed class RegisterState
         var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey, ResultModifier.None, writeMask);
         RegisterDeclarations.Add(registerKey, registerDeclaration);
     }
-
 
     private const int ConstantRegisterSizeInBytes = 4 * sizeof(float);
 

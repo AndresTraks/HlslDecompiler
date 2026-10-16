@@ -664,19 +664,19 @@ public sealed class NodeCompiler
     /// offset reaches no array member, rather than write the wrong element.
     /// </summary>
     public string CompileDynamicMember(RegisterKey resourceKey, string element,
-        HlslTreeNode byteOffset, IList<int> components)
+        HlslTreeNode byteOffset, int memberByteOffset, IList<int> components)
     {
         if (byteOffset == null || byteOffset is ConstantNode)
         {
             return null;
         }
-        HlslTreeNode variable = byteOffset;
-        int constant = 0;
-        if (byteOffset is AddOperation add
-            && add.Inputs.FirstOrDefault(i => i is ConstantNode { IntegerValue: not null }) is ConstantNode addend)
+        (HlslTreeNode variable, int constant, bool subtracted) = RegisterState.SplitByteOffset(byteOffset);
+        // A variable holding the whole offset (`t0` for `(j << 2) + 4`) still reaches
+        // the member found before it was one; its constant is taken off in the index.
+        bool isWhole = ReferenceEquals(variable, byteOffset) && memberByteOffset != 0;
+        if (isWhole)
         {
-            constant = addend.IntegerValue.Value;
-            variable = ReferenceEquals(add.Inputs[0], addend) ? add.Inputs[1] : add.Inputs[0];
+            constant = memberByteOffset;
         }
         if (_registers.FindStructuredArrayMember(resourceKey, constant)
                 is not var (path, bytes, index, component, width)
@@ -685,8 +685,15 @@ public sealed class NodeCompiler
             throw new NotImplementedException(
                 $"A structured access at a computed byte offset outside an array member ({resourceKey}).");
         }
-        string indexText = CompileElementIndex(variable, bytes);
-        if (index != 0)
+        string indexText = isWhole
+            ? $"({CompileAsInteger([variable])} - {constant}) / {bytes}"
+            : CompileElementIndex(variable, bytes);
+        if (subtracted)
+        {
+            // Taken away whole: `4 - (a % 5)`.
+            indexText = indexText.Contains(' ') ? $"{index} - ({indexText})" : $"{index} - {indexText}";
+        }
+        else if (index != 0)
         {
             indexText = $"{indexText} + {index}";
         }
@@ -744,7 +751,11 @@ public sealed class NodeCompiler
             } insert when powerOfTwo && at == shift:
                 return $"({CompileAsInteger([insert.Insert])} & {(1 << bits) - 1})";
             default:
-                return $"({CompileAsInteger([offset])}) / {bytes}";
+                {
+                    // Bracketed unless a name: `t0 / 4`, `(a + b) / 4`.
+                    string bytesOffset = CompileAsInteger([offset]);
+                    return bytesOffset.Contains(' ') ? $"({bytesOffset}) / {bytes}" : $"{bytesOffset} / {bytes}";
+                }
         }
     }
 
@@ -2173,7 +2184,7 @@ public sealed class NodeCompiler
                     // The swizzle goes after the subscript; components come from the
                     // resource operand. The byte offset picks a matrix row or a member.
                     string element = $"{_registers.GetRegisterName(resourceKey)}[{address}]";
-                    if (CompileDynamicMember(resourceKey, element, load.ByteOffset,
+                    if (CompileDynamicMember(resourceKey, element, load.ByteOffset, load.MemberByteOffset,
                         [.. components.Select(g => ((IHasComponentIndex)g.Inputs[2]).ComponentIndex)])
                         is string dynamicMember)
                     {

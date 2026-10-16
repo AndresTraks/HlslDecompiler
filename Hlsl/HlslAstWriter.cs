@@ -581,6 +581,14 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteBufferAppendStatement(BufferAppendStatement append)
     {
+        if (append.IsSuperseded)
+        {
+            return;
+        }
+        if (append.Values.Any(value => value == null))
+        {
+            throw new NotImplementedException("An Append storing only part of the element.");
+        }
         string destination = _registers.GetRegisterName(
             ((RegisterInputNode)append.Destination).RegisterComponentKey.RegisterKey);
         HlslTreeNode[] values = [.. append.Values.Select(Reduce)];
@@ -658,8 +666,10 @@ public class HlslAstWriter : HlslWriter
         {
             return mixed;
         }
+        // A float variable with no recorded kind is as float as any.
         return destinationHoldsIntegers == true
-            && values.Any(v => ValueTypes.IsIntegerValue(v) == false)
+            && values.Any(v => ValueTypes.IsIntegerValue(v) == false
+                || (v is TempVariableNode { IsInteger: false } && ValueTypes.IsIntegerValue(v) == null))
             ? CompileRawStoredValue(values)
             : destinationHoldsIntegers == false
                 ? _compiler.CompileAsFloat(values)
@@ -807,7 +817,9 @@ public class HlslAstWriter : HlslWriter
         }
         // Groupshared memory wider than a register is a struct; the offset picks the member.
         string sharedMember = ThreadGroupSharedMemberName(bufferKey,
-            storeStructured.ElementByteOffset);
+            storeStructured.ElementByteOffset)
+            + _registers.ThreadGroupSharedStoreMask(bufferKey,
+                storeStructured.ElementByteOffset, storeStructured.Components);
         WriteLine($"{compiledDestination}[{compiledAddress}]{sharedMember} = {compiledValue};");
     }
 
@@ -895,6 +907,8 @@ public class HlslAstWriter : HlslWriter
         {
             element = runs[0].Name;
         }
+        element = _registers.ThreadGroupSharedLane(resourceKey, element, GetElementByteOffset(atomic))
+            ?? element;
         WriteLine($"{atomic.MethodName}({element}, {arguments});");
     }
 
@@ -3345,9 +3359,11 @@ public class HlslAstWriter : HlslWriter
             // the call does not consume again.
             if (!_consumeVariables.TryGetValue(consume.Slot, out TempVariableNode[] variables))
             {
-                variables = _compiler.CreateTempVariables(
-                    _registers.GetStructuredBufferComponents(
-                        consume.Buffer.RegisterComponentKey.RegisterKey));
+                // A struct may be wider than a register: one per dword of the element.
+                RegisterKey consumeBuffer = consume.Buffer.RegisterComponentKey.RegisterKey;
+                variables = _compiler.CreateTempVariables(Math.Max(
+                    _registers.GetStructuredBufferComponents(consumeBuffer),
+                    _registers.GetStructuredElementWords(consumeBuffer)));
                 // Typed from the components read, so float readers reinterpret bits.
                 ApplyValueTypes(variables, [.. call]);
                 RegisterKey consumedKey = consume.Buffer.RegisterComponentKey.RegisterKey;

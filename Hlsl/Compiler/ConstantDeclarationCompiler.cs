@@ -16,6 +16,23 @@ public sealed class ConstantDeclarationCompiler
         return _structIndices.OrderBy(s => s.Value).Select(s => s.Key).ToList();
     }
 
+    /// <summary>
+    /// The struct's reflected name where it is an identifier no other struct here
+    /// has; else structN. A host may look a struct up by name in the reflection.
+    /// </summary>
+    public string GetStructName(ShaderTypeInfo typeInfo)
+    {
+        string own = typeInfo.Name;
+        if (!string.IsNullOrEmpty(own)
+            && System.Text.RegularExpressions.Regex.IsMatch(own, "^[A-Za-z_][A-Za-z0-9_]*$")
+            && HlslKeywords.Escape(own) == own
+            && _structIndices.Keys.Count(other => other.Name == own) == 1)
+        {
+            return own;
+        }
+        return "struct" + _structIndices[typeInfo];
+    }
+
     public void SetStructOrder(ConstantDeclaration declaration)
     {
         SetStructOrder(declaration.TypeInfo);
@@ -127,7 +144,7 @@ public sealed class ConstantDeclarationCompiler
                     _ => throw new NotImplementedException(),
                 };
             case ParameterClass.Struct:
-                return "struct" + _structIndices[typeInfo];
+                return GetStructName(typeInfo);
         }
         throw new NotImplementedException();
     }

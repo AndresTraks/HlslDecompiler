@@ -69,6 +69,11 @@ public class EquivalenceTests
             + "also holds the float member), where the instruction writer keeps the "
             + "integer as the number it is, by convention, so a large uint loses its "
             + "low bits. The AST writer, which declares it uint, computes the same.")],
+        ["gs_5_0/struct_stream"] = [("instruction",
+            "The emitted id. The first vertex's id << 2 lands in a register "
+            + "declared float (it also holds the position), where the instruction "
+            + "writer keeps the integer as the number it is, by convention, so a "
+            + "large id overflows going back. The AST writer computes the same.")],
         ["ps_4_0/switch_mixed_join"] = [("instruction",
             "The switch's join register. Its cases leave a float's bits and "
             + "integer arithmetic in a register declared float, where the "

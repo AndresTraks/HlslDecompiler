@@ -89,13 +89,19 @@ public class HlslSimpleWriter : HlslWriter
                         d9d10Instruction.GetParamRegisterKey(1), out D3D10Instruction alloc)
                     && IsAppendPair(alloc, d9d10Instruction))
                 {
-                    if (!WriteStructAppend(alloc, d9d10Instruction))
+                    // A struct wider than a register is stored a few members at a
+                    // time; the Append follows the last store into the slot.
+                    bool isLast = !HasLaterAppendStore(mainInstructions, index, alloc);
+                    if (!WriteStructAppend(alloc, d9d10Instruction, isLast))
                     {
                         WriteLine("{0}.Append({1});", GetOperandName(alloc, 1),
                             StoredBits(d9d10Instruction, 3)
                                 ?? GetOperandName(d9d10Instruction, 3));
                     }
-                    _allocatedSlots.Remove(d9d10Instruction.GetParamRegisterKey(1));
+                    if (isLast)
+                    {
+                        _allocatedSlots.Remove(d9d10Instruction.GetParamRegisterKey(1));
+                    }
                     continue;
                 }
                 WriteInstruction(d9d10Instruction);
@@ -269,35 +275,99 @@ public class HlslSimpleWriter : HlslWriter
     /// Appends a struct element built member by member from the register (appending
     /// the float4 itself is X3017). False unless the store writes a struct from offset 0.
     /// </summary>
-    private bool WriteStructAppend(D3D10Instruction alloc, D3D10Instruction store)
+    private bool WriteStructAppend(D3D10Instruction alloc, D3D10Instruction store, bool isLast)
     {
         RegisterKey buffer = alloc.GetParamRegisterKey(1);
         ResourceDefinition definition = _registers.FindStructuredBuffer(buffer);
         if (definition?.ElementType?.MemberInfo is not { Count: > 0 }
-            || store.GetOperandType(2) != OperandType.Immediate32
-            || store.GetParamInt(2, 0) != 0)
+            || store.GetOperandType(2) != OperandType.Immediate32)
         {
             return false;
         }
+        int byteOffset = store.GetParamInt(2, 0);
         int writeMask = store.GetWriteMask(0);
         List<int> components = [.. Enumerable.Range(0, 4).Where(c => (writeMask & (1 << c)) != 0)];
-        string element = $"appended{_appendCount++}";
-        IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(buffer, element, 0, components);
+        bool isFirst = !_appendElements.TryGetValue(alloc, out string element);
+        if (isFirst)
+        {
+            element = $"appended{_appendCount++}";
+        }
+        IList<(string Name, int[] Values)> runs = _registers.FindStructuredMemberRuns(
+            buffer, element, byteOffset, components);
         if (runs == null)
         {
             return false;
         }
-        string value = GetOperandName(store, 3);
         byte[] swizzle = store.GetSourceSwizzleComponents(3);
-        string register = value.Contains('.') ? value[..value.IndexOf('.')] : value;
-        WriteLine($"{GetStructuredElementType(definition)} {element};");
+        if (isFirst)
+        {
+            WriteLine($"{GetStructuredElementType(definition)} {element};");
+            _appendElements[alloc] = element;
+        }
         foreach ((string name, int[] values) in runs)
         {
             string picked = string.Concat(values.Select(v => "xyzw"[swizzle[components[v]]]));
-            WriteLine($"{name} = {register}.{picked};");
+            WriteLine($"{name} = {StructMemberValue(store, buffer,
+                byteOffset + components[values[0]] * 4, picked)};");
         }
-        WriteLine($"{GetOperandName(alloc, 1)}.Append({element});");
+        if (isLast)
+        {
+            WriteLine($"{GetOperandName(alloc, 1)}.Append({element});");
+            _appendElements.Remove(alloc);
+        }
         return true;
+    }
+
+    /// <summary>
+    /// A run of a struct store's value: the register's lanes, as bits where an int
+    /// register holds a float member's (`asfloat(r1.yx)`). A float register holds
+    /// integers as the numbers they are, so it goes into an integer member as is.
+    /// </summary>
+    private string StructMemberValue(D3D10Instruction store, RegisterKey buffer,
+        int memberByteOffset, string picked)
+    {
+        if (store.GetOperandType(3) != OperandType.Temp)
+        {
+            string value = GetOperandName(store, 3);
+            return $"{(value.Contains('.') ? value[..value.IndexOf('.')] : value)}.{picked}";
+        }
+        string lanes = $"{GetTempRegisterName(store.GetParamRegisterKey(3))}.{picked}";
+        return GetSourceStorage(store, 3) == ComponentStorage.Integer
+            && _registers.IsIntegerStructuredMember(buffer, memberByteOffset) == false
+            ? $"asfloat({lanes})"
+            : lanes;
+    }
+
+    // The element an Append is built in, by its alloc, while stores into it remain.
+    private readonly Dictionary<D3D10Instruction, string> _appendElements =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Whether another store into the alloc's slot follows, before the slot's
+    /// register is written again.
+    /// </summary>
+    private static bool HasLaterAppendStore(IList<Instruction> instructions, int index,
+        D3D10Instruction alloc)
+    {
+        for (int later = index + 1; later < instructions.Count; later++)
+        {
+            if (instructions[later] is not D3D10Instruction next)
+            {
+                continue;
+            }
+            if (IsAppendPair(alloc, next))
+            {
+                return true;
+            }
+            // Only a write to the slot's own component ends it (r0.yz leaves r0.x).
+            if (next.GetDestinationParamIndex() is int destination
+                && next.GetParamRegisterKey(destination).Equals(alloc.GetParamRegisterKey(0))
+                && (next.GetWriteMask(destination) & alloc.GetWriteMask(0)) != 0)
+            {
+                return false;
+            }
+        }
+        return false;
     }
 
     private int _appendCount;
@@ -1403,12 +1473,26 @@ public class HlslSimpleWriter : HlslWriter
             }
             if (!HoldsFloatBits(instruction, value)
                 && (GetSourceStorage(instruction, value) != ComponentStorage.Numeric
-                    || HoldsIntegers(instruction, value)))
+                    || HoldsIntegers(instruction, value)
+                    || IsWrittenAsIntegers(instruction, value)))
             {
                 return false;
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// Whether every component a temp operand reads was last written with an
+    /// integer: a float register reused for one holds it as the number it is.
+    /// </summary>
+    private bool IsWrittenAsIntegers(D3D10Instruction instruction, int operandIndex)
+    {
+        return _programOrder != null
+            && instruction.GetParamRegisterKey(operandIndex) is D3D10RegisterKey { IsTempRegister: true } register
+            && instruction.GetSourceSwizzleComponents(operandIndex).Distinct().All(component =>
+                _programOrder.LastWriterOf(instruction, register, component) is D3D10Instruction previous
+                && GetProducedKind(previous) == ValueKind.Integer);
     }
 
     // Whether a numeric operand is only ever touched by integer instructions.
@@ -3214,11 +3298,13 @@ public class HlslSimpleWriter : HlslWriter
                     if (runs == null)
                     {
                         // A groupshared struct member, as for the load.
-                        string storedMember = _registers.ThreadGroupSharedMember(
+                        string storedMember = (_registers.ThreadGroupSharedMember(
                                 buffer, StructuredByteOffset(instruction))
                             is var (storeName, _, _)
                             ? $".{storeName}"
-                            : "";
+                            : "")
+                            + _registers.ThreadGroupSharedStoreMask(
+                                buffer, StructuredByteOffset(instruction), written);
                         if (WriteDoubleBitsStore(instruction, $"{element}{storedMember}"))
                         {
                             break;
@@ -3323,6 +3409,8 @@ public class HlslSimpleWriter : HlslWriter
                         {
                             target = memberRuns[0].Name;
                         }
+                        target = _registers.ThreadGroupSharedLane(
+                            instruction.GetParamRegisterKey(first), target, memberOffset.Value) ?? target;
                     }
                     WriteLine("{0}({1}, {2});", method, target, arguments);
                     break;

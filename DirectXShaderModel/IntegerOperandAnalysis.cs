@@ -1219,10 +1219,12 @@ public sealed class IntegerOperandAnalysis
         foreach (int dword in dwords)
         {
             int at = byteOffset + dword * 4;
-            ShaderStructMemberInfo member = members
-                .Where(m => m.ByteOffset <= at)
-                .OrderByDescending(m => m.ByteOffset)
-                .FirstOrDefault();
+            // The leaf, inside an array of structs too (`l[3].r`).
+            ShaderStructMemberInfo member = Hlsl.RegisterState.FindStructuredMember(members, at, 0)?.Member
+                ?? members
+                    .Where(m => m.ByteOffset <= at)
+                    .OrderByDescending(m => m.ByteOffset)
+                    .FirstOrDefault();
             StoredType memberType = member?.TypeInfo.ParameterType switch
             {
                 ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,

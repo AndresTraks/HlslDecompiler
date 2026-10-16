@@ -290,6 +290,14 @@ public sealed class RegisterState
         };
     }
 
+    /// <summary>The dwords a structured element takes, struct padding included; 0 if unknown.</summary>
+    public int GetStructuredElementWords(RegisterKey resourceKey)
+    {
+        return FindStructuredElementType(resourceKey) is ShaderTypeInfo type
+            ? GetElementByteSize(type) / 4
+            : 0;
+    }
+
     /// <summary>
     /// Element type for any structured kind, including counter buffers. Matches the
     /// register kind too: groupshared g0 shares t0's number but has no reflection.
@@ -459,7 +467,7 @@ public sealed class RegisterState
     /// The leaf member at a byte address, its path (`i.a`, descending into nested
     /// structs), and its start offset.
     /// </summary>
-    private static (ShaderStructMemberInfo Member, string Path, int ByteOffset)? FindStructuredMember(
+    internal static (ShaderStructMemberInfo Member, string Path, int ByteOffset)? FindStructuredMember(
         IList<ShaderStructMemberInfo> members, int byteAddress, int baseOffset)
     {
         foreach (ShaderStructMemberInfo member in members)
@@ -1731,6 +1739,54 @@ public sealed class RegisterState
             return null;
         }
         return ThreadGroupSharedMemberAt(shared.Stride, byteOffset);
+    }
+
+    /// <summary>
+    /// The dword a groupshared atomic reaches in an element wider than one: a lane
+    /// of a vector element (`g0[i].y`) or of a struct's member (`g0[i].m4.x`).
+    /// Null for a dword element, raw memory, or memory addressed by dword.
+    /// </summary>
+    public string ThreadGroupSharedLane(RegisterKey resourceKey, string element, int byteOffset)
+    {
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || RawThreadGroupSharedMemory.Contains(resourceKey.Number)
+            || DwordAddressedThreadGroupSharedMemory.Contains(resourceKey.Number)
+            || !ThreadGroupSharedMemory.TryGetValue(resourceKey.Number, out (int Stride, int Elements) shared)
+            || shared.Stride <= 4)
+        {
+            return null;
+        }
+        if (ThreadGroupSharedMember(resourceKey, byteOffset) is var (name, components, componentBase))
+        {
+            return components == 1
+                ? $"{element}.{name}"
+                : $"{element}.{name}.{"xyzw"[componentBase]}";
+        }
+        return $"{element}.{"xyzw"[byteOffset / 4]}";
+    }
+
+    /// <summary>
+    /// The lanes a groupshared store writes where it leaves some of its vector
+    /// (`g0[i].xy` of a uint3), or "" where it writes it whole or the element is a
+    /// dword. Relative to the struct member where the element is a struct.
+    /// </summary>
+    public string ThreadGroupSharedStoreMask(RegisterKey resourceKey, int byteOffset, IList<int> components)
+    {
+        if (resourceKey is not D3D10RegisterKey { OperandType: OperandType.ThreadGroupSharedMemory }
+            || RawThreadGroupSharedMemory.Contains(resourceKey.Number)
+            || DwordAddressedThreadGroupSharedMemory.Contains(resourceKey.Number)
+            || !ThreadGroupSharedMemory.TryGetValue(resourceKey.Number, out (int Stride, int Elements) shared)
+            || shared.Stride <= 4)
+        {
+            return "";
+        }
+        (int width, int first) = ThreadGroupSharedMember(resourceKey, byteOffset) is var (_, members, memberBase)
+            ? (members, memberBase)
+            : (shared.Stride / 4, byteOffset / 4);
+        int[] lanes = [.. components.Select(c => first + c)];
+        return lanes.SequenceEqual(Enumerable.Range(0, width))
+            ? ""
+            : "." + string.Concat(lanes.Select(lane => "xyzw"[lane]));
     }
 
     public ConstantDeclaration FindConstant(RegisterSet set, int index)

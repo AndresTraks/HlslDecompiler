@@ -678,7 +678,7 @@ public abstract class HlslWriter
         IList<ShaderTypeInfo> structs = compiler.GetOrderedStructs();
         for (int i = 0; i < structs.Count; i++)
         {
-            WriteLine($"struct struct{i + 1}");
+            WriteLine($"struct {compiler.GetStructName(structs[i])}");
             WriteLine("{");
             indent = "\t";
             foreach (var member in structs[i].MemberInfo)

@@ -549,13 +549,35 @@ public class InstructionParser
                             .ToArray();
                         SplitStoredDoubles(values);
                         RecordStoredType(instruction, values);
-                        // A store at an alloc'd slot completes an Append.
+                        // A store at an alloc'd slot completes an Append. A struct wider
+                        // than a register is stored a few members at a time (xyzw at 0,
+                        // then xy at 16): one Append, at the last store.
                         if (address is AppendSlotNode appendSlot
                             && appendSlot.Buffer.RegisterComponentKey.RegisterKey.Number
                                 == instruction.GetParamRegisterNumber(0))
                         {
-                            InsertStatement(new BufferAppendStatement(
-                                appendSlot.Buffer, values, ActiveOutputs));
+                            int firstWord = instruction.GetOperandType(2) == OperandType.Immediate32
+                                ? instruction.GetParamInt(2, 0) / 4
+                                : 0;
+                            HlslTreeNode[] words = _appendsBySlot.TryGetValue(appendSlot, out BufferAppendStatement earlier)
+                                ? earlier.Values
+                                : [];
+                            if (words.Length < firstWord + values.Length)
+                            {
+                                Array.Resize(ref words, firstWord + values.Length);
+                            }
+                            else
+                            {
+                                words = [.. words];
+                            }
+                            values.CopyTo(words, firstWord);
+                            if (earlier != null)
+                            {
+                                earlier.IsSuperseded = true;
+                            }
+                            var append = new BufferAppendStatement(appendSlot.Buffer, words, ActiveOutputs);
+                            _appendsBySlot[appendSlot] = append;
+                            InsertStatement(append);
                             break;
                         }
                         InsertStatement(new StoreStructuredStatement(output, address, values, ActiveOutputs)
@@ -3923,6 +3945,9 @@ public class InstructionParser
         joins.Add(joined);
         return joined;
     }
+
+    private readonly Dictionary<AppendSlotNode, BufferAppendStatement> _appendsBySlot =
+        new(ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<HlslTreeNode, List<BitsToDoubleOperation>> _joinedDoubles =
         new(ReferenceEqualityComparer.Instance);

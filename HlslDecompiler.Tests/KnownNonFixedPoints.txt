@@ -17,6 +17,7 @@ reordered ps_5_0/reflected_hit
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
 reworded cs_4_1/groupshared_reduce
+reworded cs_5_0/consume_struct
 reworded cs_5_0/double2_array_index
 reworded cs_5_0/double_array_element
 reworded cs_5_0/fog_volume
@@ -28,8 +29,10 @@ reworded cs_5_0/group_shared_tile
 reworded cs_5_0/groupshared_neighbours
 reworded cs_5_0/half_pack
 reworded cs_5_0/local_array_window
+reworded cs_5_0/nested_struct_name
 reworded cs_5_0/prefix_flags
 reworded cs_5_0/row_blur_clamp
+reworded cs_5_0/structured_float3x4
 reworded cs_5_0/tile_light_list
 reworded cs_5_0/struct_flags
 reworded cs_5_0/switch_stored_index
@@ -40,6 +43,7 @@ reworded cs_5_0/integer_store_bits
 reworded cs_5_0/two_array_members
 reworded cs_5_0/typed_view_width
 reworded ds_5_0/isoline_curve
+reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants
 reworded hs_5_0/output_patch_index
 reworded hs_5_0/patch_semantic_index

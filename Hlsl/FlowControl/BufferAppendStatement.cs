@@ -12,7 +12,11 @@ namespace HlslDecompiler.Hlsl;
 public class BufferAppendStatement : IStatement
 {
     public HlslTreeNode Destination { get; }
+
+    // By dword of the element. A later store into the same slot supersedes this
+    // statement with one holding both stores' values, and this one is not written.
     public HlslTreeNode[] Values { get; }
+    public bool IsSuperseded { get; set; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

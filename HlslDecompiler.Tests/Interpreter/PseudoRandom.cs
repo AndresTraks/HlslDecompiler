@@ -21,10 +21,12 @@ public static class PseudoRandom
     }
 
     // In [-2, 2]: small so products stay comparable, signed so a lost negation shows.
+    // Rounded once, from a double: in floats, taking 2 away cleared the low mantissa
+    // bits, so a test of a float's low bits (`id & 1`) never went the other way.
     private static float Component(uint hash, int index)
     {
         uint bits = Mix(hash + (uint)index * 0x9E3779B9);
-        return (bits % 40001) / 10000f - 2f;
+        return (float)((bits % 40001) / 10000.0 - 2.0);
     }
 
     private static uint Hash(string value)

@@ -458,6 +458,13 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "double_array_index")]
     [TestCase("cs_5_0", "double2_array_index")]
     [TestCase("cs_5_0", "double_array_element")]
+    [TestCase("cs_5_0", "consume_struct")]
+    [TestCase("cs_5_0", "append_struct_wide")]
+    [TestCase("cs_5_0", "append_struct_whole")]
+    [TestCase("cs_5_0", "groupshared_atomic_lanes")]
+    [TestCase("cs_5_0", "nested_struct_name")]
+    [TestCase("cs_5_0", "structured_float3x4")]
+    [TestCase("gs_5_0", "struct_stream")]
     public void DecompileTest(string profile, string baseFilename)
     {
         string compiledShaderFilename = $"CompiledShaders{Path.DirectorySeparatorChar}{profile}{Path.DirectorySeparatorChar}{baseFilename}.fxc";

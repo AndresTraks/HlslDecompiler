@@ -28,6 +28,14 @@ public class HlslAst
     public IList<(LinkageModel.FunctionBodyInfo Body, IList<IStatement> Statements)> LinkageBodies
     { get; init; }
 
+    /// <summary>
+    /// msad instructions whose windows the parser read as the four true sliding
+    /// windows of one uint2. The instruction writer writes only those as a single
+    /// msad4(); a packed or duplicated lane set becomes one call per component.
+    /// </summary>
+    public ISet<D3D10Instruction> StandardMsadWindows { get; init; }
+        = new HashSet<D3D10Instruction>(ReferenceEqualityComparer.Instance);
+
     public HlslAst(IList<IStatement> statements, RegisterState registerState,
         ISet<HlslTreeNode> doubleValues = null)
     {

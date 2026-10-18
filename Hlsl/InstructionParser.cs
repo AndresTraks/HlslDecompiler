@@ -34,6 +34,13 @@ public class InstructionParser
     /// </summary>
     private readonly HashSet<RegisterComponentKey> _doubleHighWords = [];
 
+    /// <summary>
+    /// msad instructions whose windows are the four true sliding windows of the
+    /// recovered uint2; only those the instruction writer can write as one msad4().
+    /// </summary>
+    private readonly HashSet<D3D10Instruction> _standardMsadWindows =
+        new(ReferenceEqualityComparer.Instance);
+
     private IStatement ActiveStatement => _currentStatements.Count != 0 ? _currentStatements.Peek() : null;
     private IDictionary<RegisterComponentKey, HlslTreeNode> ActiveOutputs => ActiveStatement?.Outputs;
     private IList<IStatement> ActiveStatementSequence
@@ -155,6 +162,7 @@ public class InstructionParser
         {
             PreshaderOutputs = _preshaderOutputs,
             LinkageBodies = linkageBodies,
+            StandardMsadWindows = _standardMsadWindows,
         };
     }
 
@@ -2078,13 +2086,18 @@ public class InstructionParser
         HlslTreeNode[] windows = GetInputComponents(instruction, WindowsOperand, 4);
         HlslTreeNode[] inputs = GetInputs(instruction, componentIndex);
         int lane = componentIndex;
-        if (!TryGetMsadSource(instruction, WindowsOperand, windows,
-                out HlslTreeNode low, out HlslTreeNode high)
+        bool standardWindows = TryGetMsadSource(instruction, WindowsOperand, windows,
+            out HlslTreeNode low, out HlslTreeNode high);
+        if (!standardWindows
             && !TryGetCompactedMsadSource(instruction, windows, componentIndex,
                 out low, out high, out lane))
         {
             throw new NotImplementedException(
                 "msad over windows this does not recognise as a uint2");
+        }
+        if (standardWindows)
+        {
+            _standardMsadWindows.Add(instruction);
         }
         var node = new Msad4Node(inputs[0], low, high, inputs[2], lane);
         // Detach the now-unread windows so they stop counting as readers of the
@@ -2100,8 +2113,11 @@ public class InstructionParser
     }
 
     /// <summary>
-    /// An msad4 read at some lanes only: fxc packs just those windows to the front
-    /// (`m.x + m.w` is `msad r0.xy`), so each window's slide gives its lane.
+    /// An msad4 read at some lanes only, or with a lane read twice: fxc packs just
+    /// those windows to the front (`m.x + m.w` is `msad r0.xy`), and duplicates a
+    /// whole window when the result duplicates a component (`uint4(r.x, r.x, r.y,
+    /// r.z)` writes lane 0 into x and y). Each window's slide gives its lane; the
+    /// lane a component reads is that slide's, never the component's own.
     /// </summary>
     private bool TryGetCompactedMsadSource(D3D10Instruction instruction, HlslTreeNode[] windows,
         int componentIndex, out HlslTreeNode low, out HlslTreeNode high, out int lane)
@@ -2110,7 +2126,6 @@ public class InstructionParser
         high = null;
         lane = -1;
         int mask = instruction.GetDestinationWriteMask();
-        int previousLane = -1;
         for (int component = 0; component < 4; component++)
         {
             if ((mask & (1 << component)) == 0)
@@ -2139,6 +2154,9 @@ public class InstructionParser
                     return false;
                 }
             }
+            // A duplicated lane reads the same window twice, and equal windows of
+            // one source are equal by construction: the low and high checks above
+            // leave a lane's window nothing free to differ in.
             if (low == null)
             {
                 low = windowLow;
@@ -2147,22 +2165,14 @@ public class InstructionParser
             {
                 return false;
             }
-            if (windowLane <= previousLane)
-            {
-                return false;
-            }
-            previousLane = windowLane;
             if (component == componentIndex)
             {
                 lane = windowLane;
             }
         }
-        // Lane 0 alone reads no high word; any will do.
-        if (high == null && previousLane == 0)
-        {
-            high = new ConstantNode(0);
-        }
-        return high != null && lane >= 0;
+        // Windows that name no bfi read a zero high word; any will do.
+        high ??= new ConstantNode(0);
+        return lane >= 0;
     }
 
     /// <summary>

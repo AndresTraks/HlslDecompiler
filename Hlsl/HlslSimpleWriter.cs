@@ -2182,7 +2182,24 @@ public class HlslSimpleWriter : HlslWriter
         int dot = name.LastIndexOf('.');
         string swizzle = dot < 0 ? "" : name[(dot + 1)..];
         int count = BitOperations.PopCount((uint)instruction.GetDestinationWriteMask());
-        if (swizzle.Length == 0 || swizzle.Any(c => "xyzw".IndexOf(c) < 0))
+        if (swizzle.Length == 0)
+        {
+            if (count == 1)
+            {
+                return [name];
+            }
+            // No swizzle in the name: either one component broadcast (a scalar
+            // cbuffer read is named bare) or a whole register read - the operand's
+            // own components tell the two apart.
+            byte[] components = instruction.GetSourceSwizzleComponents(operandIndex);
+            if (components.Distinct().Count() == 1 || name.Contains('('))
+            {
+                return [.. Enumerable.Repeat(name, count)];
+            }
+            return [.. Enumerable.Range(0, count)
+                .Select(i => $"{name}.{"xyzw"[components[i]]}")];
+        }
+        if (swizzle.Any(c => "xyzw".IndexOf(c) < 0))
         {
             return [.. Enumerable.Repeat(name, count)];
         }
@@ -2912,8 +2929,11 @@ public class HlslSimpleWriter : HlslWriter
             // low three bytes, the only ones msad4 reads.
             case D3D10Opcode.MSAD:
                 {
-                    // Fewer lanes: fxc packs them, so each becomes lane 0 of its own call.
-                    if (instruction.GetDestinationWriteMask() != 0xF)
+                    // Fewer lanes, or a lane read twice where the result duplicates
+                    // a component: either way the windows are not the sliding four,
+                    // so each lane becomes lane 0 of its own call.
+                    if (instruction.GetDestinationWriteMask() != 0xF
+                        || !_ast.StandardMsadWindows.Contains(instruction))
                     {
                         WriteMsadLanes(instruction);
                         break;

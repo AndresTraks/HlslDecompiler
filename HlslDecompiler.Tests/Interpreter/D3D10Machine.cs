@@ -769,7 +769,9 @@ public class D3D10Machine
                     uint[] whenClear = Source(instruction, 3);
                     return [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? whenSet[i] : whenClear[i])];
                 }
-            // Masked sum of absolute byte differences; a zero reference byte is skipped.
+            // Masked sum of absolute byte differences; a zero reference byte is
+            // skipped. Both rules were the reader's guess until a WARP compute
+            // probe ran the real instruction beside it.
             case D3D10Opcode.MSAD:
                 {
                     uint[] reference = Source(instruction, 1);

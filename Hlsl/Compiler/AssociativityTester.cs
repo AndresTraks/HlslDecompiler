@@ -23,6 +23,7 @@ public static class AssociativityTester
             case LogicalAndOperation _:
             case LogicalOrOperation _:
             case CompareOperation _:
+            case CndOperation _:
             case ComparisonNode _:
             case GreaterEqualOperation _:
             // Shift and the bitwise operators bind more loosely than the arithmetic

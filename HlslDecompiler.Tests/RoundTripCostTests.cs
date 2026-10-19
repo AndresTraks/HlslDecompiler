@@ -252,6 +252,12 @@ public class RoundTripCostTests
             + "more than crs and a mov to hold the operand it rotates, and sign() "
             + "as the difference of two slt comparisons against the negated value, "
             + "which costs two more than sgn. Neither instruction is one fxc emits."),
+        ["vs_3_0/conditional_select"] = (7,
+            "Seven instructions. fxc emits cnd at no profile, and each of the two "
+            + "selects comes back as an slt against 0.5, an add moving an operand "
+            + "into the shape the mad mixes - the second of those wants its own "
+            + "mov - and a mad selecting by the slt's 0/1. The original's mov goes: "
+            + "the mad writes the output directly."),
     };
 
     // Renamed so failures are not reported as Recompile(...).

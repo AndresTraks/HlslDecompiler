@@ -2536,6 +2536,7 @@ public class InstructionParser
             case Opcode.Abs:
             case Opcode.Add:
             case Opcode.Cmp:
+            case Opcode.Cnd:
             case Opcode.DSX:
             case Opcode.DSY:
             case Opcode.Exp:
@@ -2563,6 +2564,8 @@ public class InstructionParser
                             return new AbsoluteOperation(inputs[0]);
                         case Opcode.Cmp:
                             return new CompareOperation(inputs[0], inputs[1], inputs[2]);
+                        case Opcode.Cnd:
+                            return new CndOperation(inputs[0], inputs[1], inputs[2]);
                         case Opcode.DSX:
                             return new PartialDerivativeXOperation(inputs[0]);
                         case Opcode.DSY:

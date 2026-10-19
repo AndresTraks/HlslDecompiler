@@ -791,7 +791,7 @@ public sealed class NodeCompiler
             return $"({CompileCondition([masks])} ? {CompileMask(masks.Inputs[1])} : {CompileMask(masks.Inputs[2])})";
         }
         string condition = Compile(components.Select(g => g.Inputs[0]));
-        return components.Any(g => g.Inputs[0] is CompareOperation or MoveConditionalOperation)
+        return components.Any(g => g.Inputs[0] is CompareOperation or CndOperation or MoveConditionalOperation)
             ? $"({condition})"
             : condition;
     }
@@ -1609,7 +1609,7 @@ public sealed class NodeCompiler
             // A cast names a vector type: `(float2)`.
             case ConvertOperation:
                 return requested;
-            case MoveConditionalOperation or CompareOperation:
+            case MoveConditionalOperation or CompareOperation or CndOperation:
                 // The branches carry the width, not the condition.
                 return MaxBroadcastWidth(node.Inputs.Skip(1), requested);
             case ComparisonNode comparison
@@ -1910,8 +1910,8 @@ public sealed class NodeCompiler
                         (addend1, addend2) = (addend2, addend1);
                     }
                     // A select goes second: `x + (c ? a : b)`.
-                    else if (addend1.First() is MoveConditionalOperation or CompareOperation
-                        && addend2.First() is not (MoveConditionalOperation or CompareOperation)
+                    else if (addend1.First() is MoveConditionalOperation or CompareOperation or CndOperation
+                        && addend2.First() is not (MoveConditionalOperation or CompareOperation or CndOperation)
                         && !IsSum(addend2.First())
                         && !(_assignedVariables != null && addend1.Any(_assignedVariables.Contains)))
                     {
@@ -2155,6 +2155,14 @@ public sealed class NodeCompiler
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
                     return $"{value1} >= 0 ? {value2} : {value3}";
+                }
+            case CndOperation _:
+                {
+                    var value1 = CompileCondition(components);
+                    var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
+                    var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
+
+                    return $"{value1} > 0.5 ? {value2} : {value3}";
                 }
             case GreaterEqualOperation _:
                 {

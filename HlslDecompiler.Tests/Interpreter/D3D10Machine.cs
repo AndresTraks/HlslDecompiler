@@ -444,6 +444,24 @@ public class D3D10Machine
                 pc++;
                 continue;
             }
+            if (instruction.Opcode == D3D10Opcode.UAddC)
+            {
+                AddWithCarry(instruction);
+                pc++;
+                continue;
+            }
+            if (instruction.Opcode == D3D10Opcode.USubB)
+            {
+                SubtractWithBorrow(instruction);
+                pc++;
+                continue;
+            }
+            if (instruction.Opcode == D3D10Opcode.SwapC)
+            {
+                ConditionalSwap(instruction);
+                pc++;
+                continue;
+            }
 
             Store(instruction, Evaluate(instruction));
             pc++;
@@ -705,14 +723,18 @@ public class D3D10Machine
         return element * (stride / 4) + Math.Clamp(offset, 0, stride - 4) / 4;
     }
 
-    // imul high, low; a plain 32 bit multiply leaves high null.
+    // imul/umul high, low; a plain 32 bit multiply leaves high null. The two
+    // differ only in the high half: imul's is signed, umul's unsigned.
     private void Multiply(D3D10Instruction instruction)
     {
         const int HighIndex = 0;
         const int LowIndex = 1;
         int[] left = Ints(instruction, 2);
         int[] right = Ints(instruction, 3);
-        long[] product = [.. Enumerable.Range(0, 4).Select(i => (long)left[i] * right[i])];
+        bool unsigned = instruction.Opcode == D3D10Opcode.UMul;
+        long[] product = [.. Enumerable.Range(0, 4).Select(i => unsigned
+            ? (long)unchecked((uint)left[i] * (ulong)(uint)right[i])
+            : (long)left[i] * right[i])];
 
         if (instruction.GetOperandType(HighIndex) != OperandType.Null)
         {
@@ -722,6 +744,57 @@ public class D3D10Machine
         {
             Store(instruction, LowIndex, [.. product.Select(p => unchecked((uint)p))]);
         }
+    }
+
+    // uaddc sum, carry; the carry destination may be null.
+    private void AddWithCarry(D3D10Instruction instruction)
+    {
+        const int SumIndex = 0;
+        const int CarryIndex = 1;
+        uint[] left = Source(instruction, 2);
+        uint[] right = Source(instruction, 3);
+        ulong[] sum = [.. Enumerable.Range(0, 4)
+            .Select(i => (ulong)left[i] + right[i])];
+
+        Store(instruction, SumIndex, [.. sum.Select(s => unchecked((uint)s))]);
+        if (instruction.GetOperandType(CarryIndex) != OperandType.Null)
+        {
+            Store(instruction, CarryIndex, [.. sum.Select(s => (uint)(s >> 32))]);
+        }
+    }
+
+    // usubb difference, borrow (1 where a borrow was produced); the borrow
+    // destination may be null.
+    private void SubtractWithBorrow(D3D10Instruction instruction)
+    {
+        const int DifferenceIndex = 0;
+        const int BorrowIndex = 1;
+        uint[] left = Source(instruction, 2);
+        uint[] right = Source(instruction, 3);
+
+        Store(instruction, DifferenceIndex,
+            [.. Enumerable.Range(0, 4).Select(i => unchecked(left[i] - right[i]))]);
+        if (instruction.GetOperandType(BorrowIndex) != OperandType.Null)
+        {
+            Store(instruction, BorrowIndex,
+                [.. Enumerable.Range(0, 4).Select(i => left[i] < right[i] ? 1u : 0u)]);
+        }
+    }
+
+    // swapc dst0, dst1, condition, a, b: each component of the pair takes the
+    // other's value where the condition is nonzero; the sources are untouched.
+    private void ConditionalSwap(D3D10Instruction instruction)
+    {
+        const int Destination0Index = 0;
+        const int Destination1Index = 1;
+        uint[] condition = Source(instruction, 2);
+        uint[] first = Source(instruction, 3);
+        uint[] second = Source(instruction, 4);
+
+        Store(instruction, Destination0Index,
+            [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? second[i] : first[i])]);
+        Store(instruction, Destination1Index,
+            [.. Enumerable.Range(0, 4).Select(i => condition[i] != 0 ? first[i] : second[i])]);
     }
 
     // sincos sin, cos; either may be null.

@@ -241,6 +241,11 @@ public class D3D10Instruction : Instruction
                 case D3D10Opcode.UMax:
                 case D3D10Opcode.UMin:
                 case D3D10Opcode.Umad:
+                // Two destinations each: the result and the carry or borrow (which
+                // may be null) or the value's swap partner (which may not).
+                case D3D10Opcode.UAddC:
+                case D3D10Opcode.USubB:
+                case D3D10Opcode.SwapC:
                 case D3D10Opcode.IMin:
                 case D3D10Opcode.INeg:
                 case D3D10Opcode.Ine:
@@ -353,7 +358,7 @@ public class D3D10Instruction : Instruction
         return operandIndex == 1 && HasSecondDestination();
     }
 
-    private bool HasSecondDestination()
+    public bool HasSecondDestination()
     {
         switch (Opcode)
         {
@@ -361,6 +366,9 @@ public class D3D10Instruction : Instruction
             case D3D10Opcode.IMul:
             case D3D10Opcode.UMul:
             case D3D10Opcode.SinCos:
+            case D3D10Opcode.UAddC:
+            case D3D10Opcode.USubB:
+            case D3D10Opcode.SwapC:
                 return true;
             default:
                 return false;

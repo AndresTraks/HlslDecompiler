@@ -745,6 +745,17 @@ public class AsmWriter
             case D3D10Opcode.Label:
                 WriteLine("label {0}", FormatOperand(instruction, 0));
                 break;
+            // Subroutine calls: fxc always inlines, so only hand-assembled
+            // bytecode holds them. The label operand names the routine.
+            case D3D10Opcode.Call:
+                WriteInstruction(instruction, "call", 1);
+                break;
+            case D3D10Opcode.CallC:
+                WriteInstruction(instruction, Conditional(instruction, "callc"), 2);
+                break;
+            case D3D10Opcode.Nop:
+                WriteLine("nop");
+                break;
             case D3D10Opcode.DclThreadGroupSharedMemoryRaw:
                 WriteLine("dcl_tgsm_raw {0}, {1}", FormatOperand(instruction, 0),
                     instruction.GetParamIndexImmediate32(1, 0));
@@ -860,6 +871,18 @@ public class AsmWriter
                 break;
             case D3D10Opcode.Umad:
                 WriteInstruction(instruction, "umad", 4);
+                break;
+            case D3D10Opcode.UMul:
+                WriteInstruction(instruction, "umul", 4);
+                break;
+            case D3D10Opcode.UAddC:
+                WriteInstruction(instruction, "uaddc", 4);
+                break;
+            case D3D10Opcode.USubB:
+                WriteInstruction(instruction, "usubb", 4);
+                break;
+            case D3D10Opcode.SwapC:
+                WriteInstruction(instruction, "swapc", 5);
                 break;
             case D3D10Opcode.UMax:
                 WriteInstruction(instruction, "umax", 3);
@@ -1714,6 +1737,7 @@ public class AsmWriter
             OperandType.InputJoinInstanceID => "vJoinInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
+            OperandType.Label => "l",
             OperandType.FunctionBody => "fb",
             OperandType.FunctionTable => "ft",
             OperandType.Interface => "fp",
@@ -1737,7 +1761,11 @@ public class AsmWriter
             ? ""
             : index == instruction.GetDestinationParamIndex()
                 ? instruction.GetDestinationWriteMaskName(GetDestinationSemanticSize(instruction))
-                : instruction.GetSourceSwizzleName(index);
+                // The second of two destinations carries its own write mask, which
+                // a swapc may make differ from the first's.
+                : instruction.IsDestinationOperand(index)
+                    ? instruction.GetWriteMaskName(index, 4)
+                    : instruction.GetSourceSwizzleName(index);
 
         var modifier = instruction.GetOperandModifier(index);
         return ApplyModifier(modifier, $"{registerTypeName}{registerNumber}{swizzle}");

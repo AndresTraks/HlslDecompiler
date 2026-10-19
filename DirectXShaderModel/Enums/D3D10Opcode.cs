@@ -356,6 +356,9 @@ public static class D3D10OpcodeExtensions
             case D3D10Opcode.IMul:
             case D3D10Opcode.Udiv:
             case D3D10Opcode.Umad:
+            // The carry and the borrow are bits of an unsigned sum.
+            case D3D10Opcode.UAddC:
+            case D3D10Opcode.USubB:
             case D3D10Opcode.UMax:
             case D3D10Opcode.UMin:
             case D3D10Opcode.UMul:
@@ -406,6 +409,8 @@ public static class D3D10OpcodeExtensions
         {
             case D3D10Opcode.Mov:
             case D3D10Opcode.MovC:
+            // The swapped pair passes through untyped like a movc's values.
+            case D3D10Opcode.SwapC:
             case D3D10Opcode.And:
             case D3D10Opcode.Or:
             case D3D10Opcode.Xor:
@@ -447,6 +452,8 @@ public static class D3D10OpcodeExtensions
         {
             case D3D10Opcode.Mov:
             case D3D10Opcode.MovC:
+            // The swapped pair keeps the type of what was moved in.
+            case D3D10Opcode.SwapC:
             case D3D10Opcode.And:
             case D3D10Opcode.Or:
             case D3D10Opcode.Xor:

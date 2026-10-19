@@ -261,8 +261,8 @@ public class InstructionParser
             return;
         }
         // StoreStructured names a destination operand but writes through a statement,
-        // and SinCos, Udiv and IMul each write two destinations, so none of them fits
-        // the single-destination assignment path.
+        // and SinCos, Udiv, IMul, UMul, UAddC, USubB and SwapC each write two
+        // destinations, so none of them fits the single-destination assignment path.
         if (instruction.HasDestination
             && instruction.GetOperandType(instruction.GetDestinationParamIndex().Value) == OperandType.IndexableTemp)
         {
@@ -274,6 +274,10 @@ public class InstructionParser
             && instruction.Opcode != D3D10Opcode.StoreRaw
             && instruction.Opcode != D3D10Opcode.SinCos
             && instruction.Opcode != D3D10Opcode.IMul
+            && instruction.Opcode != D3D10Opcode.UMul
+            && instruction.Opcode != D3D10Opcode.UAddC
+            && instruction.Opcode != D3D10Opcode.USubB
+            && instruction.Opcode != D3D10Opcode.SwapC
             && instruction.Opcode != D3D10Opcode.Udiv
             // imm_atomic_* writes a register but is an ordered side effect.
             && !instruction.Opcode.IsImmediateAtomic())
@@ -324,6 +328,7 @@ public class InstructionParser
                     ParseIntegerDivideInstruction(instruction);
                     break;
                 case D3D10Opcode.IMul:
+                case D3D10Opcode.UMul:
                     ParseIntegerMultiplyInstruction(instruction);
                     break;
                 case D3D10Opcode.Cut:
@@ -1312,8 +1317,8 @@ public class InstructionParser
         return instruction.TestNonZero ? comparison : comparison.Inverted();
     }
 
-    // imul hi, lo, a, b: fxc leaves hi null for a plain 32-bit multiply, the only
-    // form HLSL can express.
+    // imul/umul hi, lo, a, b: fxc leaves hi null for a plain 32-bit multiply, the
+    // only form HLSL can express.
     private void ParseIntegerMultiplyInstruction(D3D10Instruction instruction)
     {
         const int HighDestinationIndex = 0;
@@ -1323,7 +1328,7 @@ public class InstructionParser
 
         if (instruction.GetOperandType(HighDestinationIndex) != OperandType.Null)
         {
-            throw new NotImplementedException("imul writing the high half of the product");
+            throw new NotImplementedException("imul/umul writing the high half of the product");
         }
         if (instruction.GetOperandType(LowDestinationIndex) == OperandType.Null)
         {

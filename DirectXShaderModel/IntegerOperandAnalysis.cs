@@ -1647,6 +1647,13 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.IMax:
             case D3D10Opcode.IMul:
             case D3D10Opcode.Ine:
+            // The unsigned relatives read the same two integer sources.
+            case D3D10Opcode.UMul:
+            case D3D10Opcode.Umad:
+            case D3D10Opcode.UMax:
+            case D3D10Opcode.UMin:
+            case D3D10Opcode.UAddC:
+            case D3D10Opcode.USubB:
             // An atomic's address and value are integers.
             case D3D10Opcode.AtomicIAdd:
             case D3D10Opcode.AtomicAnd:

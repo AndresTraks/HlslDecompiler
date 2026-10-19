@@ -1581,13 +1581,12 @@ public class HlslSimpleWriter : HlslWriter
         return tempRegisters;
     }
 
-    // udiv, sincos and imul write two registers, which HasDestination does not
-    // describe; either may be null.
+    // Two-destination instructions - udiv, sincos, imul/umul, uaddc/usubb, swapc -
+    // write two registers, which HasDestination does not describe; either of the
+    // udiv/imul/umul/uaddc/usubb ones may be null.
     private static IEnumerable<int> GetDestinationParamIndices(Instruction instruction)
     {
-        if (instruction is D3D10Instruction d3d10
-            && (d3d10.Opcode == D3D10Opcode.Udiv || d3d10.Opcode == D3D10Opcode.SinCos
-                || d3d10.Opcode == D3D10Opcode.IMul))
+        if (instruction is D3D10Instruction d3d10 && d3d10.HasSecondDestination())
         {
             for (int index = 0; index < 2; index++)
             {

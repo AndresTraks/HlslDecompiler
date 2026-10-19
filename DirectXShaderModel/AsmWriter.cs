@@ -1737,7 +1737,8 @@ public class AsmWriter
             OperandType.InputJoinInstanceID => "vJoinInstanceID",
             OperandType.UnorderedAccessView => "u",
             OperandType.ThreadGroupSharedMemory => "g",
-            OperandType.Label => "l",
+            // fxc writes `call label2`; the D3D9 label register is l#, but not this one.
+            OperandType.Label => "label",
             OperandType.FunctionBody => "fb",
             OperandType.FunctionTable => "ft",
             OperandType.Interface => "fp",

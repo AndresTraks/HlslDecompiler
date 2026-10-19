@@ -46,7 +46,7 @@ internal static class DxbcShaderAssembler
         writer.Write(FourCC("DXBC"));
         for (int i = 0; i < 4; i++)
         {
-            writer.Write(0u); // checksum
+            writer.Write(0u); // checksum, filled in once the rest is written
         }
         writer.Write(1u);
         writer.Write(totalSize);
@@ -72,7 +72,10 @@ internal static class DxbcShaderAssembler
         {
             writer.Write(dword);
         }
-        return stream.ToArray();
+        writer.Flush();
+        byte[] container = stream.ToArray();
+        DxbcChecksum.Compute(container).CopyTo(container, DxbcChecksum.Offset);
+        return container;
     }
 
     // D3D10_SB_SHADER_SHADER_TYPE: the numeric type in the version token, not the

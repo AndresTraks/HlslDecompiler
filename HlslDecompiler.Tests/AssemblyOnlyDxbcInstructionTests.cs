@@ -11,11 +11,12 @@ using OperandType = HlslDecompiler.DirectXShaderModel.OperandType;
 namespace HlslDecompiler.Tests;
 
 // DXBC instructions fxc never compiles from HLSL (the docs confirm fxc inlines
-// every call and folds 64-bit arithmetic away). Expected text follows the spec
-// pages, which spell the mnemonics and operand forms exactly as fxc's
-// disassembler prints them. The machine cases run the hand-assembled shader
-// against the interpreter because the equivalence tier can never reach these
-// shapes.
+// every call and folds 64-bit arithmetic away). Expected text is fxc /dumpbin's
+// listing of the same bytes (WritesTheBytesForDumpbin), as house-styled
+// elsewhere - except labels, which the spec pages write l# and fxc label#. The
+// machine cases run the hand-assembled shader against the interpreter because
+// the equivalence tier can never reach these shapes; WARP agrees with them
+// (tools/warp-probe, ucarry_probe).
 public class AssemblyOnlyDxbcInstructionTests
 {
     [Test]
@@ -66,21 +67,21 @@ public class AssemblyOnlyDxbcInstructionTests
             uaddc r1, r2, r0, r0
             uaddc r1, null, r0, r3
             usubb r1, r2, r0, r3
-            swapc r1.xy, r2.zw, r0.xy, r3.xy, r1.xy
+            swapc r1.xy, r2.zw, r0, r3, r1
             nop
-            call l2
-            callc_nz r0.x, l2
-            label l2
+            call label2
+            callc_nz r0.x, label2
+            label label2
             ret
 
             """));
     }
 
-    // The listing above follows the spec pages, which are what fxc's disassembler
-    // prints. This writes the bytes for `fxc /nologo /dumpbin` to look at; every
-    // d3dcompiler entry point (/dumpbin, D3DDisassemble, D3DStripShader) and even
-    // the D3D11 runtime's CreateComputeShader refuse a container until it carries
-    // a computed DXBC container hash, so the file waits on a hash writer.
+    // Writes the bytes for `fxc /nologo /dumpbin` to list. d3dcompiler and the
+    // D3D11 runtime refuse a container without the right checksum, which
+    // AssembleBytes now computes (DxbcChecksum). fxc's listing differs from the
+    // one above only in house style: full swizzles, and the mov's 0x80000000
+    // written as the float -0.000000.
     [Test]
     [Explicit("Writes the hand-assembled shader to %TEMP% for fxc /dumpbin.")]
     public void WritesTheBytesForDumpbin()

@@ -754,6 +754,19 @@ public class D3D10Instruction : Instruction
                     destinationMask = 15;
                     destinationLength = 4;
                 }
+                // Each destination reads the sources at its own components, so a
+                // swapc writing r1.xy and r2.zw reads all four.
+                else if (HasSecondDestination())
+                {
+                    destinationMask = 0;
+                    for (int index = 0; index < 2; index++)
+                    {
+                        if (GetOperandType(index) != OperandType.Null)
+                        {
+                            destinationMask |= GetWriteMask(index);
+                        }
+                    }
+                }
                 else if (HasDestination)
                 {
                     destinationMask = GetDestinationWriteMask();

@@ -90,6 +90,32 @@ public class EquivalenceTests
             + "where the instruction writer keeps the integers as the numbers they are, "
             + "by convention, so they are converted where the original reads their bits. "
             + "The AST writer, which reads asfloat(t.xy), computes the same.")],
+        // These five were hidden until integer stores compared as bits: an
+        // integer above 2^24 goes through a float register a few ulps off,
+        // within the float tolerance, but wrong. WARP shows half_pack's too.
+        ["cs_5_0/half_pack"] = [("instruction",
+            "The packed halves. f32tof16's two results go into a register declared "
+            + "float, where the instruction writer keeps them as the numbers they are, "
+            + "by convention, so hi * 65536 + lo is computed in float and the uint "
+            + "loses its low bits. The AST writer, which packs ints, computes the same.")],
+        ["cs_5_0/array_index_down"] = [("instruction",
+            "The int array member. It is loaded into a register declared float (it "
+            + "also holds the float member), where the instruction writer keeps the "
+            + "integer as the number it is, by convention, so a large int loses its "
+            + "low bits on the way back. The AST writer computes the same.")],
+        ["cs_5_0/double_mixed_struct"] = [("instruction",
+            "The uint tag. Copied through a register declared float, where the "
+            + "instruction writer keeps it as the number it is, by convention, so a "
+            + "large tag loses its low bits. The AST writer computes the same.")],
+        ["ps_5_0/struct_members"] = [("instruction",
+            "The uint2 member. Copied through a register declared float (it also "
+            + "holds the float members), where the instruction writer keeps it as the "
+            + "number it is, by convention, so large values lose their low bits. The "
+            + "AST writer computes the same.")],
+        ["cs_5_0/append_struct_whole"] = [("instruction",
+            "The uint id. Copied through a register declared float, where the "
+            + "instruction writer keeps it as the number it is, by convention, so a "
+            + "large id loses its low bits. The AST writer computes the same.")],
         ["cs_5_0/double_bits_select"] = [("instruction",
             "The double. The structured load's two words go into a register "
             + "declared float, so the instruction writer converts them as numbers, "
@@ -253,6 +279,8 @@ public class EquivalenceTests
     internal static IEnumerable<string> CompareRuns(
         ShaderModel left, ShaderModel right, string leftName, string rightName)
     {
+        // Typed by the left side, the one being matched.
+        var kinds = new StoredValueKinds(left);
         for (int trial = 0; trial < Trials; trial++)
         {
             Dictionary<string, float[]> expected = Run(left, trial);
@@ -288,7 +316,8 @@ public class EquivalenceTests
                 float[] actualComponents = actual[name];
                 for (int component = 0; component < 4; component++)
                 {
-                    if (!Same(expectedComponents[component], actualComponents[component]))
+                    if (!Same(expectedComponents[component], actualComponents[component],
+                        kinds.Of(name, component)))
                     {
                         yield return $"differs on trial {trial}, "
                             + $"{name}.{"xyzw"[component]}: "
@@ -308,8 +337,14 @@ public class EquivalenceTests
             : D3D9Machine.Run(shader, trial);
     }
 
-    private static bool Same(float left, float right)
+    private static bool Same(float left, float right, StoredValueKind kind)
     {
+        // An integer is its bits: a packed uint above 2^23 reads as an ordinary
+        // float, which the tolerance would equate with one missing its low bits.
+        if (kind == StoredValueKind.Integer)
+        {
+            return BitConverter.SingleToUInt32Bits(left) == BitConverter.SingleToUInt32Bits(right);
+        }
         if (float.IsNaN(left) && float.IsNaN(right))
         {
             return true;

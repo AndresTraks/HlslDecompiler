@@ -63,22 +63,22 @@ HS_OUT main(InputPatch<HS_IN, 3> patch, uint sv_outputcontrolpointid : SV_Output
 {
 	HS_OUT o;
 
-	float4 r0;
+	int4 r0;
 	float3 r1;
 	r0.x = (sv_outputcontrolpointid < 3) ? -1 : 0;
-	if (asint(r0.x) != 0) {
-		r0.x = sv_outputcontrolpointid;
+	if (r0.x != 0) {
+		r0.x = asint(sv_outputcontrolpointid);
 		o.position = patch[r0.x].position.xyz;
 		o.normal = patch[r0.x].normal.xyz;
 	} else {
-		r0.xy = (int2)sv_outputcontrolpointid + int2(-3, -2);
+		r0.xy = (int2)(int2)sv_outputcontrolpointid + int2(-3, -2);
 		r0.y = (uint)r0.y % 3;
 		r1 = patch[r0.y].position.xyz + patch[r0.x].position.xyz;
 		o.position = r1.xyz * float3(0.5, 0.5, 0.5);
-		r0.xyz = patch[r0.y].normal.xyz + patch[r0.x].normal.xyz;
-		r0.w = dot(r0.xyz, r0.xyz);
-		r0.w = rsqrt(r0.w);
-		o.normal = r0.www * r0.xyz;
+		r0.xyz = asint(patch[r0.y].normal.xyz + patch[r0.x].normal.xyz);
+		r0.w = asint(dot(asfloat(r0.xyz), asfloat(r0.xyz)));
+		r0.w = asint(rsqrt(asfloat(r0.w)));
+		o.normal = asfloat(r0.www) * asfloat(r0.xyz);
 	}
 
 	return o;

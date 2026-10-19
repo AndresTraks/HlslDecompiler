@@ -20,53 +20,53 @@ float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
-	float4 r1;
+	int4 r0;
+	int4 r1;
 	float2 r2;
-	r0.x = dot(transpose(lightViewProj)[3], i.texcoord);
-	r1.x = dot(i.texcoord, transpose(lightViewProj)[0]);
-	r1.y = dot(i.texcoord, transpose(lightViewProj)[1]);
-	r1.z = dot(i.texcoord, transpose(lightViewProj)[2]);
-	r0.xyz = r1.xyz / r0.xxx;
-	r1.yz = r0.xy * float2(0.5, -0.5) + float2(0.5, 0.5);
-	r0.x = r0.z + -(bias.x);
-	r2.y = r1.z + -(bias.w);
+	r0.x = asint(dot(transpose(lightViewProj)[3], i.texcoord));
+	r1.x = asint(dot(i.texcoord, transpose(lightViewProj)[0]));
+	r1.y = asint(dot(i.texcoord, transpose(lightViewProj)[1]));
+	r1.z = asint(dot(i.texcoord, transpose(lightViewProj)[2]));
+	r0.xyz = asint(asfloat(r1.xyz) / asfloat(r0.xxx));
+	r1.yz = asint(asfloat(r0.xy) * float2(0.5, -0.5) + float2(0.5, 0.5));
+	r0.x = asint(asfloat(r0.z) + -(bias.x));
+	r2.y = asfloat(r1.z) + -(bias.w);
 	r0.yz = int2(0, -1);
 	while (true) {
 		r0.w = (1 < r0.z) ? -1 : 0;
-		if (asint(r0.w) != 0) break;
-		r0.w = (float)(int)r0.z;
-		r2.x = r0.w * bias.z + r1.y;
-		r0.w = shadowMap.SampleCmpLevelZero(shadowSamp, r2.xy, r0.x);
-		r0.y = r0.w + r0.y;
+		if (r0.w != 0) break;
+		r0.w = asint((float)r0.z);
+		r2.x = asfloat(r0.w) * bias.z + asfloat(r1.y);
+		r0.w = asint(shadowMap.SampleCmpLevelZero(shadowSamp, r2.xy, asfloat(r0.x)));
+		r0.y = asint(asfloat(r0.w) + asfloat(r0.y));
 		r0.z = r0.z + 1;
 	}
 	r0.z = r0.y;
 	r0.w = -1;
 	while (true) {
 		r1.w = (1 < r0.w) ? -1 : 0;
-		if (asint(r1.w) != 0) break;
-		r1.w = (float)(int)r0.w;
-		r1.x = r1.w * bias.z + r1.y;
-		r1.x = shadowMap.SampleCmpLevelZero(shadowSamp, r1.xz, r0.x);
-		r0.z = r0.z + r1.x;
+		if (r1.w != 0) break;
+		r1.w = asint((float)r0.w);
+		r1.x = asint(asfloat(r1.w) * bias.z + asfloat(r1.y));
+		r1.x = asint(shadowMap.SampleCmpLevelZero(shadowSamp, asfloat(r1.xz), asfloat(r0.x)));
+		r0.z = asint(asfloat(r0.z) + asfloat(r1.x));
 		r0.w = r0.w + 1;
 	}
-	r2.y = r1.z + bias.w;
+	r2.y = asfloat(r1.z) + bias.w;
 	r0.y = r0.z;
 	r0.w = -1;
 	while (true) {
 		r1.x = (1 < r0.w) ? -1 : 0;
-		if (asint(r1.x) != 0) break;
-		r1.x = (float)(int)r0.w;
-		r2.x = r1.x * bias.z + r1.y;
-		r1.x = shadowMap.SampleCmpLevelZero(shadowSamp, r2.xy, r0.x);
-		r0.y = r0.y + r1.x;
+		if (r1.x != 0) break;
+		r1.x = asint((float)r0.w);
+		r2.x = asfloat(r1.x) * bias.z + asfloat(r1.y);
+		r1.x = asint(shadowMap.SampleCmpLevelZero(shadowSamp, r2.xy, asfloat(r0.x)));
+		r0.y = asint(asfloat(r0.y) + asfloat(r1.x));
 		r0.w = r0.w + 1;
 	}
-	r1 = albedo.Sample(samp, i.texcoord1.xy);
-	r0.x = r0.y * 0.111111112;
-	o = r1 * r0.x;
+	r1 = asint(albedo.Sample(samp, i.texcoord1.xy));
+	r0.x = asint(asfloat(r0.y) * 0.111111112);
+	o = asfloat(r1) * asfloat(r0.x);
 
 	return o;
 }

@@ -37,7 +37,7 @@ VS_OUT main(VS_IN i)
 	VS_OUT o;
 
 	float4 r0;
-	float4 r1;
+	int4 r1;
 	float4 r2;
 	float4 r3;
 	float4 r4;
@@ -50,7 +50,7 @@ VS_OUT main(VS_IN i)
 	o.color = r0.x * tint;
 	r0.x = sin(r0.y);
 	r1 = i.blendindices + boneOffset;
-	r1 = (int4)r1 << int4(2, 2, 2, 2);
+	r1 = r1 << int4(2, 2, 2, 2);
 	r2 = i.blendweight.y * transpose(bones[r1.y / 4])[3];
 	r2 = transpose(bones[r1.x / 4])[3] * i.blendweight.x + r2;
 	r2 = transpose(bones[r1.z / 4])[3] * i.blendweight.z + r2;
@@ -73,9 +73,9 @@ VS_OUT main(VS_IN i)
 	r5 = i.blendweight.y * transpose(bones[r1.y / 4])[2];
 	r5 = transpose(bones[r1.x / 4])[2] * i.blendweight.x + r5;
 	r5 = transpose(bones[r1.z / 4])[2] * i.blendweight.z + r5;
-	r1 = transpose(bones[r1.w / 4])[2] * i.blendweight.w + r5;
-	r2.z = dot(r3, r1);
-	r4.z = dot(i.normal.xyz, r1.xyz);
+	r1 = asint(transpose(bones[r1.w / 4])[2] * i.blendweight.w + r5);
+	r2.z = dot(r3, asfloat(r1));
+	r4.z = dot(i.normal.xyz, asfloat(r1.xyz));
 	r0.y = dot(r2, transpose(world)[1]);
 	r0.y = r0.x * 0.100000001 + r0.y;
 	r0.w = dot(r2, transpose(world)[3]);

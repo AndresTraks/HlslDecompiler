@@ -16,7 +16,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	GS_OUT o;
 
 	float4 r0;
-	float2 r1;
+	int2 r1;
 	float4 r2;
 	o.sv_position = i[0].sv_position;
 	o.color = i[0].color;
@@ -25,11 +25,11 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	r1.x = 1;
 	while (true) {
 		r1.y = (17 < r1.x) ? -1 : 0;
-		if (asint(r1.y) != 0) break;
-		r1.y = (float)(int)r1.x;
-		r1.y = r1.y * 0.392699093;
-		r2.x = sin(r1.y);
-		r0.x = cos(r1.y);
+		if (r1.y != 0) break;
+		r1.y = asint((float)r1.x);
+		r1.y = asint(asfloat(r1.y) * 0.392699093);
+		r2.x = sin(asfloat(r1.y));
+		r0.x = cos(asfloat(r1.y));
 		r0.y = r2.x;
 		r2 = r0 * float4(0.5, 0.5, 0, 0) + i[0].sv_position;
 		o.sv_position = r2;

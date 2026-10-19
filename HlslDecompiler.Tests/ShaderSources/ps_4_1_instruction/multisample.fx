@@ -10,7 +10,7 @@ float4 main(PS_IN i) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
+	int4 r0;
 	float4 r1;
 	int2 r2;
 	float4 r3;

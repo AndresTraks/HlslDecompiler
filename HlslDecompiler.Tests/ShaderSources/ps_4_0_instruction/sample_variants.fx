@@ -8,19 +8,19 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
+	int4 r0;
 	float4 r1;
 	float4 r2;
 	float4 r3;
-	r0.xy = texcoord.xy * float2(256, 256);
-	r0.xy = (int2)r0.xy;
+	r0.xy = asint(texcoord.xy * float2(256, 256));
+	r0.xy = (int2)asfloat(r0.xy);
 	r0.zw = int2(0, 0);
-	r0 = tex.Load(r0.xyz);
+	r0 = asint(tex.Load(r0.xyz));
 	r1 = tex.SampleLevel(samp, texcoord.xy, lod);
 	r2 = tex.SampleBias(samp, texcoord.xy, bias);
 	r3 = tex.SampleGrad(samp, texcoord.xy, texcoord.zw, texcoord.wz);
 	r1 = r2 * r3 + r1;
-	o = -(r0) + r1;
+	o = -(asfloat(r0)) + r1;
 
 	return o;
 }

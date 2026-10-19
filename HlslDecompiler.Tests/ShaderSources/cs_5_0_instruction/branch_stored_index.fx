@@ -9,10 +9,10 @@ RWStructuredBuffer<uint> buckets : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint sv_groupindex : SV_GroupIndex)
 {
-	float2 r0;
-	r0.x = scores[sv_groupindex.x];
-	r0.x = (bias < r0.x) ? -1 : 0;
-	if (asint(r0.x) != 0) {
+	int2 r0;
+	r0.x = asint(scores[sv_groupindex.x]);
+	r0.x = (bias < asfloat(r0.x)) ? -1 : 0;
+	if (r0.x != 0) {
 		r0.x = sv_groupindex.x * 3 + 1;
 		buckets[r0.x] = r0.x;
 	} else {

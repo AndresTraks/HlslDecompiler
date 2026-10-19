@@ -13,26 +13,26 @@ groupshared uint g1[64];
 [numthreads(64, 1, 1)]
 void main(uint sv_groupindex : SV_GroupIndex)
 {
-	float2 r0;
+	int2 r0;
 	int r1;
 	if (sv_groupindex.x == 0) {
 		g0 = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();
-	r0.x = (float)sv_groupindex.x;
+	r0.x = sv_groupindex.x;
 	while (true) {
 		r0.y = ((uint)r0.x >= itemCount) ? -1 : 0;
-		if (asint(r0.y) != 0) break;
-		r0.y = scores[r0.x];
-		r0.y = (r0.y < threshold) ? -1 : 0;
-		if (asint(r0.y) != 0) {
+		if (r0.y != 0) break;
+		r0.y = asint(scores[r0.x]);
+		r0.y = (asfloat(r0.y) < threshold) ? -1 : 0;
+		if (r0.y != 0) {
 			r0.y = r0.x + 64;
 			r0.x = r0.y;
 			continue;
 		}
 		InterlockedAdd(g0, 1, r1);
 		r0.y = ((uint)r1.x < 64) ? -1 : 0;
-		if (asint(r0.y) != 0) {
+		if (r0.y != 0) {
 			g1[r1.x] = r0.x;
 		}
 		r0.x = r0.x + 64;

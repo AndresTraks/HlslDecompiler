@@ -18,19 +18,19 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
+	int4 r0;
 	float4 r1;
-	float4 r2;
-	r0.xy = texcoord.xy;
+	int4 r2;
+	r0.xy = asint(texcoord.xy);
 	r1 = float4(0, 0, 0, 0);
 	r0.w = 0;
 	while (true) {
 		r2.x = (r0.w >= 4) ? -1 : 0;
-		if (asint(r2.x) != 0) break;
-		r0.z = (float)(int)r0.w;
-		r2 = layers.Sample(samp, r0.xyz);
-		r0.z = dot(weights, icb[r0.w]);
-		r1 = r2 * r0.z + r1;
+		if (r2.x != 0) break;
+		r0.z = asint((float)r0.w);
+		r2 = asint(layers.Sample(samp, asfloat(r0.xyz)));
+		r0.z = asint(dot(weights, icb[r0.w]));
+		r1 = asfloat(r2) * asfloat(r0.z) + r1;
 		r0.w = r0.w + 1;
 	}
 	o = r1;

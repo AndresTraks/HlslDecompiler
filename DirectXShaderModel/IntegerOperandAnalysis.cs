@@ -319,7 +319,25 @@ public sealed class IntegerOperandAnalysis
     public bool IsIntegerOutputSignature(RegisterComponentKey registerComponent)
     {
         _integerOutputSignatures ??= FindIntegerOutputSignatures();
-        return _integerOutputSignatures.Contains(registerComponent);
+        if (_integerOutputSignatures.Contains(registerComponent))
+        {
+            return true;
+        }
+        // A multi-stream geometry shader's output operand names the stream it is
+        // emitted to (o1 on stream 2), which the signature key does not: match the
+        // register and that stream's own entry, or o1 reads as stream 0's float.
+        if (registerComponent.RegisterKey is not D3D10RegisterKey { Stream: int stream } key)
+        {
+            return false;
+        }
+        const int UInt32ComponentType = 1;
+        const int SInt32ComponentType = 2;
+        return _shader.OutputSignatures.Any(s =>
+            s.ComponentType is UInt32ComponentType or SInt32ComponentType
+            && s.RegisterKey.OperandType == key.OperandType
+            && s.RegisterKey.Number == key.Number
+            && (s.Mask & (1 << registerComponent.ComponentIndex)) != 0
+            && s.Stream == stream);
     }
 
     private HashSet<RegisterComponentKey> FindIntegerOutputSignatures()
@@ -583,7 +601,7 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterKey> FindIntegerDeclaredRegisters()
     {
         return [.. FindWrittenTempComponents()
-            .Where(r => r.Value.All(c => IsIntegerRegister(c) && !IsFloatTouched(c))
+            .Where(r => r.Value.Any(IsIntegerRegister)
                 || r.Value.Any(HoldsBits))
             .Select(r => r.Key)];
     }

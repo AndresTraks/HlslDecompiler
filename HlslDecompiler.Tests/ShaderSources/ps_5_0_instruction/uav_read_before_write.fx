@@ -12,13 +12,13 @@ float4 main(PS_IN i) : SV_Target
 	float4 o;
 
 	int4 r0;
-	float r1;
+	int r1;
 	r0.x = b[i.idx];
 	o.x = asfloat(r0.x);
 	b[i.idx] = 5;
 	r0 = (uint4)i.sv_position.xyyy;
-	r1 = rt[r0.xw].x;
-	o.y = r1.x;
+	r1 = asint(rt[r0.xw].x);
+	o.y = asfloat(r1.x);
 	rt[r0.xy] = float4(2, 2, 2, 2);
 	r0.y = 0;
 	r0.x = i.idx + 1;

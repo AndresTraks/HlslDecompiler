@@ -30,61 +30,61 @@ struct CS_IN
 [numthreads(8, 8, 1)]
 void main(CS_IN i)
 {
-	float4 r0;
-	float4 r1;
-	float4 r2;
-	float4 r3;
+	int4 r0;
+	int4 r1;
+	int4 r2;
+	int4 r3;
 	float4 r4;
 	if (i.sv_groupindex.x == 0) {
 		g1 = 0;
 	}
 	GroupMemoryBarrierWithGroupSync();
-	r0.xy = (float2)(uint2)i.sv_dispatchthreadid.xy;
-	r0.xy = r0.xy + float2(0.5, 0.5);
-	r0.xy = r0.xy * invScreen.xy;
-	r0.xy = r0.xy * float2(2, 2) + float2(-1, -1);
-	r1.xy = (float2)i.sv_dispatchthreadid.xy;
+	r0.xy = asint((float2)(uint2)i.sv_dispatchthreadid.xy);
+	r0.xy = asint(asfloat(r0.xy) + float2(0.5, 0.5));
+	r0.xy = asint(asfloat(r0.xy) * invScreen.xy);
+	r0.xy = asint(asfloat(r0.xy) * float2(2, 2) + float2(-1, -1));
+	r1.xy = i.sv_dispatchthreadid.xy;
 	r1.zw = int2(0, 0);
-	r0.z = depth.Load(r1.xyw).x;
-	r0.w = (float)i.sv_groupindex.x;
+	r0.z = asint(depth.Load(r1.xyw).x);
+	r0.w = i.sv_groupindex.x;
 	while (true) {
 		r2.x = ((uint)r0.w >= lightCount) ? -1 : 0;
-		if (asint(r2.x) != 0) break;
-		r2 = float4(lights[r0.w].position, lights[r0.w].radius);
-		r2.xyz = -(r0.xyz) + r2.xyz;
-		r2.x = dot(r2.xyz, r2.xyz);
-		r2.x = sqrt(r2.x);
-		r2.x = (r2.x < r2.w) ? -1 : 0;
-		if (asint(r2.x) != 0) {
+		if (r2.x != 0) break;
+		r2 = asint(float4(lights[r0.w].position, lights[r0.w].radius));
+		r2.xyz = asint(-(asfloat(r0.xyz)) + asfloat(r2.xyz));
+		r2.x = asint(dot(asfloat(r2.xyz), asfloat(r2.xyz)));
+		r2.x = asint(sqrt(asfloat(r2.x)));
+		r2.x = (asfloat(r2.x) < asfloat(r2.w)) ? -1 : 0;
+		if (r2.x != 0) {
 			InterlockedAdd(g1, 1, r2.x);
 			r2.y = ((uint)r2.x < 32) ? -1 : 0;
-			if (asint(r2.y) != 0) {
+			if (r2.y != 0) {
 				g0[r2.x] = r0.w;
 			}
 		}
 		r0.w = r0.w + 64;
 	}
 	GroupMemoryBarrierWithGroupSync();
-	r1 = gbuffer.Load(r1.xyz);
+	r1 = asint(gbuffer.Load(r1.xyz));
 	r0.w = g1;
 	r0.w = min(r0.w, 32);
 	r2 = int4(0, 0, 0, 0);
 	while (true) {
 		r3.x = ((uint)r2.w >= (uint)r0.w) ? -1 : 0;
-		if (asint(r3.x) != 0) break;
+		if (r3.x != 0) break;
 		r3.x = g0[r2.w];
 		r4 = float4(lights[r3.x].position, lights[r3.x].radius);
-		r3 = float4(lights[r3.x].colour, lights[r3.x].intensity);
-		r4.xyz = -(r0.xyz) + r4.xyz;
+		r3 = asint(float4(lights[r3.x].colour, lights[r3.x].intensity));
+		r4.xyz = -(asfloat(r0.xyz)) + r4.xyz;
 		r4.x = dot(r4.xyz, r4.xyz);
 		r4.x = sqrt(r4.x);
 		r4.x = r4.x / r4.w;
 		r4.x = saturate(-(r4.x) + 1);
-		r3.xyz = r3.www * r3.xyz;
-		r3.w = r4.x * r4.x;
-		r2.xyz = r3.www * r3.xyz + r2.xyz;
+		r3.xyz = asint(asfloat(r3.www) * asfloat(r3.xyz));
+		r3.w = asint(r4.x * r4.x);
+		r2.xyz = asint(asfloat(r3.www) * asfloat(r3.xyz) + asfloat(r2.xyz));
 		r2.w = r2.w + 1;
 	}
-	r1.xyz = r1.xyz * r2.xyz;
-	output[i.sv_dispatchthreadid.xy] = r1;
+	r1.xyz = asint(asfloat(r1.xyz) * asfloat(r2.xyz));
+	output[i.sv_dispatchthreadid.xy] = asfloat(r1);
 }

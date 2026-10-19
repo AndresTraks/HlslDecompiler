@@ -9,10 +9,10 @@ RWStructuredBuffer<float> output : register(u0);
 [numthreads(32, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float2 r0;
+	int2 r0;
 	double d0;
 	d0 = asdouble(bits.x, bits.y);
 	d0 = d0 * scale;
-	r0.x = (float)d0;
-	output[sv_dispatchthreadid.x] = r0.x;
+	r0.x = asint((float)d0);
+	output[sv_dispatchthreadid.x] = asfloat(r0.x);
 }

@@ -24,26 +24,26 @@ struct CS_IN
 [numthreads(64, 1, 1)]
 void main(CS_IN i)
 {
-	float4 r0;
+	int4 r0;
 	float4 r1;
 	int4 r2;
-	r0 = float4(source[i.sv_dispatchthreadid.x].colour, source[i.sv_dispatchthreadid.x].weight);
-	g0[i.sv_groupindex.x] = r0;
+	r0 = asint(float4(source[i.sv_dispatchthreadid.x].colour, source[i.sv_dispatchthreadid.x].weight));
+	g0[i.sv_groupindex.x] = asfloat(r0);
 	GroupMemoryBarrierWithGroupSync();
 	r1.w = 0;
 	r0 = int4(0, 0, 0, 0);
 	while (true) {
 		r2.x = ((uint)r0.w >= 4) ? -1 : 0;
 		if (r2.x != 0) break;
-		r2.x = (int)r0.w + i.sv_groupindex.x;
+		r2.x = r0.w + i.sv_groupindex.x;
 		r2.x = r2.x & 63;
 		r2 = asint(g0[r2.x]);
-		r0.xyz = asfloat(r2.xyz) * asfloat(r2.www) + r0.xyz;
+		r0.xyz = asint(asfloat(r2.xyz) * asfloat(r2.www) + asfloat(r0.xyz));
 		r1.w = r1.w + asfloat(r2.w);
 		r0.w = r0.w + 1;
 	}
-	r0.w = max(r1.w, 0.0000999999975);
-	r1.xyz = r0.xyz / r0.www;
+	r0.w = asint(max(r1.w, 0.0000999999975));
+	r1.xyz = asfloat(r0.xyz) / asfloat(r0.www);
 	result[i.sv_dispatchthreadid.x].colour = r1.xyz;
 	result[i.sv_dispatchthreadid.x].weight = r1.w;
 }

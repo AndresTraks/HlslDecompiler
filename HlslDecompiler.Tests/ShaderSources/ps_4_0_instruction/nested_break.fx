@@ -7,7 +7,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
+	int4 r0;
 	int4 r1;
 	float3 r2;
 	float3 r3;
@@ -16,8 +16,8 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	while (true) {
 		r1.x = (r0.w >= 4) ? -1 : 0;
 		if (r1.x != 0) break;
-		r1.z = asint((float)(int)r0.w);
-		r2 = r0.xyz;
+		r1.z = asint((float)r0.w);
+		r2 = asfloat(r0.xyz);
 		r1.x = 0;
 		while (true) {
 			r1.w = (r1.x >= 4) ? -1 : 0;
@@ -36,13 +36,13 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 		}
 		r1.x = (search.y < r2.x) ? -1 : 0;
 		if (r1.x != 0) {
-			r0.xyz = r2.xyz;
+			r0.xyz = asint(r2.xyz);
 			break;
 		}
 		r0.w = r0.w + 1;
-		r0.xyz = r2.xyz;
+		r0.xyz = asint(r2.xyz);
 	}
-	o.xyz = r0.yzx;
+	o.xyz = asfloat(r0.yzx);
 	o.w = 1;
 
 	return o;

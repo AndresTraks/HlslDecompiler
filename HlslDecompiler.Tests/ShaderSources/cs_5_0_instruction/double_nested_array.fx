@@ -15,7 +15,7 @@ RWStructuredBuffer<double> output : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float3 r0;
+	int3 r0;
 	double d0;
 	d0 = input[sv_dispatchthreadid.x].items[1].high;
 	output[sv_dispatchthreadid.x] = d0;

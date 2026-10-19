@@ -22,17 +22,17 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 {
 	float4 o;
 
-	float4 r0;
-	float3 r1;
+	int4 r0;
+	int3 r1;
 	r0 = int4(0, 0, 0, 0);
 	while (true) {
 		r1.x = ((uint)r0.w >= count) ? -1 : 0;
-		if (asint(r1.x) != 0) break;
-		r1 = icb0[r0.w].xyz * scale + icb1[r0.w].xyz;
-		r0.xyz = r0.xyz + r1.xyz;
+		if (r1.x != 0) break;
+		r1 = asint(icb0[r0.w].xyz * scale + icb1[r0.w].xyz);
+		r0.xyz = asint(asfloat(r0.xyz) + asfloat(r1.xyz));
 		r0.w = r0.w + 1;
 	}
-	o.xyz = r0.xyz * texcoord.xxx;
+	o.xyz = asfloat(r0.xyz) * texcoord.xxx;
 	o.w = 0;
 
 	return o;

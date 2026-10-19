@@ -15,15 +15,15 @@ float4 main(PS_IN i) : SV_Target
 	float4 o;
 
 	float4 r0;
-	float4 r1;
+	int4 r1;
 	r0.x = sh.SampleCmpLevelZero(cmp, i.texcoord.xyz, i.texcoord.w, int2(1, -1));
-	r1 = l1.Sample(ss, i.texcoord.xy, 3);
-	r0 = r0.x + r1;
-	r1 = l2.SampleLevel(ss, i.texcoord1.xyz, i.texcoord1.w, int2(-2, 4));
-	r0 = r0 + r1;
+	r1 = asint(l1.Sample(ss, i.texcoord.xy, 3));
+	r0 = r0.x + asfloat(r1);
+	r1 = asint(l2.SampleLevel(ss, i.texcoord1.xyz, i.texcoord1.w, int2(-2, 4)));
+	r0 = r0 + asfloat(r1);
 	r1 = (int4)i.texcoord1;
-	r1 = l2.Load(r1, int2(1, 1));
-	o = r0 + r1;
+	r1 = asint(l2.Load(r1, int2(1, 1)));
+	o = r0 + asfloat(r1);
 
 	return o;
 }

@@ -29,13 +29,6 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
-        ["cs_5_0/item_queue"] = [("instruction",
-            "The id appended. The instruction writer keeps an integer in a register "
-            + "declared float as the number it is, by convention, and r1 holds an "
-            + "item's float position beside its uint id plus 1000; the struct it "
-            + "appends takes the id back off r1.w by conversion. Exact up to 2^24, "
-            + "and the trials hand the id random bits well past that. The AST "
-            + "writer, which types the id as the uint it is, computes the same.")],
         ["cs_5_0/select_float_bits"] = [("instruction",
             "The select. A movc picks between a float's bits and an integer, and the "
             + "instruction writer keeps the integer in a register declared float as "
@@ -43,79 +36,16 @@ public class EquivalenceTests
             + "converts the whole register, which is right for the integer and the "
             + "float's value rather than its bits for the other. The AST writer, "
             + "which selects asint(t0) beside the uint, computes the same.")],
-        ["cs_5_0/select_int_bits"] = [("instruction",
-            "The same select the other way round: the movc picks an integer's bits "
-            + "where the float is not chosen, and the instruction writer holds that "
-            + "integer in a float register as its number, so the doubling after it "
-            + "doubles the number rather than the float its bits are. The AST "
-            + "writer, which selects asfloat(3 * b[i] + 1), computes the same.")],
         ["cs_5_0/select_raw_store"] = [("instruction",
             "The select of select_float_bits, stored with Store4: the float register "
             + "holds the integer branch as its number, and the store takes its bits. "
             + "The AST writer, which selects asfloat(int4(...)) beside the float, "
             + "computes the same.")],
-        ["cs_5_0/select_struct_member"] = [("instruction",
-            "The same select stored into a uint member of a struct: the float "
-            + "register holds the integer branch as its number and the float "
-            + "branch as a float, and the store converts both. The AST writer, which "
-            + "selects asint(t1) beside the uint, computes the same.")],
-        ["cs_5_0/bufinfo_swizzle"] = [("instruction",
-            "The raw buffer's byte count, stored as asfloat. bufinfo leaves it in a "
-            + "register declared float, where the instruction writer keeps it as the "
-            + "number it is, by convention, so the store takes the number's bits. The "
-            + "AST writer, which stores asfloat(count), computes the same.")],
-        ["cs_5_0/shared_array_offset"] = [("instruction",
-            "The uint array member. Loaded into a register declared float (it "
-            + "also holds the float member), where the instruction writer keeps the "
-            + "integer as the number it is, by convention, so a large uint loses its "
-            + "low bits. The AST writer, which declares it uint, computes the same.")],
-        ["gs_5_0/struct_stream"] = [("instruction",
-            "The emitted id. The first vertex's id << 2 lands in a register "
-            + "declared float (it also holds the position), where the instruction "
-            + "writer keeps the integer as the number it is, by convention, so a "
-            + "large id overflows going back. The AST writer computes the same.")],
-        ["ps_4_0/get_dimensions_mip"] = [("instruction",
-            "The texel address at a mip past the texture's levels, where its height "
-            + "is 0 and the udiv by it gives 0xFFFFFFFF. That lands in a register "
-            + "declared float, where the instruction writer keeps it as the number it "
-            + "is, by convention, which a float cannot hold. The AST writer computes "
-            + "the same.")],
         ["ps_5_0/coverage_select_bits"] = [("instruction",
             "The stencil reference. The and of a float's bits leaves an integer in a "
             + "register declared float, where the instruction writer keeps it as the "
             + "number it is, by convention, so the output converts it. The AST writer, "
             + "which ands asint(c.x), computes the same.")],
-        ["ps_5_0/raw_load_constructor"] = [("instruction",
-            "The raw words read as floats. Load4 fills a register declared float, "
-            + "where the instruction writer keeps the integers as the numbers they are, "
-            + "by convention, so they are converted where the original reads their bits. "
-            + "The AST writer, which reads asfloat(t.xy), computes the same.")],
-        // These five were hidden until integer stores compared as bits: an
-        // integer above 2^24 goes through a float register a few ulps off,
-        // within the float tolerance, but wrong. WARP shows half_pack's too.
-        ["cs_5_0/half_pack"] = [("instruction",
-            "The packed halves. f32tof16's two results go into a register declared "
-            + "float, where the instruction writer keeps them as the numbers they are, "
-            + "by convention, so hi * 65536 + lo is computed in float and the uint "
-            + "loses its low bits. The AST writer, which packs ints, computes the same.")],
-        ["cs_5_0/array_index_down"] = [("instruction",
-            "The int array member. It is loaded into a register declared float (it "
-            + "also holds the float member), where the instruction writer keeps the "
-            + "integer as the number it is, by convention, so a large int loses its "
-            + "low bits on the way back. The AST writer computes the same.")],
-        ["cs_5_0/double_mixed_struct"] = [("instruction",
-            "The uint tag. Copied through a register declared float, where the "
-            + "instruction writer keeps it as the number it is, by convention, so a "
-            + "large tag loses its low bits. The AST writer computes the same.")],
-        ["ps_5_0/struct_members"] = [("instruction",
-            "The uint2 member. Copied through a register declared float (it also "
-            + "holds the float members), where the instruction writer keeps it as the "
-            + "number it is, by convention, so large values lose their low bits. The "
-            + "AST writer computes the same.")],
-        ["cs_5_0/append_struct_whole"] = [("instruction",
-            "The uint id. Copied through a register declared float, where the "
-            + "instruction writer keeps it as the number it is, by convention, so a "
-            + "large id loses its low bits. The AST writer computes the same.")],
         ["cs_5_0/double_bits_select"] = [("instruction",
             "The double. The structured load's two words go into a register "
             + "declared float, so the instruction writer converts them as numbers, "
@@ -141,11 +71,6 @@ public class EquivalenceTests
             + "float's value, not its bits, and the bfi result goes into the depth "
             + "by conversion. The AST writer, which adds asint(texcoord), computes "
             + "the same.")],
-        ["ps_5_0/mixed_select_target"] = [("instruction",
-            "The integer target. The instruction writer holds the sample index in a "
-            + "register declared float as its number, by convention, beside a "
-            + "float's bits, and the movc into the uint target converts both. The AST "
-            + "writer, which selects uint2(asuint(x), index), computes the same.")],
     };
 
     private const int Trials = 8;

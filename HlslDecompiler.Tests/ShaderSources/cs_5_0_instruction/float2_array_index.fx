@@ -10,10 +10,10 @@ RWStructuredBuffer<S> o : register(u0);
 [numthreads(16, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float4 r0;
-	r0.x = a[sv_dispatchthreadid.x].s;
+	int4 r0;
+	r0.x = asint(a[sv_dispatchthreadid.x].s);
 	r0.y = (0 & ~(((1 << 2) - 1) << 3)) | ((sv_dispatchthreadid.y << 3) & (((1 << 2) - 1) << 3));
-	r0.zw = a[sv_dispatchthreadid.x].p[r0.y / 8];
-	r0.xz = r0.xx * r0.wz;
-	o[sv_dispatchthreadid.x].p[r0.y / 8] = r0.xz;
+	r0.zw = asint(a[sv_dispatchthreadid.x].p[r0.y / 8]);
+	r0.xz = asint(asfloat(r0.xx) * asfloat(r0.wz));
+	o[sv_dispatchthreadid.x].p[r0.y / 8] = asfloat(r0.xz);
 }

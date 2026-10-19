@@ -341,6 +341,24 @@ public class HlslSimpleWriter : HlslWriter
             : lanes;
     }
 
+    /// <summary>
+    /// A register operand's name with its swizzle replaced: `r0.xyz` with `.y` is
+    /// `r0.y`. A reinterpretation keeps its call around the register:
+    /// `asfloat(r0.xy)` with `.x` is `asfloat(r0.x)`, not `asfloat(r0.x`.
+    /// </summary>
+    private static string Reswizzled(string name, string swizzle)
+    {
+        foreach (string call in new[] { "asfloat(", "asint(", "asuint(" })
+        {
+            if (name.StartsWith(call) && name.EndsWith(')'))
+            {
+                string inner = name[call.Length..^1];
+                return $"{call}{inner.Split('.')[0]}{swizzle})";
+            }
+        }
+        return name.Split('.')[0] + swizzle;
+    }
+
     // The element an Append is built in, by its alloc, while stores into it remain.
     private readonly Dictionary<D3D10Instruction, string> _appendElements =
         new(ReferenceEqualityComparer.Instance);
@@ -618,6 +636,22 @@ public class HlslSimpleWriter : HlslWriter
             is var (path, bytes, index, first, _, wordsPerValue)
             ? (path, added - index * bytes - first * 4, bytes, first, wordsPerValue)
             : null;
+    }
+
+    /// <summary>
+    /// Whether the array member a computed-offset access reaches is an integer
+    /// one: the element's own kind cannot say when float and uint arrays sit side
+    /// by side, but the member reached is known. Null where none is.
+    /// </summary>
+    private bool? IsIntegerDynamicMember(D3D10Instruction instruction, int resourceOperand)
+    {
+        if (instruction.GetOperandType(2) == OperandType.Immediate32
+            || instruction.GetOperandType(resourceOperand) == OperandType.ThreadGroupSharedMemory
+            || ComputedOffsetMember(instruction, resourceOperand) is not var (_, start, _, _, _))
+        {
+            return null;
+        }
+        return _registers.IsIntegerStructuredMember(instruction.GetParamRegisterKey(resourceOperand), start);
     }
 
     /// <summary>
@@ -1378,6 +1412,13 @@ public class HlslSimpleWriter : HlslWriter
             source = ComponentStorage.Numeric;
         }
         ComponentStorage destination = GetDestinationStorage(instruction, 0);
+        // A saturate is float arithmetic: an int register's bits are read as the
+        // float they hold, or saturate would clamp the integer (mov_sat r0, r0).
+        if (instruction.Saturate && source == ComponentStorage.Integer
+            && instruction.GetOperandType(sourceIndex) == OperandType.Temp)
+        {
+            return $"asfloat({name})";
+        }
         if (source == destination)
         {
             return name;
@@ -1449,8 +1490,10 @@ public class HlslSimpleWriter : HlslWriter
             {
                 return false;
             }
-            // A temp source of the same declaration carries its bits as they are.
-            if (Enumerable.Range(firstValue, instruction.OperandTokens.OperandCount - firstValue)
+            // A temp source of the same declaration carries its bits as they are,
+            // unless a saturate makes a float of them.
+            if (!instruction.Saturate
+                && Enumerable.Range(firstValue, instruction.OperandTokens.OperandCount - firstValue)
                 .Any(value => instruction.GetOperandType(value) == OperandType.Temp
                     && GetSourceStorage(instruction, value) == destination))
             {
@@ -2860,6 +2903,14 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     if (DynamicStructuredMember(instruction, 3, element, read) is string dynamicRead)
                     {
+                        // A float member into an int register, where the element's
+                        // kind is mixed and so WriteResult cannot tell.
+                        if (GetProducedKind(instruction) == ValueKind.Unknown
+                            && GetDestinationStorage(instruction, 0) == ComponentStorage.Integer
+                            && IsIntegerDynamicMember(instruction, 3) == false)
+                        {
+                            dynamicRead = AsInt(dynamicRead);
+                        }
                         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), dynamicRead);
                         break;
                     }
@@ -3349,8 +3400,16 @@ public class HlslSimpleWriter : HlslWriter
                     }
                     if (DynamicStructuredMember(instruction, 0, element, written) is string dynamicWrite)
                     {
+                        // An int register's float bits into a float member.
+                        string dynamicValue = instruction.GetOperandType(3) == OperandType.Temp
+                            && GetSourceStorage(instruction, 3) == ComponentStorage.Integer
+                            && IsIntegerDynamicMember(instruction, 0) == false
+                            && !GetOperandName(instruction, 3).StartsWith("asfloat(")
+                            ? $"asfloat({GetOperandName(instruction, 3)})"
+                            : null;
                         WriteLine("{0} = {1};", dynamicWrite,
-                            StoredImmediateBits(instruction)
+                            dynamicValue
+                                ?? StoredImmediateBits(instruction)
                                 ?? StoredBits(instruction, 3)
                                 ?? GetOperandName(instruction, 3));
                         break;
@@ -3394,8 +3453,14 @@ public class HlslSimpleWriter : HlslWriter
                             ? ""
                             : "." + string.Concat(
                                 values.Select(v => "xyzw"[valueSwizzle[written[v]] / storePerElement]));
-                        WriteLine("{0} = {1}{2};", name,
-                            isWholeShadow ? valueName : valueName.Split('.')[0], picked);
+                        // A temp's run is typed by its own member: an int register
+                        // can hold one float member's bits beside integer members.
+                        string value = isWholeShadow ? valueName
+                            : storePerElement == 1 && instruction.GetOperandType(3) == OperandType.Temp
+                                ? StructMemberValue(instruction, buffer,
+                                    StructuredByteOffset(instruction) + values[0] * 4, picked[1..])
+                                : Reswizzled(valueName, picked);
+                        WriteLine("{0} = {1};", name, value);
                     }
                     break;
                 }

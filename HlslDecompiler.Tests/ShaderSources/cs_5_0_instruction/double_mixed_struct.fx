@@ -18,13 +18,13 @@ RWStructuredBuffer<OutputElement> output : register(u0);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float3 r0;
+	int3 r0;
 	double d0;
-	float3 r1;
+	int3 r1;
 	double d1;
-	r0.x = input[sv_dispatchthreadid.x].weight;
-	r0.x = r0.x + r0.x;
-	output[sv_dispatchthreadid.x].weight = r0.x;
+	r0.x = asint(input[sv_dispatchthreadid.x].weight);
+	r0.x = asint(asfloat(r0.x) + asfloat(r0.x));
+	output[sv_dispatchthreadid.x].weight = asfloat(r0.x);
 	d1 = input[sv_dispatchthreadid.x].value;
 	r1.z = input[sv_dispatchthreadid.x].tag;
 	r0.z = r1.z + 1;

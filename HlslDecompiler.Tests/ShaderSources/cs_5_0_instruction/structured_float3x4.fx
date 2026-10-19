@@ -13,7 +13,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float4 r0;
 	float4 r1;
-	float4 r2;
+	int4 r2;
 	float4 r3;
 	float4 r4;
 	float4 r5;
@@ -26,16 +26,16 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r4.x = r3.y;
 	r5.xyz = transpose(inst[r2.x].m)[1].xzy;
 	r4.y = r5.x;
-	r2.yzw = transpose(inst[r2.x].m)[2];
-	r4.z = r2.y;
+	r2.yzw = asint(transpose(inst[r2.x].m)[2]);
+	r4.z = asfloat(r2.y);
 	r6 = float4(transpose(inst[r2.x].m)[3], inst[r2.x].tint.x);
 	r7.xyz = inst[r2.x].tint.yzw;
 	r4.w = r6.x;
 	r0.x = dot(r4, r1);
 	r5.x = r3.z;
 	r3.y = r5.z;
-	r3.z = r2.z;
-	r5.z = r2.w;
+	r3.z = asfloat(r2.z);
+	r5.z = asfloat(r2.w);
 	r3.w = r6.y;
 	r0.y = dot(r3, r1);
 	r5.w = r6.z;

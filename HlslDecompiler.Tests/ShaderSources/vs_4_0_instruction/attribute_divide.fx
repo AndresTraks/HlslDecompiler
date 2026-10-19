@@ -19,7 +19,7 @@ VS_OUT main(VS_IN i)
 
 	float4 r0;
 	int r1;
-	float2 r2;
+	int2 r2;
 	r0.xyz = i.position.xyz;
 	r0.w = 1;
 	o.sv_position.x = dot(r0, transpose(worldViewProj)[0]);
@@ -29,9 +29,9 @@ VS_OUT main(VS_IN i)
 	r0.x = (float)(uint)columns;
 	r1 = (uint)i.texcoord / (uint)columns;
 	r2.x = (uint)i.texcoord % (uint)columns;
-	r2.x = (float)(uint)r2.x;
-	r2.y = (float)(uint)r1.x;
-	o.texcoord = r2.xy / r0.xx;
+	r2.x = asint((float)(uint)r2.x);
+	r2.y = asint((float)(uint)r1.x);
+	o.texcoord = asfloat(r2.xy) / r0.xx;
 
 	return o;
 }

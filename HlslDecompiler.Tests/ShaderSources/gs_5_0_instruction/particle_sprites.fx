@@ -28,7 +28,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 
 	int4 r0;
 	float4 r1;
-	float4 r2;
+	int4 r2;
 	float3 r3;
 	r0.x = (0 >= i[0].texcoord) ? -1 : 0;
 	if (r0.x != 0) {
@@ -46,19 +46,19 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 		r0.w = r0.z & 1;
 		r2.x = r0.z >> 1;
 		r3.x = (float)r0.w;
-		r3.y = (float)(int)r2.x;
-		r2.xy = r3.xy * float2(2, 2) + float2(-1, -1);
-		r3 = r2.yyy * cameraUp.xyz;
-		r3 = cameraRight.xyz * r2.xxx + r3.xyz;
+		r3.y = (float)r2.x;
+		r2.xy = asint(r3.xy * float2(2, 2) + float2(-1, -1));
+		r3 = asfloat(r2.yyy) * cameraUp.xyz;
+		r3 = cameraRight.xyz * asfloat(r2.xxx) + r3.xyz;
 		r1.xyz = r3.xyz * asfloat(r0.xxx) + i[0].position.xyz;
 		r0.w = asint(dot(r1, transpose(viewProjection)[0]));
-		r2.z = dot(r1, transpose(viewProjection)[1]);
-		r2.w = dot(r1, transpose(viewProjection)[2]);
+		r2.z = asint(dot(r1, transpose(viewProjection)[1]));
+		r2.w = asint(dot(r1, transpose(viewProjection)[2]));
 		r1.x = dot(r1, transpose(viewProjection)[3]);
-		r1.yz = r2.xy * float2(0.5, 0.5) + float2(0.5, 0.5);
+		r1.yz = asfloat(r2.xy) * float2(0.5, 0.5) + float2(0.5, 0.5);
 		o.sv_position.x = asfloat(r0.w);
-		o.sv_position.y = r2.z;
-		o.sv_position.z = r2.w;
+		o.sv_position.y = asfloat(r2.z);
+		o.sv_position.z = asfloat(r2.w);
 		o.sv_position.w = r1.x;
 		o.texcoord = r1.yz;
 		o.color.xyz = i[0].color.xyz;

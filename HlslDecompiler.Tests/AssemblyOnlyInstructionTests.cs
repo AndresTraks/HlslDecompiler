@@ -306,4 +306,56 @@ public class AssemblyOnlyInstructionTests
 
         Assert.That(WriteAsm(shader), Does.Contain("mov oC0.x, -v0_abs.z"));
     }
+
+    // vs_1_1's expp writes four different parts; a mask keeps the ones it names,
+    // not the first ones.
+    [Test]
+    public void AMaskedPartialExponentialKeepsTheComponentsItNames()
+    {
+        ShaderModel shader = Assemble(ShaderType.Vertex, 1, 1, [
+            Declaration(DeclUsage.Position, RegisterType.Input, 0),
+            Instruction(Opcode.Mov, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Input, 0)),
+            Instruction(Opcode.ExpP, Destination(RegisterType.Temp, 0, 0x6),
+                Source(RegisterType.Input, 0, swizzle: 0x00)),
+            Instruction(Opcode.Mov, Destination(RegisterType.RastOut, 0),
+                Source(RegisterType.Temp, 0)),
+            Instruction(Opcode.End),
+        ]);
+
+        Assert.That(WriteHlsl(shader), Does.Contain(
+            "r0.yz = float4(exp2(floor(position.x)), position.x - floor(position.x), exp2(position.x), 1).yz;"));
+    }
+
+    // dst and lit write four different parts too.
+    [Test]
+    public void AMaskedDstAndLitKeepTheComponentsTheyName()
+    {
+        ShaderModel shader = Assemble(ShaderType.Vertex, 3, [
+            Declaration(DeclUsage.Position, RegisterType.Input, 0),
+            Declaration(DeclUsage.Position, RegisterType.Output, 0),
+            Constant(0, 1, 2, 3, 4),
+            Instruction(Opcode.Mov, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Input, 0)),
+            Instruction(Opcode.Dst, Destination(RegisterType.Temp, 0, 0x6),
+                Source(RegisterType.Input, 0), Source(RegisterType.Const, 0)),
+            // z, the specular term: x and w are both 1, so they would not tell.
+            Instruction(Opcode.Lit, Destination(RegisterType.Temp, 1, 0x4),
+                Source(RegisterType.Input, 0)),
+            Instruction(Opcode.Mov, Destination(RegisterType.Temp, 0, 0x8),
+                Source(RegisterType.Temp, 1, swizzle: 0xAA)),
+            Instruction(Opcode.Mov, Destination(RegisterType.Output, 0),
+                Source(RegisterType.Temp, 0)),
+            Instruction(Opcode.End),
+        ]);
+
+        string hlsl = WriteHlsl(shader);
+        TestContext.WriteLine(hlsl);
+        Assert.Multiple(() =>
+        {
+            Assert.That(hlsl, Does.Contain(
+                "r0.yz = float4(1, position.y * float4(1, 2, 3, 4).y, position.z, float4(1, 2, 3, 4).w).yz;"));
+            Assert.That(hlsl, Does.Contain("r1.z = lit(position.x, position.y, position.w).z;"));
+        });
+    }
 }

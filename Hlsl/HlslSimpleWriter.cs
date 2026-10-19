@@ -1713,11 +1713,13 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.Dst:
                 {
-                    // dst reads fixed components, so both sources are named at full width.
+                    // dst reads fixed components, so both sources are named at full width,
+                    // and its parts differ, so a mask selects the ones it names.
                     string first = GetSourceName(instruction, 1, 4);
                     string second = GetSourceName(instruction, 2, 4);
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                        $"float4(1, {first}.y * {second}.y, {first}.z, {second}.w)");
+                        $"float4(1, {first}.y * {second}.y, {first}.z, {second}.w)"
+                        + instruction.GetDestinationWriteMaskName(4));
                     break;
                 }
             case Opcode.DSX:
@@ -1749,9 +1751,11 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     // vs_1_1's expp writes 2^v whole, split into power and fraction,
                     // and a one - the parts exp assembles from. From vs_2_0 it is exp.
-                    string value = GetSourceName(instruction, 1);
+                    // The parts differ, so a mask selects the ones it names.
+                    string value = GetSourceName(instruction, 1, 1);
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                        $"float4(exp2(floor({value})), {value} - floor({value}), exp2({value}), 1)");
+                        $"float4(exp2(floor({value})), {value} - floor({value}), exp2({value}), 1)"
+                        + instruction.GetDestinationWriteMaskName(4));
                     break;
                 }
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -1773,9 +1777,11 @@ public class HlslSimpleWriter : HlslWriter
                 break;
             case Opcode.Lit:
                 {
+                    // lit's parts differ, so a mask selects the ones it names.
                     string source = GetSourceName(instruction, 1, 4);
                     WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                        $"lit({source}.x, {source}.y, {source}.w)");
+                        $"lit({source}.x, {source}.y, {source}.w)"
+                        + instruction.GetDestinationWriteMaskName(4));
                     break;
                 }
             case Opcode.Log:

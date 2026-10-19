@@ -7,7 +7,7 @@ RWStructuredBuffer<float4> o : register(u0);
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float4 r0;
-	float2 r1;
+	int2 r1;
 	uint2 dimensions0;
 	sb.GetDimensions(dimensions0.x, dimensions0.y);
 	r0.x = dimensions0.x;

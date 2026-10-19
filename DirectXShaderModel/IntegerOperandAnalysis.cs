@@ -868,12 +868,16 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
-            int destination = writer.GetDestinationParamIndex().Value;
-            if (!writer.GetParamRegisterKey(destination).Equals(source)
-                || (writer.GetWriteMask(destination) & (1 << component)) == 0)
+            // Either of a udiv's or an imul's two destinations may be the maker.
+            int[] destinations = writer.HasSecondDestination() ? [0, 1] : [writer.GetDestinationParamIndex().Value];
+            if (!destinations.Any(destination => writer.GetOperandType(destination) != OperandType.Null
+                && writer.GetParamRegisterKey(destination).Equals(source)
+                && (writer.GetWriteMask(destination) & (1 << component)) != 0))
             {
                 continue;
             }
+            // The sources follow every destination.
+            int firstSource = destinations[^1] + 1;
             switch (writer.Opcode)
             {
                 case D3D10Opcode.UShr or D3D10Opcode.UMin or D3D10Opcode.UMax
@@ -892,10 +896,10 @@ public sealed class IntegerOperandAnalysis
                         | StoredSignedness(instructions, i, 3, depth + 1);
                 case D3D10Opcode.And or D3D10Opcode.Or or D3D10Opcode.Xor
                     or D3D10Opcode.IAdd or D3D10Opcode.IMul or D3D10Opcode.IShl:
-                    return StoredSignedness(instructions, i, destination + 1, depth + 1)
-                        | StoredSignedness(instructions, i, destination + 2, depth + 1);
+                    return StoredSignedness(instructions, i, firstSource, depth + 1)
+                        | StoredSignedness(instructions, i, firstSource + 1, depth + 1);
                 case D3D10Opcode.Not:
-                    return StoredSignedness(instructions, i, destination + 1, depth + 1);
+                    return StoredSignedness(instructions, i, firstSource, depth + 1);
                 default:
                     return Signedness.Unknown;
             }
@@ -1572,14 +1576,32 @@ public sealed class IntegerOperandAnalysis
 
     private static void AddDestinationComponents(D3D10Instruction instruction, HashSet<RegisterComponentKey> components)
     {
+        // imul's high and low halves, uaddc's sum and carry: both are integers,
+        // and either may be null.
+        if (instruction.HasSecondDestination())
+        {
+            for (int index = 0; index < 2; index++)
+            {
+                if (instruction.GetOperandType(index) != OperandType.Null)
+                {
+                    AddDestinationComponents(instruction, index, instruction.GetWriteMask(index), components);
+                }
+            }
+            return;
+        }
+
         int? destinationIndex = instruction.GetDestinationParamIndex();
         if (destinationIndex == null)
         {
             return;
         }
+        AddDestinationComponents(instruction, destinationIndex.Value, instruction.GetDestinationWriteMask(), components);
+    }
 
-        RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex.Value);
-        int writeMask = instruction.GetDestinationWriteMask();
+    private static void AddDestinationComponents(D3D10Instruction instruction, int destinationIndex, int writeMask,
+        HashSet<RegisterComponentKey> components)
+    {
+        RegisterKey registerKey = instruction.GetParamRegisterKey(destinationIndex);
         for (int component = 0; component < 4; component++)
         {
             if ((writeMask & (1 << component)) != 0)
@@ -1597,7 +1619,9 @@ public sealed class IntegerOperandAnalysis
     private static void AddSourceComponents(
         D3D10Instruction instruction, HashSet<RegisterComponentKey> components, int sourceCount)
     {
-        for (int source = 1; source <= sourceCount; source++)
+        // The sources follow every destination: two of them for imul and uaddc.
+        int firstSource = instruction.HasSecondDestination() ? 2 : 1;
+        for (int source = firstSource; source < firstSource + sourceCount; source++)
         {
             if (instruction.GetOperandType(source) is OperandType.Immediate32
                 or OperandType.UnorderedAccessView or OperandType.ThreadGroupSharedMemory)
@@ -1649,11 +1673,12 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.Ine:
             // The unsigned relatives read the same two integer sources.
             case D3D10Opcode.UMul:
-            case D3D10Opcode.Umad:
             case D3D10Opcode.UMax:
             case D3D10Opcode.UMin:
             case D3D10Opcode.UAddC:
             case D3D10Opcode.USubB:
+            // The dividend and divisor, after the quotient and remainder.
+            case D3D10Opcode.Udiv:
             // An atomic's address and value are integers.
             case D3D10Opcode.AtomicIAdd:
             case D3D10Opcode.AtomicAnd:
@@ -1678,6 +1703,7 @@ public sealed class IntegerOperandAnalysis
             case D3D10Opcode.ImmAtomicCmpExch:
                 return 4;
             case D3D10Opcode.IMad:
+            case D3D10Opcode.Umad:
             case D3D10Opcode.AtomicCmpStore:
             // The width, the offset and the value.
             case D3D10Opcode.UBFE:

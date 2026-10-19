@@ -211,6 +211,88 @@ public class AssemblyOnlyDxbcInstructionTests
         AssertLanes(results, 10, 0xFFFFFFFF, 0xFFFFFFFF, 3, 0x00010000);
     }
 
+    // A two-destination instruction's sources follow both destinations, so the
+    // second destination is not a source and the last source is not skipped.
+    [Test]
+    public void TheSourcesOfATwoDestinationInstructionAreIntegers()
+    {
+        ShaderModel shader = Assemble(ShaderType.Compute, 5, 0, [
+            Declaration(D3D10Opcode.DclTemps, 11),
+            Declaration(D3D10Opcode.DclThreadGroup, 1, 1, 1),
+            Instruction(D3D10Opcode.IMul, Null(), Destination(OperandType.Temp, 0, 0x1),
+                Component(OperandType.Temp, 1, 0), Component(OperandType.Temp, 2, 0)),
+            Instruction(D3D10Opcode.UAddC, Destination(OperandType.Temp, 3, 0x1),
+                Destination(OperandType.Temp, 4, 0x1),
+                Component(OperandType.Temp, 5, 0), Component(OperandType.Temp, 6, 0)),
+            Instruction(D3D10Opcode.Udiv, Destination(OperandType.Temp, 7, 0x1),
+                Destination(OperandType.Temp, 8, 0x1),
+                Component(OperandType.Temp, 9, 0), Component(OperandType.Temp, 10, 0)),
+            Instruction(D3D10Opcode.Ret),
+        ]);
+        var analysis = new IntegerOperandAnalysis(shader);
+        bool IsInteger(uint register) => analysis.IsIntegerRegister(
+            new RegisterComponentKey(new D3D10RegisterKey(OperandType.Temp, (int)register), 0));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(IsInteger(1), Is.True, "imul's first source");
+            Assert.That(IsInteger(2), Is.True, "imul's second source");
+            Assert.That(IsInteger(5), Is.True, "uaddc's first source");
+            Assert.That(IsInteger(6), Is.True, "uaddc's second source");
+            Assert.That(IsInteger(0), Is.True, "imul's low half");
+            Assert.That(IsInteger(3), Is.True, "uaddc's sum");
+            Assert.That(IsInteger(4), Is.True, "uaddc's carry");
+            Assert.That(IsInteger(7), Is.True, "udiv's quotient");
+            Assert.That(IsInteger(8), Is.True, "udiv's remainder");
+            Assert.That(IsInteger(9), Is.True, "udiv's dividend");
+            Assert.That(IsInteger(10), Is.True, "udiv's divisor");
+        });
+    }
+
+    // A groupshared array is uint when what it stores was made unsigned. The
+    // value's maker may be a second destination: udiv's remainder beside its
+    // quotient, imul's low half beside its high. Each is first made signed by an
+    // ishr, so a search that steps past the real maker finds that instead.
+    [Test]
+    public void ASecondDestinationIsTheMakerOfWhatItWrites()
+    {
+        static uint[] Declare(uint array) => Declaration(D3D10Opcode.DclThreadGroupSharedMemoryStructured,
+            Register(OperandType.ThreadGroupSharedMemory, array), 4, 1);
+        static uint[] MadeSigned(uint register) => Instruction(D3D10Opcode.IShr,
+            Destination(OperandType.Temp, register, 0x1), Component(OperandType.Temp, 7, 0), Immediate(1));
+        static uint[] MadeUnsigned(uint register) => Instruction(D3D10Opcode.UShr,
+            Destination(OperandType.Temp, register, 0x1), Component(OperandType.Temp, 7, 0), Immediate(1));
+        static uint[] Store(uint array, uint register) => Instruction(D3D10Opcode.StoreStructured,
+            Destination(OperandType.ThreadGroupSharedMemory, array, 0x1), Immediate(0), Immediate(0),
+            Component(OperandType.Temp, register, 0));
+
+        ShaderModel shader = Assemble(ShaderType.Compute, 5, 0, [
+            Declare(0), Declare(1), Declare(2),
+            Declaration(D3D10Opcode.DclTemps, 8),
+            Declaration(D3D10Opcode.DclThreadGroup, 1, 1, 1),
+            MadeSigned(1), MadeSigned(3), MadeSigned(4),
+            MadeUnsigned(5), MadeUnsigned(6),
+            // udiv r0.x, r1.x, r5.x, r6.x: the remainder is r1.
+            Instruction(D3D10Opcode.Udiv, Destination(OperandType.Temp, 0, 0x1),
+                Destination(OperandType.Temp, 1, 0x1),
+                Component(OperandType.Temp, 5, 0), Component(OperandType.Temp, 6, 0)),
+            // imul r3.x, r4.x, r5.x, r6.x: unsigned factors, so both halves are.
+            Instruction(D3D10Opcode.IMul, Destination(OperandType.Temp, 3, 0x1),
+                Destination(OperandType.Temp, 4, 0x1),
+                Component(OperandType.Temp, 5, 0), Component(OperandType.Temp, 6, 0)),
+            Store(0, 1), Store(1, 4), Store(2, 3),
+            Instruction(D3D10Opcode.Ret),
+        ]);
+        var analysis = new IntegerOperandAnalysis(shader);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(analysis.IsUnsignedThreadGroupSharedMemory(0), Is.True, "udiv's remainder");
+            Assert.That(analysis.IsUnsignedThreadGroupSharedMemory(1), Is.True, "imul's low half");
+            Assert.That(analysis.IsUnsignedThreadGroupSharedMemory(2), Is.True, "imul's high half");
+        });
+    }
+
     private static uint[] StoreElement(OperandType type, uint register, uint element)
     {
         return Instruction(D3D10Opcode.StoreStructured,

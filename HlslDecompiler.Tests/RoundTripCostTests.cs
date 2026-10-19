@@ -227,6 +227,11 @@ public class RoundTripCostTests
             + "is two dp2adds, the mov of their zero and an add here. fxc fuses the "
             + "mul and add at the end into a mad, which gives one of them back."),
         // Hand-assembled instructions fxc never emits.
+        ["vs_1_1/partial_exp_log"] = (7,
+            "Seven instructions for four. One expp writes 2^v whole, split, and a "
+            + "one; fxc assembles the same from a frc, the add that makes it a "
+            + "floor, two exps for the whole and partial powers, and the mov of "
+            + "the one into w. The logp and the two movs come back one for one."),
         ["vs_3_0/matrix_product_rows"] = (8,
             "Seven instructions: rows of three matrix products against def'd "
             + "constants - a 4x3, a 3x4 and a 3x2 - mixed into two outputs by two "

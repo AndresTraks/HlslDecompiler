@@ -1745,6 +1745,16 @@ public class HlslSimpleWriter : HlslWriter
                 _loopVariableIndex--;
                 break;
             case Opcode.Exp:
+            case Opcode.ExpP:
+                if (instruction.Opcode == Opcode.ExpP && _shader.MajorVersion == 1)
+                {
+                    // vs_1_1's expp writes 2^v whole, split into power and fraction,
+                    // and a one - the parts exp assembles from. From vs_2_0 it is exp.
+                    string value = GetSourceName(instruction, 1);
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"float4(exp2(floor({value})), {value} - floor({value}), exp2({value}), 1)");
+                    break;
+                }
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"exp2({GetSourceName(instruction, 1)})");
                 break;
@@ -1770,6 +1780,8 @@ public class HlslSimpleWriter : HlslWriter
                     break;
                 }
             case Opcode.Log:
+            case Opcode.LogP:
+                // logp is log at every version.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"log2({GetSourceName(instruction, 1)})");
                 break;

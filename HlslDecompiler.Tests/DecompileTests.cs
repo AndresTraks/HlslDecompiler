@@ -122,6 +122,8 @@ public class DecompileTests
     [TestCase("vs_3_0", "bool_constant")]
     [TestCase("ps_2_0", "lighting_intrinsics")]
     [TestCase("vs_1_1", "select_idioms")]
+    [TestCase("vs_1_1", "partial_exp_log")]
+    [TestCase("vs_2_0", "partial_exp_log")]
     [TestCase("ps_3_0", "kill_derivatives")]
     [TestCase("ps_3_0", "multiply_negate")]
     [TestCase("ps_3_0", "continue_nested")]

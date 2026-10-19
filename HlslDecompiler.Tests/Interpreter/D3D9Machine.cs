@@ -525,8 +525,21 @@ public class D3D9Machine
             case Opcode.Rsq:
                 return Broadcast(Reciprocal(MathF.Sqrt(Math.Abs(Source(instruction, 1)[0]))));
             case Opcode.Exp:
+            case Opcode.ExpP when _shader.MajorVersion != 1:
+                // expp from vs_2_0 up is exp. (In vs_1_1 it is the partial form below.)
                 return Broadcast(MathF.Pow(2, Source(instruction, 1)[0]));
+            case Opcode.ExpP:
+                {
+                    // vs_1_1's expp is the partial exponential: the parts of 2^v
+                    // laid out whole and split.
+                    float value = Source(instruction, 1)[0];
+                    float whole = MathF.Floor(value);
+                    return [MathF.Pow(2, whole), value - whole,
+                        MathF.Pow(2, value), 1.0f];
+                }
             case Opcode.Log:
+            case Opcode.LogP:
+                // logp is log at every version.
                 {
                     float value = Math.Abs(Source(instruction, 1)[0]);
                     return Broadcast(value == 0 ? float.NegativeInfinity : MathF.Log2(value));

@@ -2533,6 +2533,29 @@ public class InstructionParser
                 {
                     throw new NotImplementedException();
                 }
+            case Opcode.ExpP when _shaderModel.MajorVersion == 1:
+                {
+                    // vs_1_1's expp is the partial exponential: it writes 2^v whole,
+                    // split into its power and fraction, and a one, per component.
+                    // From vs_2_0 it is the exp below, replicated.
+                    HlslTreeNode part = GetInputs(instruction, componentIndex)[0];
+                    switch (componentIndex)
+                    {
+                        case 0:
+                            return new ExponentialOperation(new FloorOperation(part));
+                        case 1:
+                            return new FractionalOperation(part);
+                        case 2:
+                            return new ExponentialOperation(part);
+                        default:
+                            return new ConstantNode(1.0f);
+                    }
+                }
+            case Opcode.ExpP:
+                {
+                    // From vs_2_0 expp is exp replicated; vs_1_1's partial form is above.
+                    return new ExponentialOperation(GetInputs(instruction, componentIndex)[0]);
+                }
             case Opcode.Abs:
             case Opcode.Add:
             case Opcode.Cmp:
@@ -2542,6 +2565,7 @@ public class InstructionParser
             case Opcode.Exp:
             case Opcode.Frc:
             case Opcode.Log:
+            case Opcode.LogP:
             case Opcode.Lrp:
             case Opcode.Mad:
             case Opcode.Max:
@@ -2575,6 +2599,8 @@ public class InstructionParser
                         case Opcode.Frc:
                             return new FractionalOperation(inputs[0]);
                         case Opcode.Log:
+                        case Opcode.LogP:
+                            // logp is log at every version.
                             return new LogOperation(inputs[0]);
                         case Opcode.Lrp:
                             return new LinearInterpolateOperation(inputs[0], inputs[1], inputs[2]);

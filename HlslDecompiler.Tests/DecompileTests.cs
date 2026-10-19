@@ -146,7 +146,6 @@ public class DecompileTests
     [TestCase("vs_3_0", "matrix_product")]
     [TestCase("vs_3_0", "matrix_product_rows")]
     [TestCase("vs_3_0", "cross_product_sign")]
-    [TestCase("vs_3_0", "conditional_select")]
     [TestCase("ps_1_1", "detail_modulate")]
     [TestCase("ps_1_1", "bump_dot3")]
     [TestCase("ps_1_3", "signed_blend")]

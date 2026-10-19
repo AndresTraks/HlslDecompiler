@@ -1691,11 +1691,6 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
                 break;
-            case Opcode.Cnd:
-                // The half is the instruction's own constant, not an operand.
-                WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"({GetSourceName(instruction, 1)} > 0.5) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
-                break;
             case Opcode.Crs:
                 // Always reads three components, whatever the mask.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
@@ -1972,8 +1967,9 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.Comment:
             case Opcode.End:
                 break;
-            // Instructions fxc never emits (expp, logp, bem, call, setp, ...)
-            // have no fixture to check a transcription against.
+            // Instructions fxc never emits (bem, call, setp, ...) have no fixture to
+            // check a transcription against. cnd exists only in ps_1_x, which
+            // PixelShader1Lowering rewrites to cmp before this writer sees it.
             default:
                 throw new NotImplementedException(instruction.Opcode.ToString());
         }

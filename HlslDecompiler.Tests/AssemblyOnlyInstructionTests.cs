@@ -1,5 +1,8 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Hlsl;
+using HlslDecompiler.Tests.Interpreter;
 using NUnit.Framework;
+using System.Linq;
 using static HlslDecompiler.Tests.ShaderAssembler;
 
 namespace HlslDecompiler.Tests;
@@ -325,6 +328,33 @@ public class AssemblyOnlyInstructionTests
 
         Assert.That(WriteHlsl(shader), Does.Contain(
             "r0.yz = float4(exp2(floor(position.x)), position.x - floor(position.x), exp2(position.x), 1).yz;"));
+    }
+
+    // cnd exists only in ps_1_x and is lowered to cmp on 0.5 - a. The two differ
+    // only at 0.5 itself - cnd's test is false there - which no random trial
+    // feeds, so a def'd condition puts a component on it and one either side.
+    [Test]
+    public void ALoweredCndSelectsTheLesserValueAtExactlyAHalf()
+    {
+        ShaderModel shader = Assemble(ShaderType.Pixel, 1, 4, [
+            Constant(0, 0.5f, 0.25f, 0.75f, 0.5f),
+            Constant(1, 1, 1, 1, 1),
+            Constant(2, -1, -1, -1, -1),
+            FixedSizeInstruction(Opcode.Cnd, Destination(RegisterType.Temp, 0),
+                Source(RegisterType.Const, 0), Source(RegisterType.Const, 1),
+                Source(RegisterType.Const, 2)),
+            FixedSizeInstruction(Opcode.End),
+        ]);
+        ShaderModel lowered = PixelShader1Lowering.Lower(shader);
+
+        float[] expected = [-1, -1, 1, -1];
+        Assert.Multiple(() =>
+        {
+            Assert.That(lowered.Instructions.OfType<D3D9Instruction>().Any(i => i.Opcode == Opcode.Cnd),
+                Is.False, "lowered");
+            Assert.That(D3D9Machine.Run(shader, 0)["COLOR0"], Is.EqualTo(expected), "cnd");
+            Assert.That(D3D9Machine.Run(lowered, 0)["COLOR0"], Is.EqualTo(expected), "lowered to cmp");
+        });
     }
 
     // dst and lit write four different parts too.

@@ -37,7 +37,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.y = (asfloat(r0.x) >= 1) ? -1 : 0;
 	if (r0.y != 0) discard;
 	r0.y = -radius;
-	r0.z = asint(dot(sigma, sigma));
+	r0.z = asint(dot((float2)(sigma), (float2)(sigma)));
 	r1.y = 0;
 	r2 = float4(0, 0, 0, 0);
 	r0.w = 0;

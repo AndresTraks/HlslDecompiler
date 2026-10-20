@@ -2715,7 +2715,8 @@ public class HlslSimpleWriter : HlslWriter
             case D3D10Opcode.Dp2:
             case D3D10Opcode.Dp3:
             case D3D10Opcode.Dp4:
-                WriteResult(instruction, "{0} = dot({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = dot({1}, {2});", GetOperandName(instruction, 0),
+                    DotOperand(instruction, 1), DotOperand(instruction, 2));
                 break;
             case D3D10Opcode.Emit:
             case D3D10Opcode.EmitStream:
@@ -4679,6 +4680,30 @@ public class HlslSimpleWriter : HlslWriter
         }
         return IsUniformOrInput(instruction, operandIndex)
             && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Int or DeclaredType.Uint;
+    }
+
+    /// <summary>
+    /// A dot product's operand at the product's width. A packed scalar uniform or
+    /// input prints bare whatever its swizzle, so `dp2 r0.z, cb0[0].ww, cb0[0].ww`
+    /// read as `dot(sigma, sigma)` - sigma squared, where the bytecode sums two of
+    /// them. Replicated, it is `(float2)(sigma)`.
+    /// </summary>
+    private string DotOperand(D3D10Instruction instruction, int operandIndex)
+    {
+        string name = GetOperandName(instruction, operandIndex);
+        int width = instruction.Opcode switch
+        {
+            D3D10Opcode.Dp2 => 2,
+            D3D10Opcode.Dp3 => 3,
+            _ => 4,
+        };
+        if (IsUniformOrInput(instruction, operandIndex)
+            && instruction.GetSourceSwizzleComponents(operandIndex).Take(width).Distinct().Count() == 1
+            && !System.Text.RegularExpressions.Regex.IsMatch(name, @"\.[xyzw]{2,4}\)?$"))
+        {
+            return $"(float{width})({name})";
+        }
+        return name;
     }
 
     /// <summary>

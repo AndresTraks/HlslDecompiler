@@ -17,7 +17,7 @@ float4 main(PS_IN i) : SV_Target
 
 	float3 r0;
 	r0 = EvaluateAttributeCentroid(i.normal.xyz);
-	o.z = dot(r0.xyz, weight);
+	o.z = dot(r0.xyz, (float3)(weight));
 	o.xy = EvaluateAttributeSnapped(i.texcoord.xy, snapOffset.xy);
 	o.w = 1;
 

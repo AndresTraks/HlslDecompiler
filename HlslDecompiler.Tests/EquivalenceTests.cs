@@ -22,16 +22,13 @@ public class EquivalenceTests
     // A listed writer that starts agreeing fails, so its entry gets removed.
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-        ["cs_4_0/particle_update"] = [("ast",
-            "Two dwords the original stores and the recompilation does not. The "
-            + "particle's velocity is written back a member at a time, and its x and "
-            + "z are the x and z that were loaded from the same element a few lines "
-            + "up, so fxc drops those two stores as writes of what is there. The "
-            + "buffer ends up the same; the store is what is compared, since a "
-            + "buffer is not modelled.")],
+        // Empty since 2026-10-20: both writers compute the same on every fixture
+        // the machine runs.
     };
 
-    private const int Trials = 8;
+    // 32, not 8: fxc's compiles dominate the tier's time, and 8 trials missed
+    // ps_1_3/signed_blend's discard on trials 10 and 24.
+    private const int Trials = 32;
 
     // Relative to the larger; fxc reassociates (mul+add <-> mad).
     private const float Tolerance = 1e-3f;
@@ -108,8 +105,10 @@ public class EquivalenceTests
 
         if (known != null)
         {
+            // With what differs now, so a reason gone stale shows beside it.
             Assert.Ignore(string.Join(" ",
-                known.Select(k => $"Known difference in the {k.Writer} writer: {k.Reason}")));
+                known.Select(k => $"Known difference in the {k.Writer} writer: {k.Reason} "
+                    + $"Now: {differences.First(d => d.Writer == k.Writer).Message}")));
         }
     }
 
@@ -164,16 +163,32 @@ public class EquivalenceTests
     {
         // Typed by the left side, the one being matched.
         var kinds = new StoredValueKinds(left);
+        int ran = 0;
         for (int trial = 0; trial < Trials; trial++)
         {
-            Dictionary<string, float[]> expected = Run(left, trial);
-            Dictionary<string, float[]> actual = Run(right, trial);
+            // A trial the left side does not finish (a loop stepping by a constant
+            // the trial made 0) says nothing of the right; the others still count.
+            Dictionary<string, float[]> expected = TryRun(left, trial);
+            if (expected == null)
+            {
+                continue;
+            }
+            ran++;
+            Dictionary<string, float[]> actual = TryRun(right, trial);
+            if (actual == null)
+            {
+                yield return $"differs on trial {trial}: {rightName} does not terminate, {leftName} does.";
+                continue;
+            }
 
-            // Discarding is an outcome: a discarded pixel has no outputs to compare.
-            if ((expected.Count == 0) != (actual.Count == 0))
+            // Discarding is an outcome: a discarded pixel has no outputs to compare,
+            // only the UAV writes it made before the discard (D3D10's mark them).
+            bool expectedDiscards = IsDiscarded(expected);
+            bool actualDiscards = IsDiscarded(actual);
+            if (expectedDiscards != actualDiscards)
             {
                 yield return $"differs on trial {trial}: "
-                    + (expected.Count == 0
+                    + (expectedDiscards
                         ? $"{leftName} discards the pixel, {rightName} does not."
                         : $"{rightName} discards the pixel, {leftName} does not.");
                 continue;
@@ -185,6 +200,9 @@ public class EquivalenceTests
             foreach (string name in expected.Keys.Concat(actual.Keys).Distinct()
                 .Where(n => n.StartsWith("STORE") || n.StartsWith("ATOMIC"))
                 .Where(n => !expected.ContainsKey(n) || !actual.ContainsKey(n))
+                // A store of what the address already holds leaves the buffer as
+                // the side without it has it: fxc drops such a store as dead.
+                .Where(n => !IsStoreOfWhatIsThere(n, (expected.ContainsKey(n) ? expected : actual)[n], trial))
                 .OrderBy(n => n))
             {
                 yield return $"differs on trial {trial}: "
@@ -210,6 +228,35 @@ public class EquivalenceTests
                 }
             }
         }
+        if (ran == 0)
+        {
+            throw new D3D10Machine.NonTerminationException();
+        }
+    }
+
+    // Null where the run passes the step limit; other failures propagate.
+    private static Dictionary<string, float[]> TryRun(ShaderModel shader, int trial)
+    {
+        try
+        {
+            return Run(shader, trial);
+        }
+        catch (D3D10Machine.NonTerminationException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsDiscarded(Dictionary<string, float[]> results)
+    {
+        return results.Count == 0 || results.ContainsKey(D3D10Machine.DiscardedKey);
+    }
+
+    // Bitwise: a store of the loaded value writes back exactly its bits.
+    private static bool IsStoreOfWhatIsThere(string name, float[] stored, int trial)
+    {
+        return D3D10Machine.InitialValueAt(name, trial) is float initial
+            && BitConverter.SingleToUInt32Bits(initial) == BitConverter.SingleToUInt32Bits(stored[0]);
     }
 
     // Chosen by how the shader was read, not by profile name.

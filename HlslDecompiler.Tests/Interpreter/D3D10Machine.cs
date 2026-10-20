@@ -4,6 +4,7 @@ using System;
 using System.Numerics;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace HlslDecompiler.Tests.Interpreter;
 
@@ -14,6 +15,12 @@ namespace HlslDecompiler.Tests.Interpreter;
 public class D3D10Machine
 {
     public class UnsupportedException(string message) : Exception(message);
+
+    /// <summary>
+    /// A run past the step limit: a trial's inputs (a step of 0) or the shader.
+    /// The comparison drops a trial the original does not finish.
+    /// </summary>
+    public class NonTerminationException() : UnsupportedException("the shader did not terminate");
 
     private const int ConstantRegisterSizeInBytes = 16;
 
@@ -54,6 +61,10 @@ public class D3D10Machine
     private readonly HashSet<int> _boundSlots = [];
 
     public bool Discarded { get; private set; }
+    private int _storedBeforeDiscard;
+
+    /// <summary>The key a discarded run's results carry.</summary>
+    public const string DiscardedKey = "DISCARDED";
 
     private D3D10Machine(ShaderModel shader, int trial)
     {
@@ -113,7 +124,14 @@ public class D3D10Machine
         machine.Execute();
         if (machine.Discarded)
         {
-            return [];
+            // No outputs, but the UAV writes made before the discard, and a mark,
+            // so a discard on one side only still differs.
+            var kept = new Dictionary<string, float[]> { [DiscardedKey] = [1, 0, 0, 0] };
+            foreach (var entry in machine._stored.Take(machine._storedBeforeDiscard))
+            {
+                kept[entry.Key] = [.. entry.Value.Select(BitConverter.UInt32BitsToSingle)];
+            }
+            return kept;
         }
 
         var results = machine._results.ToDictionary(
@@ -149,6 +167,9 @@ public class D3D10Machine
             // Each word named by its position in the variable, so a different
             // buffer packing still gets the same values.
             int words = Math.Max(declaration.VariableSize / 4, 1);
+            // A double is a word pair holding a double in [-2, 2], low word first.
+            // Two floats' bits would make every double ~2^-7, so (int)d was always 0.
+            bool isDouble = declaration.TypeInfo.ParameterType == ParameterType.Double;
             for (int word = 0; word < words; word++)
             {
                 int byteOffset = declaration.VariableOffset + word * 4;
@@ -156,18 +177,20 @@ public class D3D10Machine
                 int component = byteOffset % ConstantRegisterSizeInBytes / 4;
                 if (register < buffer.Length)
                 {
-                    buffer[register][component] =
-                        ConstantWord(declaration, Named($"{declaration.Name}[{word}]")[0]);
+                    buffer[register][component] = isDouble
+                        ? DoubleWord(Named($"{declaration.Name}[{word & ~1}]")[0], word & 1)
+                        : ConstantWord(declaration, Named($"{declaration.Name}[{word}]")[0],
+                            PseudoRandom.Vector($"{declaration.Name}[{word}]", 0)[0]);
                 }
             }
         }
     }
 
     // Integer constants are small and non-negative: float bits read as a uint would
-    // make a loop bound that never finishes. Under 4 in even trials, to reach switch
-    // cases; up to 16 in odd ones, past the thread ids (0-7), so a bounds check like
-    // `any(id >= size)` goes both ways.
-    private uint ConstantWord(D3D10ConstantDeclaration declaration, float value)
+    // make a loop bound that never finishes. 0-3 in even trials, cycled like
+    // integer inputs so each switch case is reached; up to 16 in odd ones, past the
+    // thread ids (0-7), so a bounds check like `any(id >= size)` goes both ways.
+    private uint ConstantWord(D3D10ConstantDeclaration declaration, float value, float offset)
     {
         switch (declaration.TypeInfo.ParameterType)
         {
@@ -175,12 +198,17 @@ public class D3D10Machine
             case ParameterType.Uint:
             case ParameterType.Uint8:
             case ParameterType.Bool:
-                return _trial % 2 == 0
-                    ? (uint)Math.Abs(value * 2) % 4
-                    : (uint)Math.Abs(value * 8) % 17;
+                return SmallInteger(value, offset);
             default:
                 return BitConverter.SingleToUInt32Bits(value);
         }
+    }
+
+    // One half of a double: 0 the low word, 1 the high.
+    private static uint DoubleWord(float value, int half)
+    {
+        ulong bits = BitConverter.DoubleToUInt64Bits(value);
+        return half == 0 ? (uint)bits : (uint)(bits >> 32);
     }
 
     private uint[][] Buffer(int slot)
@@ -211,6 +239,17 @@ public class D3D10Machine
                 _input[number][i] = BitConverter.SingleToUInt32Bits(value[i]);
             }
         }
+        // Then the integer components, small as integer constants are: a float's
+        // bits as a uint never made `idx == 0` or a small switch go another way.
+        // A second pass, so a float packed beside one keeps its value.
+        foreach (RegisterSignature signature in _shader.InputSignatures)
+        {
+            int number = signature.RegisterKey.Number;
+            if (number >= 0 && number < _input.Length)
+            {
+                SmallIntegerComponents(signature, _input[number], signature.Name + signature.Index);
+            }
+        }
 
         foreach (RegisterSignature signature in _shader.OutputSignatures)
         {
@@ -227,14 +266,78 @@ public class D3D10Machine
                 ? name
                 : "INPUT" + register;
             value = [.. Named($"{semantic}[{vertex}]").Select(BitConverter.SingleToUInt32Bits)];
+            foreach (RegisterSignature signature in _shader.InputSignatures
+                .Where(s => s.RegisterKey.Number == register))
+            {
+                SmallIntegerComponents(signature, value, $"{signature.Name}{signature.Index}[{vertex}]");
+            }
             _vertexInputs[(vertex, register)] = value;
         }
         return value;
     }
 
+    // A uint or int signature's components get small integers, named apart from
+    // the float values so either can change alone.
+    private void SmallIntegerComponents(RegisterSignature signature, uint[] register, string name)
+    {
+        const int UInt32ComponentType = 1;
+        const int SInt32ComponentType = 2;
+        if (signature.ComponentType is not (UInt32ComponentType or SInt32ComponentType))
+        {
+            return;
+        }
+        float[] value = Named("int:" + name);
+        // The same in every trial, so the even trials can cycle from it.
+        float[] offset = PseudoRandom.Vector("int:" + name, 0);
+        for (int i = 0; i < 4; i++)
+        {
+            if ((signature.Mask & (1 << i)) != 0)
+            {
+                register[i] = SmallInteger(value[i], offset[i]);
+            }
+        }
+    }
+
+    // Even trials cycle through 0-3 from a per-input offset, so across the four
+    // even trials every integer input is each of 0, 1, 2 and 3 once: an
+    // `idx == 0` branch is always taken somewhere, not by luck. Odd trials
+    // spread to 16.
+    private uint SmallInteger(float value, float offset)
+    {
+        return _trial % 2 == 0
+            ? (uint)(_trial / 2 + (uint)(Math.Abs(offset) * 1000)) % 4
+            : (uint)Math.Abs(value * 8) % 17;
+    }
+
+    // Even trials signed, odd trials non-negative: a value behind saturate(x) or
+    // max(x, 0) is zero half the time in [-2, 2], and a decompilation was then
+    // compared on zeros alone. (Integers drawn from these take |v| anyway.)
     private float[] Named(string name)
     {
-        return PseudoRandom.Vector(name, _trial);
+        float[] value = PseudoRandom.Vector(name, _trial);
+        return _trial % 2 == 0 ? value : [.. value.Select(MathF.Abs)];
+    }
+
+    /// <summary>
+    /// What a buffer holds at a store's address before any store, as a load reads
+    /// it: the buffer is not modelled, so a store of the value already there is
+    /// told from one that changes the buffer by this. Null for other outputs.
+    /// </summary>
+    public static float? InitialValueAt(string storeKey, int trial)
+    {
+        // As Named makes it, odd trials non-negative.
+        float? Loaded(string name)
+        {
+            float value = PseudoRandom.Vector(name, trial)[0];
+            return trial % 2 == 0 ? value : MathF.Abs(value);
+        }
+        Match structured = Regex.Match(storeKey, @"^STORE(\d+)(\[-?\d+\]\[-?\d+\])$");
+        if (structured.Success)
+        {
+            return Loaded($"buffer{structured.Groups[1].Value}{structured.Groups[2].Value}");
+        }
+        Match raw = Regex.Match(storeKey, @"^STORERAW(\d+)(\[-?\d+\])$");
+        return raw.Success ? Loaded($"raw{raw.Groups[1].Value}{raw.Groups[2].Value}") : null;
     }
 
     private int ControlPointCount =>
@@ -255,7 +358,7 @@ public class D3D10Machine
         {
             if (++steps > 200000)
             {
-                throw new UnsupportedException("the shader did not terminate");
+                throw new NonTerminationException();
             }
 
             D3D10Instruction instruction = instructions[pc];
@@ -285,7 +388,12 @@ public class D3D10Machine
                     pc = BodyStart(instructions, instruction);
                     continue;
                 case D3D10Opcode.Discard:
-                    Discarded |= Test(instruction);
+                    if (Test(instruction) && !Discarded)
+                    {
+                        Discarded = true;
+                        // UAV writes before the discard stand; later ones do not.
+                        _storedBeforeDiscard = _stored.Count;
+                    }
                     pc++;
                     continue;
                 case D3D10Opcode.If:
@@ -1304,7 +1412,12 @@ public class D3D10Machine
         int channel = instruction.Opcode == D3D10Opcode.Gather4C
             ? instruction.GetSourceSwizzleComponents(3)[0]
             : 0;
-        return BroadcastFloat(sampled[channel] >= reference ? 1 : 0);
+        // Not a bare 0 or 1: a reference far outside the texture's [0.1, 0.9] gives
+        // the same step whatever the coordinates, so a wrong texel read passed.
+        // The comparison picks the band and the texel shows within it; both
+        // programs share the model.
+        float texel = sampled[channel];
+        return BroadcastFloat((texel >= reference ? 0.75f : 0.25f) + 0.2f * (texel - 0.5f));
     }
 
     // A made up size per slot, halved per mip, mip count in w, z zero. Returned as

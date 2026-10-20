@@ -116,7 +116,8 @@ public class D3D9Machine
         {
             for (int i = 0; i < declaration.RegisterCount; i++)
             {
-                float[] value = Named($"{declaration.Name}[{i}]");
+                string name = $"{declaration.Name}[{i}]";
+                float[] value = Named(name);
                 int register = declaration.RegisterIndex + i;
                 switch (declaration.RegisterSet)
                 {
@@ -124,14 +125,19 @@ public class D3D9Machine
                         Array.Copy(value, _const[register], 4);
                         break;
                     case RegisterSet.Int4:
+                        // Small, so a loop count terminates; in even trials cycled from
+                        // a fixed offset, so every count 0-3 is reached.
+                        float[] offset = PseudoRandom.Vector(name, 0);
                         for (int c = 0; c < 4; c++)
                         {
-                            // Small, so a loop count terminates.
-                            _constInt[register][c] = (int)Math.Abs(value[c] * 4) % 4;
+                            _constInt[register][c] = _trial % 2 == 0
+                                ? (_trial / 2 + (int)(Math.Abs(offset[c]) * 1000)) % 4
+                                : (int)Math.Abs(value[c] * 4) % 4;
                         }
                         break;
                     case RegisterSet.Bool:
-                        _constBool[register] = value[0] > 0;
+                        // The signed draw: odd trials' values are non-negative.
+                        _constBool[register] = PseudoRandom.Vector(name, _trial)[0] > 0;
                         break;
                 }
             }
@@ -208,7 +214,13 @@ public class D3D9Machine
                     }
                     break;
                 case RegisterType.Texture:
-                    Array.Copy(Named(instruction.GetDeclSemantic()), _texture[number], 4);
+                    // A ps_2_x t# is texture coordinate set #: named so, as the ps_1_x
+                    // coordinates and the decompilation's TEXCOORD# are. Its dcl
+                    // carries no usage index to say it.
+                    Array.Copy(Named(_shader.Type == ShaderType.Pixel
+                            ? (number == 0 ? "TEXCOORD" : "TEXCOORD" + number)
+                            : instruction.GetDeclSemantic()),
+                        _texture[number], 4);
                     break;
                 case RegisterType.Sampler:
                     _samplerDimensions[number] = instruction.GetDeclSamplerTextureType() switch
@@ -224,9 +236,12 @@ public class D3D9Machine
         }
     }
 
+    // Even trials signed, odd trials non-negative, as in D3D10Machine: a value
+    // behind saturate or max(x, 0) was otherwise zero half the time.
     private float[] Named(string name)
     {
-        return PseudoRandom.Vector(name, _trial);
+        float[] value = PseudoRandom.Vector(name, _trial);
+        return _trial % 2 == 0 ? value : [.. value.Select(MathF.Abs)];
     }
 
     private void Execute()
@@ -305,10 +320,18 @@ public class D3D9Machine
                         : pc + 1;
                     continue;
                 case Opcode.TexKill:
-                    // ps_1_x tests the coordinate set, not what a tex left in t#.
-                    Killed |= (IsShaderModel1Pixel && !IsShaderModel14Pixel
-                        ? _coordinates[instruction.GetParamRegisterNumber(0)]
-                        : Source(instruction, 0)).Take(3).Any(c => c < 0);
+                    // Its operand is a destination token, whose mask bits Source would
+                    // read as a swizzle (xyzw as .wwxx), so the register is read whole.
+                    // ps_1_1-1_3 test the coordinate set (not what a tex left in t#) and
+                    // ps_1_4 its register, on xyz; from ps_2_0 all four count - fxc
+                    // fills w with a copy (mov r0.w, t2.z) for a clip of a float3.
+                    {
+                        int killed = instruction.GetParamRegisterNumber(0);
+                        float[] tested = IsShaderModel1Pixel && !IsShaderModel14Pixel
+                            ? _coordinates[killed]
+                            : Read(instruction.GetParamRegisterType(0), killed);
+                        Killed |= tested.Take(IsShaderModel1Pixel ? 3 : 4).Any(c => c < 0);
+                    }
                     pc++;
                     continue;
                 // ps_1_4: texld samples the stage its destination is numbered for.

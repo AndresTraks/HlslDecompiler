@@ -533,12 +533,48 @@ public class StatementFinalizer
             // Which value feeds which, taken before lowering makes new and old value
             // the same name.
             var feeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
+            // A reader of a stepped value that also reads the value before the step
+            // (`iadd r0.y, r0.y, 1` then `movc r0.x, (cb[r0.y_old] < x), r0.y, r0.x`)
+            // cannot be ordered: lowering names both values the same variable. It
+            // keeps the step's expression instead, all its reads then of the old value.
+            var mixedReaders = new Dictionary<RegisterComponentKey, List<HlslTreeNode>>();
             foreach (var reader in newAssignments)
             {
-                feeds[reader.Key] = [.. newAssignments
-                    .Where(fed => !ReferenceEquals(fed.Value, reader.Value)
-                        && fed.Value.IsInputOf(reader.Value))
-                    .Select(fed => fed.Key)];
+                feeds[reader.Key] = [];
+                foreach (var fed in newAssignments)
+                {
+                    if (ReferenceEquals(fed.Value, reader.Value) || !fed.Value.IsInputOf(reader.Value))
+                    {
+                        continue;
+                    }
+                    // The old value is what the step reads of its own register: its
+                    // input node, or - loop-carried, where a header phi was lowered
+                    // already - the variable the step reads. A step into a register
+                    // it does not also read from is no step, and conflicts with nothing.
+                    statement.Inputs.TryGetValue(fed.Key, out HlslTreeNode oldInput);
+                    List<HlslTreeNode> oldValues = [];
+                    if (oldInput != null && oldInput.IsInputOf(fed.Value))
+                    {
+                        oldValues.Add(oldInput);
+                    }
+                    if (oldInput is PhiNode { IsLoopHeader: true }
+                        || (oldInput != null && GetExistingVariable(oldInput) is TempVariableNode))
+                    {
+                        TempVariableNode own = GetExistingVariable(oldInput);
+                        oldValues.AddRange(fed.Value.Inputs.OfType<TempVariableNode>()
+                            .Where(v => own == null || ReferenceEquals(v, own)));
+                    }
+                    if (oldValues.Any(old => ReadsAvoiding(reader.Value, old, fed.Value)))
+                    {
+                        if (!mixedReaders.TryGetValue(fed.Key, out List<HlslTreeNode> readers))
+                        {
+                            mixedReaders[fed.Key] = readers = [];
+                        }
+                        readers.Add(reader.Value);
+                        continue;
+                    }
+                    feeds[reader.Key].Add(fed.Key);
+                }
             }
             // Likewise for output registers. An output whose value is the temp's own
             // is excluded; the sort's overwrite rule handles it.
@@ -638,6 +674,13 @@ public class StatementFinalizer
                             // Else a second visit of the phi rewires readers again.
                             tempUsage.Outputs.Clear();
                             ReplaceInStatementNodes(tempUsage, tempVariable);
+                        }
+                        // A mixed reader keeps the expression (see mixedReaders).
+                        else if (mixedReaders.TryGetValue(newAssignment.Key, out List<HlslTreeNode> mixed)
+                            && mixed.Any(root => ReferenceEquals(root, tempUsage) || tempUsage.IsInputOf(root)))
+                        {
+                            tempValue.Outputs.Add(tempUsage);
+                            continue;
                         }
                         // Kept so later rewiring (branch unification) finds the phi too.
                         tempVariable.Outputs.Add(tempUsage);
@@ -1630,6 +1673,35 @@ public class StatementFinalizer
     {
         new StatementVisitor(_statements).Visit(
             statement => statement.ReplaceHeldNode(node, replacement));
+    }
+
+    /// <summary>
+    /// Whether <paramref name="root"/> reads <paramref name="target"/> along some
+    /// path that does not pass through <paramref name="avoid"/>: a read of a value
+    /// of its own, not only the one inside it.
+    /// </summary>
+    private static bool ReadsAvoiding(HlslTreeNode root, HlslTreeNode target, HlslTreeNode avoid)
+    {
+        var visited = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>();
+        stack.Push(root);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (ReferenceEquals(node, avoid) || !visited.Add(node))
+            {
+                continue;
+            }
+            if (ReferenceEquals(node, target))
+            {
+                return true;
+            }
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                stack.Push(input);
+            }
+        }
+        return false;
     }
 
     /// <summary>

@@ -17,7 +17,7 @@ float4 main(PS_IN i) : SV_Target
 {
 	int t0 = 0;
 	for (int t1 = 0; t1 < 4; t1 = t1 + 1) {
-		t0 = cascadeSplit[t1] < i.texcoord1 ? t1 : t0;
+		t0 = cascadeSplit[t1] < i.texcoord1 ? t1 + 1 : t0;
 	}
 	int t2 = min(t0, 3);
 	float t3 = dot(float4(i.texcoord, 1), transpose(cascadeTransform[t2])[3]);

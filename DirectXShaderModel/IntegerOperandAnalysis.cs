@@ -1467,6 +1467,22 @@ public sealed class IntegerOperandAnalysis
             {
                 AddDestinationComponents(instruction, integerRegisters);
             }
+            // The mirror of a structured load: a temp stored into an integer element
+            // of a UAV holds an integer, whatever else (a movc, an immediate) wrote it.
+            // UAVs only: their element types come from reflection, groupshared
+            // memory's from this analysis.
+            if (instruction.Opcode == D3D10Opcode.StoreStructured
+                && instruction.GetOperandType(0) == OperandType.UnorderedAccessView
+                && instruction.GetOperandType(3) == OperandType.Temp
+                && GetStructuredElementKind(instruction) == ValueKind.Integer)
+            {
+                RegisterKey stored = instruction.GetParamRegisterKey(3);
+                foreach (byte component in instruction.GetSourceSwizzleComponents(3)
+                    .Take(System.Numerics.BitOperations.PopCount((uint)instruction.GetDestinationWriteMask())))
+                {
+                    integerRegisters.Add(new RegisterComponentKey(stored, component));
+                }
+            }
             // ftoi, ftou and f32tof16 read floats.
             if (instruction.Opcode != D3D10Opcode.Ftoi
                 && instruction.Opcode != D3D10Opcode.Ftou

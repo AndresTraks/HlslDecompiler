@@ -15,8 +15,8 @@ mov r2.zw, r1.zw
 dmax r1.zw, -r0.xyxy, r1.xyxy
 dne r1.x, r0.xy, r1.xy
 deq r0.x, r0.zw, r0.xy
-and r0.x, r0.x, l(0x00000001)
-and r0.y, r1.x, l(0x00000001)
+and r0.x, r0.x, l(1)
+and r0.y, r1.x, l(1)
 store_structured u1.xy, vThreadID.xx, l(0), r0.xy
 mov r2.xy, r1.zw
 store_structured u0, vThreadID.x, l(0), r2

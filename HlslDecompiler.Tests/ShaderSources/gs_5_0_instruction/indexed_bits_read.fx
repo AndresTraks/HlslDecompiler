@@ -21,7 +21,7 @@ void main(triangle GS_IN i[3], inout TriangleStream<GS_OUT> stream)
 		r0.y = (r0.x >= 3) ? -1 : 0;
 		if (r0.y != 0) break;
 		r0.y = (0 < i[r0.x].position.x) ? -1 : 0;
-		r0.y = asint((r0.y != 0) ? i[r0.x].id : i[r0.x].position.y);
+		r0.y = (r0.y != 0) ? i[r0.x].id : asint(i[r0.x].position.y);
 		o.sv_position = i[r0.x].position;
 		o.f = asfloat(r0.y);
 		stream.Append(o);

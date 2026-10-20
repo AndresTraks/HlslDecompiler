@@ -25,7 +25,7 @@ float4 main(DS_CONST constants, float2 sv_domainlocation : SV_DomainLocation, co
 	r0 = sv_domainlocation.y * r0 + asfloat(r1);
 	r1.x = constants.flags.x & 1;
 	r1.y = asint(constants.edges[1].x * constants.inside[0].x);
-	r1.x = (r1.x != 0) ? r1.y : asint(constants.flags.x);
+	r1.x = (r1.x != 0) ? r1.y : constants.flags.x;
 	o = r0 * asfloat(r1.x) + constants.edges[3].x;
 
 	return o;

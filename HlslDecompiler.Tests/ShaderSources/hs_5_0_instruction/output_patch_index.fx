@@ -48,7 +48,7 @@ HS_OUT main(InputPatch<HS_IN, 3> patch, uint sv_outputcontrolpointid : SV_Output
 	int2 r0;
 	r0.x = (sv_outputcontrolpointid < 3) ? -1 : 0;
 	r0.x = (r0.x != 0) ? 1065353216 : 1056964608;
-	r0.y = (uint)(int)sv_outputcontrolpointid % 3;
+	r0.y = (uint)sv_outputcontrolpointid % 3;
 	o.pos = asfloat(r0.x) * patch[r0.y].pos;
 	r0.x = asint((float)(uint)sv_outputcontrolpointid);
 	o.w = asfloat(r0.x) + patch[r0.y].pos.w;

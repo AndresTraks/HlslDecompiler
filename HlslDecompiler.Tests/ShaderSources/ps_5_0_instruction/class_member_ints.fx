@@ -17,8 +17,8 @@ class Shift : ISel
 	{
 		int4 r1;
 		float4 r0;
-		r1.z = index >> asint((int)m0.x);
-		r1.x = max(r1.z, (int)m0.y);
+		r1.z = index >> asint(m0.x);
+		r1.x = max(r1.z, m0.y);
 		r1.x = asint((float)r1.x);
 		r0 = asfloat(r1.x) * color;
 

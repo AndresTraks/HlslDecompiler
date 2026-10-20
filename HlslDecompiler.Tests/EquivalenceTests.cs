@@ -29,25 +29,6 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
-        ["ds_5_0/mixed_bits_patch"] = [("instruction",
-            "The position. The instruction writer reads the uint patch constant in "
-            + "a mad as its number, where fxc wrote no utof because its bits were "
-            + "meant. The AST writer, which reads asfloat(constants.bits), computes "
-            + "the same.")],
-        ["gs_5_0/indexed_bits_read"] = [("instruction",
-            "The same movc the other way round: the instruction writer selects the "
-            + "uint id beside a float, so it is converted to a float where the movc "
-            + "copies its bits. The AST writer, which selects asfloat(id), computes "
-            + "the same.")],
-        ["hs_5_0/mixed_bits_patch"] = [("instruction",
-            "A movc between a float input and an integer: the instruction writer "
-            + "converts the float operand where the movc copies its bits. The AST "
-            + "writer, which reinterprets it, computes the same.")],
-        ["ps_5_0/integer_add_bits"] = [("instruction",
-            "An iadd of a float input and a uint: the instruction writer adds the "
-            + "float's value, not its bits, and the bfi result goes into the depth "
-            + "by conversion. The AST writer, which adds asint(texcoord), computes "
-            + "the same.")],
     };
 
     private const int Trials = 8;

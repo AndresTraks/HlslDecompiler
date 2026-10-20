@@ -1210,6 +1210,21 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
+        // So does an input: HLSL reads it as declared, whatever an integer op
+        // does with its bits elsewhere. Control points and patch constants too.
+        if (instruction.GetOperandType(operandIndex)
+            is OperandType.Input or OperandType.InputControlPoint or OperandType.InputPatchConstant)
+        {
+            DeclaredType declared = DeclaredTypeOf(instruction, operandIndex);
+            if (declared is DeclaredType.Int or DeclaredType.Uint or DeclaredType.Bool)
+            {
+                return ComponentStorage.Integer;
+            }
+            if (declared == DeclaredType.Float)
+            {
+                return ComponentStorage.Numeric;
+            }
+        }
         if (instruction.GetOperandType(operandIndex) is not (OperandType.Temp or OperandType.Input
             or OperandType.InputThreadID or OperandType.InputThreadGroupID
             or OperandType.InputThreadIDInGroup or OperandType.InputThreadIDInGroupFlattened
@@ -1434,7 +1449,9 @@ public class HlslSimpleWriter : HlslWriter
         bool sourceIsTemp = instruction.GetOperandType(sourceIndex) is OperandType.Temp or OperandType.IndexableTemp;
         if (IsFloatValue(instruction)
             || (!sourceIsTemp && source == ComponentStorage.Numeric)
-            || (instruction.GetOperandType(0) == OperandType.Output && destination == ComponentStorage.Numeric))
+            || (instruction.GetOperandType(0) is OperandType.Output or OperandType.OutputDepth
+                    or OperandType.OutputDepthGreaterEqual or OperandType.OutputDepthLessEqual
+                && destination == ComponentStorage.Numeric))
         {
             return source == ComponentStorage.Integer ? $"asfloat({name})" : AsInt(name);
         }
@@ -4412,8 +4429,11 @@ public class HlslSimpleWriter : HlslWriter
                     dynamicMember?.ComponentBase ?? GetConstantComponentBase(instruction, operandIndex),
                     maskedLength);
             // An integer op into an int register must compute in integers: a float
-            // 3 + 4 is 7.0f, whose bits are not 7.
+            // 3 + 4 is 7.0f, whose bits are not 7. Only a temp holds an integer as
+            // a number; a float input or uniform an integer op reads is its bits.
+            bool isTempSource = registerKey.OperandType is OperandType.Temp or OperandType.IndexableTemp;
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && isTempSource
                 && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
                 && !IsIntegerConstant(instruction, operandIndex)
                 && instruction.HasDestination
@@ -4430,6 +4450,7 @@ public class HlslSimpleWriter : HlslWriter
             // An ftoi result used as a uint index: cast to int so a negative wraps
             // rather than clamping to zero in the float-to-uint conversion.
             if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && isTempSource
                 && GetSourceStorage(instruction, operandIndex) == ComponentStorage.Numeric
                 && !IsIntegerConstant(instruction, operandIndex)
                 && IsUnsignedIndexOperand(instruction, operandIndex)
@@ -4439,6 +4460,13 @@ public class HlslSimpleWriter : HlslWriter
                 string indexSize = indexLength == 1 ? "" : indexLength.ToString();
                 return ApplyModifier(modifier,
                     $"(int{indexSize}){string.Format("{0}{1}", registerName, writeMaskName)}");
+            }
+            // An integer read of a float uniform/input without an ftoi is an asint.
+            if (GetConsumedKind(instruction, operandIndex) == ValueKind.Integer
+                && IsFloatUniformOrInput(instruction, operandIndex))
+            {
+                return ApplyModifier(modifier,
+                    AsInt(string.Format("{0}{1}", registerName, writeMaskName)));
             }
             // A float read of float bits held in an int register, or of an integer
             // uniform/input without a utof/itof, is an asfloat.
@@ -4608,6 +4636,21 @@ public class HlslSimpleWriter : HlslWriter
             key = new D3D10RegisterKey(OperandType.ImmediateConstantBuffer,
                 (int)instruction.OperandTokens.GetOperandIndices(operandIndex)[0].Immediate);
         }
+        // `v[r0.x][1]`: a vertex or control point array declares every vertex
+        // alike (keyed per vertex), so vertex 0's declaration types whichever
+        // vertex is read, a computed one included.
+        else if (instruction.GetOperandType(operandIndex) is OperandType.Input or OperandType.InputControlPoint
+            && instruction.OperandTokens.GetOperandIndices(operandIndex) is { Length: 2 } vertexIndices
+            && !vertexIndices[1].IsRelative)
+        {
+            DeclaredType perAttribute = _registers.GetDeclaredType(new RegisterComponentKey(
+                D3D10RegisterKey.CreateGSInput((int)vertexIndices[1].Immediate, 0),
+                instruction.GetSourceSwizzleComponents(operandIndex)[0]));
+            if (perAttribute != DeclaredType.Unknown)
+            {
+                return perAttribute;
+            }
+        }
         return _registers.GetDeclaredType(new RegisterComponentKey(
             key, instruction.GetSourceSwizzleComponents(operandIndex)[0]));
     }
@@ -4628,9 +4671,35 @@ public class HlslSimpleWriter : HlslWriter
         {
             return false;
         }
-        return instruction.GetOperandType(operandIndex)
-                is OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer or OperandType.Input
+        return IsUniformOrInput(instruction, operandIndex)
             && DeclaredTypeOf(instruction, operandIndex) is DeclaredType.Int or DeclaredType.Uint;
+    }
+
+    /// <summary>
+    /// The mirror: integer arithmetic reading a float uniform or input reads its
+    /// bits (fxc writes an ftoi where a conversion is meant), so it is an asint.
+    /// Bitwise operators and shifts reinterpret on their own paths.
+    /// </summary>
+    private bool IsFloatUniformOrInput(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.Opcode is not (D3D10Opcode.IAdd or D3D10Opcode.IMul or D3D10Opcode.IMad
+            or D3D10Opcode.Umad or D3D10Opcode.IMin or D3D10Opcode.IMax or D3D10Opcode.UMin
+            or D3D10Opcode.UMax or D3D10Opcode.INeg or D3D10Opcode.Ieq or D3D10Opcode.Ine
+            or D3D10Opcode.Ilt or D3D10Opcode.Ige or D3D10Opcode.ULT or D3D10Opcode.UGE))
+        {
+            return false;
+        }
+        return IsUniformOrInput(instruction, operandIndex)
+            && DeclaredTypeOf(instruction, operandIndex) == DeclaredType.Float;
+    }
+
+    // Operands whose HLSL type is their declaration's, not a temp's storage. A
+    // hull or domain shader's patch constants and control points are inputs too.
+    private static bool IsUniformOrInput(D3D10Instruction instruction, int operandIndex)
+    {
+        return instruction.GetOperandType(operandIndex)
+            is OperandType.ConstantBuffer or OperandType.ImmediateConstantBuffer or OperandType.Input
+                or OperandType.InputPatchConstant or OperandType.InputControlPoint;
     }
 
     /// <summary>

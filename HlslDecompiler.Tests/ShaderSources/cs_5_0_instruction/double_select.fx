@@ -19,11 +19,11 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.yzw = sv_dispatchthreadid.xxx + int3(1, 2, 3);
 	output[r0.y] = asfloat(r0.x);
 	r0.x = asint((b == a) ? -1 : 0);
-	d0 = (asfloat(r0.x) != 0) ? a : b;
+	d0 = (r0.x != 0) ? a : b;
 	r0.x = asint((float)d0);
 	output[r0.z] = asfloat(r0.x);
 	r0.x = asint((int)a);
-	d0 = (double)asfloat(r0.x);
+	d0 = (double)r0.x;
 	r0.x = asint((float)d0);
 	output[r0.w] = asfloat(r0.x);
 }

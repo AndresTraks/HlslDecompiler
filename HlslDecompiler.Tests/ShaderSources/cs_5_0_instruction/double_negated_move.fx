@@ -12,7 +12,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	double2 d2;
 	d0 = input[sv_dispatchthreadid.x];
 	r1.x = asint((-(d0.x) < d0.y) ? -1 : 0);
-	d1.x = (asfloat(r1.x) != 0) ? -(d0.x) : d0.y;
+	d1.x = (r1.x != 0) ? -(d0.x) : d0.y;
 	d1.y = min(d0.x, d1.x);
 	d1.y = -(d1.y);
 	d2.y = d1.y;

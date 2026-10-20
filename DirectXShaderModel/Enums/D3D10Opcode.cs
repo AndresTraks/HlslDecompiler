@@ -425,6 +425,9 @@ public static class D3D10OpcodeExtensions
                 return ValueKind.Bits;
             case D3D10Opcode.IToF:
             case D3D10Opcode.UTof:
+            // A conversion to double reads an integer too.
+            case D3D10Opcode.IToD:
+            case D3D10Opcode.UToD:
             // Mip levels and element/byte offsets.
             case D3D10Opcode.ResInfo:
             case D3D10Opcode.BufInfo:

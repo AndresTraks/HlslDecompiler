@@ -1330,7 +1330,8 @@ public class HlslSimpleWriter : HlslWriter
         {
             return _integerOperandAnalysis.GetTypedStoreKind(instruction);
         }
-        if (instruction.Opcode == D3D10Opcode.MovC && operandIndex == 1)
+        // A select's condition is a mask, a double select's too.
+        if (instruction.Opcode is D3D10Opcode.MovC or D3D10Opcode.DMovC && operandIndex == 1)
         {
             return ValueKind.Bits;
         }

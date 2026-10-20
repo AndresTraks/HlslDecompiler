@@ -17,7 +17,7 @@ PS_OUT main(PS_IN i)
 
 	int r0;
 	o.sv_target = i.c;
-	o.sv_stencilref = asfloat(asint(i.c.x) & 255);
+	o.sv_stencilref = asint(i.c.x) & 255;
 	r0 = (0.5 < i.c.y) ? -1 : 0;
 	o.sv_coverage = (r0.x != 0) ? 15 : asint(i.c.z);
 

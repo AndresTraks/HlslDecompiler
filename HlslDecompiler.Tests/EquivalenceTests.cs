@@ -29,29 +29,6 @@ public class EquivalenceTests
             + "up, so fxc drops those two stores as writes of what is there. The "
             + "buffer ends up the same; the store is what is compared, since a "
             + "buffer is not modelled.")],
-        ["cs_5_0/select_float_bits"] = [("instruction",
-            "The select. A movc picks between a float's bits and an integer, and the "
-            + "instruction writer keeps the integer in a register declared float as "
-            + "the number it is, by convention; the store into the uint4 buffer then "
-            + "converts the whole register, which is right for the integer and the "
-            + "float's value rather than its bits for the other. The AST writer, "
-            + "which selects asint(t0) beside the uint, computes the same.")],
-        ["cs_5_0/select_raw_store"] = [("instruction",
-            "The select of select_float_bits, stored with Store4: the float register "
-            + "holds the integer branch as its number, and the store takes its bits. "
-            + "The AST writer, which selects asfloat(int4(...)) beside the float, "
-            + "computes the same.")],
-        ["ps_5_0/coverage_select_bits"] = [("instruction",
-            "The stencil reference. The and of a float's bits leaves an integer in a "
-            + "register declared float, where the instruction writer keeps it as the "
-            + "number it is, by convention, so the output converts it. The AST writer, "
-            + "which ands asint(c.x), computes the same.")],
-        ["cs_5_0/double_bits_select"] = [("instruction",
-            "The double. The structured load's two words go into a register "
-            + "declared float, so the instruction writer converts them as numbers, "
-            + "by convention, and asdouble joins the converted values rather than "
-            + "the bits. The AST writer, which joins the loaded uints, computes the "
-            + "same.")],
         ["ds_5_0/mixed_bits_patch"] = [("instruction",
             "The position. The instruction writer reads the uint patch constant in "
             + "a mad as its number, where fxc wrote no utof because its bits were "

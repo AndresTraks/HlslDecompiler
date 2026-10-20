@@ -38,11 +38,12 @@ public sealed class IntegerOperandAnalysis
             return true;
         }
 
-        // A coverage mask is a uint whatever writes it; nothing reads oMask
-        // afterwards to settle a move into it.
+        // A coverage mask or stencil reference is a uint whatever writes it;
+        // nothing reads oMask or oStencilRef afterwards to settle a move into it.
         int? coverageDestination = instruction.GetDestinationParamIndex();
         if (coverageDestination != null
-            && instruction.GetOperandType(coverageDestination.Value) == OperandType.OutputCoverageMask)
+            && instruction.GetOperandType(coverageDestination.Value)
+                is OperandType.OutputCoverageMask or OperandType.OutputStencilRef)
         {
             return true;
         }
@@ -600,10 +601,64 @@ public sealed class IntegerOperandAnalysis
 
     private HashSet<RegisterKey> FindIntegerDeclaredRegisters()
     {
+        HashSet<RegisterComponentKey> integerWritten = FindIntegerWrittenComponents();
         return [.. FindWrittenTempComponents()
             .Where(r => r.Value.Any(IsIntegerRegister)
-                || r.Value.Any(HoldsBits))
+                || r.Value.Any(HoldsBits)
+                || r.Value.Any(integerWritten.Contains))
             .Select(r => r.Key)];
+    }
+
+    /// <summary>
+    /// Temp components some write leaves integer bits in, though the component is
+    /// not an integer register throughout: a structured load of an integer element
+    /// (its words may go on to be a double's halves), or a mov/movc that selects an
+    /// integer beside a float. Declaring their register float would carry those
+    /// bits through asfloat, where fxc flushes a small integer's denormal to zero.
+    /// Only the declaration reads this, so the AST writer's typing is untouched.
+    /// </summary>
+    private HashSet<RegisterComponentKey> FindIntegerWrittenComponents()
+    {
+        var written = new HashSet<RegisterComponentKey>();
+        foreach (D3D10Instruction instruction in _shader.Instructions.OfType<D3D10Instruction>())
+        {
+            if (!instruction.HasDestination
+                || instruction.GetOperandType(0) != OperandType.Temp)
+            {
+                continue;
+            }
+            bool integer = instruction.Opcode switch
+            {
+                D3D10Opcode.LdStructured => GetStructuredElementKind(instruction) == ValueKind.Integer,
+                D3D10Opcode.Mov or D3D10Opcode.MovC => SelectsInteger(instruction),
+                _ => false,
+            };
+            if (integer)
+            {
+                AddDestinationComponents(instruction, written);
+            }
+        }
+        return written;
+    }
+
+    // Whether a mov/movc value operand reads an integer register component.
+    private bool SelectsInteger(D3D10Instruction instruction)
+    {
+        int firstValue = instruction.Opcode == D3D10Opcode.Mov ? 1 : 2;
+        for (int operand = firstValue; operand < instruction.OperandTokens.OperandCount; operand++)
+        {
+            if (instruction.GetOperandType(operand) is OperandType.Immediate32 or OperandType.Immediate64)
+            {
+                continue;
+            }
+            RegisterKey key = instruction.GetParamRegisterKey(operand);
+            if (key != null && instruction.GetSourceSwizzleComponents(operand).Distinct()
+                .Any(c => IsIntegerRegister(new RegisterComponentKey(key, c))))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Dictionary<RegisterKey, HashSet<RegisterComponentKey>> FindWrittenTempComponents()
@@ -1373,6 +1428,7 @@ public sealed class IntegerOperandAnalysis
                 OperandType operandType = instruction.GetOperandType(operand);
                 if (D3D10Instruction.IsThreadRegister(operandType)
                     || operandType == OperandType.OutputCoverageMask
+                    || operandType == OperandType.OutputStencilRef
                     || operandType == OperandType.InputCoverageMask)
                 {
                     RegisterKey key = instruction.GetParamRegisterKey(operand);

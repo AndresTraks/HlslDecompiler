@@ -4,7 +4,7 @@ RWStructuredBuffer<double> o : register(u0);
 [numthreads(32, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float4 r0;
+	int4 r0;
 	double d0;
 	float r1;
 	r0.xy = b[sv_dispatchthreadid.x];

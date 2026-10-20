@@ -9,9 +9,9 @@ RWStructuredBuffer<float> replayed : register(u1);
 [numthreads(64, 1, 1)]
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
-	float r0;
+	int r0;
 	uint consumed0 = queued.Consume();
-	r0 = asfloat(consumed0.x);
-	r0 = r0.x * gain + r0.x;
-	replayed[sv_dispatchthreadid.x] = r0.x;
+	r0 = consumed0.x;
+	r0 = asint(asfloat(r0.x) * gain + asfloat(r0.x));
+	replayed[sv_dispatchthreadid.x] = asfloat(r0.x);
 }

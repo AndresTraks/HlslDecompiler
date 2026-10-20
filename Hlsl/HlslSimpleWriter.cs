@@ -1256,9 +1256,10 @@ public class HlslSimpleWriter : HlslWriter
                 ? ComponentStorage.Integer
                 : ComponentStorage.Numeric;
         }
-        // oMask is a uint; outputs are typed by their signature.
+        // oMask and oStencilRef are uints; outputs are typed by their signature.
         if (instruction.GetOperandType(operandIndex)
-            is not (OperandType.Temp or OperandType.OutputCoverageMask or OperandType.Output))
+            is not (OperandType.Temp or OperandType.OutputCoverageMask or OperandType.OutputStencilRef
+                or OperandType.Output))
         {
             return ComponentStorage.Numeric;
         }

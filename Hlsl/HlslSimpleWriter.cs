@@ -2367,6 +2367,11 @@ public class HlslSimpleWriter : HlslWriter
     /// </summary>
     private bool HoldsStoredFloat(D3D10Instruction instruction, int operandIndex)
     {
+        // A float input or uniform holds a float as declared.
+        if (IsUniformOrInput(instruction, operandIndex))
+        {
+            return DeclaredTypeOf(instruction, operandIndex) == DeclaredType.Float;
+        }
         if (instruction.GetParamRegisterKey(operandIndex)
             is not D3D10RegisterKey { IsTempRegister: true } register)
         {

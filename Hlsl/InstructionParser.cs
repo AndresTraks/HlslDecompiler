@@ -1179,8 +1179,15 @@ public class InstructionParser
         {
             for (int component = 0; component < argumentWidths[parameter]; component++)
             {
-                arguments.Add(GetActiveOutput(
-                    new RegisterComponentKey(method.Parameters[parameter], component)));
+                var argumentKey = new RegisterComponentKey(method.Parameters[parameter], component);
+                // An input passed whole may have lanes main never declared (TEXCOORD
+                // a float4 of which main reads .xyz); an input is always its register.
+                // A temp lane main never wrote is one the body only writes into.
+                arguments.Add(ActiveOutputs.TryGetValue(argumentKey, out HlslTreeNode value)
+                    ? value
+                    : method.Parameters[parameter] is D3D10RegisterKey { OperandType: OperandType.Input }
+                        ? new RegisterInputNode(argumentKey)
+                        : new ConstantNode(0));
             }
         }
 

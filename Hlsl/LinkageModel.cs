@@ -299,7 +299,17 @@ public class LinkageModel
 
             if (destination != null)
             {
-                written.Add(instruction.GetParamRegisterKey(destination.Value));
+                RegisterKey writtenKey = instruction.GetParamRegisterKey(destination.Value);
+                written.Add(writtenKey);
+                // A parameter the body writes into (its result in r0.yzw beside the
+                // argument in r0.x) is as wide as those lanes too.
+                if (body.Parameters.Contains(writtenKey) && IsTempParameter(writtenKey))
+                {
+                    int mask = instruction.GetWriteMask(destination.Value);
+                    body.ParameterWidths[writtenKey] = Math.Max(
+                        body.ParameterWidths.GetValueOrDefault(writtenKey),
+                        32 - System.Numerics.BitOperations.LeadingZeroCount((uint)mask));
+                }
             }
         }
 
@@ -490,7 +500,9 @@ public class LinkageModel
                             body.ParameterWidths.GetValueOrDefault(parameter, 4));
                     }
                 }
-                method.Parameters.Sort((a, b) => a.Number.CompareTo(b.Number));
+                // Inputs, then the temps main computed.
+                method.Parameters.Sort((a, b) =>
+                    (IsTempParameter(a), a.Number).CompareTo((IsTempParameter(b), b.Number)));
                 iface.Methods[function] = method;
                 iface.Type.Methods.Add(method);
             }
@@ -700,9 +712,15 @@ public class LinkageModel
                 var instruction = (D3D10Instruction)shader.Instructions[i];
                 if (instruction.Opcode == D3D10Opcode.InterfaceCall)
                 {
-                    if (Equals(method.ReturnRegister, model.MethodForCall(
+                    MethodInfo next = model.MethodForCall(
                         (int)instruction.OperandTokens.Tokens[2],
-                        (int)instruction.OperandTokens.Tokens[0]).ReturnRegister))
+                        (int)instruction.OperandTokens.Tokens[0]);
+                    // A call that takes the result as its argument reads it: `g.Go(f.Go(..))`.
+                    if (next.ParameterWidths.TryGetValue(method.ReturnRegister, out int passed))
+                    {
+                        components = Math.Max(components, passed);
+                    }
+                    if (Equals(method.ReturnRegister, next.ReturnRegister))
                     {
                         break;
                     }

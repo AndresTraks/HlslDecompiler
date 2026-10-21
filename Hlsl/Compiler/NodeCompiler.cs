@@ -1552,6 +1552,17 @@ public sealed class NodeCompiler
                     continue;
                 }
             }
+            // Lanes dividing by one divisor divide once: `float3(a, b, c) / d` is
+            // one div to fxc, three lanes of `a / d` three.
+            if (type == "float" && !reinterpretFloats && SharedDivisorRun(componentGroups, g) is int runEnd)
+            {
+                List<HlslTreeNode> quotients = [.. componentGroups.Skip(g).Take(runEnd - g + 1).Select(r => r[0])];
+                string dividends = string.Join(", ", quotients.Select(q => Compile([q.Inputs[0]])));
+                string divisor = Compile([quotients[0].Inputs[1]]);
+                parts.Add($"float{quotients.Count}({dividends}) / {(divisor.Contains(' ') ? $"({divisor})" : divisor)}");
+                g = runEnd;
+                continue;
+            }
             // A bool converts by itself: no reinterpreting call around it.
             if (type == "float" && !reinterpretFloats && group.Count == 1 && BoolLane(group[0]) is string boolLane)
             {
@@ -1575,6 +1586,25 @@ public sealed class NodeCompiler
             parts.AddRange(Enumerable.Repeat(compiled, copies));
         }
         return $"{type}{components.Count}({string.Join(", ", parts)})";
+    }
+
+    /// <summary>
+    /// The last group of a run of two or more one-lane divisions from group g on,
+    /// all by equivalent divisors; null if there is none.
+    /// </summary>
+    private static int? SharedDivisorRun(IList<IList<HlslTreeNode>> groups, int g)
+    {
+        if (groups[g] is not [DivisionOperation first])
+        {
+            return null;
+        }
+        int end = g;
+        while (end + 1 < groups.Count && groups[end + 1] is [DivisionOperation next]
+            && NodeGrouper.AreNodesEquivalent(next.Inputs[1], first.Inputs[1]))
+        {
+            end++;
+        }
+        return end > g ? end : null;
     }
 
     /// <summary>

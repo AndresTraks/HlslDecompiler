@@ -220,6 +220,7 @@ public static class LoopRecovery
 
     /// <summary>
     /// Whether anything but the copy reads the step's register, which must then stay.
+    /// What a statement holds counts: an atomic's operands are in no register map.
     /// </summary>
     private static bool IsReadElsewhere(
         IList<IStatement> body, TempVariableNode variable, TempAssignmentNode copy)
@@ -227,7 +228,8 @@ public static class LoopRecovery
         bool read = false;
         new StatementVisitor(body).Visit(statement =>
         {
-            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values))
+            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values)
+                .Concat(statement.HeldNodes))
             {
                 if (ReferenceEquals(value, copy))
                 {
@@ -253,7 +255,8 @@ public static class LoopRecovery
         bool used = false;
         new StatementVisitor(following).Visit(statement =>
         {
-            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values))
+            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values)
+                .Concat(statement.HeldNodes))
             {
                 if (ReferenceEquals(value, variable) || variable.IsInputOf(value))
                 {

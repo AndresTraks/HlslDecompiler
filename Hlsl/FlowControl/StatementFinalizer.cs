@@ -466,7 +466,7 @@ public class StatementFinalizer
                     {
                         // Only when the clip is its sole reader.
                         if (assignmentNode.IsInputOf(clip.Values)
-                            && assignmentNode.Outputs.All(o => o.IsInputOf(clip.Values)))
+                            && assignmentNode.Outputs.All(o => o is not PhiNode && o.IsInputOf(clip.Values)))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);
                             clip.Inputs.Remove(assignmentOutput.Key);
@@ -474,9 +474,11 @@ public class StatementFinalizer
                     }
                     else if (nextStatement is IfStatement ifStatement)
                     {
-                        // The condition inlines a value only it reads.
+                        // The condition inlines a value only it reads. A phi reader is
+                        // the value leaving: a loop's header phi is upstream of the
+                        // condition too, through the loop, so IsInputOf counts it in.
                         if (assignmentNode.IsInputOf(ifStatement.Comparison)
-                            && assignmentNode.Outputs.All(o => o.IsInputOf(ifStatement.Comparison))
+                            && assignmentNode.Outputs.All(o => o is not PhiNode && o.IsInputOf(ifStatement.Comparison))
                             && !sharedRegisters.Contains(assignmentOutput.Key))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);

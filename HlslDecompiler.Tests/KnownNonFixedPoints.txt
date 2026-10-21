@@ -17,6 +17,7 @@ reordered ps_5_0/reflected_hit
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
 reworded cs_4_1/groupshared_reduce
+reworded cs_5_0/atomic_loop_step
 reworded cs_5_0/consume_struct
 reworded cs_5_0/double2_array_index
 reworded cs_5_0/double_array_element

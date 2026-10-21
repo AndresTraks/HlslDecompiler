@@ -173,11 +173,6 @@ public class LinkageModel
             }
             switch (instruction.Opcode)
             {
-                // `fcall fp0[r0.w + 0][0]`: the array index's representation (bits
-                // 25-27 of the operand token) is not an immediate. The call reads the
-                // index as one, which would name a slot that does not exist.
-                case D3D10Opcode.InterfaceCall when ((instruction.OperandTokens.Tokens[1] >> 25) & 7) != 0:
-                    throw new NotImplementedException("an interface array indexed at run time");
                 case D3D10Opcode.DclFunctionBody:
                     model.Bodies.Add(new FunctionBodyInfo
                     {
@@ -350,6 +345,35 @@ public class LinkageModel
                     "a function body argument that is not an input or temp register");
             }
         }
+    }
+
+    /// <summary>
+    /// The instance an fcall calls: `fp0[2][0]` the immediate 2; `fp0[r0.w + 1][0]`
+    /// 1 plus the register's component, read at run time. The function index dword
+    /// comes before the operand, so the operand is decoded here, not by position.
+    /// </summary>
+    public static (int Immediate, (OperandType Type, int Number, byte Component)? Relative) CallInstance(
+        D3D10Instruction call)
+    {
+        uint[] tokens = call.OperandTokens.Tokens;
+        uint operand = tokens[1];
+        int i = (operand & 0x80000000) != 0 ? 3 : 2;
+        i++; // the interface number, an immediate
+        var representation = (D3D10OperandIndexRepresentation)((operand >> 25) & 7);
+        switch (representation)
+        {
+            case D3D10OperandIndexRepresentation.Immediate32:
+                return ((int)tokens[i], null);
+            case D3D10OperandIndexRepresentation.Relative:
+                return (0, RelativeOperand(tokens, i));
+            case D3D10OperandIndexRepresentation.Immediate32PlusRelative:
+                return ((int)tokens[i], RelativeOperand(tokens, i + 1));
+            default:
+                throw new NotImplementedException($"an interface call indexed as {representation}");
+        }
+
+        static (OperandType, int, byte) RelativeOperand(uint[] tokens, int at) =>
+            ((OperandType)((tokens[at] >> 12) & 0xFF), (int)tokens[at + 1], (byte)((tokens[at] >> 4) & 3));
     }
 
     /// <summary>

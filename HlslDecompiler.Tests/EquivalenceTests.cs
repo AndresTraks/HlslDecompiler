@@ -167,7 +167,8 @@ public class EquivalenceTests
         for (int trial = 0; trial < Trials; trial++)
         {
             // A trial the left side does not finish (a loop stepping by a constant
-            // the trial made 0) says nothing of the right; the others still count.
+            // the trial made 0, an interface index past its array) says nothing of
+            // the right; the others still count.
             Dictionary<string, float[]> expected = TryRun(left, trial);
             if (expected == null)
             {
@@ -177,7 +178,7 @@ public class EquivalenceTests
             Dictionary<string, float[]> actual = TryRun(right, trial);
             if (actual == null)
             {
-                yield return $"differs on trial {trial}: {rightName} does not terminate, {leftName} does.";
+                yield return $"differs on trial {trial}: {rightName} does not finish, {leftName} does.";
                 continue;
             }
 
@@ -235,14 +236,15 @@ public class EquivalenceTests
         }
     }
 
-    // Null where the run passes the step limit; other failures propagate.
+    // Null where the trial leaves the run undefined (past the step limit, an index
+    // past its array); other failures propagate.
     private static Dictionary<string, float[]> TryRun(ShaderModel shader, int trial)
     {
         try
         {
             return Run(shader, trial);
         }
-        catch (D3D10Machine.NonTerminationException)
+        catch (D3D10Machine.UndefinedTrialException)
         {
             return null;
         }

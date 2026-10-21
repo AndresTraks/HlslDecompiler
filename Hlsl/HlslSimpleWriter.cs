@@ -401,13 +401,23 @@ public class HlslSimpleWriter : HlslWriter
     {
         int function = (int)instruction.OperandTokens.Tokens[0];
         int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
-        int instance = (int)instruction.OperandTokens.Tokens[3];
+        (int instance, var relative) = LinkageModel.CallInstance(instruction);
         LinkageModel.InterfaceInfo iface = _registers.Linkage.InterfaceByNumber(interfaceNumber);
         LinkageModel.MethodInfo method = iface.Methods[function];
         string arguments = string.Join(", ", method.Parameters.Select(GetLinkageArgumentName));
-        WriteLine("{0}{1} = {2}.{3}({4});", GetTempRegisterName(method.ReturnRegister),
-            LinkageResultMask(method.ReturnComponents),
-            iface.InstanceExpression(instance), method.Name, arguments);
+        // An instance picked at run time, indexed as GetDynamicOperandName does.
+        string instanceExpression = relative is var (_, indexNumber, indexComponent)
+            ? $"{iface.InstanceName}[r{indexNumber}.{"xyzw"[indexComponent]}"
+                + (instance == 0 ? "]" : $" + {instance}]")
+            : iface.InstanceExpression(instance);
+        // Methods return floats: an int register holds the result as its bits.
+        string call = $"{instanceExpression}.{method.Name}({arguments})";
+        if (IsIntegerTempRegister(method.ReturnRegister, 0xF))
+        {
+            call = $"asint({call})";
+        }
+        WriteLine("{0}{1} = {2};", GetTempRegisterName(method.ReturnRegister),
+            LinkageResultMask(method.ReturnComponents), call);
     }
 
     // A float3 result fills r0.xyz.
@@ -419,6 +429,12 @@ public class HlslSimpleWriter : HlslWriter
         if (parameter is D3D10RegisterKey { OperandType: OperandType.Input } input)
         {
             return _registers.GetRegisterName(new RegisterComponentKey(input, 0));
+        }
+        // A float parameter: an int register passes its bits, as wide as the method reads.
+        if (IsIntegerTempRegister(parameter, 0xF)
+            && _registers.LinkageTempParameters.TryGetValue(parameter, out int width))
+        {
+            return $"asfloat({GetTempRegisterName(parameter)}.{"xyzw"[..width]})";
         }
         return GetTempRegisterName(parameter);
     }
@@ -455,8 +471,9 @@ public class HlslSimpleWriter : HlslWriter
             }
         }
         WriteLine();
-        WriteLine("return {0}{1};", GetTempRegisterName(body.ReturnRegister),
-            LinkageResultMask(body.ReturnComponents));
+        // Methods return floats: an int register returns its bits.
+        string result = GetTempRegisterName(body.ReturnRegister) + LinkageResultMask(body.ReturnComponents);
+        WriteLine("return {0};", IsIntegerTempRegister(body.ReturnRegister, 0xF) ? $"asfloat({result})" : result);
     }
 
     /// <summary>

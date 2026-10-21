@@ -17,10 +17,13 @@ public class D3D10Machine
     public class UnsupportedException(string message) : Exception(message);
 
     /// <summary>
-    /// A run past the step limit: a trial's inputs (a step of 0) or the shader.
-    /// The comparison drops a trial the original does not finish.
+    /// A trial whose inputs leave the result undefined. The comparison drops a trial
+    /// the original does not finish.
     /// </summary>
-    public class NonTerminationException() : UnsupportedException("the shader did not terminate");
+    public class UndefinedTrialException(string message) : UnsupportedException(message);
+
+    /// <summary>A run past the step limit: a trial's inputs (a step of 0) or the shader.</summary>
+    public class NonTerminationException() : UndefinedTrialException("the shader did not terminate");
 
     private const int ConstantRegisterSizeInBytes = 16;
 
@@ -2078,8 +2081,12 @@ public class D3D10Machine
                 }
             case OperandType.ThisPointer:
                 {
-                    // .x the buffer, .y the row the instance's data starts at.
-                    int slot = instruction.GetParamRegisterNumber(index);
+                    // .x the buffer, .y the row the instance's data starts at. An
+                    // instance picked at run time is `this[r0.w + 0]`.
+                    var thisIndices = instruction.OperandTokens.GetOperandIndices(index);
+                    int slot = thisIndices.Length == 1 && thisIndices[0].IsRelative
+                        ? (int)thisIndices[0].Immediate + RelativeIndex(instruction, index, 0)
+                        : instruction.GetParamRegisterNumber(index);
                     LoadClassData(slot);
                     return [(uint)(ClassDataBuffer + slot), 0, 0, 0];
                 }
@@ -2101,7 +2108,17 @@ public class D3D10Machine
     {
         int function = (int)call.OperandTokens.Tokens[0];
         LinkageModel.InterfaceInfo iface = Linkage().InterfaceByNumber((int)call.OperandTokens.Tokens[2]);
-        int instance = (int)call.OperandTokens.Tokens[3];
+        (int instance, var relative) = LinkageModel.CallInstance(call);
+        // An instance picked at run time: its index register's value now.
+        if (relative is var (indexType, indexNumber, indexComponent))
+        {
+            instance += indexType switch
+            {
+                OperandType.Temp => unchecked((int)_temp[indexNumber][indexComponent]),
+                OperandType.Input => unchecked((int)_input[indexNumber][indexComponent]),
+                _ => throw new UnsupportedException($"an interface index in {indexType}"),
+            };
+        }
         int table = iface.Tables[Array.IndexOf(iface.TableClasses, BoundClass(iface, instance))];
         int body = _linkage.Tables.First(t => t.Number == table).Bodies[function];
         return instructions.FindIndex(i => i.Opcode == D3D10Opcode.Label
@@ -2167,7 +2184,9 @@ public class D3D10Machine
             }
             first += count;
         }
-        throw new UnsupportedException($"this[{slot}] past the interface slots");
+        // An interface index past the array (`f[which]` with which = 5) is undefined
+        // on a GPU too: the trial, not the shader, is what says nothing.
+        throw new UndefinedTrialException($"this[{slot}] past the interface slots");
     }
 
     // x0[r0.x + 1]: array, then element, clamped like a constant buffer index.

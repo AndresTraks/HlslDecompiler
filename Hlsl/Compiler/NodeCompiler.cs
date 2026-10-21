@@ -3136,8 +3136,16 @@ public sealed class NodeCompiler
             LinkageModel.MethodInfo method = iface.Methods[call.FunctionIndex];
             string callSwizzle = GetAstSourceSwizzleName(
                 componentsWithIndices, method.ReturnComponents, promoteToVectorSize);
-            return $"{iface.InstanceExpression(call.InstanceIndex)}"
-                + $".{method.Name}({arguments}){callSwizzle}";
+            // An instance picked at run time: `f[which]`, `f[which + 1]`.
+            string instance = iface.InstanceExpression(call.InstanceIndex);
+            if (call.HasIndex)
+            {
+                string index = CompileAsInteger([call.Index]);
+                instance = call.InstanceIndex == 0
+                    ? $"{iface.InstanceName}[{index}]"
+                    : $"{iface.InstanceName}[{index} + {call.InstanceIndex}]";
+            }
+            return $"{instance}.{method.Name}({arguments}){callSwizzle}";
         }
 
         if (first is LitOutputNode lit)

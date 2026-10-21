@@ -1900,8 +1900,10 @@ public sealed class RegisterState
                 int expectedOffset = (int)d3D10RegisterKey.ConstantBufferOffset * RegisterSize;
                 ConstantDeclaration declaration = ConstantDeclarations.FirstOrDefault(d =>
                 {
-                    // A tbuffer variable has a register index too, but binds to t#.
-                    if (d is D3D10ConstantDeclaration { IsTextureBuffer: true })
+                    // A tbuffer variable has a register index too, but binds to t#;
+                    // an interface variable sits in $ThisPointer, not in cb#.
+                    if (d is D3D10ConstantDeclaration { IsTextureBuffer: true }
+                        or D3D10ConstantDeclaration { BufferName: "$ThisPointer" })
                     {
                         return false;
                     }
@@ -1938,6 +1940,7 @@ public sealed class RegisterState
             d.RegisterIndex == registerKey.Number
             && d is D3D10ConstantDeclaration constant
             && !constant.IsTextureBuffer
+            && constant.BufferName != "$ThisPointer"
             && constant.VariableOffset <= expectedOffset
             && expectedOffset < constant.VariableOffset + constant.VariableSize);
     }

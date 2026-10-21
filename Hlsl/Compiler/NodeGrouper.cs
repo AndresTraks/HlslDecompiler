@@ -602,6 +602,8 @@ public class NodeGrouper
             return call1.InterfaceNumber == call2.InterfaceNumber
                 && call1.InstanceIndex == call2.InstanceIndex
                 && call1.FunctionIndex == call2.FunctionIndex
+                && call1.HasIndex == call2.HasIndex
+                && (!call1.HasIndex || AreNodesEquivalent(call1.Index, call2.Index))
                 && AreNodesEquivalent([.. call1.Arguments], [.. call2.Arguments]);
         }
 

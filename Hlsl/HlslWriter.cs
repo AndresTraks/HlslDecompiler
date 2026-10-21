@@ -704,7 +704,8 @@ public abstract class HlslWriter
             {
                 // Written in their blocks below.
                 if (declaration is D3D10ConstantDeclaration { IsTextureBuffer: true }
-                    || IsNamedBuffer(declaration) || IsClassMember(declaration))
+                    || IsNamedBuffer(declaration) || IsClassMember(declaration)
+                    || IsInterfaceVariable(declaration))
                 {
                     continue;
                 }
@@ -925,10 +926,19 @@ public abstract class HlslWriter
             && _registers.Linkage.Classes.Any(c => c.Members.Contains(declaration));
     }
 
-    // A named constant buffer, as against $Globals.
+    // A named constant buffer, as against $Globals and the interface slots.
     private static bool IsNamedBuffer(ConstantDeclaration declaration)
     {
-        return declaration is D3D10ConstantDeclaration { IsTextureBuffer: false, BufferName: not null and not "$Globals" };
+        return declaration is D3D10ConstantDeclaration { IsTextureBuffer: false, BufferName: not null and not "$Globals" }
+            && !IsInterfaceVariable(declaration);
+    }
+
+    // An interface variable sits in $ThisPointer and is written with the classes.
+    // Its buffer reads as a named one when the shader also has a cbuffer.
+    private static bool IsInterfaceVariable(ConstantDeclaration declaration)
+    {
+        return declaration is D3D10ConstantDeclaration { BufferName: "$ThisPointer" }
+            || declaration.TypeInfo?.ParameterClass == ParameterClass.InterfacePointer;
     }
 
     /// <summary>

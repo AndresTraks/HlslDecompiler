@@ -739,7 +739,12 @@ public class AsmWriter
                 {
                     // The function index dword precedes the interface operand.
                     uint[] tokens = instruction.OperandTokens.Tokens;
-                    WriteLine("fcall fp{0}[{1}][{2}]", tokens[2], tokens[3], tokens[0]);
+                    (int instance, var relative) = HlslDecompiler.Hlsl.LinkageModel.CallInstance(instruction);
+                    // A run-time index as fxc prints it: `fp0[r0.w + 0][0]`.
+                    string index = relative is var (type, number, component)
+                        ? $"{(type == OperandType.Temp ? "r" : type.ToString())}{number}.{"xyzw"[component]} + {instance}"
+                        : instance.ToString();
+                    WriteLine("fcall fp{0}[{1}][{2}]", tokens[2], index, tokens[0]);
                     break;
                 }
             case D3D10Opcode.Label:

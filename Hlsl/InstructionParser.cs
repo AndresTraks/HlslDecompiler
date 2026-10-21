@@ -1164,7 +1164,11 @@ public class InstructionParser
         // Function index dword, then the fp operand: interface, instance (fp1[2][0]).
         int function = (int)instruction.OperandTokens.Tokens[0];
         int interfaceNumber = (int)instruction.OperandTokens.Tokens[2];
-        int instance = (int)instruction.OperandTokens.Tokens[3];
+        (int instance, var relative) = LinkageModel.CallInstance(instruction);
+        // An instance picked at run time: its index register's value at the call.
+        HlslTreeNode index = relative is var (indexType, indexNumber, indexComponent)
+            ? GetActiveOutput(new RegisterComponentKey(new D3D10RegisterKey(indexType, indexNumber), indexComponent))
+            : null;
         LinkageModel.MethodInfo method =
             _registerState.Linkage.MethodForCall(interfaceNumber, function);
 
@@ -1194,7 +1198,7 @@ public class InstructionParser
         for (int component = 0; component < method.ReturnComponents; component++)
         {
             var callNode = new InterfaceCallNode(
-                interfaceNumber, instance, function, [.. arguments], argumentWidths, component);
+                interfaceNumber, instance, function, [.. arguments], argumentWidths, component, index);
             callNode.SourceInstruction = _instructionPointer + 1;
             callNode.SourceComponent = component;
             SetActiveOutput(

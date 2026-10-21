@@ -2421,6 +2421,14 @@ public sealed class NodeCompiler
                     // `float2(a, b) ? 1.0 : 0`.
                     if (components.Count > 1 && IsConstructor(value1))
                     {
+                        // A bool converts to 1.0 or 0: `float4(a, b, c, d)` is one and
+                        // of the masks with 1.0 to fxc, four selects four ands.
+                        if (components.All(c => c.Inputs[1] is ConstantNode { IntegerValue: null, Value: 1 }
+                                && c.Inputs[2] is ConstantNode { Value: 0 }
+                                && IsBoolean(c.Inputs[0])))
+                        {
+                            return $"float{components.Count}({string.Join(", ", components.Select(c => Compile([c.Inputs[0]])))})";
+                        }
                         string selects = string.Join(", ", components.Select(c =>
                             $"{Compile([c.Inputs[0]])} ? {Branch(c.Inputs[1])} : {Branch(c.Inputs[2])}"));
                         return $"float{components.Count}({selects})";
@@ -2436,6 +2444,15 @@ public sealed class NodeCompiler
             default:
                 throw new NotImplementedException(operation.GetType().Name);
         }
+    }
+
+    // A value HLSL types bool: a comparison, a logical combination of them (any
+    // and all come as ors and ands) or a bool variable.
+    private static bool IsBoolean(HlslTreeNode node)
+    {
+        return node is ComparisonNode or GreaterEqualOperation or LogicalAndOperation or LogicalOrOperation
+            or TempVariableNode { IsBool: true }
+            or TempAssignmentNode { TempVariable.IsBool: true };
     }
 
     private static bool AreConstants(List<HlslTreeNode> components, int inputIndex)

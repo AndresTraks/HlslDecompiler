@@ -290,6 +290,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "loop_stepped_select")]
     [TestCase("cs_5_0", "atomic_loop_step")]
     [TestCase("ps_5_0", "loop_return_condition_lane")]
+    [TestCase("ps_4_0", "bool_lanes_to_float")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

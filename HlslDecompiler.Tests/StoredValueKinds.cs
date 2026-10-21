@@ -88,26 +88,35 @@ internal sealed partial class StoredValueKinds(ShaderModel shader)
         };
     }
 
-    // The leaf a byte offset falls in, in a tightly packed structured element.
     private static StoredValueKind KindAt(ShaderTypeInfo type, int offset)
     {
-        int one = ElementSize(type);
-        if (one <= 0 || offset < 0 || offset >= one * System.Math.Max(type.NumElements, 1))
-        {
-            return StoredValueKind.Unknown;
-        }
-        offset %= one;
-        if (type.MemberInfo is { Count: > 0 } members)
-        {
-            ShaderStructMemberInfo member = members.LastOrDefault(m => m.ByteOffset <= offset);
-            return member == null ? StoredValueKind.Unknown : KindAt(member.TypeInfo, offset - member.ByteOffset);
-        }
-        return type.ParameterType switch
+        return LeafAt(type, offset)?.Type switch
         {
             ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredValueKind.Integer,
             ParameterType.Float => StoredValueKind.Float,
             _ => StoredValueKind.Unknown,
         };
+    }
+
+    /// <summary>
+    /// The leaf a byte offset falls in, in a tightly packed structured element,
+    /// and the offset into one of its components (a double's second word is 4).
+    /// </summary>
+    internal static (ParameterType Type, int Within)? LeafAt(ShaderTypeInfo type, int offset)
+    {
+        int one = ElementSize(type);
+        if (one <= 0 || offset < 0 || offset >= one * System.Math.Max(type.NumElements, 1))
+        {
+            return null;
+        }
+        offset %= one;
+        if (type.MemberInfo is { Count: > 0 } members)
+        {
+            ShaderStructMemberInfo member = members.LastOrDefault(m => m.ByteOffset <= offset);
+            return member == null ? null : LeafAt(member.TypeInfo, offset - member.ByteOffset);
+        }
+        int width = type.ParameterType == ParameterType.Double ? 8 : 4;
+        return (type.ParameterType, offset % width);
     }
 
     // One element's bytes; doubles are 8 a component.

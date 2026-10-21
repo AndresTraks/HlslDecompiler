@@ -20,7 +20,7 @@ public class D3D9Machine
     private readonly float[][] _input = NewFile(16);
     private readonly float[][] _texture = NewFile(16);
     private readonly float[][] _const = NewFile(256);
-    private readonly float[][] _output = NewFile(16);
+    private readonly float[][] _output = NewFile(32);
     private readonly int[][] _constInt = NewIntFile(16);
     private readonly bool[] _constBool = new bool[16];
     private readonly float[] _address = new float[4];
@@ -241,6 +241,26 @@ public class D3D9Machine
     private float[] Named(string name)
     {
         float[] value = PseudoRandom.Vector(name, _trial);
+        // As the D3D10 machine's: 1 everywhere every eighth trial, rounded to
+        // -2..2 in the ones between, so sge and slt are tested where they part.
+        if (_trial % 8 == 2)
+        {
+            return [1, 1, 1, 1];
+        }
+        if (_trial % 8 == 6)
+        {
+            return [.. value.Select(PseudoRandom.Rounded)];
+        }
+        // Small, so a product stays inside a narrow test, as the D3D10 machine's.
+        if (_trial % 8 == 4)
+        {
+            return [.. value.Select(v => v / 8)];
+        }
+        // Large, as the D3D10 machine's.
+        if (_trial % 8 == 0)
+        {
+            return [.. value.Select(v => v * 16)];
+        }
         return _trial % 2 == 0 ? value : [.. value.Select(MathF.Abs)];
     }
 
@@ -1035,7 +1055,9 @@ public class D3D9Machine
         }
     }
 
-    // All output register kinds share one file.
+    // All output register kinds share one file, each in slots of its own: o#
+    // (oT# below vs_3_0) had shared oPos's, so a masked write to oT0 kept the
+    // position in its other components.
     private int OutputSlot(RegisterType type, int number)
     {
         return type switch
@@ -1044,7 +1066,7 @@ public class D3D9Machine
             RegisterType.AttrOut => 4 + number,
             RegisterType.ColorOut => 8 + number,
             RegisterType.DepthOut => 12,
-            _ => number,
+            _ => 16 + number,
         };
     }
 
@@ -1062,7 +1084,13 @@ public class D3D9Machine
                 return "COLOR" + number;
             case RegisterType.Output:
                 // A vs_3_0 output register carries whatever semantic its dcl gave it.
-                return _outputSemantics.TryGetValue(number, out string semantic) ? semantic : null;
+                // Below vs_3_0 the same register type is oT#, undeclared: texture
+                // coordinate #. Unnamed, every one went uncompared.
+                if (_outputSemantics.TryGetValue(number, out string semantic))
+                {
+                    return semantic;
+                }
+                return _shader.Type == ShaderType.Vertex && _shader.MajorVersion < 3 ? "TEXCOORD" + number : null;
             default:
                 return null;
         }

@@ -29,8 +29,15 @@ public class D3D10Machine
     private readonly uint[][] _temp = NewFile(64);
     // x# registers: each a small array of 4-component elements, sized by its dcl.
     private readonly Dictionary<int, uint[][]> _indexableTemps = [];
-    // g# registers. One thread runs, so a sync has nothing to wait for.
-    private readonly Dictionary<int, (int Stride, uint[] Words)> _threadGroupSharedMemory = [];
+    // g# registers, shared by the threads of a group run (RunGroup).
+    private Dictionary<int, (int Stride, uint[] Words)> _threadGroupSharedMemory = [];
+
+    // In a group run, this thread's place: its id in the group, flattened, and the
+    // group's size. Null when one thread runs alone.
+    private (uint[] InGroup, uint Flattened, uint[] Size)? _groupThread;
+
+    // Threads a group run steps through; a larger group runs its first ones.
+    private const int GroupThreads = 64;
 
     // Raw g# registers address bytes, not element+offset; declared with stride 4.
     private readonly HashSet<int> _rawThreadGroupSharedMemory = [];
@@ -118,10 +125,7 @@ public class D3D10Machine
     /// </summary>
     private static Dictionary<string, float[]> RunProgram(ShaderModel shader, int trial)
     {
-        var machine = new D3D10Machine(shader, trial);
-        machine.LoadConstants();
-        machine.LoadSignatures();
-        machine.Execute();
+        D3D10Machine machine = IsGroupShared(shader) ? RunGroup(shader, trial) : RunAlone(shader, trial);
         if (machine.Discarded)
         {
             // No outputs, but the UAV writes made before the discard, and a mark,
@@ -158,6 +162,80 @@ public class D3D10Machine
         return results;
     }
 
+    // Small integers: float bits as an index reach no buffer. In even trials every
+    // component is the same 0-3, cycled from one offset, so `all(id == 0)` (one
+    // thread's work) is taken in some trial, not by chance; odd trials draw each
+    // component on its own.
+    private uint[] ThreadId(OperandType type)
+    {
+        float[] value = Named(type.ToString());
+        uint cycled = (uint)(_trial / 2 + (uint)(Math.Abs(PseudoRandom.Vector(type.ToString(), 0)[0]) * 1000)) % 4;
+        return [.. value.Select(v => _trial % 2 == 0 ? cycled : (uint)Math.Abs(v * 4) % 8)];
+    }
+
+    private static D3D10Machine RunAlone(ShaderModel shader, int trial)
+    {
+        var machine = new D3D10Machine(shader, trial);
+        machine.LoadConstants();
+        machine.LoadSignatures();
+        foreach (bool _ in machine.Execute())
+        {
+        }
+        return machine;
+    }
+
+    // A compute shader whose threads talk through groupshared memory across a
+    // barrier. Run alone, a thread never reads what the others wrote for it, so a
+    // wrong value stored for a neighbour went uncompared.
+    private static bool IsGroupShared(ShaderModel shader)
+    {
+        var instructions = shader.Instructions.OfType<D3D10Instruction>().ToList();
+        return shader.Type == ShaderType.Compute
+            && instructions.Any(i => i.Opcode is D3D10Opcode.DclThreadGroupSharedMemoryRaw
+                or D3D10Opcode.DclThreadGroupSharedMemoryStructured)
+            && instructions.Any(i => i.Opcode == D3D10Opcode.Sync);
+    }
+
+    /// <summary>
+    /// The first threads of one group, sharing its groupshared memory, each run to
+    /// its next barrier before any goes past it, in thread order. Their stores are
+    /// merged in that order, so the last thread to write an address wins.
+    /// </summary>
+    private static D3D10Machine RunGroup(ShaderModel shader, int trial)
+    {
+        D3D10Instruction group = shader.Instructions.OfType<D3D10Instruction>()
+            .First(i => i.Opcode == D3D10Opcode.DclThreadGroup);
+        uint[] size = [group.GetParamIndexImmediate32(0, 0), group.GetParamIndexImmediate32(0, 1),
+            group.GetParamIndexImmediate32(0, 2)];
+        int count = (int)Math.Min(size[0] * size[1] * size[2], GroupThreads);
+        var shared = new Dictionary<int, (int Stride, uint[] Words)>();
+        var machines = new List<D3D10Machine>();
+        for (uint t = 0; t < count; t++)
+        {
+            var machine = new D3D10Machine(shader, trial)
+            {
+                _threadGroupSharedMemory = shared,
+                _groupThread = ([t % size[0], t / size[0] % size[1], t / (size[0] * size[1])], t, size),
+            };
+            machine.LoadConstants();
+            machine.LoadSignatures();
+            machines.Add(machine);
+        }
+
+        var running = machines.Select(m => m.Execute().GetEnumerator()).ToList();
+        while (running.Count != 0)
+        {
+            running = [.. running.Where(thread => thread.MoveNext())];
+        }
+
+        D3D10Machine first = machines[0];
+        foreach (D3D10Machine other in machines.Skip(1))
+        {
+            first._stored.AddRange(other._stored);
+        }
+        return first;
+    }
+
     private void LoadConstants()
     {
         foreach (D3D10ConstantDeclaration declaration
@@ -167,9 +245,6 @@ public class D3D10Machine
             // Each word named by its position in the variable, so a different
             // buffer packing still gets the same values.
             int words = Math.Max(declaration.VariableSize / 4, 1);
-            // A double is a word pair holding a double in [-2, 2], low word first.
-            // Two floats' bits would make every double ~2^-7, so (int)d was always 0.
-            bool isDouble = declaration.TypeInfo.ParameterType == ParameterType.Double;
             for (int word = 0; word < words; word++)
             {
                 int byteOffset = declaration.VariableOffset + word * 4;
@@ -177,9 +252,14 @@ public class D3D10Machine
                 int component = byteOffset % ConstantRegisterSizeInBytes / 4;
                 if (register < buffer.Length)
                 {
-                    buffer[register][component] = isDouble
+                    // Typed by the member the word falls in, so a struct's ints
+                    // and doubles are filled as they are for a variable of their own.
+                    ParameterType type = WordType(declaration.TypeInfo, word * 4);
+                    // A double is a word pair holding a double in [-2, 2], low word first.
+                    // Two floats' bits would make every double ~2^-7, so (int)d was always 0.
+                    buffer[register][component] = type == ParameterType.Double
                         ? DoubleWord(Named($"{declaration.Name}[{word & ~1}]")[0], word & 1)
-                        : ConstantWord(declaration, Named($"{declaration.Name}[{word}]")[0],
+                        : ConstantWord(type, Named($"{declaration.Name}[{word}]")[0],
                             PseudoRandom.Vector($"{declaration.Name}[{word}]", 0)[0]);
                 }
             }
@@ -190,18 +270,67 @@ public class D3D10Machine
     // make a loop bound that never finishes. 0-3 in even trials, cycled like
     // integer inputs so each switch case is reached; up to 16 in odd ones, past the
     // thread ids (0-7), so a bounds check like `any(id >= size)` goes both ways.
-    private uint ConstantWord(D3D10ConstantDeclaration declaration, float value, float offset)
+    private uint ConstantWord(ParameterType type, float value, float offset)
     {
-        switch (declaration.TypeInfo.ParameterType)
+        switch (type)
         {
             case ParameterType.Int:
             case ParameterType.Uint:
             case ParameterType.Uint8:
             case ParameterType.Bool:
-                return SmallInteger(value, offset);
+                return SmallInteger(value, offset, type == ParameterType.Int);
             default:
                 return BitConverter.SingleToUInt32Bits(value);
         }
+    }
+
+    // The scalar type at a byte offset into a cbuffer variable: array elements
+    // start on registers, struct members at their offsets. Padding reads as the
+    // outer type; nothing reads it.
+    private static ParameterType WordType(ShaderTypeInfo type, int offset)
+    {
+        int size = ElementSize(type);
+        if (type.NumElements > 1)
+        {
+            int stride = (size + 15) / 16 * 16;
+            offset %= stride;
+        }
+        if (type.MemberInfo == null || offset >= size)
+        {
+            return type.ParameterType;
+        }
+        foreach (ShaderStructMemberInfo member in type.MemberInfo)
+        {
+            int start = member.ByteOffset;
+            if (offset >= start && offset < start + Size(member.TypeInfo))
+            {
+                return WordType(member.TypeInfo, offset - start);
+            }
+        }
+        return type.ParameterType;
+    }
+
+    // In bytes, packed as a cbuffer packs: an array's elements, and a matrix's
+    // rows or columns, each start a register.
+    private static int Size(ShaderTypeInfo type)
+    {
+        int element = ElementSize(type);
+        return type.NumElements > 1 ? (type.NumElements - 1) * ((element + 15) / 16 * 16) + element : element;
+    }
+
+    private static int ElementSize(ShaderTypeInfo type)
+    {
+        if (type.MemberInfo != null)
+        {
+            return type.MemberInfo.Max(m => m.ByteOffset + Size(m.TypeInfo));
+        }
+        int width = type.ParameterType == ParameterType.Double ? 8 : 4;
+        return type.ParameterClass switch
+        {
+            ParameterClass.MatrixColumns => (type.Columns - 1) * 16 + type.Rows * width,
+            ParameterClass.MatrixRows => (type.Rows - 1) * 16 + type.Columns * width,
+            _ => Math.Max(type.Columns, 1) * width,
+        };
     }
 
     // One half of a double: 0 the low word, 1 the high.
@@ -293,7 +422,7 @@ public class D3D10Machine
         {
             if ((signature.Mask & (1 << i)) != 0)
             {
-                register[i] = SmallInteger(value[i], offset[i]);
+                register[i] = SmallInteger(value[i], offset[i], signature.ComponentType == SInt32ComponentType);
             }
         }
     }
@@ -301,12 +430,21 @@ public class D3D10Machine
     // Even trials cycle through 0-3 from a per-input offset, so across the four
     // even trials every integer input is each of 0, 1, 2 and 3 once: an
     // `idx == 0` branch is always taken somewhere, not by luck. Odd trials
-    // spread to 16.
-    private uint SmallInteger(float value, float offset)
+    // spread to 16, and a signed integer is negative in every other one: never
+    // negative, abs(i) and a sign test on an int had no other way to go.
+    private uint SmallInteger(float value, float offset, bool signed = false)
     {
-        return _trial % 2 == 0
-            ? (uint)(_trial / 2 + (uint)(Math.Abs(offset) * 1000)) % 4
-            : (uint)Math.Abs(value * 8) % 17;
+        return SmallInteger(value, offset, _trial, signed);
+    }
+
+    private static uint SmallInteger(float value, float offset, int trial, bool signed = false)
+    {
+        if (trial % 2 == 0)
+        {
+            return (uint)(trial / 2 + (uint)(Math.Abs(offset) * 1000)) % 4;
+        }
+        uint magnitude = (uint)Math.Abs(value * 8) % 17;
+        return signed && trial % 4 == 3 ? unchecked((uint)-(int)magnitude) : magnitude;
     }
 
     // Even trials signed, odd trials non-negative: a value behind saturate(x) or
@@ -314,8 +452,73 @@ public class D3D10Machine
     // compared on zeros alone. (Integers drawn from these take |v| anyway.)
     private float[] Named(string name)
     {
-        float[] value = PseudoRandom.Vector(name, _trial);
-        return _trial % 2 == 0 ? value : [.. value.Select(MathF.Abs)];
+        return Named(name, _trial);
+    }
+
+    private static float[] Named(string name, int trial)
+    {
+        float[] value = PseudoRandom.Vector(name, trial);
+        // Drawn, two values were never equal, so `a == b` and the boundary between
+        // `>=` and `>` were never reached: every eighth trial holds 1 everywhere,
+        // and the ones between round to -2..2, so values sometimes meet.
+        if (trial % 8 == 2)
+        {
+            return [1, 1, 1, 1];
+        }
+        if (trial % 8 == 6)
+        {
+            return [.. value.Select(PseudoRandom.Rounded)];
+        }
+        // Small, so a product of several stays inside a narrow test like
+        // `all(abs(v) < 0.5)` after a matrix, which [-2, 2] almost never met.
+        if (trial % 8 == 4)
+        {
+            return [.. value.Select(v => v / 8)];
+        }
+        // Large, so a value converted to an integer and shifted or masked keeps
+        // bits: within [-2, 2], `(uint)abs(x) >> 1` was always 0.
+        if (trial % 8 == 0)
+        {
+            return [.. value.Select(v => v * 16)];
+        }
+        return trial % 2 == 0 ? value : [.. value.Select(MathF.Abs)];
+    }
+
+    /// <summary>
+    /// A structured buffer's dword as a load reads it, named by its address and
+    /// typed by the element's reflection: an integer member is small, as integer
+    /// constants are, and a double member's word pair holds a double. As float
+    /// bits, an integer member was a huge number, so `n > 0` never went the other
+    /// way, and a double was ~2^-7.
+    /// </summary>
+    private static uint StructuredWord(ShaderModel shader, bool view, int slot, int element, int offset, int trial)
+    {
+        string name = $"buffer{slot}[{element}][{offset}]";
+        ShaderTypeInfo type = shader.ResourceDefinitions?
+            .FirstOrDefault(d => d.BindPoint == slot && (view
+                ? d.ShaderInputType == D3DShaderInputType.Structured
+                : d.ShaderInputType is D3DShaderInputType.UavRWStructured
+                    or D3DShaderInputType.UavAppendStructured
+                    or D3DShaderInputType.UavConsumeStructured
+                    or D3DShaderInputType.UavRWStucturedWithCounter))?
+            .ElementType;
+        var leaf = type == null ? null : StoredValueKinds.LeafAt(type, offset);
+        switch (leaf?.Type)
+        {
+            case ParameterType.Int:
+            case ParameterType.Uint:
+            case ParameterType.Bool:
+                return SmallInteger(Named(name, trial)[0], PseudoRandom.Vector(name, 0)[0], trial,
+                    leaf.Value.Type == ParameterType.Int);
+            case ParameterType.Double:
+                {
+                    int half = leaf.Value.Within / 4;
+                    string pair = $"buffer{slot}[{element}][{offset - 4 * half}]";
+                    return DoubleWord(Named(pair, trial)[0], half);
+                }
+            default:
+                return BitConverter.SingleToUInt32Bits(Named(name, trial)[0]);
+        }
     }
 
     /// <summary>
@@ -323,21 +526,19 @@ public class D3D10Machine
     /// it: the buffer is not modelled, so a store of the value already there is
     /// told from one that changes the buffer by this. Null for other outputs.
     /// </summary>
-    public static float? InitialValueAt(string storeKey, int trial)
+    public static uint? InitialValueAt(ShaderModel shader, string storeKey, int trial)
     {
-        // As Named makes it, odd trials non-negative.
-        float? Loaded(string name)
-        {
-            float value = PseudoRandom.Vector(name, trial)[0];
-            return trial % 2 == 0 ? value : MathF.Abs(value);
-        }
-        Match structured = Regex.Match(storeKey, @"^STORE(\d+)(\[-?\d+\]\[-?\d+\])$");
+        Match structured = Regex.Match(storeKey, @"^STORE(\d+)\[(-?\d+)\]\[(-?\d+)\]$");
         if (structured.Success)
         {
-            return Loaded($"buffer{structured.Groups[1].Value}{structured.Groups[2].Value}");
+            // A store goes to a UAV, as does a load of what it overwrites.
+            return StructuredWord(shader, view: false, int.Parse(structured.Groups[1].Value),
+                int.Parse(structured.Groups[2].Value), int.Parse(structured.Groups[3].Value), trial);
         }
         Match raw = Regex.Match(storeKey, @"^STORERAW(\d+)(\[-?\d+\])$");
-        return raw.Success ? Loaded($"raw{raw.Groups[1].Value}{raw.Groups[2].Value}") : null;
+        return raw.Success
+            ? BitConverter.SingleToUInt32Bits(Named($"raw{raw.Groups[1].Value}{raw.Groups[2].Value}", trial)[0])
+            : null;
     }
 
     private int ControlPointCount =>
@@ -345,7 +546,8 @@ public class D3D10Machine
             .FirstOrDefault(i => i.Opcode == D3D10Opcode.DclOutputControlPointCount)
             ?.ControlPointCount ?? 1;
 
-    private void Execute()
+    // Yields at each barrier, so a group run can bring its other threads there.
+    private IEnumerable<bool> Execute()
     {
         List<D3D10Instruction> instructions = [.. _shader.Instructions.OfType<D3D10Instruction>()];
         D3D10ControlFlow flow = D3D10ControlFlow.Match(instructions);
@@ -370,7 +572,7 @@ public class D3D10Machine
                         pc = _calls.Pop();
                         continue;
                     }
-                    return;
+                    yield break;
                 case D3D10Opcode.RetC:
                     if (Test(instruction))
                     {
@@ -379,7 +581,7 @@ public class D3D10Machine
                             pc = _calls.Pop();
                             continue;
                         }
-                        return;
+                        yield break;
                     }
                     pc++;
                     continue;
@@ -495,6 +697,7 @@ public class D3D10Machine
                     continue;
                 case D3D10Opcode.Sync:
                     pc++;
+                    yield return true;
                     continue;
                 case D3D10Opcode.CustomData:
                     LoadImmediateConstantBuffer(instruction);
@@ -514,19 +717,21 @@ public class D3D10Machine
                 _indexableTemps[instruction.IndexableTempRegister] =
                     NewFile(instruction.IndexableTempElementCount);
             }
+            // In a group run the first thread to reach a dcl makes the memory the
+            // others then share.
             if (instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryRaw)
             {
                 int register = instruction.GetParamRegisterNumber(0);
                 int bytes = (int)instruction.GetParamIndexImmediate32(1, 0);
-                _threadGroupSharedMemory[register] = (4, new uint[bytes / 4]);
+                _threadGroupSharedMemory.TryAdd(register, (4, new uint[bytes / 4]));
                 _rawThreadGroupSharedMemory.Add(register);
             }
             if (instruction.Opcode == D3D10Opcode.DclThreadGroupSharedMemoryStructured)
             {
                 int stride = (int)instruction.GetThreadGroupSharedMemoryStride();
                 int count = (int)instruction.GetThreadGroupSharedMemoryCount();
-                _threadGroupSharedMemory[instruction.GetParamRegisterNumber(0)] =
-                    (stride, new uint[stride / 4 * count]);
+                _threadGroupSharedMemory.TryAdd(instruction.GetParamRegisterNumber(0),
+                    (stride, new uint[stride / 4 * count]));
             }
             if (instruction.Opcode.IsDeclaration())
             {
@@ -1322,16 +1527,17 @@ public class D3D10Machine
                     }
                     // Each dword named by its byte offset in the element, so reading a
                     // member at a time equals reading four at once.
-                    var element4 = new float[4];
+                    bool view = instruction.GetOperandType(3) == OperandType.Resource;
+                    var element4 = new uint[4];
                     for (int component = 0; component < 4; component++)
                     {
-                        element4[component] = Named(
-                            $"buffer{resource}[{element}][{offset + 4 * component}]")[0];
+                        element4[component] = StructuredWord(
+                            _shader, view, resource, element, offset + 4 * component, _trial);
                     }
                     byte[] elementSwizzle = instruction.GetSourceSwizzleComponents(3);
-                    return Pack([
+                    return [
                         element4[elementSwizzle[0]], element4[elementSwizzle[1]],
-                        element4[elementSwizzle[2]], element4[elementSwizzle[3]]]);
+                        element4[elementSwizzle[2]], element4[elementSwizzle[3]]];
                 }
             case D3D10Opcode.LdRaw:
                 {
@@ -1836,14 +2042,24 @@ public class D3D10Machine
                         ? _immediateConstantBuffer[row]
                         : new uint[4];
                 }
+            // In a group run the ids agree with each other, as on a GPU: a thread's
+            // dispatch id is its group's id times the size, plus its id in the group.
+            case OperandType.InputThreadIDInGroup when _groupThread is { } thread:
+                return [.. thread.InGroup, 0];
+            case OperandType.InputThreadIDInGroupFlattened when _groupThread is { } thread:
+                return [thread.Flattened, thread.Flattened, thread.Flattened, thread.Flattened];
+            case OperandType.InputThreadID when _groupThread is { } thread:
+                {
+                    uint[] group = ThreadId(OperandType.InputThreadGroupID);
+                    return [.. Enumerable.Range(0, 3).Select(c => group[c] * thread.Size[c] + thread.InGroup[c]), 0];
+                }
             case OperandType.InputThreadID:
             case OperandType.InputThreadGroupID:
             case OperandType.InputThreadIDInGroup:
             case OperandType.InputThreadIDInGroupFlattened:
             case OperandType.InputPrimitiveID:
             case OperandType.InputGSInstanceID:
-                // Small integers: float bits as an index reach no buffer.
-                return [.. Named(type.ToString()).Select(v => (uint)Math.Abs(v * 4) % 8)];
+                return ThreadId(type);
             case OperandType.OutputControlPointID:
                 // Must be within the patch, since it subscripts it.
                 return [.. Named("vOutputControlPointID")

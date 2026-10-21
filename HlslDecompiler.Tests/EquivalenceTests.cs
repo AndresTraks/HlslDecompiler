@@ -202,7 +202,8 @@ public class EquivalenceTests
                 .Where(n => !expected.ContainsKey(n) || !actual.ContainsKey(n))
                 // A store of what the address already holds leaves the buffer as
                 // the side without it has it: fxc drops such a store as dead.
-                .Where(n => !IsStoreOfWhatIsThere(n, (expected.ContainsKey(n) ? expected : actual)[n], trial))
+                .Where(n => !IsStoreOfWhatIsThere(left, n, (expected.ContainsKey(n) ? expected : actual)[n], trial,
+                    kinds.Of(n, 0)))
                 .OrderBy(n => n))
             {
                 yield return $"differs on trial {trial}: "
@@ -253,10 +254,18 @@ public class EquivalenceTests
     }
 
     // Bitwise: a store of the loaded value writes back exactly its bits.
-    private static bool IsStoreOfWhatIsThere(string name, float[] stored, int trial)
+    // Typed by the left side's reflection, as its loads are. A float's -0 and +0
+    // are the same value: `v + 0` turns a loaded -0 into +0, and fxc drops it.
+    private static bool IsStoreOfWhatIsThere(
+        ShaderModel shader, string name, float[] stored, int trial, StoredValueKind kind)
     {
-        return D3D10Machine.InitialValueAt(name, trial) is float initial
-            && BitConverter.SingleToUInt32Bits(initial) == BitConverter.SingleToUInt32Bits(stored[0]);
+        if (D3D10Machine.InitialValueAt(shader, name, trial) is not uint initial)
+        {
+            return false;
+        }
+        uint bits = BitConverter.SingleToUInt32Bits(stored[0]);
+        return initial == bits
+            || kind != StoredValueKind.Integer && ((initial | bits) & 0x7FFFFFFF) == 0;
     }
 
     // Chosen by how the shader was read, not by profile name.

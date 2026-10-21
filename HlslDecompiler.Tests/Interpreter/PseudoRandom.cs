@@ -29,6 +29,20 @@ public static class PseudoRandom
         return (float)((bits % 40001) / 10000.0 - 2.0);
     }
 
+    /// <summary>
+    /// A drawn value rounded to -2, -1, 1 or 2, so two values are often equal. Not
+    /// 0: a ±0 input divided by takes the infinity's sign from the zero's, which
+    /// two correct compilations need not agree on, and even +0 makes a projective
+    /// w of 0, whose NaN coordinates ps_1_4's cnd and the `>=` it is written as
+    /// branch on differently. (Computed zeros still occur.) So `x >= 0` against a
+    /// constant still never meets its boundary.
+    /// </summary>
+    public static float Rounded(float value)
+    {
+        float rounded = System.MathF.Round(value);
+        return rounded == 0 ? 1 : rounded;
+    }
+
     private static uint Hash(string value)
     {
         uint hash = 2166136261;

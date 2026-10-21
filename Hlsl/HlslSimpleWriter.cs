@@ -439,7 +439,11 @@ public class HlslSimpleWriter : HlslWriter
             [.. _phaseShader.Instructions.Skip(body.First).Take(body.Last - body.First)
                 .Where(i => !_registers.Linkage.IsThisMove((D3D10Instruction)i))]))
         {
-            WriteTemporaryVariableDeclaration(register, writeMask);
+            // A temp main passes in is a parameter already.
+            if (!body.Parameters.Contains(register))
+            {
+                WriteTemporaryVariableDeclaration(register, writeMask);
+            }
         }
 
         for (int index = body.First; index < body.Last; index++)

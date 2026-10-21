@@ -930,6 +930,10 @@ public sealed class RegisterState
         {
             return RegisterDeclarations[registerKey].MaskedLength;
         }
+        if (LinkageTempParameters.TryGetValue(registerKey, out int parameterWidth))
+        {
+            return parameterWidth;
+        }
         if (registerKey is D3D10RegisterKey d3D10RegisterKey)
         {
             if (d3D10RegisterKey.OperandType == OperandType.Resource
@@ -1567,8 +1571,20 @@ public sealed class RegisterState
         return name;
     }
 
+    /// <summary>
+    /// Temps main passes to a linkage method, by width: inside a body they are its
+    /// parameters, named as the register (the instruction writer reads them so).
+    /// </summary>
+    public Dictionary<RegisterKey, int> LinkageTempParameters { get; } = [];
+
+    public static string LinkageTempParameterName(RegisterKey register) => $"r{register.Number}";
+
     public string GetRegisterName(RegisterKey registerKey)
     {
+        if (LinkageTempParameters.ContainsKey(registerKey))
+        {
+            return LinkageTempParameterName(registerKey);
+        }
         if (registerKey.IsOutput)
         {
             var decl = RegisterDeclarations[registerKey];

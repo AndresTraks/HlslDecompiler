@@ -409,6 +409,11 @@ public abstract class HlslWriter
     {
         string parameters = string.Join(", ", method.Parameters.Select(parameter =>
         {
+            // A value main computed: as wide as the bodies read it.
+            if (_registers.LinkageTempParameters.TryGetValue(parameter, out int width))
+            {
+                return $"float{(width == 1 ? "" : width.ToString())} {RegisterState.LinkageTempParameterName(parameter)}";
+            }
             RegisterDeclaration declaration = _registers.MethodInputRegisters
                 .FirstOrDefault(d => d.RegisterKey.Equals(parameter));
             if (declaration == null)

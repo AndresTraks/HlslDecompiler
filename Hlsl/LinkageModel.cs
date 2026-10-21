@@ -24,6 +24,9 @@ public class LinkageModel
 
         public List<RegisterKey> Parameters { get; } = [];
 
+        /// <summary>Components read of each parameter: a temp argument has no dcl.</summary>
+        public Dictionary<RegisterKey, int> ParameterWidths { get; } = [];
+
         public RegisterKey ReturnRegister { get; set; }
         public int ReturnComponents { get; set; } = 4;
 
@@ -68,6 +71,9 @@ public class LinkageModel
         public InterfaceInfo Interface { get; init; }
         public int Function { get; init; }
         public List<RegisterKey> Parameters { get; } = [];
+
+        /// <summary>The widest any body reads each parameter.</summary>
+        public Dictionary<RegisterKey, int> ParameterWidths { get; } = [];
         public RegisterKey ReturnRegister { get; set; }
         public List<FunctionBodyInfo> Bodies { get; } = [];
 
@@ -284,6 +290,11 @@ public class LinkageModel
                 {
                     body.Parameters.Add(read);
                 }
+                if (body.Parameters.Contains(read))
+                {
+                    body.ParameterWidths[read] = Math.Max(
+                        body.ParameterWidths.GetValueOrDefault(read), ReadWidth(instruction, operand));
+                }
             }
 
             if (destination != null)
@@ -310,12 +321,44 @@ public class LinkageModel
         }
         foreach (RegisterKey parameter in body.Parameters)
         {
-            if (parameter is not D3D10RegisterKey { OperandType: OperandType.Input })
+            // A temp is a value main computed before the call (`Shade(normalize(n))`).
+            if (parameter is not D3D10RegisterKey { OperandType: OperandType.Input or OperandType.Temp })
             {
                 throw new NotImplementedException(
-                    "a function body argument that is not an input register");
+                    "a function body argument that is not an input or temp register");
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a parameter is a temp main computed, named and typed by the linkage
+    /// rather than by an input declaration.
+    /// </summary>
+    public static bool IsTempParameter(RegisterKey parameter)
+    {
+        return parameter is D3D10RegisterKey { OperandType: OperandType.Temp };
+    }
+
+    // The components of a register an operand reads, as a width from x: a dot
+    // product its first two, three or four, else those under the write mask.
+    private static int ReadWidth(D3D10Instruction instruction, int operand)
+    {
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operand);
+        int count = instruction.Opcode switch
+        {
+            D3D10Opcode.Dp2 => 2,
+            D3D10Opcode.Dp3 => 3,
+            D3D10Opcode.Dp4 => 4,
+            _ => 0,
+        };
+        IEnumerable<byte> read = count != 0
+            ? swizzle.Take(count)
+            : instruction.GetDestinationParamIndex() is int destination
+                ? Enumerable.Range(0, 4)
+                    .Where(c => (instruction.GetWriteMask(destination) & (1 << c)) != 0)
+                    .Select(c => swizzle[c])
+                : swizzle;
+        return read.Max() + 1;
     }
 
     /// <summary>
@@ -442,6 +485,9 @@ public class LinkageModel
                         {
                             method.Parameters.Add(parameter);
                         }
+                        method.ParameterWidths[parameter] = Math.Max(
+                            method.ParameterWidths.GetValueOrDefault(parameter),
+                            body.ParameterWidths.GetValueOrDefault(parameter, 4));
                     }
                 }
                 method.Parameters.Sort((a, b) => a.Number.CompareTo(b.Number));

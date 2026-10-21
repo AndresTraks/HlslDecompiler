@@ -295,6 +295,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "bool_lanes_mixed")]
     [TestCase("hs_5_0", "quad_packed_weight")]
     [TestCase("ps_5_0", "shared_divisor_lanes")]
+    [TestCase("ps_5_0", "linkage_computed_argument")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

@@ -99,6 +99,16 @@ public class InstructionParser
         if (shader.Instructions[0] is D3D10Instruction)
         {
             _registerState.Linkage = LinkageModel.Read(shader);
+            foreach (LinkageModel.MethodInfo method in _registerState.Linkage.Interfaces
+                .SelectMany(i => i.Methods ?? []).Where(m => m != null))
+            {
+                foreach (RegisterKey parameter in method.Parameters.Where(LinkageModel.IsTempParameter))
+                {
+                    _registerState.LinkageTempParameters[parameter] = Math.Max(
+                        _registerState.LinkageTempParameters.GetValueOrDefault(parameter),
+                        method.ParameterWidths.GetValueOrDefault(parameter, 4));
+                }
+            }
             int mainEnd = _registerState.Linkage.HasLinkage
                 ? _registerState.Linkage.MainInstructionCount
                 : shader.Instructions.Count;
@@ -131,8 +141,18 @@ public class InstructionParser
                 {
                     _statements = [];
                     _currentStatements = new Stack<IStatement>();
+                    // A temp main passes in is the body's parameter, read as itself.
+                    var bodyStart = new Dictionary<RegisterComponentKey, HlslTreeNode>(declared);
+                    foreach (RegisterKey parameter in body.Parameters.Where(LinkageModel.IsTempParameter))
+                    {
+                        for (int component = 0; component < _registerState.LinkageTempParameters[parameter]; component++)
+                        {
+                            var componentKey = new RegisterComponentKey(parameter, component);
+                            bodyStart[componentKey] = new RegisterInputNode(componentKey);
+                        }
+                    }
                     // Stands in for main's dcl instructions, which are not re-parsed.
-                    InsertStatement(new AssignmentStatement(declared));
+                    InsertStatement(new AssignmentStatement(bodyStart));
                     _instructionPointer = body.First;
                     while (_instructionPointer < body.Last)
                     {
@@ -1154,7 +1174,7 @@ public class InstructionParser
             _registerState.MethodInputRegisters.FirstOrDefault(d => d.RegisterKey.Equals(parameter))
                 is RegisterDeclaration declaration
                 ? 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)declaration.WriteMask)
-                : 4)];
+                : _registerState.LinkageTempParameters.GetValueOrDefault(parameter, 4))];
         for (int parameter = 0; parameter < method.Parameters.Count; parameter++)
         {
             for (int component = 0; component < argumentWidths[parameter]; component++)

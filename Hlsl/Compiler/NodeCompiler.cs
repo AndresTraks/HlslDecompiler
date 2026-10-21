@@ -2517,7 +2517,32 @@ public sealed class NodeCompiler
             }
             return $"({masked} & {(1 << width) - 1})";
         }
-        return $"{CompileAsInteger([index])} / {rows}";
+        // The same mask as its own and: `m[i & 7]` is `(i << 2) & 28`.
+        if (index is BitwiseAndOperation and
+            && rows > 1 && (rows & (rows - 1)) == 0)
+        {
+            int shiftBits = System.Numerics.BitOperations.Log2((uint)rows);
+            for (int i = 0; i < 2; i++)
+            {
+                if (and.Inputs[i] is ConstantNode { IntegerValue: int mask }
+                    && (mask & (rows - 1)) == 0
+                    && and.Inputs[1 - i] is ShiftLeftOperation scaled
+                    && scaled.Inputs[1] is ConstantNode { Value: var amount } && amount == shiftBits)
+                {
+                    string masked = CompileAsInteger([scaled.Inputs[0]]);
+                    if (scaled.Inputs[0] is not (RegisterInputNode or ConstantNode
+                        or TempVariableNode or TempAssignmentNode))
+                    {
+                        masked = $"({masked})";
+                    }
+                    return $"({masked} & {mask >> shiftBits})";
+                }
+            }
+        }
+        // Bracketed unless a name: `/` binds more tightly than `&`, `+` or `-`, so
+        // `(y * 4) & 28 / 4` read `& 7` of the register index, the wrong element.
+        string registerIndex = CompileAsInteger([index]);
+        return registerIndex.Contains(' ') ? $"({registerIndex}) / {rows}" : $"{registerIndex} / {rows}";
     }
 
     /// <summary>

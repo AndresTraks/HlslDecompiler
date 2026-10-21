@@ -92,6 +92,7 @@ reworded ps_5_0/inf_select_shared
 reworded ps_5_0/int_output_select
 reworded ps_5_0/integer_texture_load
 reworded ps_5_0/lane_joined_before_final_if
+reworded ps_5_0/linkage_scratch_argument
 reworded ps_5_0/microfacet_lighting
 reworded ps_5_0/nested_else_join
 reworded ps_5_0/nested_loop_copy

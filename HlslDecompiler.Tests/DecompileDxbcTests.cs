@@ -298,6 +298,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "linkage_computed_argument")]
     [TestCase("ps_5_0", "linkage_result_beside_argument")]
     [TestCase("ps_5_0", "linkage_chained_calls")]
+    [TestCase("ps_5_0", "linkage_scratch_argument")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

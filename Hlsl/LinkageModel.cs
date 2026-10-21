@@ -173,6 +173,11 @@ public class LinkageModel
             }
             switch (instruction.Opcode)
             {
+                // `fcall fp0[r0.w + 0][0]`: the array index's representation (bits
+                // 25-27 of the operand token) is not an immediate. The call reads the
+                // index as one, which would name a slot that does not exist.
+                case D3D10Opcode.InterfaceCall when ((instruction.OperandTokens.Tokens[1] >> 25) & 7) != 0:
+                    throw new NotImplementedException("an interface array indexed at run time");
                 case D3D10Opcode.DclFunctionBody:
                     model.Bodies.Add(new FunctionBodyInfo
                     {
@@ -318,6 +323,13 @@ public class LinkageModel
         List<RegisterKey> results = written.Count == 1
             ? [.. written]
             : [.. written.Where(readAfterCalls.Contains)];
+        // A body may reuse its argument's register as scratch (`dp3_sat r0.x,
+        // r0.xyzx, ...` then the result in r1) while main reads that register after
+        // another call: the result is the register that is not the argument.
+        if (results.Count > 1 && results.Count(r => !body.Parameters.Contains(r)) == 1)
+        {
+            results = [.. results.Where(r => !body.Parameters.Contains(r))];
+        }
         if (results.Count != 1)
         {
             throw new NotImplementedException(

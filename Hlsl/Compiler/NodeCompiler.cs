@@ -1552,6 +1552,12 @@ public sealed class NodeCompiler
                     continue;
                 }
             }
+            // A bool converts by itself: no reinterpreting call around it.
+            if (type == "float" && !reinterpretFloats && group.Count == 1 && BoolLane(group[0]) is string boolLane)
+            {
+                parts.Add(boolLane);
+                continue;
+            }
             string compiled = Compile(group, group.Count);
             if (reinterpretFloats && IsFloatValued(group[0]))
             {
@@ -1569,6 +1575,29 @@ public sealed class NodeCompiler
             parts.AddRange(Enumerable.Repeat(compiled, copies));
         }
         return $"{type}{components.Count}({string.Join(", ", parts)})";
+    }
+
+    /// <summary>
+    /// A lane that is 1.0 or 0 by a bool, as the bool: a float constructor
+    /// converts it, and fxc then ands the lanes' masks with 1.0 in one
+    /// instruction, where a select or a step per lane is an and each.
+    /// </summary>
+    private string BoolLane(HlslTreeNode lane)
+    {
+        if (lane is MoveConditionalOperation select
+            && select.Source1 is ConstantNode { IntegerValue: null, Value: 1 }
+            && select.Source2 is ConstantNode { Value: 0 }
+            && IsBoolean(select.Condition))
+        {
+            return Compile([select.Condition]);
+        }
+        if (lane is StepOperation step)
+        {
+            return $"{Bracketed(Compile([step.Value]))} >= {Bracketed(Compile([step.Edge]))}";
+        }
+        return null;
+
+        static string Bracketed(string text) => text.Contains(' ') ? $"({text})" : text;
     }
 
     /// <summary>Whether the group is one value whose text is a scalar.</summary>

@@ -13,5 +13,5 @@ struct PS_IN
 
 float4 main(PS_IN i) : SV_Target
 {
-	return float4((2143289344 & icb[i.idx % 3].x) == 2139095040 ? 1.0 : 0.0, isnan(asfloat(icb[i.idx % 3].x)) ? 1.0 : 0.0, i.texcoord.x + asfloat(icb[i.idx % 3].x), 1);
+	return float4((2143289344 & icb[i.idx % 3].x) == 2139095040, isnan(asfloat(icb[i.idx % 3].x)) ? 1.0 : 0.0, i.texcoord.x + asfloat(icb[i.idx % 3].x), 1);
 }

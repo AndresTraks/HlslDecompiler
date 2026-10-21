@@ -277,6 +277,12 @@ public abstract class HlslWriter
             WriteOutputStructureDeclaration();
         }
 
+        // Before the entry point's attributes, which would attach to the interface.
+        if (_registers.Linkage != null && _registers.Linkage.HasLinkage)
+        {
+            WriteLinkageDeclarations();
+        }
+
         if (_registers.MaxOutputVertexCount != null)
         {
             WriteLine("[maxvertexcount({0})]", _registers.MaxOutputVertexCount);
@@ -305,11 +311,6 @@ public abstract class HlslWriter
         if (_registers.ForceEarlyDepthStencil)
         {
             WriteLine("[earlydepthstencil]");
-        }
-
-        if (_registers.Linkage != null && _registers.Linkage.HasLinkage)
-        {
-            WriteLinkageDeclarations();
         }
 
         string methodReturnType = GetMethodReturnType();

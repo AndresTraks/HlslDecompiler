@@ -285,6 +285,22 @@ public class LinkageModel
                 {
                     continue;
                 }
+                // `v[r0.x][0]` with r0.x main's loop counter: fxc hands the body an
+                // index into main's own inputs rather than the value, which a
+                // method cannot reach - its argument would be `v[i].p`.
+                foreach (D3D10OperandTokenCollection.OperandIndex index in
+                    instruction.OperandTokens.GetOperandIndices(operand).Where(i => i.IsRelative))
+                {
+                    int dimension = Array.IndexOf(instruction.OperandTokens.GetOperandIndices(operand), index);
+                    (OperandType indexType, int indexNumber, _) =
+                        instruction.OperandTokens.GetRelativeIndexOperand(operand, dimension);
+                    if (indexType == OperandType.Temp
+                        && !written.Contains(new D3D10RegisterKey(OperandType.Temp, indexNumber)))
+                    {
+                        throw new NotImplementedException(
+                            "a function body indexing main's inputs with main's register");
+                    }
+                }
                 RegisterKey read = instruction.GetParamRegisterKey(operand);
                 if (!written.Contains(read) && !body.Parameters.Contains(read))
                 {
@@ -746,6 +762,24 @@ public class LinkageModel
             for (int i = call + 1; i < model.MainInstructionCount && written.Count < 4; i++)
             {
                 var instruction = (D3D10Instruction)shader.Instructions[i];
+                // From an if's true branch, the else branch does not run: its writes
+                // would hide a read of the result after the endif.
+                if (instruction.Opcode == D3D10Opcode.Else)
+                {
+                    for (int depth = 0; i < model.MainInstructionCount; i++)
+                    {
+                        D3D10Opcode opcode = ((D3D10Instruction)shader.Instructions[i]).Opcode;
+                        if (opcode == D3D10Opcode.If)
+                        {
+                            depth++;
+                        }
+                        else if (opcode == D3D10Opcode.EndIf && depth-- == 0)
+                        {
+                            break;
+                        }
+                    }
+                    continue;
+                }
                 if (instruction.Opcode == D3D10Opcode.InterfaceCall)
                 {
                     MethodInfo next = model.MethodForCall(

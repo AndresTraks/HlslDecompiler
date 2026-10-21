@@ -293,6 +293,7 @@ public class DecompileDxbcTests
     [TestCase("ps_4_0", "bool_lanes_to_float")]
     [TestCase("vs_4_0", "bone_index_mask")]
     [TestCase("ps_5_0", "bool_lanes_mixed")]
+    [TestCase("hs_5_0", "quad_packed_weight")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

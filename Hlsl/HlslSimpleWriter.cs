@@ -3979,7 +3979,8 @@ public class HlslSimpleWriter : HlslWriter
             var vertexKey = isOutputPatch
                 ? D3D10RegisterKey.CreateControlPointOutput((int)operandIndices[1].Immediate, 0)
                 : D3D10RegisterKey.CreateGSInput((int)operandIndices[1].Immediate, 0);
-            byte vertexComponent = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            byte vertexComponent = instruction.GetSourceSwizzleComponents(operandIndex)[
+                _destinationMaskOverride is int part ? FirstComponent(part) : 0];
             RegisterDeclaration vertexDeclaration =
                 _registers.FindInputDeclaration(vertexKey, vertexComponent)
                 ?? _registers.RegisterDeclarations[vertexKey];
@@ -4336,7 +4337,8 @@ public class HlslSimpleWriter : HlslWriter
                         : OperandType.Input,
                     (int)operandIndices[1].Immediate);
                 isPackedScalar = _registers.GetRegisterMaskedLength(new RegisterComponentKey(
-                    vertexRegister, instruction.GetSourceSwizzleComponents(operandIndex)[0])) == 1;
+                    vertexRegister, instruction.GetSourceSwizzleComponents(operandIndex)[
+                        _destinationMaskOverride is int part ? FirstComponent(part) : 0])) == 1;
             }
         }
         else if (registerKey.OperandType == OperandType.ConstantBuffer)
@@ -4417,9 +4419,14 @@ public class HlslSimpleWriter : HlslWriter
                 return ApplyModifier(modifier, registerName);
             }
 
-            // A split statement reads only the components it writes.
+            // A split statement reads only the components it writes; a packed
+            // scalar member it reads is named bare (WEIGHT at v0.w is `weight`).
             if (_destinationMaskOverride != null && GetSourceLength(instruction, operandIndex) == null)
             {
+                if (isPackedScalar)
+                {
+                    return ApplyModifier(modifier, registerName);
+                }
                 return ApplyModifier(modifier, registerName
                     + instruction.GetSourceSwizzleNameForMask(operandIndex, _destinationMaskOverride.Value));
             }
@@ -5113,7 +5120,8 @@ public class HlslSimpleWriter : HlslWriter
             return [.. swizzle.Select(c => (int)c)];
         }
 
-        int writeMask = instruction.GetDestinationWriteMask();
+        // The part a split statement writes (o.weight of a mul over o0.xyzw).
+        int writeMask = _destinationMaskOverride ?? instruction.GetDestinationWriteMask();
         return [.. Enumerable.Range(0, 4)
             .Where(i => (writeMask & (1 << i)) != 0)
             .Select(i => (int)swizzle[i])];

@@ -11,5 +11,8 @@ public class DivisionOperation : Operation
     public HlslTreeNode Dividend => Inputs[0];
     public HlslTreeNode Divisor => Inputs[1];
 
+    /// <summary>A signed integer / recovered from fxc's expansion; see ModuloOperation.</summary>
+    public bool IsSigned { get; init; }
+
     public override string Mnemonic => "div";
 }

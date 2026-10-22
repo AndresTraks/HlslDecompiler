@@ -2060,6 +2060,10 @@ public sealed class NodeCompiler
                     var divisor = components.Select(g => g.Inputs[1]);
                     string left = CompileOperand(dividend);
                     string right = CompileOperand(divisor);
+                    if (components.First() is ModuloOperation { IsSigned: true })
+                    {
+                        (left, right) = (SignedOperand(dividend, left), SignedOperand(divisor, right));
+                    }
                     // % binds like /: bracket a sum, and a divisor that is a product
                     // or quotient.
                     bool bracketDividend = IsSum(dividend.First());
@@ -2092,9 +2096,18 @@ public sealed class NodeCompiler
                         + " / "
                         + (divisorIsAssociative ? "{1}" : "({1})");
 
-                    return string.Format(format,
-                        Compile(dividend),
-                        Compile(divisor));
+                    string quotientLeft = Compile(dividend);
+                    string quotientRight = Compile(divisor);
+                    if (components.First() is DivisionOperation { IsSigned: true })
+                    {
+                        (quotientLeft, quotientRight) =
+                            (SignedOperand(dividend, quotientLeft), SignedOperand(divisor, quotientRight));
+                        // A cast is a unary prefix: no brackets needed around it.
+                        format = (dividendIsAssociative || quotientLeft.StartsWith("(int") ? "{0}" : "({0})")
+                            + " / "
+                            + (divisorIsAssociative || quotientRight.StartsWith("(int") ? "{1}" : "({1})");
+                    }
+                    return string.Format(format, quotientLeft, quotientRight);
                 }
 
             case MaximumOperation _:
@@ -3670,6 +3683,20 @@ public sealed class NodeCompiler
                 => !node.Inputs.Any(IsUnsignedAlready) && node.Inputs.Any(IsSignedAlready),
             _ => false,
         };
+    }
+
+    // An operand of a signed / or % that HLSL types uint, cast to int: one uint
+    // operand makes the whole operation unsigned, which reads a negative
+    // dividend as a huge one.
+    private string SignedOperand(IEnumerable<HlslTreeNode> operand, string compiled)
+    {
+        HlslTreeNode first = operand.First();
+        if (!IsUnsignedAlready(first))
+        {
+            return compiled;
+        }
+        int width = operand.Count();
+        return $"(int{(width == 1 ? "" : width.ToString())})({compiled})";
     }
 
     private bool IsUnsignedAlready(HlslTreeNode node)

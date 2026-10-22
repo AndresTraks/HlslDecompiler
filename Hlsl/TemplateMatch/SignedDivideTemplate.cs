@@ -105,14 +105,14 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
             {
                 return null;
             }
-            return new DivisionOperation(signedDividend, signedDivisor);
+            return new DivisionOperation(signedDividend, signedDivisor) { IsSigned = true };
         }
 
         if (!IsSameValue(tested, signedDividend))
         {
             return null;
         }
-        return new ModuloOperation(signedDividend, signedDivisor);
+        return new ModuloOperation(signedDividend, signedDivisor) { IsSigned = true };
     }
 
     private static HlslTreeNode TryGetAbsoluteValue(HlslTreeNode node)

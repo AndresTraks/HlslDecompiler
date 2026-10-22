@@ -1087,13 +1087,13 @@ public class HlslAstWriter : HlslWriter
                 loopVariableName = variableName;
             }
         }
-        else if (TryGetExitTest(loop, out HlslTreeNode continueCondition, out IStatement exitTest))
+        else if (TryGetExitTest(loop, out HlslTreeNode continueCondition, out IStatement[] exitTest))
         {
             // A break at the top as the while condition recompiles to one breakc,
             // not if/break/endif.
             string condition = _compiler.Compile(Reduce(continueCondition));
             WriteLine($"while ({condition}) {{");
-            body = [.. loop.Body.Where(statement => !ReferenceEquals(statement, exitTest))];
+            body = [.. loop.Body.Where(statement => !exitTest.Contains(statement))];
         }
         else
         {
@@ -1118,12 +1118,28 @@ public class HlslAstWriter : HlslWriter
     /// Any real code before the break must run first, so it rules this out.
     /// </summary>
     private static bool TryGetExitTest(
-        LoopStatement loop, out HlslTreeNode continueCondition, out IStatement exitTest)
+        LoopStatement loop, out HlslTreeNode continueCondition, out IStatement[] exitTest)
     {
         continueCondition = null;
         exitTest = null;
-        foreach (IStatement statement in loop.Body)
+        for (int index = 0; index < loop.Body.Count; index++)
         {
+            IStatement statement = loop.Body[index];
+            // `bool c = a < 10 && b != 0; if (!c) break;`: fxc's breakc_z of an and
+            // of masks, named because a statement holds it. Read by the break only,
+            // the condition is the while's: as if/break/endif it costs two more.
+            if (statement is AssignmentStatement named
+                && index + 1 < loop.Body.Count
+                && loop.Body[index + 1] is BreakStatement { Comparison: ComparisonNode tested }
+                && tested.Comparison == IfComparison.EQ
+                && ConstantMatcher.IsZero(tested.Right)
+                && NamedCondition(named, tested.Left) is HlslTreeNode value
+                && !IsReadElsewhere(loop, named, (BreakStatement)loop.Body[index + 1]))
+            {
+                continueCondition = value;
+                exitTest = [named, loop.Body[index + 1]];
+                return true;
+            }
             // Skip statements that write nothing: phis and values read inline later.
             if (statement is AssignmentStatement assignment
                 && assignment.Outputs.All(output =>
@@ -1141,10 +1157,55 @@ public class HlslAstWriter : HlslWriter
                 return false;
             }
             continueCondition = opposite;
-            exitTest = statement;
+            exitTest = [statement];
             return true;
         }
         return false;
+    }
+
+    // The condition a statement assigns to the variable the break tests, if that
+    // is all it assigns.
+    private static HlslTreeNode NamedCondition(AssignmentStatement statement, HlslTreeNode tested)
+    {
+        TempVariableNode variable = tested switch
+        {
+            TempVariableNode v => v,
+            TempAssignmentNode a => a.TempVariable,
+            _ => null,
+        };
+        var assigned = statement.Outputs
+            .Where(o => !(statement.Inputs.TryGetValue(o.Key, out HlslTreeNode input) && ReferenceEquals(input, o.Value)))
+            .Select(o => o.Value)
+            .ToList();
+        return variable != null
+            && assigned.Count != 0
+            && assigned.All(v => v is TempAssignmentNode a && ReferenceEquals(a.TempVariable, variable))
+            && assigned[0] is TempAssignmentNode { Value: LogicalAndOperation or LogicalOrOperation or ComparisonNode } assignment
+            ? assignment.Value
+            : null;
+    }
+
+    // Whether anything in the loop but the break reads the statement's variable.
+    private static bool IsReadElsewhere(LoopStatement loop, AssignmentStatement named, BreakStatement exit)
+    {
+        TempVariableNode variable = named.Outputs.Values.OfType<TempAssignmentNode>().First().TempVariable;
+        bool read = false;
+        new StatementVisitor(loop.Body).Visit(statement =>
+        {
+            if (ReferenceEquals(statement, named) || ReferenceEquals(statement, exit))
+            {
+                return;
+            }
+            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values)
+                .Concat(statement.HeldNodes))
+            {
+                if (ReferenceEquals(value, variable) || variable.IsInputOf(value))
+                {
+                    read = true;
+                }
+            }
+        });
+        return read;
     }
 
     /// <summary>

@@ -306,6 +306,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "local_array_offset_index")]
     [TestCase("cs_5_0", "while_and_condition")]
     [TestCase("cs_5_0", "signed_modulo_uint_divisor")]
+    [TestCase("cs_5_0", "signed_divide_uint_operands")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

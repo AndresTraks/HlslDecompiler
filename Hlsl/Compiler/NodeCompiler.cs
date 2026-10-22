@@ -1813,7 +1813,11 @@ public sealed class NodeCompiler
                 {
                     string name = operation.Mnemonic;
                     IEnumerable<HlslTreeNode> input = components.Select(g => g.Inputs[0]);
-                    bool isAssociative = AssociativityTester.TestForMultiplication(input.First());
+                    // Unary minus binds before %: `-a % b` is (-a) % b, which a uint b
+                    // makes a huge dividend. An integer quotient likewise.
+                    bool isAssociative = AssociativityTester.TestForMultiplication(input.First())
+                        && input.First() is not ModuloOperation
+                        && !(input.First() is DivisionOperation && !IsFloatValued(input.First()));
                     string value = Compile(input);
                     return isAssociative
                         ? $"-{value}"
@@ -1841,7 +1845,15 @@ public sealed class NodeCompiler
             case ConsumerOperation _:
                 {
                     string name = operation.HlslFunction;
-                    string value = Compile(components.Select(g => g.Inputs[0]));
+                    var operand = components.Select(g => g.Inputs[0]).ToList();
+                    string value = Compile(operand);
+                    // imax(x, -x) takes the bits as signed; HLSL's abs of a uint does
+                    // nothing, so a uint operand (a thread id, a uint buffer element,
+                    // `id.x - 4`) is cast to int first.
+                    if (operation is AbsoluteOperation && IsUnsignedAlready(operand[0]))
+                    {
+                        value = $"(int{(operand.Count == 1 ? "" : operand.Count.ToString())})({value})";
+                    }
                     return $"{name}({value})";
                 }
 
@@ -3712,6 +3724,9 @@ public sealed class NodeCompiler
                 return true;
             case RegisterInputNode register:
                 return IsUnsignedRegister(register);
+            // A uint buffer element: `x / (int)s[i]` is signed only through the cast.
+            case LoadStructuredNode { IsUnsignedElement: true }:
+                return true;
             // The branches, not the condition.
             case MoveConditionalOperation select:
                 return IsUnsignedAlready(select.Inputs[1]) || IsUnsignedAlready(select.Inputs[2]);

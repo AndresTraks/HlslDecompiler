@@ -65,6 +65,14 @@ public class RoundTripCostTests
             + "fxc takes the two absolute values apart. What the fixture is for "
             + "costs nothing: the signed % by a uint size is cast to int, where "
             + "without the cast it was unsigned and wrong for a negative dividend."),
+        ["cs_5_0/signed_divide_uint_operands"] = (27,
+            "One instruction, and it is the absolute value fxc shares: the original "
+            + "takes abs(n) once for a % and a / by the same uint constant. Shared, it "
+            + "is named, so the % is not recognized as signed (its abs is a variable "
+            + "now) and comes back as its expansion, `t5 < 0 ? -(abs(t5) % t0) : ...`. "
+            + "What the fixture is for costs nothing: a signed / by a uint buffer "
+            + "element is cast to int, and the negated remainder is bracketed - "
+            + "`-abs(t5) % t0` divided a huge unsigned number."),
         ["ps_5_0/local_array_offset_index"] = (27,
             "One instruction, and it is fog_volume's: the original doubles the "
             + "four texcoord lanes in one add, whose x goes straight into a store "

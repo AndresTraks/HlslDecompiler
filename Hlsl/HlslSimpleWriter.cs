@@ -2089,7 +2089,8 @@ public class HlslSimpleWriter : HlslWriter
                 && DeclaredTypeOf(instruction, 1) == DeclaredType.Float
             ? $"as{readAs}({source})"
             : readAs == null
-                || (readAs == "int" && GetSourceStorage(instruction, 1) == ComponentStorage.Integer)
+                || (readAs == "int" && GetSourceStorage(instruction, 1) == ComponentStorage.Integer
+                    && !IsUnsignedOperand(instruction, 1))
                 ? source
                 : $"({readAs}{size}){source}";
         WriteResult(instruction, "{0} = {1};",
@@ -2108,7 +2109,7 @@ public class HlslSimpleWriter : HlslWriter
     }
 
     // A comparison writes all ones (-1) for true and 0 for false, a mask.
-    private void WriteComparison(D3D10Instruction instruction, string op, bool unsigned = false)
+    private void WriteComparison(D3D10Instruction instruction, string op, bool unsigned = false, bool signed = false)
     {
         string left = GetOperandName(instruction, 1);
         string right = GetOperandName(instruction, 2);
@@ -2129,6 +2130,12 @@ public class HlslSimpleWriter : HlslWriter
                 right = $"(uint{size}){right}";
             }
         }
+        // And ilt/ige cast a uint side to int, or the comparison is unsigned.
+        else if (signed)
+        {
+            left = SignedOperand(instruction, 1, left);
+            right = SignedOperand(instruction, 2, right);
+        }
         WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0),
             $"({left} {op} {right}) ? -1 : 0");
     }
@@ -2138,6 +2145,33 @@ public class HlslSimpleWriter : HlslWriter
     {
         return instruction.Opcode is D3D10Opcode.ULT or D3D10Opcode.UGE
             or D3D10Opcode.UMax or D3D10Opcode.UMin or D3D10Opcode.UShr;
+    }
+
+    // An operand of a signed opcode that HLSL reads as uint, cast to int.
+    private string SignedOperand(D3D10Instruction instruction, int operandIndex, string name)
+    {
+        // Lanes of unlike uniforms are already gathered into an int constructor.
+        if (!IsUnsignedOperand(instruction, operandIndex)
+            || name.TrimStart('-', '(').StartsWith("int"))
+        {
+            return name;
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        return $"(int{size}){name}";
+    }
+
+    // umin/umax over int temps: one uint operand selects the unsigned overload.
+    private string UnsignedFirstOperand(D3D10Instruction instruction)
+    {
+        string name = GetOperandName(instruction, 1);
+        if (IsUnsignedOperand(instruction, 1) || IsUnsignedOperand(instruction, 2))
+        {
+            return name;
+        }
+        int length = instruction.GetDestinationMaskLength();
+        string size = length == 1 ? "" : length.ToString();
+        return $"(uint{size}){name}";
     }
 
     // An unsigned iadd operand cast to int when the other is a negative immediate:
@@ -2685,7 +2719,9 @@ public class HlslSimpleWriter : HlslWriter
                     ShiftOperand(instruction, 4));
                 break;
             case D3D10Opcode.IShr:
-                WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0), ShiftOperand(instruction, 1), ShiftOperand(instruction, 2));
+                // A uint value would shift in zeros.
+                WriteResult(instruction, "{0} = {1} >> {2};", GetOperandName(instruction, 0),
+                    SignedOperand(instruction, 1, ShiftOperand(instruction, 1)), ShiftOperand(instruction, 2));
                 break;
             case D3D10Opcode.UShr:
                 {
@@ -2788,17 +2824,24 @@ public class HlslSimpleWriter : HlslWriter
                 WriteResult(instruction, "{0} = exp2({1});", GetOperandName(instruction, 0), GetOperandName(instruction, 1));
                 break;
             case D3D10Opcode.Max:
-            case D3D10Opcode.IMax:
                 WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                break;
+            // min and max take the overload from the operands: one uint makes it umin.
+            case D3D10Opcode.IMax:
+                WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0),
+                    SignedOperand(instruction, 1, GetOperandName(instruction, 1)),
+                    SignedOperand(instruction, 2, GetOperandName(instruction, 2)));
                 break;
             case D3D10Opcode.IMin:
-                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0),
+                    SignedOperand(instruction, 1, GetOperandName(instruction, 1)),
+                    SignedOperand(instruction, 2, GetOperandName(instruction, 2)));
                 break;
             case D3D10Opcode.UMax:
-                WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = max({1}, {2});", GetOperandName(instruction, 0), UnsignedFirstOperand(instruction), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.UMin:
-                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2));
+                WriteResult(instruction, "{0} = min({1}, {2});", GetOperandName(instruction, 0), UnsignedFirstOperand(instruction), GetOperandName(instruction, 2));
                 break;
             case D3D10Opcode.Umad:
                 WriteResult(instruction, "{0} = {1} * {2} + {3};", GetOperandName(instruction, 0), GetOperandName(instruction, 1), GetOperandName(instruction, 2), GetOperandName(instruction, 3));
@@ -2820,7 +2863,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteComparison(instruction, "<");
                 break;
             case D3D10Opcode.Ige:
-                WriteComparison(instruction, ">=");
+                WriteComparison(instruction, ">=", signed: true);
                 break;
             case D3D10Opcode.UGE:
                 WriteComparison(instruction, ">=", unsigned: true);
@@ -2842,7 +2885,7 @@ public class HlslSimpleWriter : HlslWriter
                 WriteComparison(instruction, "!=");
                 break;
             case D3D10Opcode.Ilt:
-                WriteComparison(instruction, "<");
+                WriteComparison(instruction, "<", signed: true);
                 break;
             case D3D10Opcode.IToF:
                 WriteConversion(instruction, "int", "float");

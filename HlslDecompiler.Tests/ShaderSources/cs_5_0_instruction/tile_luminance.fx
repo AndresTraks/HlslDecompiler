@@ -57,7 +57,7 @@ void main(CS_IN i)
 		r0.w = asint(asfloat(r0.w) * 0.015625);
 		luminance[i.sv_groupid.xy] = asfloat(r0.w);
 		r0.w = g0[0];
-		r1.x = min(r0.w, 63);
+		r1.x = min((uint)r0.w, 63);
 		r1.y = 0;
 		InterlockedAdd(histogram[r1.x], 1);
 	}

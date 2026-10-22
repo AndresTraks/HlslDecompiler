@@ -42,7 +42,7 @@ void main(CS_IN i)
 		r0.z = ((uint)r0.y >= 4) ? -1 : 0;
 		if (r0.z != 0) break;
 		r0.z = r0.y + i.sv_groupindex.x;
-		r0.z = min(r0.z, 63);
+		r0.z = min((uint)r0.z, 63);
 		r2 = g0[r0.z];
 		r0.z = asint(dot(weights, icb[r0.y]));
 		r1 = r2 * asfloat(r0.z) + r1;

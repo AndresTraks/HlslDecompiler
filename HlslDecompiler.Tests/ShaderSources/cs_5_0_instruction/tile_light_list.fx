@@ -67,7 +67,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	r1 = asint(gbuffer.Load(r1.xyz));
 	r0.w = g1;
-	r0.w = min(r0.w, 32);
+	r0.w = min((uint)r0.w, 32);
 	r2 = int4(0, 0, 0, 0);
 	while (true) {
 		r3.x = ((uint)r2.w >= (uint)r0.w) ? -1 : 0;

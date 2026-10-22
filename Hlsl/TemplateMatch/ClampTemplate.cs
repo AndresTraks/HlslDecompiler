@@ -26,11 +26,13 @@ public class ClampTemplate : NodeTemplate<MinimumOperation>
                 return new SaturateOperation(maximum.Value2);
             }
         }
-        return new ClampOperation(maximum.Value1, maximum.Value2, high);
+        return new ClampOperation(maximum.Value1, maximum.Value2, high, node.IsUnsigned);
     }
 
+    // Of the same signedness: umin(imax(x, a), b) is no clamp.
     private static MaximumOperation GetMaximum(MinimumOperation minimum)
     {
-        return minimum.Value1 as MaximumOperation ?? minimum.Value2 as MaximumOperation;
+        MaximumOperation maximum = minimum.Value1 as MaximumOperation ?? minimum.Value2 as MaximumOperation;
+        return maximum?.IsUnsigned == minimum.IsUnsigned ? maximum : null;
     }
 }

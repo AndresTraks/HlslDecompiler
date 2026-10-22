@@ -1848,11 +1848,11 @@ public sealed class NodeCompiler
                     var operand = components.Select(g => g.Inputs[0]).ToList();
                     string value = Compile(operand);
                     // imax(x, -x) takes the bits as signed; HLSL's abs of a uint does
-                    // nothing, so a uint operand (a thread id, a uint buffer element,
-                    // `id.x - 4`) is cast to int first.
-                    if (operation is AbsoluteOperation && IsUnsignedAlready(operand[0]))
+                    // nothing (and its sign is 0 or 1), so a uint operand (a thread id,
+                    // a uint buffer element, `id.x - 4`) is cast to int first.
+                    if (operation is AbsoluteOperation or SignOperation)
                     {
-                        value = $"(int{(operand.Count == 1 ? "" : operand.Count.ToString())})({value})";
+                        value = SignedOperand(operand, value);
                     }
                     return $"{name}({value})";
                 }
@@ -1912,6 +1912,11 @@ public sealed class NodeCompiler
                     {
                         string size = components.Count > 1 ? components.Count.ToString() : "";
                         value = $"(uint{size}){value}";
+                    }
+                    // And ishr casts a uint value to int, or it fills with zeros.
+                    else if (!shiftRight.IsUnsigned)
+                    {
+                        value = SignedOperand(components.Select(g => g.Inputs[0]), value);
                     }
                     return string.Format("{0} >> {1}", value,
                         CompileOperand(components.Select(g => g.Inputs[1])));
@@ -2217,6 +2222,13 @@ public sealed class NodeCompiler
                             : $"({uintType})({compiledValue})";
                         isSingleTerm = true;
                     }
+                    // itof of a uint: HLSL would convert it as unsigned (utof).
+                    else if (convert.SourceUnsigned == false && convert.TargetType is "float" or "double"
+                        && value.Any(IsUnsignedAlready))
+                    {
+                        compiledValue = SignedOperand(value, compiledValue);
+                        isSingleTerm = true;
+                    }
                     return isSingleTerm || IsBracketed(compiledValue) || IsConstructor(compiledValue)
                         ? $"({castType}){compiledValue}"
                         : $"({castType})({compiledValue})";
@@ -2390,11 +2402,30 @@ public sealed class NodeCompiler
                     return $"{Operand(0)} {op} {Operand(1)}";
                 }
 
-            case ClampOperation _:
-                return string.Format("clamp({0}, {1}, {2})",
-                    Compile(components.Select(g => g.Inputs[0])),
-                    Compile(components.Select(g => g.Inputs[1])),
-                    Compile(components.Select(g => g.Inputs[2])));
+            case ClampOperation clamp:
+                {
+                    var operands = Enumerable.Range(0, 3)
+                        .Select(i => components.Select(g => g.Inputs[i]).ToList())
+                        .ToList();
+                    var compiled = operands.Select(o => Compile(o)).ToList();
+                    // Like min and max, clamp takes its overload from the operands.
+                    if (ValueTypes.ComputesInIntegers(clamp) == true)
+                    {
+                        if (clamp.IsUnsigned && !operands.Any(o => IsUnsignedAlready(o[0])))
+                        {
+                            string size = components.Count > 1 ? components.Count.ToString() : "";
+                            compiled[0] = $"(uint{size}){CompileOperand(operands[0])}";
+                        }
+                        else if (!clamp.IsUnsigned)
+                        {
+                            for (int i = 0; i < 3; i++)
+                            {
+                                compiled[i] = SignedOperand(operands[i], compiled[i]);
+                            }
+                        }
+                    }
+                    return $"clamp({compiled[0]}, {compiled[1]}, {compiled[2]})";
+                }
 
             case FusedMultiplyAddOperation _:
                 return string.Format("fma({0}, {1}, {2})",
@@ -3664,6 +3695,13 @@ public sealed class NodeCompiler
                 right = $"(uint{size}){right}";
             }
         }
+        // And a signed one casts a uint side to int: `x < n` with n uint is ult.
+        else if (first.IsInteger && !first.IsUnsigned
+            && first.Comparison is not (IfComparison.EQ or IfComparison.NE))
+        {
+            left = SignedOperand(components.Cast<ComparisonNode>().Select(c => c.Left), left);
+            right = SignedOperand(components.Cast<ComparisonNode>().Select(c => c.Right), right);
+        }
         // Equality operands go in canonical order.
         if (first.Comparison is IfComparison.EQ or IfComparison.NE
             && CanReorder(components.Select(c => c.Inputs[0]), components.Select(c => c.Inputs[1]), products: true)
@@ -3708,7 +3746,14 @@ public sealed class NodeCompiler
             return compiled;
         }
         int width = operand.Count();
-        return $"(int{(width == 1 ? "" : width.ToString())})({compiled})";
+        string value = IsBracketed(compiled) || IsPlainName(compiled) ? compiled : $"({compiled})";
+        return $"(int{(width == 1 ? "" : width.ToString())}){value}";
+    }
+
+    // `n`, `t2.xy`, `s[i + 1].x`: nothing a cast in front could split.
+    private static bool IsPlainName(string text)
+    {
+        return System.Text.RegularExpressions.Regex.IsMatch(text, @"^[A-Za-z_]\w*(\.\w+|\[[^\[\]]*\])*$");
     }
 
     private bool IsUnsignedAlready(HlslTreeNode node)
@@ -3719,6 +3764,7 @@ public sealed class NodeCompiler
             case ShiftRightOperation { IsUnsigned: true }:
             case MinimumOperation { IsUnsigned: true }:
             case MaximumOperation { IsUnsigned: true }:
+            case ClampOperation { IsUnsigned: true }:
             case TempVariableNode { IsUnsigned: true }:
             case TempAssignmentNode { TempVariable.IsUnsigned: true }:
                 return true;
@@ -3732,7 +3778,7 @@ public sealed class NodeCompiler
                 return IsUnsignedAlready(select.Inputs[1]) || IsUnsignedAlready(select.Inputs[2]);
             // Operations that promote to unsigned.
             case AddOperation or SubtractOperation or MultiplyOperation
-                or ShiftLeftOperation or MinimumOperation or MaximumOperation
+                or ShiftLeftOperation or MinimumOperation or MaximumOperation or ClampOperation
                 or BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
                 or BitwiseNotOperation or MoveOperation:
                 return node.Inputs.Any(IsUnsignedAlready);

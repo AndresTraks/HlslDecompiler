@@ -19,5 +19,7 @@ public class ConvertOperation : Operation
     /// </summary>
     public bool? SourceUnsigned { get; init; }
 
+    protected override bool IsUnsignedVariant => SourceUnsigned == true;
+
     public override string Mnemonic => TargetType;
 }

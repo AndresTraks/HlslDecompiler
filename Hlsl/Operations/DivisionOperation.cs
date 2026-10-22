@@ -14,5 +14,7 @@ public class DivisionOperation : Operation
     /// <summary>A signed integer / recovered from fxc's expansion; see ModuloOperation.</summary>
     public bool IsSigned { get; init; }
 
+    protected override bool IsUnsignedVariant => !IsSigned;
+
     public override string Mnemonic => "div";
 }

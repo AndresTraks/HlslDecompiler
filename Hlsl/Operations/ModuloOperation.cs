@@ -18,5 +18,7 @@ public class ModuloOperation : Operation
     /// </summary>
     public bool IsSigned { get; init; }
 
+    protected override bool IsUnsignedVariant => !IsSigned;
+
     public override string Mnemonic => "mod";
 }

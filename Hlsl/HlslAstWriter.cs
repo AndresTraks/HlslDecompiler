@@ -2196,7 +2196,8 @@ public class HlslAstWriter : HlslWriter
                 || variables.Any(v => reads[v].Any(read => !read.Equals(run) && read.Nodes.Length != 1)
                     || reads[v].Count(read => read.Nodes.Length == 1) != count)
                 || variables.Any(v => v.IsInteger != variables[0].IsInteger
-                    || v.IsBits != variables[0].IsBits || v.IsUnsigned != variables[0].IsUnsigned))
+                    || v.IsBits != variables[0].IsBits || v.IsUnsigned != variables[0].IsUnsigned
+                    || v.IsBool != variables[0].IsBool))
             {
                 continue;
             }

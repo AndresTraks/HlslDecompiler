@@ -15,5 +15,7 @@ public class MaximumOperation : Operation
     // umax: HLSL picks signedness from the operand type, so it must be cast.
     public bool IsUnsigned { get; }
 
+    protected override bool IsUnsignedVariant => IsUnsigned;
+
     public override string Mnemonic => "max";
 }

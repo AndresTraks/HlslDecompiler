@@ -200,7 +200,8 @@ public class NodeGrouper
             }
             // Unnumbered variables compare equal, so differing types must be checked.
             if (assignment1.TempVariable.IsInteger != assignment2.TempVariable.IsInteger
-                || assignment1.TempVariable.IsBits != assignment2.TempVariable.IsBits)
+                || assignment1.TempVariable.IsBits != assignment2.TempVariable.IsBits
+                || assignment1.TempVariable.IsBool != assignment2.TempVariable.IsBool)
             {
                 return false;
             }
@@ -214,7 +215,8 @@ public class NodeGrouper
             return tempVariable1.DeclarationIndex == tempVariable2.DeclarationIndex
                 && (tempVariable1.DeclarationIndex != null
                     || (tempVariable1.IsInteger == tempVariable2.IsInteger
-                        && tempVariable1.IsDouble == tempVariable2.IsDouble));
+                        && tempVariable1.IsDouble == tempVariable2.IsDouble
+                        && tempVariable1.IsBool == tempVariable2.IsBool));
         }
 
         if (node1 is ComparisonNode comparison1 && node2 is ComparisonNode comparison2)

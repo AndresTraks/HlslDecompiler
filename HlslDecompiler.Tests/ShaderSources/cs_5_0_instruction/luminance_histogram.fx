@@ -13,6 +13,6 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.x = asint(dot(asfloat(r0.xyz), levels.xyz));
 	r0.x = asint(asfloat(r0.x) * levels.w);
 	r0.x = (uint)asfloat(r0.x);
-	r0.x = min(r0.x, 15);
+	r0.x = min((uint)r0.x, 15);
 	histogram[sv_dispatchthreadid.x] = r0.x;
 }

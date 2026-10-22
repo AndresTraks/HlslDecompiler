@@ -9,6 +9,9 @@ public abstract class Operation : HlslTreeNode
     // Differs from the mnemonic for e.g. exp/log (base 2 in bytecode) and frc.
     public virtual string HlslFunction => Mnemonic;
 
+    // What the call written does not show: itof against utof, imin against umin.
+    protected virtual bool IsUnsignedVariant => false;
+
     /// <summary>
     /// Same operation down to the call written: ddx_coarse and ddx_fine share a class.
     /// </summary>
@@ -19,7 +22,8 @@ public abstract class Operation : HlslTreeNode
             return false;
         }
         return node1 is not Operation operation1 || node2 is not Operation operation2
-            || operation1.HlslFunction == operation2.HlslFunction;
+            || (operation1.HlslFunction == operation2.HlslFunction
+                && operation1.IsUnsignedVariant == operation2.IsUnsignedVariant);
     }
 
     public override string ToString()

@@ -2668,6 +2668,16 @@ public sealed class NodeCompiler
     // An array subscript is an integer.
     public string CompileIndexableTempIndex(HlslTreeNode index)
     {
+        // `r0.z + 1`: the parser's add of a relative index and its immediate. The
+        // index is no input of the load, so the add was never typed, and compiled
+        // as float arithmetic it read the int variable through asfloat - its bits
+        // as a tiny float, so element 0. Both sides are subscripts.
+        if (index is AddOperation { Inputs: [var register, ConstantNode { IntegerValue: int offset }] })
+        {
+            // Bracketed unless a name: `(offset & 5) + 2`, not `offset & 5 + 2`.
+            string subscript = CompileIndexableTempIndex(register);
+            return $"{(subscript.Contains(' ') ? $"({subscript})" : subscript)} + {offset}";
+        }
         bool wasAssigningToInteger = _assigningToInteger;
         bool wasReadingAsFloat = _readingAsFloat;
         _assigningToInteger = true;

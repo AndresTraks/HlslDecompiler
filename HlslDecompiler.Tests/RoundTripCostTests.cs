@@ -57,6 +57,14 @@ public class RoundTripCostTests
             + "are not one vector expression being written as a declaration and "
             + "one assignment per instruction, by swizzle, which is a form the "
             + "ast writer has not got."),
+        ["ps_5_0/local_array_offset_index"] = (27,
+            "One instruction, and it is fog_volume's: the original doubles the "
+            + "four texcoord lanes in one add, whose x goes straight into a store "
+            + "of the array and whose yzw are read later. The x lane is written "
+            + "inline into its store and the yzw become `t0`, so fxc doubles them "
+            + "in two instructions. What the fixture is for costs nothing: "
+            + "relative reads `x0[t1.y + 1]` and the signed `% 3` whose sign test "
+            + "shares an and with another lane."),
 
         // fxc's doing.
         ["ps_4_0/loop_reused_register"] = (46,

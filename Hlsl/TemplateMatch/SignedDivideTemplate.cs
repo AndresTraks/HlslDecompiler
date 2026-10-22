@@ -8,6 +8,13 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
 {
     private const int SignBit = unchecked((int)0x80000000);
 
+    private readonly TemplateMatcher _templateMatcher;
+
+    public SignedDivideTemplate(TemplateMatcher templateMatcher)
+    {
+        _templateMatcher = templateMatcher;
+    }
+
     public override bool Match(HlslTreeNode node)
     {
         return node is MoveConditionalOperation move && TryReduce(move) != null;
@@ -18,7 +25,7 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
         return TryReduce(node);
     }
 
-    private static HlslTreeNode TryReduce(MoveConditionalOperation move)
+    private HlslTreeNode TryReduce(MoveConditionalOperation move)
     {
         // The negated result is taken when the tested bit is set, so it is Source1.
         if (move.Source1 is not NegateOperation negate
@@ -27,7 +34,9 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
             return null;
         }
 
-        HlslTreeNode tested = TryGetSignTest(move.Condition);
+        // The sign test may sit in a variable with lanes of another and: fxc's
+        // `and r1.xyzw, v1.yxzw, l(0x80000000, 3, 3, 0x80000000)` is named whole.
+        HlslTreeNode tested = TryGetSignTest(Resolve(move.Condition));
         if (tested == null)
         {
             return null;
@@ -43,6 +52,9 @@ public class SignedDivideTemplate : NodeTemplate<MoveConditionalOperation>
         }
         return null;
     }
+
+    private HlslTreeNode Resolve(HlslTreeNode node) =>
+        _templateMatcher.TempResolver is { } resolver ? resolver.Resolve(node) : node;
 
     /// <returns>x in `x &amp; 0x80000000`, or null.</returns>
     private static HlslTreeNode TryGetSignTest(HlslTreeNode condition)

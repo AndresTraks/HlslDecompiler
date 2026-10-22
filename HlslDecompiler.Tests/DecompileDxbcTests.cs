@@ -303,6 +303,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "linkage_compute")]
     [TestCase("ps_5_0", "linkage_in_loop")]
     [TestCase("ps_5_0", "linkage_in_branch")]
+    [TestCase("ps_5_0", "local_array_offset_index")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

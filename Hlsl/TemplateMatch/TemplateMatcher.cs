@@ -102,7 +102,7 @@ public class TemplateMatcher
             NodeStage("Intrinsics and idioms",
                 new MaxOfPositiveAndNegativeTemplate(),
                 new TrigonometricRangeReductionTemplate(),
-                new SignedDivideTemplate(),
+                new SignedDivideTemplate(this),
                 new SignTemplate(),
                 new FloorTemplate(),
                 new TruncateTemplate(),

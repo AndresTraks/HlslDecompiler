@@ -65,6 +65,12 @@ public class RoundTripCostTests
             + "fxc takes the two absolute values apart. What the fixture is for "
             + "costs nothing: the signed % by a uint size is cast to int, where "
             + "without the cast it was unsigned and wrong for a negative dividend."),
+        ["ps_5_0/parallax_while_and"] = (35,
+            "One instruction: the loop steps the coordinate and samples at the new "
+            + "one, and the decompilation samples at the step's expression "
+            + "(`-t1 * t0 + t5`) before assigning it, so the mad is done twice. "
+            + "What the fixture is for costs nothing: `int t6 = a && b; if (t6 == 0) "
+            + "break;` at the loop top is `while (a && b)` (37 before)."),
         ["cs_5_0/signed_divide_uint_operands"] = (27,
             "One instruction, and it is the absolute value fxc shares: the original "
             + "takes abs(n) once for a % and a / by the same uint constant. Shared, it "

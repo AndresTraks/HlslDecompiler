@@ -1136,7 +1136,7 @@ public class HlslAstWriter : HlslWriter
                 && tested.Comparison == IfComparison.EQ
                 && ConstantMatcher.IsZero(tested.Right)
                 && NamedCondition(named, tested.Left) is HlslTreeNode value
-                && !IsReadElsewhere(loop, named, (BreakStatement)loop.Body[index + 1]))
+                && !IsReadElsewhere(loop, TestedVariable(tested.Left), named, (BreakStatement)loop.Body[index + 1]))
             {
                 continueCondition = value;
                 exitTest = [named, loop.Body[index + 1]];
@@ -1167,16 +1167,21 @@ public class HlslAstWriter : HlslWriter
 
     // The condition a statement assigns to the variable the break tests, if that
     // is all it assigns.
+    private static TempVariableNode TestedVariable(HlslTreeNode tested) => tested switch
+    {
+        TempVariableNode v => v,
+        TempAssignmentNode a => a.TempVariable,
+        _ => null,
+    };
+
     private static HlslTreeNode NamedCondition(AssignmentStatement statement, HlslTreeNode tested)
     {
-        TempVariableNode variable = tested switch
-        {
-            TempVariableNode v => v,
-            TempAssignmentNode a => a.TempVariable,
-            _ => null,
-        };
+        TempVariableNode variable = TestedVariable(tested);
+        // As the skip rule in TryGetExitTest: phis and inline values write nothing.
         var assigned = statement.Outputs
             .Where(o => !(statement.Inputs.TryGetValue(o.Key, out HlslTreeNode input) && ReferenceEquals(input, o.Value)))
+            .Where(o => o.Value is not PhiNode
+                && !(o.Key.RegisterKey.IsTempRegister && o.Value is not TempAssignmentNode))
             .Select(o => o.Value)
             .ToList();
         return variable != null
@@ -1188,9 +1193,11 @@ public class HlslAstWriter : HlslWriter
     }
 
     // Whether anything in the loop but the break reads the statement's variable.
-    private static bool IsReadElsewhere(LoopStatement loop, AssignmentStatement named, BreakStatement exit)
+    // Outputs carried through unchanged and Inputs (every live register) are no
+    // reads; the variable is the tested one, not the statement's first output.
+    private static bool IsReadElsewhere(
+        LoopStatement loop, TempVariableNode variable, AssignmentStatement named, BreakStatement exit)
     {
-        TempVariableNode variable = named.Outputs.Values.OfType<TempAssignmentNode>().First().TempVariable;
         bool read = false;
         new StatementVisitor(loop.Body).Visit(statement =>
         {
@@ -1198,8 +1205,11 @@ public class HlslAstWriter : HlslWriter
             {
                 return;
             }
-            foreach (HlslTreeNode value in statement.Outputs.Values.Concat(statement.Inputs.Values)
-                .Concat(statement.HeldNodes))
+            IEnumerable<HlslTreeNode> written = statement.Outputs
+                .Where(o => !(statement.Inputs.TryGetValue(o.Key, out HlslTreeNode input)
+                    && ReferenceEquals(input, o.Value)))
+                .Select(o => o.Value);
+            foreach (HlslTreeNode value in written.Concat(statement.HeldNodes))
             {
                 if (ReferenceEquals(value, variable) || variable.IsInputOf(value))
                 {

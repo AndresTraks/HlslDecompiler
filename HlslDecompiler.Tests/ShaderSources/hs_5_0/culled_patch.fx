@@ -32,7 +32,7 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch)
 
 	float3 t1 = patch[0].position + patch[1].position + patch[2].position;
 	float3 t0 = 0.333333343 * t1;
-	float t2 = dot(frustum[0], float4(t0, 1)) > -2 && dot(frustum[1], float4(t0, 1)) > -2 && dot(frustum[2], float4(t0, 1)) > -2 && dot(frustum[3], float4(t0, 1)) > -2;
+	int t2 = dot(frustum[0], float4(t0, 1)) > -2 && dot(frustum[1], float4(t0, 1)) > -2 && dot(frustum[2], float4(t0, 1)) > -2 && dot(frustum[3], float4(t0, 1)) > -2;
 	if (t2 == 0) {
 		o.edges[0] = 0;
 		o.centre = t0;

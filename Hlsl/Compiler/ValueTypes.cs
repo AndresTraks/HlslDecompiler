@@ -297,6 +297,8 @@ internal static class ValueTypes
                 => MadeType(select.Source1 is ConstantNode ? select.Source2 : select.Source1) == true ? true : null,
             // A comparison makes a mask (all ones or zeroes), an integer.
             ComparisonNode => true,
+            // As do conditions combined: `lt; lt; and` is a mask, not a float.
+            LogicalAndOperation or LogicalOrOperation => true,
             // Raw buffers return uints; structured, typed and consumed loads take
             // the type from the resource, not the instruction.
             LoadStructuredNode { IsRaw: true } => true,

@@ -2965,6 +2965,26 @@ public sealed class NodeCompiler
                         return $"{member.Name}{swizzle}";
                     }
                 }
+                // One struct holding an array (`rig.bones[b].m`): the index counts the
+                // array member's registers.
+                if (constantBufferArray.TypeInfo.MemberInfo != null
+                    && constantBufferArray.TypeInfo.NumElements <= 1
+                    && RegisterState.TryGetIndexedStructMember(constantBufferArray.TypeInfo, arrayName,
+                        elementOffset, arrayKey.ComponentIndex,
+                        stride => CompileRegisterIndexAsElement(relativeAddress, stride),
+                        out StructMemberAccess indexedMember, out int registerInElement))
+                {
+                    if (indexedMember.IsMatrix)
+                    {
+                        int row = registerInElement - indexedMember.StartOffset / 4;
+                        swizzle = GetAstSourceSwizzleName(
+                            componentsWithIndices, indexedMember.MatrixRowWidth, promoteToVectorSize);
+                        return $"{indexedMember.MatrixRow(row)}{swizzle}";
+                    }
+                    swizzle = GetAstSourceSwizzleName(componentsWithIndices, indexedMember.Width,
+                        promoteToVectorSize, indexedMember.ComponentBase);
+                    return $"{indexedMember.Name}{swizzle}";
+                }
                 if (constantBufferArray.TypeInfo.Rows > 1)
                 {
                     // Array of matrices: element = index / rows, then the row.

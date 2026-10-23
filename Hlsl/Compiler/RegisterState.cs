@@ -1348,6 +1348,66 @@ public sealed class RegisterState
         return TryGetMemberAccessAtOffset(declaration.TypeInfo, element, target, 0, out member);
     }
 
+    /// <summary>
+    /// A relative read into a struct variable that is not an array itself: the
+    /// first array member reached at the register is subscripted with the dynamic
+    /// element (`rig.bones[b]`, from an index counting that member's registers),
+    /// then the remainder picks the member inside. The register within that
+    /// element is returned for a matrix row.
+    /// </summary>
+    public static bool TryGetIndexedStructMember(ShaderTypeInfo typeInfo, string name, int register,
+        int componentIndex, Func<int, string> elementOfStride,
+        out StructMemberAccess member, out int registerInElement)
+    {
+        member = null;
+        registerInElement = 0;
+        if (typeInfo.MemberInfo == null)
+        {
+            return false;
+        }
+        int target = register * 4 + componentIndex;
+        int offset = 0;
+        foreach (ShaderStructMemberInfo info in typeInfo.MemberInfo)
+        {
+            int width = GetTypeWidth(info.TypeInfo);
+            if (target >= offset + width)
+            {
+                offset += width;
+                continue;
+            }
+            int within = target - offset;
+            string memberName = $"{name}.{info.Name}";
+            int elements = Math.Max(info.TypeInfo.NumElements, 1);
+            if (elements <= 1)
+            {
+                // A struct member: the array may be further in.
+                return info.TypeInfo.MemberInfo != null
+                    && TryGetIndexedStructMember(info.TypeInfo, memberName, within / 4, within % 4,
+                        elementOfStride, out member, out registerInElement);
+            }
+            int stride = width / elements;
+            if (stride % 4 != 0)
+            {
+                return false;
+            }
+            string element = elementOfStride(stride / 4);
+            if (within / stride != 0)
+            {
+                element += $" + {within / stride}";
+            }
+            memberName += $"[{element}]";
+            int inElement = within % stride;
+            registerInElement = inElement / 4;
+            if (info.TypeInfo.MemberInfo != null)
+            {
+                return TryGetMemberAccessAtOffset(info.TypeInfo, memberName, inElement, 0, out member);
+            }
+            member = new StructMemberAccess(memberName, info.TypeInfo, 0);
+            return true;
+        }
+        return false;
+    }
+
     private static bool TryGetMemberAccessAtOffset(
         ShaderTypeInfo typeInfo, string name, int target, int start, out StructMemberAccess member)
     {

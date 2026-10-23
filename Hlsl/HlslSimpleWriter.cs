@@ -4091,6 +4091,23 @@ public class HlslSimpleWriter : HlslWriter
                 return member.Name;
             }
         }
+        // One struct holding an array: the index counts the array member's registers.
+        if (declaration.TypeInfo.MemberInfo != null && declaration.TypeInfo.NumElements <= 1)
+        {
+            byte structComponent = instruction.GetSourceSwizzleComponents(operandIndex)[0];
+            if (RegisterState.TryGetIndexedStructMember(declaration.TypeInfo, declaration.Name,
+                elementOffset, structComponent, stride => $"{index} / {stride}",
+                out StructMemberAccess indexed, out int registerInElement))
+            {
+                if (indexed.IsMatrix)
+                {
+                    member = null;
+                    return indexed.MatrixRow(registerInElement - indexed.StartOffset / 4);
+                }
+                member = indexed;
+                return indexed.Name;
+            }
+        }
         if (declaration.TypeInfo.Rows > 1)
         {
             // Matrix array: the index counts registers, so divide by the row count.

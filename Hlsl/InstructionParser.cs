@@ -3761,7 +3761,7 @@ public class InstructionParser
     // and none 0 or 1, which fold.
     private static bool IsLiteralWeights(HlslTreeNode[] lanes)
     {
-        return lanes.All(lane => lane is ConstantNode { Value: not 0 and not 1 })
+        return lanes.All(lane => lane is ConstantNode { Value: not 0 })
             && lanes.Select(lane => ((ConstantNode)lane).Value).Distinct().Count() > 1;
     }
 

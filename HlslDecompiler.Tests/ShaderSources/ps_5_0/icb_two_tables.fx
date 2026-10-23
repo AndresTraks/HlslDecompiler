@@ -24,5 +24,5 @@ static const float4 icb1[8] =
 
 float4 main(nointerpolation uint idx : IDX) : SV_Target
 {
-	return float4((float3)(icb0[idx + 1 & 7].x) * icb1[icb0[idx & 7].x].xyz, (float)(icb0[idx + 1 & 7].x));
+	return float4((float)(icb0[idx + 1 & 7].x) * icb1[icb0[idx & 7].x].xyz, (float)(icb0[idx + 1 & 7].x));
 }

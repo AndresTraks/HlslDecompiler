@@ -5,5 +5,5 @@ cbuffer cb : register(b0)
 
 float4 main(uint sv_vertexid : SV_VertexID) : SV_Position
 {
-	return (float4)((mask ^ 3) | (sv_vertexid & 7));
+	return (float)((mask ^ 3) | (sv_vertexid & 7));
 }

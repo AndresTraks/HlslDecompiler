@@ -21,5 +21,5 @@ float4 main(PS_IN i) : SV_Target
 		float t3 = ms.GetSamplePosition(t1).x;
 		t0 = t0 + EvaluateAttributeAtSample(i.color, t1) * (t3 * t2 + 1);
 	}
-	return float4(EvaluateAttributeCentroid(i.texcoord), EvaluateAttributeSnapped(i.texcoord, snap)) + t0 / (float4)count;
+	return float4(EvaluateAttributeCentroid(i.texcoord), EvaluateAttributeSnapped(i.texcoord, snap)) + t0 / (float)count;
 }

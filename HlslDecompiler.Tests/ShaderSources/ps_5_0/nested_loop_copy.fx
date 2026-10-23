@@ -15,7 +15,7 @@ float4 main(PS_IN i) : SV_Target
 			if (t4 == t5) {
 				break;
 			}
-			t3 = t3 + i.texcoord * (float4)(t4 + t5);
+			t3 = t3 + i.texcoord * (float)(t4 + t5);
 		}
 		t1 = t3 + float4(0, 0, 0, 1);
 	}

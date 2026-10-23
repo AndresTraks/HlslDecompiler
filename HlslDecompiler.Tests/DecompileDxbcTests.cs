@@ -331,6 +331,8 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "tbuffer_matrix_palette")]
     [TestCase("cs_5_0", "atomic_float_max_loop")]
     [TestCase("cs_5_0", "double_loop_carry")]
+    [TestCase("ps_5_0", "broadcast_convert_lanes")]
+    [TestCase("cs_5_0", "dot_broadcast_scalars")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

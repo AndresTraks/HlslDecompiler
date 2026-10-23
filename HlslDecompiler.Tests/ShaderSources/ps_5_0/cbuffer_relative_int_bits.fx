@@ -14,5 +14,5 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	int t0 = i.idx + k & 7;
-	return f[t0] * (float4)(n[t0].x) + asfloat(n[t0 ^ 1]) + (float4)(n[t0].y);
+	return f[t0] * (float)(n[t0].x) + asfloat(n[t0 ^ 1]) + (float)(n[t0].y);
 }

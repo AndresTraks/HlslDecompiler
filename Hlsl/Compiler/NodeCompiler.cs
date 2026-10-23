@@ -1663,6 +1663,17 @@ public sealed class NodeCompiler
     }
 
     /// <summary>Whether the group is one value whose text is a scalar.</summary>
+    // A dot operand that is one scalar in every lane, cast to the dot's width.
+    private string WidenedScalar(HlslTreeNode side, string compiled, int width)
+    {
+        if (side is not GroupNode group || group.Inputs.Count != width || !BroadcastsScalar(group.Inputs))
+        {
+            return compiled;
+        }
+        string bracketed = IsBracketed(compiled) || !compiled.Contains(' ') ? compiled : $"({compiled})";
+        return $"(float{width}){bracketed}";
+    }
+
     private bool BroadcastsScalar(IList<HlslTreeNode> group)
     {
         HlslTreeNode head = group[0];
@@ -2244,8 +2255,11 @@ public sealed class NodeCompiler
                             or DotProductOperation or LengthOperation
                             or FirstBitHighOperation
                         || value[0] is VectorComponentNode;
-                    // As wide as the value: `(float2)`, not `(float)`.
-                    string castType = components.Count > 1
+                    // As wide as the value: `(float2)`, not `(float)`. One value in
+                    // every lane is a scalar cast, broadcast where it is read: a
+                    // `(float3)t4` inside a lane the constructor repeats is X3014.
+                    bool oneValue = components.Skip(1).All(c => SameValue(c, components[0]));
+                    string castType = components.Count > 1 && !oneValue
                         ? convert.TargetType + components.Count
                         : convert.TargetType;
                     // utof of an int: HLSL would convert it as signed (itof), so it
@@ -2321,6 +2335,13 @@ public sealed class NodeCompiler
                     }
                     var x = Compile(components.Select(g => g.Inputs[0]), vectorSize);
                     var y = Compile(components.Select(g => g.Inputs[1]), vectorSize);
+                    // A scalar repeated across the lanes still counts each: `dp2 r,
+                    // a.xx, b.xx` is 2ab, but dot(a, b) of two scalars is ab.
+                    if (components.Count == 1 && vectorSize > 1)
+                    {
+                        x = WidenedScalar(components[0].Inputs[0], x, vectorSize);
+                        y = WidenedScalar(components[0].Inputs[1], y, vectorSize);
+                    }
                     return $"dot({x}, {y})";
                 }
             case LengthOperation _:

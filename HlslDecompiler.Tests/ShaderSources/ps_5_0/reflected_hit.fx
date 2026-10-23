@@ -24,7 +24,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 t1 = float4(reflect(t0, normalize(i.normal)), (float)stepCount);
 	float4 t2 = 0;
 	for (int t3 = 1; stepCount >= t3; t3 = t3 + 1) {
-		float3 t4 = t1.xyz * ((float3)t3 * maxDistance / t1.w) + i.texcoord1;
+		float3 t4 = t1.xyz * ((float)t3 * maxDistance / t1.w) + i.texcoord1;
 		float t5 = dot(transpose(viewProjection)[3], float4(t4, 1));
 		float2 t6 = float2(0.5, -0.5) * (mul(float4(t4, 1), (float4x2)viewProjection) / t5) + 0.5;
 		if (any(t6 > 1) || any(t6 < 0)) {

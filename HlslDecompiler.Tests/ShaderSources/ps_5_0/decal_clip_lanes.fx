@@ -31,7 +31,7 @@ float4 main(PS_IN i) : SV_Target
 	if (t7.z || t7.y || t7.x) {
 		discard;
 	}
-	float2 t8 = (float2(t1 + (float)(tile % tilesPerRow), t2 + (float)(tile / tilesPerRow)) + 0.5) / (float2)tilesPerRow;
+	float2 t8 = (float2(t1 + (float)(tile % tilesPerRow), t2 + (float)(tile / tilesPerRow)) + 0.5) / (float)tilesPerRow;
 	float3 t9 = normalize(cross(ddy_coarse(t0), ddx_coarse(t0)));
 	return float4(atlas.Sample(s, t8).xyz, saturate((dot(t9, i.normal) - fadeAngle) / (1 - fadeAngle)) * atlas.Sample(s, t8).w);
 }

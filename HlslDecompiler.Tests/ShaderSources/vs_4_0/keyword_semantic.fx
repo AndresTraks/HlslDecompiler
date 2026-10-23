@@ -14,7 +14,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.sv_position = i.blendweight * (float4)i.blendindices.x + asfloat(i.blendindices.w);
+	o.sv_position = i.blendweight * (float)i.blendindices.x + asfloat(i.blendindices.w);
 	o.out_ = i.blendweight.x > 0.5 ? asint(i.blendweight.y) : i.blendindices.y;
 
 	return o;

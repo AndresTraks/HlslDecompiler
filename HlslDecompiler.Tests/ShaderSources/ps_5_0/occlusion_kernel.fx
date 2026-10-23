@@ -48,5 +48,5 @@ float4 main(PS_IN i) : SV_Target
 		float t6 = t1.x - t5;
 		t3 = t3 + (t6 < radius && bias < t6 ? saturate(dot(t1.yzw, icb1[t4 & 7].xyz)) : 0);
 	}
-	return 1 - t3 / (float4)sampleCount;
+	return 1 - t3 / (float)sampleCount;
 }

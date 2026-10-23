@@ -13,7 +13,7 @@ float4 main(PS_IN i) : SV_Target
 	b[i.idx] = 5;
 	int2 t1;
 	t1.x = (uint)i.sv_position.x;
-	uint2 t2 = (uint2)i.sv_position.y;
+	uint2 t2 = (uint)i.sv_position.y;
 	t1.y = (uint)i.sv_position.y;
 	float t3 = rt[t1].x;
 	rt[int2(t1.x, t2.x)] = 2;

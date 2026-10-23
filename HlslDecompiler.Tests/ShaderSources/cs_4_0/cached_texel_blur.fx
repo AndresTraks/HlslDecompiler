@@ -26,5 +26,5 @@ void main(CS_IN i)
 		float4 t3 = g0[min(t2 + i.sv_groupindex, 63)];
 		t1 = t1 + t3 * weights[t2];
 	}
-	output[t0] = t1 / (float4)width;
+	output[t0] = t1 / (float)width;
 }

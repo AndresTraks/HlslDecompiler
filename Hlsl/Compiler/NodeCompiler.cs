@@ -1294,6 +1294,9 @@ public sealed class NodeCompiler
             BitsToDoubleOperation => true,
             ComparisonNode => false,
             IndexableTempLoadNode load => !load.IsIntegerElement,
+            // A texel of a float view (a sample into a register a switch shares).
+            TextureLoadOutputNode texel => !texel.IsIntegerTexel,
+            ResourceLoadNode load => load.IsIntegerTexel == false,
             // A select of two floats is one, whatever its recorded facts say.
             MoveConditionalOperation select when IsFloatValued(select.Source1)
                 && IsFloatValued(select.Source2) => true,

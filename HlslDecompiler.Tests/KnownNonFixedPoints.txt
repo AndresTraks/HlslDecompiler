@@ -53,6 +53,7 @@ reworded cs_5_0/int_to_float_uint_operand
 reworded cs_5_0/firstbithigh_uint_operand
 reworded cs_5_0/luminance_histogram_select
 reworded cs_5_0/bitonic_swap_masks
+reworded cs_5_0/switch_sample_into_selector
 reworded ds_5_0/isoline_curve
 reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants

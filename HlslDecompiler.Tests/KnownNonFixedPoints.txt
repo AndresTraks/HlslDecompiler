@@ -121,6 +121,7 @@ reworded ps_5_0/cascade_select_blend
 reworded ps_5_0/oit_counter_struct_store
 reworded ps_5_0/sample_position_loop
 reworded ps_5_0/broadcast_convert_lanes
+reworded ps_5_0/edge_select_compare
 reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count

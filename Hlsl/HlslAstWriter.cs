@@ -3447,6 +3447,7 @@ public class HlslAstWriter : HlslWriter
             && nodes.All(node => ValueTypes.IsUnsignedValue(node) == true);
         // A condition only conditions read (as HoldsOnlyACondition in the finalizer).
         bool isBool = nodes.All(node => node is ComparisonNode or LogicalAndOperation or LogicalOrOperation
+                or GreaterEqualOperation
             && node.Outputs.Count != 0
             && node.Outputs.All(reader => (reader is MoveConditionalOperation select
                     && ReferenceEquals(select.Condition, node))

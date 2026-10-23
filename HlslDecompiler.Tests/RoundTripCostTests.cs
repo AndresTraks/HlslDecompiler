@@ -65,6 +65,12 @@ public class RoundTripCostTests
             + "fxc takes the two absolute values apart. What the fixture is for "
             + "costs nothing: the signed % by a uint size is cast to int, where "
             + "without the cast it was unsigned and wrong for a negative dividend."),
+        ["ps_5_0/edge_select_compare"] = (47,
+            "Five instructions, the lane-split class: the original pairs the luma "
+            + "neighbours' min, max and differences in two-lane instructions "
+            + "(`min r2.xy, r1.ywyy, r1.xzxx`), the decompilation computes each "
+            + "lane alone. What the fixture is for costs nothing: the selects "
+            + "compared by `>=` are bracketed."),
         ["ps_5_0/decal_clip_lanes"] = (44,
             "Four instructions, the lane-split class: the w lane of one div is its "
             + "own `t5 / t5`, the box test's three lanes are rebuilt from scalars, "

@@ -2305,8 +2305,9 @@ public sealed class NodeCompiler
                 }
             case GreaterEqualOperation _:
                 {
-                    var value1 = Compile(components.Select(g => g.Inputs[0]));
-                    var value2 = Compile(components.Select(g => g.Inputs[1]));
+                    // Bracketed as a comparison's are: `(b ? x : y) >= (b ? z : w)`.
+                    var value1 = CompileOperand(components.Select(g => g.Inputs[0]));
+                    var value2 = CompileOperand(components.Select(g => g.Inputs[1]));
 
                     return $"{value1} >= {value2}";
                 }

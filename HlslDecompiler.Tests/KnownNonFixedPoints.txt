@@ -15,6 +15,7 @@ reordered ps_5_0/light_list
 reordered ps_5_0/packed_input_cross
 reordered ps_5_0/reflected_hit
 reordered ps_5_0/parallax_while_and
+reordered ps_5_0/decal_clip_lanes
 reworded cs_4_0/bitpack
 reworded cs_4_0/particle_update
 reworded cs_4_1/groupshared_reduce
@@ -51,6 +52,7 @@ reworded cs_5_0/unsigned_min_int_operands
 reworded cs_5_0/int_to_float_uint_operand
 reworded cs_5_0/firstbithigh_uint_operand
 reworded cs_5_0/luminance_histogram_select
+reworded cs_5_0/bitonic_swap_masks
 reworded ds_5_0/isoline_curve
 reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants

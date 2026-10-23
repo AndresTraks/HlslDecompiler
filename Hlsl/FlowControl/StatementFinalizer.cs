@@ -1769,8 +1769,13 @@ public class StatementFinalizer
         {
             return false;
         }
-        if (!readers.All(reader => reader is MoveConditionalOperation select
-            && ReferenceEquals(select.Condition, value)))
+        // Or compared with another mask, `ieq r0.w, r0.w, r0.y`: as a bool, since
+        // an int holds true as 1, not -1.
+        if (!readers.All(reader => (reader is MoveConditionalOperation select
+                && ReferenceEquals(select.Condition, value))
+            || reader is LogicalAndOperation or LogicalOrOperation
+            || (reader is ComparisonNode { Comparison: IfComparison.EQ or IfComparison.NE } masks
+                && (ReferenceEquals(masks.Left, value) ? masks.Right : masks.Left) is ComparisonNode)))
         {
             return false;
         }

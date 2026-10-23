@@ -1358,6 +1358,10 @@ public sealed class NodeCompiler
     /// </summary>
     private bool _assignedDirectlyToInteger;
 
+    // Assigning to a bool variable: comparisons construct a boolN, as an intN
+    // would convert to it (`ine`) and back.
+    private bool _assigningToBool;
+
     private static HlslTreeNode FactoredOfFoldedMultiply(HlslTreeNode node)
     {
         return node is not MultiplyOperation multiply
@@ -1549,6 +1553,9 @@ public sealed class NodeCompiler
             && components.Any(IsFloatValued) && !components.All(IsFloatValued);
         string type = components.All(IsDoubleValued)
             ? "double"
+            : _assigningToBool
+                && components.All(c => c is ComparisonNode or LogicalAndOperation or LogicalOrOperation)
+                ? "bool"
             : reinterpretFloats || (_assigningToInteger && !components.Any(IsFloatValued))
                 ? integerType
                 : "float";
@@ -3327,9 +3334,11 @@ public sealed class NodeCompiler
             bool wasAssigningToInteger = _assigningToInteger;
             bool wasAssigningToUnsigned = _assigningToUnsigned;
             bool wasAssignedDirectly = _assignedDirectlyToInteger;
+            bool wasAssigningToBool = _assigningToBool;
             _assigningToInteger = tempAssignment.TempVariable.IsInteger;
             _assigningToUnsigned = tempAssignment.TempVariable.IsUnsigned;
             _assignedDirectlyToInteger = tempAssignment.TempVariable.IsInteger;
+            _assigningToBool = tempAssignment.TempVariable.IsBool;
             int wasTopDepth = _topDepth;
             _topDepth = _compileDepth + 1;
             HashSet<HlslTreeNode> wasAssignedVariables = _assignedVariables;
@@ -3348,6 +3357,7 @@ public sealed class NodeCompiler
                 _assigningToInteger = wasAssigningToInteger;
                 _assigningToUnsigned = wasAssigningToUnsigned;
                 _assignedDirectlyToInteger = wasAssignedDirectly;
+                _assigningToBool = wasAssigningToBool;
                 _topDepth = wasTopDepth;
                 _assignedVariables = wasAssignedVariables;
             }
@@ -3667,6 +3677,11 @@ public sealed class NodeCompiler
             : 0;
     }
 
+    private static bool IsBoolSide(HlslTreeNode node) => node
+        is ComparisonNode
+        or TempVariableNode { IsBool: true }
+        or TempAssignmentNode { TempVariable.IsBool: true };
+
     private string CompileComparison(List<HlslTreeNode> components, ComparisonNode first)
     {
         // A bool tested against zero is the bool itself: `flag != 0` costs a movc.
@@ -3681,14 +3696,25 @@ public sealed class NodeCompiler
             return first.Comparison == IfComparison.NE ? flag : $"!{flag}";
         }
         // Two masks compared for equality compare as bools: `(a == b) == (c < d)`.
-        // Only when both sides are comparisons.
+        // Only when both sides are comparisons, or one is a bool holding one: an
+        // int holds true as 1, not the mask's -1.
         if (first.Comparison is IfComparison.EQ or IfComparison.NE
             && components.Cast<ComparisonNode>().All(
-                c => c.Left is ComparisonNode && c.Right is ComparisonNode))
+                c => IsBoolSide(c.Left) && IsBoolSide(c.Right))
+            && components.Cast<ComparisonNode>().All(
+                c => c.Left is ComparisonNode || c.Right is ComparisonNode))
         {
             string leftBool = Compile(components.Cast<ComparisonNode>().Select(c => c.Left));
             string rightBool = Compile(components.Cast<ComparisonNode>().Select(c => c.Right));
-            return $"({leftBool}) {first.Comparison.ToHlslString()} ({rightBool})";
+            if (first.Left is ComparisonNode)
+            {
+                leftBool = $"({leftBool})";
+            }
+            if (first.Right is ComparisonNode)
+            {
+                rightBool = $"({rightBool})";
+            }
+            return $"{leftBool} {first.Comparison.ToHlslString()} {rightBool}";
         }
         // CompileOperand brackets bitwise operands: == binds tighter than &.
         // Constants in an unsigned comparison are uint, avoiding a mismatch warning.

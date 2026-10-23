@@ -65,6 +65,12 @@ public class RoundTripCostTests
             + "fxc takes the two absolute values apart. What the fixture is for "
             + "costs nothing: the signed % by a uint size is cast to int, where "
             + "without the cast it was unsigned and wrong for a negative dividend."),
+        ["ps_5_0/decal_clip_lanes"] = (44,
+            "Four instructions, the lane-split class: the w lane of one div is its "
+            + "own `t5 / t5`, the box test's three lanes are rebuilt from scalars, "
+            + "and each utof/add pair of the atlas cell is split. What the fixture "
+            + "is for costs nothing: the clip's comparisons read only by `||` are a "
+            + "bool3 built as `bool3(...)` (46 as an int3, 45 as bool3 = int3(...))."),
         ["ps_5_0/parallax_while_and"] = (35,
             "One instruction: the loop steps the coordinate and samples at the new "
             + "one, and the decompilation samples at the step's expression "

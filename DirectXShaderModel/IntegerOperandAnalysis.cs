@@ -15,6 +15,7 @@ public sealed class IntegerOperandAnalysis
     private HashSet<RegisterComponentKey> _convertedToFloat;
     private HashSet<RegisterComponentKey> _floatReadRegisters;
     private HashSet<RegisterComponentKey> _floatMovedRegisters;
+    private readonly HashSet<int> _sharedMemoryBeingTyped = [];
 
     /// <summary>How many moves a value is followed through; bounds the search.</summary>
     private const int MaximumCarryDepth = 8;
@@ -1220,9 +1221,23 @@ public sealed class IntegerOperandAnalysis
         // Groupshared memory has no reflection data; the declaration rule answers.
         if (type == OperandType.ThreadGroupSharedMemory)
         {
-            return IsIntegerThreadGroupSharedMemory(load.GetParamRegisterNumber(ResourceIndex))
-                ? StoredType.Integer
-                : StoredType.Float;
+            // A store of what the array itself holds (a sort's swap) says nothing;
+            // the array's other stores decide. Asking again would not end.
+            int register = load.GetParamRegisterNumber(ResourceIndex);
+            if (!_sharedMemoryBeingTyped.Add(register))
+            {
+                return StoredType.Unknown;
+            }
+            try
+            {
+                return IsIntegerThreadGroupSharedMemory(register)
+                    ? StoredType.Integer
+                    : StoredType.Float;
+            }
+            finally
+            {
+                _sharedMemoryBeingTyped.Remove(register);
+            }
         }
         D3DShaderInputType[] inputTypes = type switch
         {

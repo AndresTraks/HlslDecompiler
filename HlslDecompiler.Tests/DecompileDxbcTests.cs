@@ -321,6 +321,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "atomic_select_immediate")]
     [TestCase("ps_5_0", "parallax_while_and")]
     [TestCase("cs_5_0", "luminance_histogram_select")]
+    [TestCase("cs_5_0", "bitonic_swap_masks")]
+    [TestCase("ps_5_0", "decal_clip_lanes")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

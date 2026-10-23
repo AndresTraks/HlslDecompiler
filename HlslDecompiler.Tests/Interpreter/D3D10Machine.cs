@@ -241,8 +241,11 @@ public class D3D10Machine
 
     private void LoadConstants()
     {
+        // Not a tbuffer's: ld reads those (the texture stand-in), and its index is a
+        // t slot, so filling cb{index} overwrote a cbuffer, in reflection order.
         foreach (D3D10ConstantDeclaration declaration
-            in _shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>())
+            in _shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>()
+                .Where(d => !d.IsTextureBuffer))
         {
             uint[][] buffer = Buffer(declaration.RegisterIndex);
             // Each word named by its position in the variable, so a different

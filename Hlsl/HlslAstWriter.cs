@@ -980,7 +980,9 @@ public class HlslAstWriter : HlslWriter
             }
             && CreateIntegerOperandAnalysis()
                 .IsUnsignedThreadGroupSharedMemory(resourceKey.Number);
-        string value = _compiler.CompileIntegerArgument(valueNode, unsigned);
+        string value = atomic.IsUnsigned is bool isUnsignedMinMax
+            ? _compiler.CompileMinMaxArgument(valueNode, isUnsignedMinMax)
+            : _compiler.CompileIntegerArgument(valueNode, unsigned);
         string compare = compareNode == null
             ? null
             : _compiler.CompileIntegerArgument(compareNode, unsigned);

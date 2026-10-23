@@ -15,7 +15,7 @@ struct PS_IN
 float4 main(PS_IN i) : SV_Target
 {
 	int3 t0 = int3((int2)i.sv_position.xy, 0);
-	float2 t1 = 0.0000305180438 * float2((float)(gbuffer1.Load(t0).x & 65535), (float)((uint)gbuffer1.Load(t0).x >> 16)) - 1;
+	float2 t1 = 0.0000305180438 * float2((float)(gbuffer1.Load(t0).x & 65535), (float)(gbuffer1.Load(t0).x >> 16)) - 1;
 	float t2 = 1 - abs(t1.x) - abs(t1.y);
 	float t3 = max(-t2, 0);
 	float2 t4 = t1 + (t1 >= 0 ? -t3 : t3);

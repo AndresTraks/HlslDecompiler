@@ -1256,6 +1256,28 @@ public sealed class NodeCompiler
         return unsigned ? $"asuint({compiled})" : $"asint({compiled})";
     }
 
+    // An atomic min or max takes the overload from the value's type, so a value
+    // HLSL types the other way is cast.
+    public string CompileMinMaxArgument(HlslTreeNode node, bool isUnsigned)
+    {
+        string compiled = CompileIntegerArgument(node, isUnsigned);
+        if (IsFloatValued(node))
+        {
+            return compiled;
+        }
+        if (!isUnsigned)
+        {
+            return SignedOperand([node], compiled);
+        }
+        // A uint destination makes it unsigned too, but its type is not to hand; a
+        // literal that is not negative reads the same either way.
+        if (IsUnsignedAlready(node) || node is ConstantNode { Value: >= 0 })
+        {
+            return compiled;
+        }
+        return $"(uint){(IsBracketed(compiled) || IsPlainName(compiled) ? compiled : $"({compiled})")}";
+    }
+
     // Whether a value is a float, from the value itself: its readers here are
     // integer instructions by construction.
     public bool IsFloatValued(HlslTreeNode node)
@@ -1838,6 +1860,11 @@ public sealed class NodeCompiler
                             ? value
                             : $"({value})";
                         value = $"(uint{size}){cast}";
+                    }
+                    // firstbit_shi counts from the sign: a uint value would pick firstbit_hi.
+                    else if (!high.IsUnsigned)
+                    {
+                        value = SignedOperand(components.Select(g => g.Inputs[0]), value);
                     }
                     return $"firstbithigh({value})";
                 }
@@ -3772,6 +3799,7 @@ public sealed class NodeCompiler
                 return IsUnsignedRegister(register);
             // A uint buffer element: `x / (int)s[i]` is signed only through the cast.
             case LoadStructuredNode { IsUnsignedElement: true }:
+            case ResourceLoadNode { IsUnsignedTexel: true }:
                 return true;
             // The branches, not the condition.
             case MoveConditionalOperation select:

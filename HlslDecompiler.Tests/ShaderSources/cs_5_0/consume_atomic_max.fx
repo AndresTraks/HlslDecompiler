@@ -5,5 +5,5 @@ RWStructuredBuffer<uint> totals : register(u1);
 void main()
 {
 	uint t0 = queued.Consume();
-	InterlockedMax(totals[0], t0);
+	InterlockedMax(totals[0], (uint)t0);
 }

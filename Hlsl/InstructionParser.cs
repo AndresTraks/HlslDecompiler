@@ -721,6 +721,14 @@ public class InstructionParser
                             Coordinates = coordinates,
                             Compare = hasCompare ? GetInputs(instruction, 0)[first + 1] : null,
                             Original = original,
+                            IsUnsigned = instruction.Opcode switch
+                            {
+                                D3D10Opcode.AtomicUMax or D3D10Opcode.AtomicUMin
+                                    or D3D10Opcode.ImmAtomicUMax or D3D10Opcode.ImmAtomicUMin => true,
+                                D3D10Opcode.AtomicIMax or D3D10Opcode.AtomicIMin
+                                    or D3D10Opcode.ImmAtomicIMax or D3D10Opcode.ImmAtomicIMin => false,
+                                _ => null,
+                            },
                         });
                         if (original != null)
                         {
@@ -3386,6 +3394,7 @@ public class InstructionParser
         {
             SampleOffsets = instruction.SampleOffsets,
             IsIntegerTexel = definition?.IsIntegerReturnType,
+            IsUnsignedTexel = definition?.ResourceReturnType == D3DResourceReturnType.UInt,
         };
     }
 

@@ -48,6 +48,7 @@ reworded cs_5_0/while_and_condition
 reworded cs_5_0/signed_min_uint_operands
 reworded cs_5_0/unsigned_min_int_operands
 reworded cs_5_0/int_to_float_uint_operand
+reworded cs_5_0/firstbithigh_uint_operand
 reworded ds_5_0/isoline_curve
 reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants
@@ -108,6 +109,7 @@ reworded ps_5_0/parallax_steps
 reworded ps_5_0/split_transform
 reworded ps_5_0/tangent_lighting
 reworded ps_5_0/typed_view_load
+reworded ps_5_0/uint_texel_signed_max
 reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count

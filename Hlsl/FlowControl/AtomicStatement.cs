@@ -30,6 +30,11 @@ public class AtomicStatement : IStatement
     /// </summary>
     public TempVariableNode Original { get; init; }
     public string MethodName { get; }
+    /// <summary>
+    /// For min and max, whether the opcode is umin/umax; null for the others.
+    /// HLSL picks the overload from the value's type.
+    /// </summary>
+    public bool? IsUnsigned { get; init; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 

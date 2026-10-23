@@ -3593,6 +3593,13 @@ public class HlslSimpleWriter : HlslWriter
                     {
                         value = $"(uint){value}";
                     }
+                    else if (bits == null
+                        && instruction.Opcode is D3D10Opcode.AtomicIMax or D3D10Opcode.AtomicIMin
+                            or D3D10Opcode.ImmAtomicIMax or D3D10Opcode.ImmAtomicIMin)
+                    {
+                        // A scalar; atomic_imin has no destination to size a cast by.
+                        value = IsUnsignedOperand(instruction, valueIndex) ? $"(int){value}" : value;
+                    }
                     string arguments = hasCompare
                         ? $"{GetOperandName(instruction, first + 2)}, {value}"
                         : value;

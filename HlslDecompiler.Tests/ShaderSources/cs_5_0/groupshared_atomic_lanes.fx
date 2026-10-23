@@ -19,7 +19,7 @@ void main(CS_IN i)
 	int t0 = v.Load(64 * i.sv_groupid.x + i.sv_groupthreadid.x).x;
 	int t1 = t0 & 7;
 	InterlockedAdd(g0[t1].x, 1);
-	InterlockedMax(g0[t1].y, t0);
+	InterlockedMax(g0[t1].y, (uint)t0);
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupthreadid.x < 8) {
 		o[i.sv_groupid.x * 8 + i.sv_groupthreadid.x] = g0[i.sv_groupthreadid.x].xy;

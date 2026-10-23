@@ -17,5 +17,7 @@ public class FirstBitHighOperation : ConsumerOperation
     /// </summary>
     public bool IsUnsigned { get; }
 
+    protected override bool IsUnsignedVariant => IsUnsigned;
+
     public override string Mnemonic => "firstbithigh";
 }

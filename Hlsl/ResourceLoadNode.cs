@@ -41,6 +41,9 @@ public class ResourceLoadNode : HlslTreeNode, IHasComponentIndex
     // null where there is no declaration.
     public bool? IsIntegerTexel { get; init; }
 
+    // A uint view: HLSL types the load uint, which makes arithmetic over it unsigned.
+    public bool IsUnsignedTexel { get; init; }
+
     public override string ToString()
     {
         return $"load({Resource}, {string.Join(", ", Address.Select(a => a.ToString()))})";

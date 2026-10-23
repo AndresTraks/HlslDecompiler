@@ -317,6 +317,8 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "atomic_minmax_uint_uniform")]
     [TestCase("ps_5_0", "uint_texel_signed_max")]
     [TestCase("cs_5_0", "firstbithigh_uint_operand")]
+    [TestCase("cs_5_0", "step_read_old_by_store")]
+    [TestCase("cs_5_0", "atomic_select_immediate")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

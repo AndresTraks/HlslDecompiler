@@ -578,6 +578,37 @@ public class StatementFinalizer
                     feeds[reader.Key].Add(fed.Key);
                 }
             }
+            // A statement holding a mixed reader by value (a store of
+            // `and(ult(r0.y, x), 1) + umin(x, r0.y)`) is one too; no register keeps it.
+            foreach (var fed in newAssignments)
+            {
+                statement.Inputs.TryGetValue(fed.Key, out HlslTreeNode oldInput);
+                TempVariableNode own = oldInput is TempAssignmentNode assigned
+                    ? assigned.TempVariable
+                    : GetExistingVariable(oldInput);
+                HlslTreeNode old = own != null && Reads(fed.Value, own) ? own
+                    : oldInput != null && oldInput.IsInputOf(fed.Value) ? oldInput
+                    : null;
+                if (old == null)
+                {
+                    continue;
+                }
+                new StatementVisitor(_statements).Visit(holder =>
+                {
+                    foreach (HlslTreeNode root in holder.HeldNodes)
+                    {
+                        if (root != null && !ReferenceEquals(root, fed.Value)
+                            && fed.Value.IsInputOf(root) && ReadsAvoiding(root, old, fed.Value))
+                        {
+                            if (!mixedReaders.TryGetValue(fed.Key, out List<HlslTreeNode> readers))
+                            {
+                                mixedReaders[fed.Key] = readers = [];
+                            }
+                            readers.Add(root);
+                        }
+                    }
+                });
+            }
             // Likewise for output registers. An output whose value is the temp's own
             // is excluded; the sort's overwrite rule handles it.
             var outputFeeds = new Dictionary<RegisterComponentKey, List<RegisterComponentKey>>();
@@ -606,6 +637,17 @@ public class StatementFinalizer
                 if (tempValue is TempVariableNode && tempInputAssignment == null && tempInputVariable == null
                     && !tempValue.Outputs.Any(usage => usage is PhiNode))
                 {
+                    continue;
+                }
+                // Read only by mixed readers, which keep the expression: assigning it
+                // would overwrite the old value they still read.
+                if (mixedReaders.TryGetValue(newAssignment.Key, out List<HlslTreeNode> mixedRoots)
+                    && tempValue.Outputs.Count != 0
+                    && tempValue.Outputs.All(usage => usage is not PhiNode
+                        && mixedRoots.Any(root => ReferenceEquals(root, usage) || usage.IsInputOf(root)))
+                    && !IsRenderedByAnyStatement(tempValue))
+                {
+                    statement.Outputs.Remove(newAssignment.Key);
                     continue;
                 }
                 if (doesOutputExitStatement || tempInputAssignment != null)

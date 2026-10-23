@@ -710,10 +710,18 @@ public class InstructionParser
                         TempVariableNode original = keepsOriginal
                             ? new TempVariableNode { IsInteger = true, VariableSize = 1 }
                             : null;
+                        HlslTreeNode atomicValue = GetInputs(instruction, 0)[first + (hasCompare ? 2 : 1)];
+                        // Atomics read integers; a statement, so the reader walk does
+                        // not see it (a movc's `l(9)` arm would print as a float).
+                        _storedTypes[atomicValue] = true;
+                        if (hasCompare)
+                        {
+                            _storedTypes[GetInputs(instruction, 0)[first + 1]] = true;
+                        }
                         InsertStatement(new AtomicStatement(
                             destination,
                             address,
-                            GetInputs(instruction, 0)[first + (hasCompare ? 2 : 1)],
+                            atomicValue,
                             instruction.Opcode.AtomicMethodName(),
                             ActiveOutputs)
                         {

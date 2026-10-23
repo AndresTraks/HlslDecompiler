@@ -3523,6 +3523,26 @@ public sealed class NodeCompiler
             return false;
         }
         HlslTreeNode address = resourceLoad.Address.First();
+        // An array of matrices: `ld` at 3 * b + k is register (column or row) k of
+        // element b, as a cbuffer's relative read is.
+        if (array.TypeInfo.Rows > 1 && array.VariableOffset == 0)
+        {
+            int registerOffset = 0;
+            if (address is AddOperation { Addend2: ConstantNode { IntegerValue: int offset } } add
+                && offset >= 0 && offset < array.RegistersPerElement)
+            {
+                (address, registerOffset) = (add.Addend1, offset);
+            }
+            else if (address is AddOperation { Addend1: ConstantNode { IntegerValue: int first } } addFirst
+                && first >= 0 && first < array.RegistersPerElement)
+            {
+                (address, registerOffset) = (addFirst.Addend2, first);
+            }
+            string matrixElement = CompileRegisterIndexAsElement(address, array.RegistersPerElement);
+            compiled = RegisterState.MatrixRegisterComponents(
+                array.TypeInfo, $"{array.Name}[{matrixElement}]", registerOffset, swizzle);
+            return true;
+        }
         string index = array.RegistersPerElement > 1
             ? CompileRegisterIndexAsElement(address, array.RegistersPerElement)
             : CompileAsInteger([address]);

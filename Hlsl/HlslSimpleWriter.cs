@@ -5044,6 +5044,15 @@ public class HlslSimpleWriter : HlslWriter
             {
                 index = $"({index} - {first})";
             }
+            // An array of matrices: the register is a row (or column) of an element.
+            if (array.TypeInfo.Rows > 1)
+            {
+                string element = $"{array.Name}[{index} / {array.RegistersPerElement}]";
+                string row = $"{index} % {array.RegistersPerElement}";
+                return array.TypeInfo.ParameterClass == ParameterClass.MatrixRows
+                    ? $"{element}[{row}]"
+                    : $"transpose({element})[{row}]";
+            }
             if (array.RegistersPerElement > 1)
             {
                 index = $"{index} / {array.RegistersPerElement}";

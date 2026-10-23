@@ -328,6 +328,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "switch_sample_into_selector")]
     [TestCase("ps_5_0", "oit_counter_struct_store")]
     [TestCase("ps_5_0", "sample_position_loop")]
+    [TestCase("vs_4_0", "tbuffer_matrix_palette")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

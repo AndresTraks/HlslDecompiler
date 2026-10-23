@@ -257,7 +257,11 @@ public class StatementFinalizer
         if (copy.IsInteger != source.IsInteger || copy.IsUnsigned != source.IsUnsigned
             || copy.IsBits != source.IsBits || copy.IsDouble != source.IsDouble
             || copy.IsBool != source.IsBool || copy.IsHalf != source.IsHalf
-            || IsLoopClauseVariable(copy) || IsLoopClauseVariable(source))
+            || IsLoopClauseVariable(copy) || IsLoopClauseVariable(source)
+            // An atomic's out variable is declared at the call: merged with a
+            // loop's `cur = prev`, the call redeclared cur inside the loop.
+            || statements.Any(s => s is AtomicStatement atomic
+                && (ReferenceEquals(atomic.Original, copy) || ReferenceEquals(atomic.Original, source))))
         {
             return false;
         }

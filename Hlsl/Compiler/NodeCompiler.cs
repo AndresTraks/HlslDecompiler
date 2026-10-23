@@ -3754,6 +3754,19 @@ public sealed class NodeCompiler
         {
             _assigningToUnsigned = wasAssigningToUnsigned;
         }
+        // A float comparison of an integer variable reads its bits, as float
+        // arithmetic does: `asfloat(cur) >= x`, not a conversion.
+        if (!first.IsInteger && !first.IsBitsTest)
+        {
+            if (components.Cast<ComparisonNode>().All(c => IsIntegerVariableReadAsFloat(c.Left)))
+            {
+                left = $"asfloat({left})";
+            }
+            if (components.Cast<ComparisonNode>().All(c => IsIntegerVariableReadAsFloat(c.Right)))
+            {
+                right = $"asfloat({right})";
+            }
+        }
         // HLSL takes signedness from the operands; one unsigned side suffices. The
         // cast goes on a non-constant side (`(uint)0 <= x` draws a warning) and is
         // as wide as the comparison (X3014).

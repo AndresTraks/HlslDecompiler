@@ -335,6 +335,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "dot_broadcast_scalars")]
     [TestCase("ps_5_0", "edge_select_compare")]
     [TestCase("cs_5_0", "struct_member_array_index")]
+    [TestCase("vs_5_0", "struct_joint_index")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

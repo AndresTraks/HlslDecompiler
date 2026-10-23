@@ -67,7 +67,21 @@ public sealed class MatrixMultiplicationCompiler
             return CompileStructured(context);
         }
         string matrixName = context.MatrixDeclaration.Name;
-        if (context.ElementIndexNode != null)
+        ShaderTypeInfo declared = context.MatrixDeclaration.TypeInfo;
+        // One struct whose member array the index subscripts: `sk.joints[j].m`,
+        // the whole path at once.
+        StructMemberAccess indexed = null;
+        bool indexedMember = context.ElementIndexNode != null && !context.ElementIndexCountsElements
+            && declared.MemberInfo != null && declared.NumElements <= 1
+            && RegisterState.TryGetIndexedStructMember(declared, matrixName, context.FirstRowRegister, 0,
+                stride => nodeCompiler.CompileRegisterIndexAsElement(context.ElementIndexNode, stride),
+                out indexed, out _)
+            && indexed.IsMatrix;
+        if (indexedMember)
+        {
+            matrixName = indexed.Name;
+        }
+        else if (context.ElementIndexNode != null)
         {
             // The address register counts registers; divide by registers per element.
             string element = context.ElementIndexCountsElements
@@ -84,7 +98,10 @@ public sealed class MatrixMultiplicationCompiler
         {
             matrixName = $"{matrixName}[{element}]";
         }
-        matrixName += context.MemberPath;
+        if (!indexedMember)
+        {
+            matrixName += context.MemberPath;
+        }
         ShaderTypeInfo matrixType = context.MatrixTypeInfo ?? context.MatrixDeclaration.TypeInfo;
         // A row major matrix packs the other way, so the same dot products are the
         // other multiplication: `mul(v, M)` instead of `mul(M, v)`.

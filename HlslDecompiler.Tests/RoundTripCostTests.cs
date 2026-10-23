@@ -65,6 +65,12 @@ public class RoundTripCostTests
             + "fxc takes the two absolute values apart. What the fixture is for "
             + "costs nothing: the signed % by a uint size is cast to int, where "
             + "without the cast it was unsigned and wrong for a negative dividend."),
+        ["vs_5_0/struct_joint_index"] = (37,
+            "Seven instructions: fxc scales each joint index to registers once "
+            + "(`ishl r0, v1, 2`), the decompilation names that `int4 t0 = joints * 4` "
+            + "and divides it back in every subscript, `sk.joints[t0.x / 4]`. What the "
+            + "fixture is for costs nothing: the matrix member of a struct's array is "
+            + "named through the array, not as an array of the struct."),
         ["ps_5_0/edge_select_compare"] = (47,
             "Five instructions, the lane-split class: the original pairs the luma "
             + "neighbours' min, max and differences in two-lane instructions "

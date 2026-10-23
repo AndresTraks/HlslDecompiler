@@ -130,3 +130,4 @@ reworded vs_4_0/dual_quaternion_skin
 reworded vs_4_0/integer_inputs
 reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members
+reworded vs_5_0/struct_joint_index

@@ -175,6 +175,7 @@ public class MatrixMultiplicationGrouper
             ElementIndexCountsElements = firstMatrixRow[0] is RelativeAddressNode { IndexCountsElements: true },
             MemberPath = rowMatrix.MemberPath,
             MatrixTypeInfo = rowMatrix.MatrixType,
+            FirstRowRegister = GetRegisterOffset(matrix, firstMatrixRow[0]),
         };
     }
 
@@ -315,6 +316,15 @@ public class MatrixMultiplicationGrouper
             }
         }
         return vectorSwizzled;
+    }
+
+    // The first row's register within the variable.
+    private int GetRegisterOffset(ConstantDeclaration matrix, HlslTreeNode firstRow)
+    {
+        RegisterKey key = RowKey(firstRow).RegisterKey;
+        return key is D3D10RegisterKey d3d10Key
+            ? _registers.GetConstantBufferElementOffset(d3d10Key, matrix)
+            : ((D3D9RegisterKey)key).Number - matrix.RegisterIndex;
     }
 
     // The array element the rows belong to, or null if not an array.
@@ -567,6 +577,9 @@ public class MatrixMultiplicationContext
     public bool ElementIndexCountsElements { get; init; }
     // ".world" for a struct's matrix member.
     public string MemberPath { get; init; }
+    // The first row's register within the variable, which picks the member of a
+    // struct whose array the run-time index subscripts.
+    public int FirstRowRegister { get; init; }
     public ShaderTypeInfo MatrixTypeInfo { get; init; }
     public bool IsMatrixByVector { get; }
     public int MatrixRowCount { get; }

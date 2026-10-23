@@ -3650,6 +3650,21 @@ public class HlslAstWriter : HlslWriter
     /// Names the candidates, the components of one operation together; named one
     /// by one, a vector instruction could never be regrouped.
     /// </summary>
+    // Every reader of each sits beside a reader of the other: another lane of the
+    // same instruction, at the same operand.
+    private static bool IsReadAsSiblingLane(HlslTreeNode a, HlslTreeNode b)
+    {
+        static bool Beside(HlslTreeNode value, HlslTreeNode other) =>
+            value.Outputs.Count != 0 && value.Outputs.All(reader =>
+                reader is Operation && reader.SourceInstruction != 0
+                && other.Outputs.Any(otherReader =>
+                    !ReferenceEquals(otherReader, reader)
+                    && HlslTreeNode.IsSameInstruction(otherReader, reader)
+                    && otherReader.SourceComponent != reader.SourceComponent
+                    && otherReader.Inputs.IndexOf(other) == reader.Inputs.IndexOf(value)));
+        return Beside(a, b) && Beside(b, a);
+    }
+
     private List<HlslTreeNode[]> NameCandidates(List<HlslTreeNode> candidates,
         HashSet<HlslTreeNode> reachable, HashSet<HlslTreeNode> roots)
     {
@@ -3675,9 +3690,11 @@ public class HlslAstWriter : HlslWriter
                 {
                     continue;
                 }
-                // Groupable with the first, or made by the same instruction.
+                // Groupable with the first, made by the same instruction, or read as
+                // lanes of one (three dp3s into r3.xyz, then `min r0.xyz, r3.xyz`).
                 if (nodeGrouper.CanGroupComponents(candidate, other)
-                    || HlslTreeNode.IsSameInstruction(candidate, other))
+                    || HlslTreeNode.IsSameInstruction(candidate, other)
+                    || IsReadAsSiblingLane(candidate, other))
                 {
                     group.Add(other);
                     named.Add(other);

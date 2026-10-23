@@ -114,6 +114,7 @@ reworded ps_5_0/split_transform
 reworded ps_5_0/tangent_lighting
 reworded ps_5_0/typed_view_load
 reworded ps_5_0/uint_texel_signed_max
+reworded ps_5_0/taa_neighbourhood_clamp
 reworded vs_2_0/distance_falloff
 reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count

@@ -3737,7 +3737,11 @@ public class InstructionParser
         // movs (float4(x, 1, 2, k) against a matrix row): the sum of products would
         // lose the dot once `1 * b` folds. Trailing 1s (float4(xyz, 1)) fold where
         // the dot templates look for them, so those stay products.
-        if (Enumerable.Range(0, 2).Any(side => IsFilledInVector([.. operands.Select(lanes => lanes[side])])))
+        // So is one whose operand is all literal weights, `dp3 r.x, c.xzy, l(.25, .25, .5)`:
+        // as products, equal weights block the dot templates and the lanes of two
+        // such dots regroup as one vector expression costing a mul, add and mad.
+        if (Enumerable.Range(0, 2).Any(side => IsFilledInVector([.. operands.Select(lanes => lanes[side])])
+                || IsLiteralWeights([.. operands.Select(lanes => lanes[side])])))
         {
             return ReadingFloats(new DotProductOperation(
                 new GroupNode([.. operands.Select(lanes => lanes[0])]),
@@ -3748,6 +3752,14 @@ public class InstructionParser
             .Select(componentInput => (HlslTreeNode)ReadingFloats(
                 new MultiplyOperation(componentInput[0], componentInput[1])))
             .Aggregate((addition, addend) => ReadingFloats(new AddOperation(addition, addend)));
+    }
+
+    // Every lane a literal, not all alike (a repeated weight is a scaled sum)
+    // and none 0 or 1, which fold.
+    private static bool IsLiteralWeights(HlslTreeNode[] lanes)
+    {
+        return lanes.All(lane => lane is ConstantNode { Value: not 0 and not 1 })
+            && lanes.Select(lane => ((ConstantNode)lane).Value).Distinct().Count() > 1;
     }
 
     private static bool IsFilledInVector(HlslTreeNode[] lanes)

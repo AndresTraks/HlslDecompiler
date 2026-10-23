@@ -141,6 +141,7 @@ public abstract class HlslWriter
         {
             _registers.MethodInputRegisters.Add(declaration);
         }
+        _registers.GroupInputArrays();
     }
 
     /// <summary>

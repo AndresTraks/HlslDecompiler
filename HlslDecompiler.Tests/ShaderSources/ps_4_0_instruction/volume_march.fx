@@ -6,8 +6,7 @@ Texture3D volume;
 struct PS_IN
 {
 	float4 sv_position : SV_Position;
-	float3 texcoord : TEXCOORD;
-	float3 texcoord1 : TEXCOORD1;
+	float3 texcoord[2] : TEXCOORD;
 };
 
 float4 main(PS_IN i) : SV_Target
@@ -18,10 +17,10 @@ float4 main(PS_IN i) : SV_Target
 	int4 r1;
 	int4 r2;
 	int4 r3;
-	r0.x = asint(dot(i.texcoord1.xyz, i.texcoord1.xyz));
+	r0.x = asint(dot(i.texcoord[1].xyz, i.texcoord[1].xyz));
 	r0.x = asint(rsqrt(asfloat(r0.x)));
-	r0.xyz = asint(asfloat(r0.xxx) * i.texcoord1.xyz);
-	r1.xyz = asint(i.texcoord.xyz);
+	r0.xyz = asint(asfloat(r0.xxx) * i.texcoord[1].xyz);
+	r1.xyz = asint(i.texcoord[0].xyz);
 	r2.xyz = int3(0, 0, 0);
 	r0.w = 0;
 	r1.w = 0;

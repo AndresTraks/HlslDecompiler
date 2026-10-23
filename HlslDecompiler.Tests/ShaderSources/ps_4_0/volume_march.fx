@@ -6,14 +6,13 @@ Texture3D volume;
 struct PS_IN
 {
 	float4 sv_position : SV_Position;
-	float3 texcoord : TEXCOORD;
-	float3 texcoord1 : TEXCOORD1;
+	float3 texcoord[2] : TEXCOORD;
 };
 
 float4 main(PS_IN i) : SV_Target
 {
-	float3 t0 = normalize(i.texcoord1);
-	float3 t1 = i.texcoord;
+	float3 t0 = normalize(i.texcoord[1]);
+	float3 t1 = i.texcoord[0];
 	float3 t2 = 0;
 	float t3 = 0;
 	for (int t4 = 0; t4 < 32; t4 = t4 + 1) {

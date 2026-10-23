@@ -1578,12 +1578,11 @@ public sealed class RegisterState
                 }
                 if (inputRegisterKey.GSVertex.HasValue)
                 {
-                    return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
+                    return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{InputFieldName(inputDeclaration)}";
                 }
-                // The first element of a dcl_indexrange array read by itself.
-                string inputName = inputDeclaration.ArrayLength > 1
-                    && inputRegisterKey.OperandType == OperandType.Input
-                    ? inputDeclaration.Name + "[0]"
+                // The first element of an input array read by itself.
+                string inputName = inputRegisterKey.OperandType == OperandType.Input
+                    ? InputFieldName(inputDeclaration)
                     : inputDeclaration.Name;
                 return MethodInputRegisters.Count == 1 || NamesInputsAsParameters
                     ? inputName
@@ -1725,10 +1724,10 @@ public sealed class RegisterState
                     // Before the single-input shortcut: GS always reads the vertex array.
                     if (d3d10RegisterKey.GSVertex.HasValue)
                     {
-                        return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
+                        return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{InputFieldName(decl)}";
                     }
-                    // The first element of a dcl_indexrange array read by itself.
-                    string inputName = decl.ArrayLength > 1 ? decl.Name + "[0]" : decl.Name;
+                    // The first element of an input array read by itself.
+                    string inputName = InputFieldName(decl);
                     if (MethodInputRegisters.Count == 1 || NamesInputsAsParameters)
                     {
                         return inputName;
@@ -2626,41 +2625,74 @@ public sealed class RegisterState
     /// </summary>
     public void GroupOutputArrays()
     {
-        List<RegisterDeclaration> candidates = [.. MethodOutputRegisters.Where(d =>
+        GroupArrays(MethodOutputRegisters, d =>
             d.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Output }
-            && d.PatchConstantSignature == null
+            && d.PatchConstantSignature == null);
+    }
+
+    /// <summary>
+    /// The same for inputs read only by constant index, which no dcl_indexrange
+    /// makes an array: their struct must pack as the previous stage's output.
+    /// </summary>
+    public void GroupInputArrays()
+    {
+        GroupArrays(MethodInputRegisters, d =>
+            d.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Input });
+    }
+
+    // Consecutive registers at the same lanes are an array: separate fields of
+    // one semantic would pack into each other's free lanes instead.
+    private static void GroupArrays(IList<RegisterDeclaration> declarations, Func<RegisterDeclaration, bool> eligible)
+    {
+        static int Register(RegisterDeclaration d) => ((D3D10RegisterKey)d.RegisterKey).GetGSBaseKey().Number;
+        List<RegisterDeclaration> candidates = [.. declarations.Where(d => eligible(d)
             && d.ArrayLength <= 1
+            && d.NameOverride == null
             && !d.Semantic.StartsWith("SV_", StringComparison.OrdinalIgnoreCase))];
         foreach (var group in candidates.GroupBy(d => (
             SemanticBase(d.Semantic).ToUpperInvariant(), ((D3D10RegisterKey)d.RegisterKey).Stream)))
         {
-            List<RegisterDeclaration> elements = [.. group.OrderBy(d => SemanticIndex(d.Semantic))];
-            if (elements.Count < 2 || elements[0].WriteMask == 0xF)
+            // One element per register: a GS declares a register once per vertex.
+            List<List<RegisterDeclaration>> elements = [.. group
+                .GroupBy(Register)
+                .Select(r => r.ToList())
+                .OrderBy(r => SemanticIndex(r[0].Semantic))];
+            if (elements.Count < 2 || elements[0][0].WriteMask == 0xF)
             {
                 continue;
             }
-            int firstRegister = elements[0].RegisterKey.Number;
+            int firstRegister = Register(elements[0][0]);
             bool isArray = true;
             for (int i = 0; i < elements.Count; i++)
             {
-                RegisterDeclaration element = elements[i];
-                isArray &= SemanticIndex(element.Semantic) == i
-                    && element.RegisterKey.Number == firstRegister + i
-                    && element.WriteMask == elements[0].WriteMask
-                    && MethodOutputRegisters.Count(d => d.RegisterKey.Equals(element.RegisterKey)) == 1;
+                isArray &= elements[i].All(element => SemanticIndex(element.Semantic) == i
+                    && Register(element) == firstRegister + i
+                    && element.WriteMask == elements[0][0].WriteMask);
             }
             if (!isArray)
             {
                 continue;
             }
-            RegisterDeclaration first = elements[0];
-            first.ArrayLength = elements.Count;
+            string name = elements[0][0].Name;
+            foreach (RegisterDeclaration first in elements[0])
+            {
+                first.ArrayLength = elements.Count;
+            }
             for (int i = 1; i < elements.Count; i++)
             {
-                elements[i].NameOverride = $"{first.Name}[{i}]";
-                MethodOutputRegisters.Remove(elements[i]);
+                foreach (RegisterDeclaration element in elements[i])
+                {
+                    element.NameOverride = $"{name}[{i}]";
+                    declarations.Remove(element);
+                }
             }
         }
+    }
+
+    // The first element of an input array, read by itself.
+    private static string InputFieldName(RegisterDeclaration input)
+    {
+        return input.ArrayLength > 1 && !input.Name.EndsWith("]") ? input.Name + "[0]" : input.Name;
     }
 
     private static string SemanticBase(string semantic) => semantic.TrimEnd("0123456789".ToCharArray());

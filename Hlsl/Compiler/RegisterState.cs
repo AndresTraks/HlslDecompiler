@@ -155,6 +155,7 @@ public sealed class RegisterState
             OperandType.UnorderedAccessView =>
             [
                 D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavRWStucturedWithCounter,
                 D3DShaderInputType.UavAppendStructured,
                 D3DShaderInputType.UavConsumeStructured,
             ],

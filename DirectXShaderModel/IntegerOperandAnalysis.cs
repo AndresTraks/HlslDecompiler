@@ -1030,6 +1030,7 @@ public sealed class IntegerOperandAnalysis
             OperandType.UnorderedAccessView =>
             [
                 D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavRWStucturedWithCounter,
                 D3DShaderInputType.UavAppendStructured,
                 D3DShaderInputType.UavConsumeStructured,
             ],
@@ -1246,6 +1247,7 @@ public sealed class IntegerOperandAnalysis
             OperandType.UnorderedAccessView =>
             [
                 D3DShaderInputType.UavRWStructured,
+                D3DShaderInputType.UavRWStucturedWithCounter,
                 D3DShaderInputType.UavAppendStructured,
                 D3DShaderInputType.UavConsumeStructured,
             ],

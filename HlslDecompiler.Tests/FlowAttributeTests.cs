@@ -29,6 +29,11 @@ public class FlowAttributeTests
             "The same early return: the instruction writer keeps the move in front "
             + "of `if (r0.x != 0) return o;`, and fxc puts it inside the if it "
             + "compiles the return to all the same.")],
+        ["cs_5_0/double_loop_carry"] = [("instruction",
+            "fxc's: the instruction writer keeps the loop's double in its own "
+            + "`double d0`, and fxc carries a double variable out of a loop by "
+            + "copying it at the break, so `if (r0.w != 0) break;` becomes "
+            + "if_nz/dmov/dmov/break instead of a breakc.")],
     };
 
     public static IEnumerable<TestCaseData> Shaders()

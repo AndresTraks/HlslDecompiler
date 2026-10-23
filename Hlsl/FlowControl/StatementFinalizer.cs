@@ -659,7 +659,11 @@ public class StatementFinalizer
                     List<HlslTreeNode> tempUsages = tempValue.Outputs.ToList();
                     // Before the readers move to the variable: they are what types it.
                     // Moved only into outputs, the signature types it before the register.
-                    bool? isIntegerValue = ValueTypes.IsIntegerValue(tempValue) ?? OutputTypeHolding(tempValue);
+                    // A double instruction's write is a double, its literal too (`dmov
+                    // r0.xy, d(0)` before a loop read as an int 0).
+                    bool? isIntegerValue = _doubleValues.Contains(tempValue)
+                        ? false
+                        : ValueTypes.IsIntegerValue(tempValue) ?? OutputTypeHolding(tempValue);
                     bool? isUnsignedValue = ValueTypes.IsUnsignedValue(tempValue);
                     bool isInteger = isIntegerValue
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);

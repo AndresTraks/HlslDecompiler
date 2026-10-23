@@ -70,6 +70,7 @@ public class TemplateMatcher
                 new AddSelfTemplate(),
                 new AddZeroTemplate(),
                 new MoveTemplate(),
+                new DoubleRejoinTemplate(),
                 new MultiplyAddTemplate(),
                 new MultiplyConstantsTemplate(),
                 new MultiplyConstantTemplate(),

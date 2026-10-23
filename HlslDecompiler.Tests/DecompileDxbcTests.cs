@@ -338,6 +338,7 @@ public class DecompileDxbcTests
     [TestCase("vs_5_0", "struct_joint_index")]
     [TestCase("hs_5_0", "patch_constant_array_join")]
     [TestCase("ps_5_0", "input_array_static_reads")]
+    [TestCase("hs_5_0", "control_point_array_output")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

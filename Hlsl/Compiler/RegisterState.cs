@@ -1598,7 +1598,7 @@ public sealed class RegisterState
             {
                 return HasOutputStruct
                     ? StreamVariableName((registerComponentKey.RegisterKey as D3D10RegisterKey)?.Stream)
-                        + "." + outputDeclaration.Name
+                        + "." + OutputFieldName(outputDeclaration)
                     : StreamVariableName((registerComponentKey.RegisterKey as D3D10RegisterKey)?.Stream);
             }
         }
@@ -1655,7 +1655,7 @@ public sealed class RegisterState
         {
             var decl = RegisterDeclarations[registerKey];
             return HasOutputStruct
-                ? OutputVariableName + "." + decl.Name
+                ? OutputVariableName + "." + OutputFieldName(decl)
                 : OutputVariableName;
         }
         if (registerKey is D3D9RegisterKey d3D9RegisterKey)
@@ -2606,6 +2606,69 @@ public sealed class RegisterState
             int destIndex = instruction.GetDestinationParamIndex().Value;
             DeclareRegisterWrite(instruction.GetParamRegisterKey(destIndex), instruction.GetDestinationWriteMask());
         }
+    }
+
+    // The first element of an output array, written by itself. Not a patch
+    // constant, whose index range names its fields already (`edges[0]`).
+    public static string OutputFieldName(RegisterDeclaration output)
+    {
+        return output.ArrayLength > 1 && output.PatchConstantSignature == null && !output.Name.EndsWith("]")
+            ? output.Name + "[0]"
+            : output.Name;
+    }
+
+    /// <summary>
+    /// Outputs of one semantic, indices from 0, in consecutive registers of their
+    /// own with one mask short of a whole register: an array (`float w[3] :
+    /// WEIGHTS`). Declared apart, fxc packs them into each other's free lanes and
+    /// the signature no longer links with the next stage. The first grows a
+    /// length, the rest are named as its elements.
+    /// </summary>
+    public void GroupOutputArrays()
+    {
+        List<RegisterDeclaration> candidates = [.. MethodOutputRegisters.Where(d =>
+            d.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Output }
+            && d.PatchConstantSignature == null
+            && d.ArrayLength <= 1
+            && !d.Semantic.StartsWith("SV_", StringComparison.OrdinalIgnoreCase))];
+        foreach (var group in candidates.GroupBy(d => (
+            SemanticBase(d.Semantic).ToUpperInvariant(), ((D3D10RegisterKey)d.RegisterKey).Stream)))
+        {
+            List<RegisterDeclaration> elements = [.. group.OrderBy(d => SemanticIndex(d.Semantic))];
+            if (elements.Count < 2 || elements[0].WriteMask == 0xF)
+            {
+                continue;
+            }
+            int firstRegister = elements[0].RegisterKey.Number;
+            bool isArray = true;
+            for (int i = 0; i < elements.Count; i++)
+            {
+                RegisterDeclaration element = elements[i];
+                isArray &= SemanticIndex(element.Semantic) == i
+                    && element.RegisterKey.Number == firstRegister + i
+                    && element.WriteMask == elements[0].WriteMask
+                    && MethodOutputRegisters.Count(d => d.RegisterKey.Equals(element.RegisterKey)) == 1;
+            }
+            if (!isArray)
+            {
+                continue;
+            }
+            RegisterDeclaration first = elements[0];
+            first.ArrayLength = elements.Count;
+            for (int i = 1; i < elements.Count; i++)
+            {
+                elements[i].NameOverride = $"{first.Name}[{i}]";
+                MethodOutputRegisters.Remove(elements[i]);
+            }
+        }
+    }
+
+    private static string SemanticBase(string semantic) => semantic.TrimEnd("0123456789".ToCharArray());
+
+    private static int SemanticIndex(string semantic)
+    {
+        string digits = semantic[SemanticBase(semantic).Length..];
+        return digits.Length == 0 ? 0 : int.Parse(digits);
     }
 
     /// <summary>

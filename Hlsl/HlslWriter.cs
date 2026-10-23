@@ -1193,6 +1193,7 @@ public abstract class HlslWriter
         {
             return;
         }
+        _registers.GroupOutputArrays();
         // One struct per stream: each stream numbers its registers from o0.
         if (_registers.HasSeveralStreams)
         {

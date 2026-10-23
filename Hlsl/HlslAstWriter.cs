@@ -681,7 +681,7 @@ public class HlslAstWriter : HlslWriter
                 (rootGroup.Key.RegisterKey as D3D10RegisterKey)?.Stream);
             // A partial write needs its mask: a scalar assigned to the member broadcasts.
             string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
-            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{outputRegister.Name}{componentMask} = {CompileOutput(rootGroup.Key, nodes)};")));
+            writes.Add((nodes, wants, () => WriteLine($"{outputVariable}.{RegisterState.OutputFieldName(outputRegister)}{componentMask} = {CompileOutput(rootGroup.Key, nodes)};")));
         }
         foreach (var write in TempAssignmentOrder.Sort(writes, w => w.Nodes, w => w.Wants))
         {
@@ -1630,7 +1630,7 @@ public class HlslAstWriter : HlslWriter
                 RegisterDeclaration outputRegister = _registers.GetOutputDeclaration(rootGroup.Key);
                 string componentMask = ComponentMask(outputComponents[rootGroup.Key], outputRegister);
                 string compiled = CompileOutput(rootGroup.Key, rootGroup.Value);
-                WriteLine($"{_registers.OutputVariableName}.{outputRegister.Name}{componentMask} = {compiled};");
+                WriteLine($"{_registers.OutputVariableName}.{RegisterState.OutputFieldName(outputRegister)}{componentMask} = {compiled};");
             }
             WriteLine();
             WriteLine($"return {_registers.OutputVariableName};");

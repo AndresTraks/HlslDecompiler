@@ -2662,6 +2662,83 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstruction(D3D10Instruction instruction)
     {
+        try
+        {
+            WriteInstructionTracked(instruction);
+        }
+        finally
+        {
+            TrackIndexValues(instruction);
+        }
+    }
+
+    // Temp lanes an unrolled hull phase computes from its instance id and
+    // immediates: the index of a patch constant it reads (`vpc[r0.x + 2]` with
+    // r0.x = 1 - vJoinInstanceID). Cleared when the instance changes.
+    private readonly Dictionary<RegisterComponentKey, int> _knownIndices = [];
+    private int? _indexInstance;
+
+    private void TrackIndexValues(D3D10Instruction instruction)
+    {
+        if (instruction.ForkInstance != _indexInstance)
+        {
+            _knownIndices.Clear();
+            _indexInstance = instruction.ForkInstance;
+        }
+        if (!instruction.HasDestination || instruction.ForkInstance == null)
+        {
+            return;
+        }
+        int destination = instruction.GetDestinationParamIndex().Value;
+        if (instruction.GetOperandType(destination) != OperandType.Temp)
+        {
+            return;
+        }
+        RegisterKey key = instruction.GetParamRegisterKey(destination);
+        int mask = instruction.GetWriteMask(destination);
+        for (int component = 0; component < 4; component++)
+        {
+            if ((mask & (1 << component)) == 0)
+            {
+                continue;
+            }
+            int? value = instruction.Opcode switch
+            {
+                D3D10Opcode.Mov => KnownIndex(instruction, 1, component),
+                D3D10Opcode.IAdd => KnownIndex(instruction, 1, component) + KnownIndex(instruction, 2, component),
+                D3D10Opcode.INeg => -KnownIndex(instruction, 1, component),
+                _ => null,
+            };
+            var lane = new RegisterComponentKey(key, component);
+            if (value is int known)
+            {
+                _knownIndices[lane] = known;
+            }
+            else
+            {
+                _knownIndices.Remove(lane);
+            }
+        }
+    }
+
+    private int? KnownIndex(D3D10Instruction instruction, int operand, int component)
+    {
+        int swizzled = instruction.GetSourceSwizzleComponents(operand)[component];
+        int? value = instruction.GetOperandType(operand) switch
+        {
+            OperandType.Immediate32 => instruction.GetParamInt(operand, swizzled),
+            OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID => instruction.ForkInstance ?? 0,
+            OperandType.Temp => _knownIndices.TryGetValue(
+                new RegisterComponentKey(instruction.GetParamRegisterKey(operand), swizzled), out int known)
+                ? known
+                : null,
+            _ => null,
+        };
+        return instruction.GetOperandModifier(operand) == D3D10OperandModifier.Neg ? -value : value;
+    }
+
+    private void WriteInstructionTracked(D3D10Instruction instruction)
+    {
         // Only addresses class data, which is read by name.
         if (_registers.Linkage?.IsThisMove(instruction) == true)
         {
@@ -4028,8 +4105,15 @@ public class HlslSimpleWriter : HlslWriter
         // Likewise a patch constant an unrolled join phase reads by its instance.
         if (operandType == OperandType.InputPatchConstant && instruction.ForkInstance is int readInstance)
         {
+            (OperandType patchIndexType, int patchIndexNumber, byte patchIndexComponent) =
+                instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+            int readIndex = patchIndexType == OperandType.Temp && _knownIndices.TryGetValue(
+                new RegisterComponentKey(new D3D10RegisterKey(OperandType.Temp, patchIndexNumber), patchIndexComponent),
+                out int known)
+                ? known
+                : readInstance;
             var readKey = new D3D10RegisterKey(
-                OperandType.InputPatchConstant, (int)operandIndices[0].Immediate + readInstance);
+                OperandType.InputPatchConstant, (int)operandIndices[0].Immediate + readIndex);
             return _registers.GetRegisterName(new RegisterComponentKey(readKey,
                 instruction.GetSourceSwizzleComponents(operandIndex)[0]));
         }
@@ -4351,7 +4435,8 @@ public class HlslSimpleWriter : HlslWriter
         // Each unrolled copy of an instanced phase knows its own instance number.
         if (registerKey.OperandType is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
         {
-            return (instruction.ForkInstance ?? 0).ToString(_culture);
+            return ApplyModifier(instruction.GetOperandModifier(operandIndex),
+                (instruction.ForkInstance ?? 0).ToString(_culture));
         }
 
         if (registerKey.OperandType == OperandType.Immediate64)

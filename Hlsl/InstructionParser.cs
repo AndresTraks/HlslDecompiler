@@ -2047,9 +2047,27 @@ public class InstructionParser
         var indexKey = new RegisterComponentKey(new D3D10RegisterKey(indexType, indexNumber), indexComponent);
         return ActiveOutputs != null
             && ActiveOutputs.TryGetValue(indexKey, out HlslTreeNode value)
-            && IndexConstant(value) is ConstantNode constant
-            ? constant.IntegerValue ?? (int)constant.Value
+            ? IndexValue(value)
             : null;
+    }
+
+    // The instance id is a constant in each unrolled copy; fxc may index with
+    // arithmetic on it (`iadd r0.x, -vJoinInstanceID.x, l(1)`).
+    private static int? IndexValue(HlslTreeNode value)
+    {
+        if (IndexConstant(value) is ConstantNode constant)
+        {
+            return constant.IntegerValue ?? (int)constant.Value;
+        }
+        return value switch
+        {
+            NegateOperation negate => -IndexValue(negate.Inputs[0]),
+            AddOperation add => IndexValue(add.Inputs[0]) + IndexValue(add.Inputs[1]),
+            SubtractOperation subtract => IndexValue(subtract.Inputs[0]) - IndexValue(subtract.Inputs[1]),
+            MultiplyOperation multiply => IndexValue(multiply.Inputs[0]) * IndexValue(multiply.Inputs[1]),
+            MoveOperation move => IndexValue(move.Inputs[0]),
+            _ => null,
+        };
     }
 
     // Looks through the movs fxc copies vForkInstanceID with.
@@ -4086,7 +4104,9 @@ public class InstructionParser
             }
             if (operandType is OperandType.InputForkInstanceID or OperandType.InputJoinInstanceID)
             {
-                inputs[i] = new ConstantNode(instruction.ForkInstance ?? 0);
+                // With its modifier: `iadd r0.x, -vJoinInstanceID.x, l(1)` is 1 - id.
+                inputs[i] = ApplyModifier(new ConstantNode(instruction.ForkInstance ?? 0),
+                    instruction.GetOperandModifier(inputParameterIndex));
                 continue;
             }
             if (operandType == OperandType.Immediate64)

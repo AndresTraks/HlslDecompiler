@@ -32,7 +32,7 @@ public static class PatchConstants
     /// The tessellation factors are one element per edge but one array in HLSL,
     /// so several elements share a field.
     /// </summary>
-    public static string FieldName(RegisterSignature signature)
+    public static string FieldName(RegisterSignature signature, IEnumerable<RegisterSignature> all)
     {
         if (IsTessFactor(signature))
         {
@@ -42,6 +42,10 @@ public static class PatchConstants
         {
             return "inside";
         }
+        if (IsArrayElement(signature, all))
+        {
+            return HlslKeywords.Escape(signature.Name.ToLower());
+        }
         return signature.Index == 0
             ? HlslKeywords.Escape(signature.Name.ToLower())
             : signature.Name.ToLower() + signature.Index;
@@ -49,8 +53,9 @@ public static class PatchConstants
 
     public static string Reference(RegisterSignature signature, IEnumerable<RegisterSignature> all)
     {
-        string field = FieldName(signature);
-        if (IsTessFactor(signature) || (IsInsideTessFactor(signature) && Count(all, signature) > 1))
+        string field = FieldName(signature, all);
+        if (IsTessFactor(signature) || (IsInsideTessFactor(signature) && Count(all, signature) > 1)
+            || IsArrayElement(signature, all))
         {
             return $"{field}[{signature.Index}]";
         }
@@ -67,7 +72,7 @@ public static class PatchConstants
             .OrderBy(s => IsTessFactor(s) ? 0 : IsInsideTessFactor(s) ? 1 : 2)
             .ThenBy(s => s.RegisterKey.Number)
             .ThenBy(s => s.Mask)
-            .GroupBy(FieldName))
+            .GroupBy(s => FieldName(s, signatures)))
         {
             RegisterSignature first = field.First();
             int count = field.Count();
@@ -90,6 +95,32 @@ public static class PatchConstants
             };
         int width = CountSetBits(signature.Mask);
         return width > 1 ? type + width : type;
+    }
+
+    /// <summary>
+    /// One of several elements of a semantic in consecutive registers with one
+    /// mask: an array (`float3 corner[4] : CORNER`). Declared apart, fxc packs
+    /// them into the free lanes beside other fields and the signature changes.
+    /// </summary>
+    private static bool IsArrayElement(RegisterSignature signature, IEnumerable<RegisterSignature> all)
+    {
+        List<RegisterSignature> elements = [.. all
+            .Where(s => s.Name.Equals(signature.Name, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.Index)];
+        if (elements.Count < 2)
+        {
+            return false;
+        }
+        for (int i = 0; i < elements.Count; i++)
+        {
+            if (elements[i].Index != i
+                || elements[i].RegisterKey.Number != elements[0].RegisterKey.Number + i
+                || elements[i].Mask != elements[0].Mask)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int Count(IEnumerable<RegisterSignature> all, RegisterSignature signature)

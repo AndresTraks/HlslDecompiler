@@ -62,6 +62,7 @@ reworded hs_5_0/output_patch_index
 reworded hs_5_0/patch_semantic_index
 reworded hs_5_0/quad_packed_weight
 reworded hs_5_0/split_control_points
+reworded hs_5_0/patch_constant_array_join
 reworded ps_3_0/guarded_average
 reworded ps_3_0/if_else_in_loop
 reworded ps_3_0/if_nested

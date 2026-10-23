@@ -1361,6 +1361,11 @@ public class HlslSimpleWriter : HlslWriter
         {
             return operandIndex == 2 ? ValueKind.Integer : ValueKind.Float;
         }
+        // So is samplepos's sample index; asfloat of it converted to a float index.
+        if (instruction.Opcode == D3D10Opcode.SamplePos && operandIndex == 2)
+        {
+            return ValueKind.Integer;
+        }
         return instruction.Opcode.ConsumedKind();
     }
 

@@ -327,6 +327,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "cascade_select_blend")]
     [TestCase("cs_5_0", "switch_sample_into_selector")]
     [TestCase("ps_5_0", "oit_counter_struct_store")]
+    [TestCase("ps_5_0", "sample_position_loop")]
     [TestCase("cs_5_0", "structured_minmax")]
     [TestCase("cs_5_0", "signed_atomic")]
     [TestCase("cs_5_0", "atomic_counter")]

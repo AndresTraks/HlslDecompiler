@@ -1,5 +1,5 @@
 float4 colour;
-int n;
+int n : register(i0);
 
 float4 main() : COLOR
 {

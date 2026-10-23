@@ -2,7 +2,7 @@ float4 colorA;
 float4 colorB;
 sampler2D tex;
 bool tint : register(b1);
-bool useTexture;
+bool useTexture : register(b0);
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

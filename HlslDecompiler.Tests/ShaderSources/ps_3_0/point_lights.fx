@@ -2,7 +2,7 @@ float3 cameraPosition : register(c8);
 sampler2D diffuseMap;
 samplerCUBE envMap : register(s2);
 float3 lightColors[4] : register(c4);
-int lightCount;
+int lightCount : register(i0);
 float3 lightPositions[4];
 sampler2D normalMap;
 float specularPower : register(c9);

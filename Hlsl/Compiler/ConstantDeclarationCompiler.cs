@@ -103,13 +103,16 @@ public sealed class ConstantDeclarationCompiler
         {
             // Where it was in the preshader says nothing about where it goes.
         }
-        else if (_index[registerSet] == declaration.RegisterIndex)
+        // Bools and ints always say: undeclared, fxc may put one in a float
+        // register (`if (useMorph)` read c6, a def's register, not b0).
+        else if (_index[registerSet] == declaration.RegisterIndex
+            && declaration.RegisterSet is RegisterSet.Float4 or RegisterSet.Sampler)
         {
             _index[registerSet] += declaration.RegisterCount;
         }
         else
         {
-            char type = "btcs"[registerSet];
+            char type = "bics"[registerSet];
             registerSpecifier = $" : register({type}{declaration.RegisterIndex})";
         }
         return $"{typeName} {declaration.Name}"

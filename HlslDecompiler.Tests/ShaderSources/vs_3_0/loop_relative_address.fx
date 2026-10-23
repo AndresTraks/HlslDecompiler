@@ -1,4 +1,4 @@
-int count;
+int count : register(i0);
 float4 floats[8];
 
 float4 main() : POSITION

@@ -4089,10 +4089,15 @@ public class HlslSimpleWriter : HlslWriter
         if (declaration.TypeInfo.Rows > 1)
         {
             // Matrix array: the index counts registers, so divide by the row count.
+            // An offset past one element is the next element (`cb0[r1.y + 4]`).
+            int rows = declaration.RegistersPerElement;
+            string matrixElement = elementOffset / rows == 0
+                ? $"{index} / {rows}"
+                : $"{index} / {rows} + {elementOffset / rows}";
             return RegisterState.MatrixRegisterName(
                 declaration.TypeInfo,
-                $"{declaration.Name}[{index} / {declaration.RegistersPerElement}]",
-                elementOffset);
+                $"{declaration.Name}[{matrixElement}]",
+                elementOffset % rows);
         }
         return elementOffset == 0
             ? $"{declaration.Name}[{index}]"

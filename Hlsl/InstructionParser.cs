@@ -2939,7 +2939,10 @@ public class InstructionParser
                     pending.Push(reader);
                     continue;
                 }
-                bool? consumed = reader is ComparisonNode comparison
+                // `v[i]` reads floats, but its index is an integer.
+                bool? consumed = reader is VectorComponentNode component && ReferenceEquals(component.Index, node)
+                    ? true
+                    : reader is ComparisonNode comparison
                     ? (comparison.IsBitsTest ? null : comparison.IsInteger)
                     : reader.ReadsIntegers;
                 if (consumed == null)

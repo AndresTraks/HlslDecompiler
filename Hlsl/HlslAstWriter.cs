@@ -970,9 +970,9 @@ public class HlslAstWriter : HlslWriter
         }
         held.Add(coordinates ?? [addressNode]);
         WriteSharedSubexpressions(held);
-        string address = coordinates != null
-            ? _compiler.CompileAsInteger(coordinates)
-            : _compiler.Compile(addressNode);
+        // An index or byte offset, whatever a select in it was typed: a float
+        // context read `b ? 0 : (uint)x` as `asfloat((uint)x)`.
+        string address = _compiler.CompileAsInteger(coordinates ?? [addressNode]);
         // Interlocked operations take a float's bits, unsigned where the destination is.
         bool unsigned = resourceKey is D3D10RegisterKey
             {

@@ -50,6 +50,7 @@ reworded cs_5_0/signed_min_uint_operands
 reworded cs_5_0/unsigned_min_int_operands
 reworded cs_5_0/int_to_float_uint_operand
 reworded cs_5_0/firstbithigh_uint_operand
+reworded cs_5_0/luminance_histogram_select
 reworded ds_5_0/isoline_curve
 reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants

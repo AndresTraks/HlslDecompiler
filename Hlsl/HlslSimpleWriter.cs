@@ -4127,7 +4127,13 @@ public class HlslSimpleWriter : HlslWriter
             {
                 var arrayKey = new D3D10RegisterKey(
                     OperandType.Input, (int)operandIndices[0].Immediate);
-                return $"{_registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0))}[{index}]";
+                // The array, not the first element its register names when read alone.
+                string inputArray = _registers.GetRegisterName(new RegisterComponentKey(arrayKey, 0));
+                if (inputArray.EndsWith("[0]"))
+                {
+                    inputArray = inputArray[..^3];
+                }
+                return $"{inputArray}[{index}]";
             }
             // The vertex is the relative register plus the immediate (`vocp[r0.x + 3]`).
             if (operandIndices[0].Immediate != 0)

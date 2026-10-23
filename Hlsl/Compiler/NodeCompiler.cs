@@ -2930,7 +2930,9 @@ public sealed class NodeCompiler
                 && inputArrayKey.OperandType == OperandType.Input
                 && !inputArrayKey.GSVertex.HasValue)
             {
-                return $"{arrayName}[{index}]{swizzle}";
+                // The array, not the first element its register names when read alone.
+                string inputArray = arrayName.EndsWith("[0]") ? arrayName[..^3] : arrayName;
+                return $"{inputArray}[{index}]{swizzle}";
             }
             if (arrayKey.RegisterKey is D3D10RegisterKey d3d10ArrayKey
                 && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)

@@ -101,9 +101,11 @@ public abstract class HlslWriter
             }
             string semantic = signature.Index == 0 ? signature.Name : signature.Name + signature.Index;
             int register = signature.RegisterKey.Number;
+            // An element of a dcl_indexrange array is declared by the array.
             bool isDeclared = _registers.MethodInputRegisters.Any(d =>
-                IsInput(d) && Register(d) == register
-                && string.Equals(d.Semantic, semantic, StringComparison.OrdinalIgnoreCase));
+                IsInput(d) && (Register(d) == register
+                    && string.Equals(d.Semantic, semantic, StringComparison.OrdinalIgnoreCase)
+                    || (d.ArrayLength > 1 && register > Register(d) && register < Register(d) + d.ArrayLength)));
             if (isDeclared)
             {
                 continue;

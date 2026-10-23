@@ -1580,9 +1580,14 @@ public sealed class RegisterState
                 {
                     return $"{InputArrayName}[{inputRegisterKey.GSVertex}].{inputDeclaration.Name}";
                 }
+                // The first element of a dcl_indexrange array read by itself.
+                string inputName = inputDeclaration.ArrayLength > 1
+                    && inputRegisterKey.OperandType == OperandType.Input
+                    ? inputDeclaration.Name + "[0]"
+                    : inputDeclaration.Name;
                 return MethodInputRegisters.Count == 1 || NamesInputsAsParameters
-                    ? inputDeclaration.Name
-                    : "i." + inputDeclaration.Name;
+                    ? inputName
+                    : "i." + inputName;
             }
         }
         if (registerComponentKey.RegisterKey.IsOutput)
@@ -1722,11 +1727,13 @@ public sealed class RegisterState
                     {
                         return $"{InputArrayName}[{d3d10RegisterKey.GSVertex}].{decl.Name}";
                     }
+                    // The first element of a dcl_indexrange array read by itself.
+                    string inputName = decl.ArrayLength > 1 ? decl.Name + "[0]" : decl.Name;
                     if (MethodInputRegisters.Count == 1 || NamesInputsAsParameters)
                     {
-                        return decl.Name;
+                        return inputName;
                     }
-                    return "i." + decl.Name;
+                    return "i." + inputName;
                 case OperandType.InputThreadID:
                 case OperandType.InputThreadGroupID:
                 case OperandType.InputThreadIDInGroup:
@@ -2622,6 +2629,12 @@ public sealed class RegisterState
             if (RegisterDeclarations.TryGetValue(key, out RegisterDeclaration element))
             {
                 MethodInputRegisters.Remove(element);
+                // Read by name as an element of the array, not a field of its own;
+                // only inputs, which an output range's tess factor names already are.
+                if (baseKey.OperandType == OperandType.Input)
+                {
+                    element.NameOverride = $"{first.Name}[{offset}]";
+                }
             }
         }
     }

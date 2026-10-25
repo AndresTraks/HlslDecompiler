@@ -220,15 +220,9 @@ public class HlslSimpleWriter : HlslWriter
         string scalarType = isAddressRegister || IsIntegerTempRegister(registerKey, writeMask)
             ? "int"
             : IsHalfTempRegister(registerKey) ? "half" : "float";
-        // `mova a0.xy` loads two indices, so a0 is as wide as it is written.
-        string writeMaskName = isAddressRegister ? AddressTypeName(writeMask) : writeMask switch
-        {
-            0x1 => scalarType,
-            0x3 => scalarType + "2",
-            0x7 => scalarType + "3",
-            0xF => scalarType + "4",
-            _ => scalarType + "4",// TODO
-        };
+        // A register is as wide as the highest component written to it: `mova a0.xy`
+        // loads two indices, and a temp written only to `.xy` needs no more than two.
+        string writeMaskName = ComponentTypeName(scalarType, writeMask);
         // A register only doubles are written to needs no float variable. Decided by
         // the writes, not the mask: one register may hold a double and a float mask.
         if (FindFloatWrittenComponents(registerKey) != 0)
@@ -4216,7 +4210,13 @@ public class HlslSimpleWriter : HlslWriter
             : $"{declaration.Name}[{index} + {elementOffset}]";
     }
 
-    private static string AddressTypeName(int writeMask)
+    // A register is declared as wide as the highest component written to it.
+    // The write mask need not be contiguous - a temp written to `.xz` is a
+    // three-wide register, not a `float4`, and the reads use `.x` and `.z` on it.
+    // Only the highest written component decides the width: `float3` covers `.xz`,
+    // `float4` covers `.xw`. The reads already name the components they touch, so
+    // the declaration only has to cover them.
+    private static string ComponentTypeName(string scalarType, int writeMask)
     {
         int components = 0;
         for (int component = 0; component < 4; component++)
@@ -4226,7 +4226,12 @@ public class HlslSimpleWriter : HlslWriter
                 components = component + 1;
             }
         }
-        return components > 1 ? "int" + components : "int";
+        return components > 1 ? scalarType + components : scalarType;
+    }
+
+    private static string AddressTypeName(int writeMask)
+    {
+        return ComponentTypeName("int", writeMask);
     }
 
     // aL is the enclosing loop counter; a wide a0 keeps its component.

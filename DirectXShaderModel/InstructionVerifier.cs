@@ -67,6 +67,18 @@ public class InstructionVerifier
     [System.Diagnostics.Conditional("DEBUG")]
     public static void Verify(D3D10Instruction instruction)
     {
-        // TODO
+        // The saturate bit sits in the opcode token rather than in an operand, so
+        // the reader is the only thing standing between a stray bit and the parser.
+        // A declaration names a register and has no result to clamp, and saturate
+        // clamps only what a destination is written - so neither belongs on an
+        // instruction that writes nothing.
+        if (instruction.Opcode.IsDeclaration())
+        {
+            Assert(!instruction.Saturate);
+        }
+        if (instruction.Saturate)
+        {
+            Assert(instruction.HasDestination);
+        }
     }
 }

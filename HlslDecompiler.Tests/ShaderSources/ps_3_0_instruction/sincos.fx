@@ -6,7 +6,7 @@ float4 main(float3 texcoord : TEXCOORD) : COLOR
 
 	float4 r0;
 	float2 r1;
-	float4 r2;
+	float2 r2;
 	float r3;
 	r0.x = k.x * texcoord.x;
 	r0.x = r0.x * 0.15915494 + 0.5;

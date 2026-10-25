@@ -16,7 +16,7 @@ class Lin : IFog
 
 	float4 F0(float4 color, float depth)
 	{
-		float4 r1;
+		float3 r1;
 		float4 r2;
 		float4 r0;
 		r1.z = depth + -(m1.x);
@@ -36,7 +36,7 @@ class Exp : IFog
 
 	float4 F0(float4 color, float depth)
 	{
-		float4 r1;
+		float3 r1;
 		float4 r2;
 		float4 r0;
 		r1.z = -(depth) * m0;

@@ -4032,7 +4032,10 @@ public class InstructionParser
         // Add the immediate: `vicp[r0.x + 1]`.
         if (operandIndices[VertexIndex].Immediate != 0)
         {
-            index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate));
+            index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate))
+            {
+                ConsumesInteger = true,
+            };
         }
 
         // Vertex 0 stands for all; control point outputs are keyed apart from inputs.

@@ -172,7 +172,8 @@ public class NodeGrouper
             // The same index node: c0[a0.x] and c0[a0.y] are two array elements.
             return relative1.RegisterComponentKey.RegisterKey.Equals(
                     relative2.RegisterComponentKey.RegisterKey)
-                && ReferenceEquals(relative1.Index, relative2.Index);
+                && ReferenceEquals(relative1.Index, relative2.Index)
+                && ReferenceEquals(relative1.FieldIndex, relative2.FieldIndex);
         }
 
         // Lanes of one element of one local array: x0[i] and x1[i] are two values.
@@ -572,7 +573,10 @@ public class NodeGrouper
         if (node1 is RelativeAddressNode relative1 && node2 is RelativeAddressNode relative2)
         {
             return relative1.RegisterComponentKey.Equals(relative2.RegisterComponentKey)
-                && AreNodesEquivalent(relative1.Index, relative2.Index);
+                && AreNodesEquivalent(relative1.Index, relative2.Index)
+                && (relative1.FieldIndex == null || relative2.FieldIndex == null
+                    ? relative1.FieldIndex == relative2.FieldIndex
+                    : AreNodesEquivalent(relative1.FieldIndex, relative2.FieldIndex));
         }
 
         if (node1 is IndexableTempLoadNode array1 && node2 is IndexableTempLoadNode array2)

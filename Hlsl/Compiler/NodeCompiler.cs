@@ -2923,7 +2923,26 @@ public sealed class NodeCompiler
                 string vertexArray = vertexKey.OperandType == OperandType.OutputControlPoint
                     ? RegisterState.OutputPatchName
                     : _registers.InputArrayName;
-                return $"{vertexArray}[{index}].{vertex.Name}{memberSwizzle}";
+                string field;
+                if (relativeAddress.FieldIndex != null)
+                {
+                    if (vertex.ArrayLength <= 1 && vertex.NameOverride == null)
+                    {
+                        throw new NotImplementedException(
+                            "a dynamically indexed input field that was not declared as an array");
+                    }
+                    field = $"[{CompileAsInteger([relativeAddress.FieldIndex])}]";
+                }
+                else if (vertex.ArrayLength > 1 && !vertex.Name.EndsWith("]"))
+                {
+                    // The first element of a grouped run, read at its own register.
+                    field = "[0]";
+                }
+                else
+                {
+                    field = "";
+                }
+                return $"{vertexArray}[{index}].{vertex.Name}{field}{memberSwizzle}";
             }
             // Input registers made one array by dcl_indexrange.
             if (arrayKey.RegisterKey is D3D10RegisterKey inputArrayKey

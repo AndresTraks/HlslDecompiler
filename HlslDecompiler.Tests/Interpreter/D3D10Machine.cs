@@ -1991,7 +1991,8 @@ public class D3D10Machine
                     // nested relative operand.
                     int vertex = (int)indices[0].Immediate
                         + RelativeIndex(instruction, index, 0);
-                    int register = (int)indices[1].Immediate;
+                    int register = (int)indices[1].Immediate
+                        + RelativeIndex(instruction, index, 1);
                     return VertexInput(vertex, register);
                 }
             case OperandType.InputControlPoint:
@@ -2000,14 +2001,17 @@ public class D3D10Machine
                     // includes its relative index (`vicp[r0.x + 1]`).
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
-                    return VertexInput(point, (int)indices[1].Immediate);
+                    int pointRegister = (int)indices[1].Immediate
+                        + RelativeIndex(instruction, index, 1);
+                    return VertexInput(point, pointRegister);
                 }
             case OperandType.OutputControlPoint:
                 {
                     // Phases run separately, so this is a made up value.
                     var indices = instruction.OperandTokens.GetOperandIndices(index);
                     int point = (int)indices[0].Immediate + RelativeIndex(instruction, index, 0);
-                    int register = (int)indices[1].Immediate;
+                    int register = (int)indices[1].Immediate
+                        + RelativeIndex(instruction, index, 1);
                     return [.. Named($"OUTPUTPOINT{register}[{point}]").Select(BitConverter.SingleToUInt32Bits)];
                 }
             case OperandType.InputPatchConstant:

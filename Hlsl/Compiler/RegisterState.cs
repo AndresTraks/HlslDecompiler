@@ -2658,16 +2658,31 @@ public sealed class RegisterState
     /// <summary>
     /// The same for inputs read only by constant index, which no dcl_indexrange
     /// makes an array: their struct must pack as the previous stage's output.
+    /// A run read at a computed field index is grouped too - whole-register
+    /// elements and all - because HLSL subscripts only arrays.
     /// </summary>
     public void GroupInputArrays()
     {
-        GroupArrays(MethodInputRegisters, d =>
-            d.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Input });
+        GroupArrays(MethodInputRegisters,
+            d => d.RegisterKey is D3D10RegisterKey { OperandType: OperandType.Input },
+            d => _dynamicFieldReads.Contains(((D3D10RegisterKey)d.RegisterKey).GetGSBaseKey().Number));
+    }
+
+    // Input registers read at a computed field index (`patch[i].edge[j]`).
+    private readonly HashSet<int> _dynamicFieldReads = [];
+
+    public void MarkDynamicFieldRead(int register)
+    {
+        _dynamicFieldReads.Add(register);
     }
 
     // Consecutive registers at the same lanes are an array: separate fields of
-    // one semantic would pack into each other's free lanes instead.
-    private static void GroupArrays(IList<RegisterDeclaration> declarations, Func<RegisterDeclaration, bool> eligible)
+    // one semantic would pack into each other's free lanes instead. Whole
+    // registers pack alike apart, so they group only when dynamicallyRead names one.
+    private static void GroupArrays(
+        IList<RegisterDeclaration> declarations,
+        Func<RegisterDeclaration, bool> eligible,
+        Func<RegisterDeclaration, bool> dynamicallyRead = null)
     {
         static int Register(RegisterDeclaration d) => ((D3D10RegisterKey)d.RegisterKey).GetGSBaseKey().Number;
         List<RegisterDeclaration> candidates = [.. declarations.Where(d => eligible(d)
@@ -2682,7 +2697,10 @@ public sealed class RegisterState
                 .GroupBy(Register)
                 .Select(r => r.ToList())
                 .OrderBy(r => SemanticIndex(r[0].Semantic))];
-            if (elements.Count < 2 || elements[0][0].WriteMask == 0xF)
+            if (elements.Count < 2
+                || (elements[0][0].WriteMask == 0xF
+                    && (dynamicallyRead == null
+                        || !elements.Any(element => element.Any(dynamicallyRead)))))
             {
                 continue;
             }

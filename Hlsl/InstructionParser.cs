@@ -4043,6 +4043,25 @@ public class InstructionParser
         var registerKey = instruction.GetOperandType(operandIndex) == OperandType.OutputControlPoint
             ? D3D10RegisterKey.CreateControlPointOutput(register, 0)
             : D3D10RegisterKey.CreateGSInput(register, 0);
+        // `vicp[r0.z][r0.y]`: the field itself is computed, and the run of one
+        // semantic has to be declared as one array to carry the subscript.
+        if (operandIndices[1].IsRelative)
+        {
+            (OperandType fieldType, int fieldNumber, byte fieldComponent) =
+                instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 1);
+            HlslTreeNode fieldIndex = GetActiveOutput(new RegisterComponentKey(
+                new D3D10RegisterKey(fieldType, fieldNumber), fieldComponent));
+            if (register != 0)
+            {
+                fieldIndex = new AddOperation(fieldIndex, new ConstantNode(register))
+                {
+                    ConsumesInteger = true,
+                };
+            }
+            _registerState.MarkDynamicFieldRead(register);
+            return new RelativeAddressNode(
+                new RegisterComponentKey(registerKey, swizzle[componentIndex]), index, fieldIndex);
+        }
         return new RelativeAddressNode(
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }

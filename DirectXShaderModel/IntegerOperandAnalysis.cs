@@ -453,6 +453,36 @@ public sealed class IntegerOperandAnalysis
             {
                 continue;
             }
+            // A register read as an index is an integer, whatever the operand it
+            // indexes holds: `movc r0.x, r0.x, vForkInstanceID.x, l(4)` feeding
+            // `o[r0.x]` selects the integer 4, not a denormal float.
+            for (int operand = 0; operand < reader.OperandTokens.OperandCount; operand++)
+            {
+                D3D10OperandTokenCollection.OperandIndex[] indices =
+                    reader.OperandTokens.GetOperandIndices(operand);
+                for (int index = 0; index < indices.Length; index++)
+                {
+                    if (!indices[index].IsRelative)
+                    {
+                        continue;
+                    }
+                    (OperandType type, int number, byte component) =
+                        reader.OperandTokens.GetRelativeIndexOperand(operand, index);
+                    if (type != OperandType.Temp
+                        || !new D3D10RegisterKey(type, number).Equals(destination)
+                        || (live & (1 << component)) == 0 || disagree[component])
+                    {
+                        continue;
+                    }
+                    if (kinds[component] == ValueKind.Float)
+                    {
+                        kinds[component] = ValueKind.Unknown;
+                        disagree[component] = true;
+                        continue;
+                    }
+                    kinds[component] = ValueKind.Integer;
+                }
+            }
             // Sources are read before the destination is written, so kill
             // overwritten components only after counting this instruction's reads.
             int overwritten = 0;

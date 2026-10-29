@@ -32,7 +32,7 @@ dcl_output o4.y
 dcl_temps 1
 dcl_indexrange o0 5
 ult r0.x, vForkInstanceID.x, l(3)
-movc r0.x, r0.x, vForkInstanceID.x, l(0.000000)
+movc r0.x, r0.x, vForkInstanceID.x, l(4)
 mov r0.y, vForkInstanceID.x
 mov o[r0.x].y, icb[r0.y].z
 ret
@@ -44,7 +44,7 @@ dcl_output o4.z
 dcl_temps 1
 dcl_indexrange o2 3
 ult r0.x, vForkInstanceID.x, l(1)
-movc r0.x, r0.x, l(0), l(0.000000)
+movc r0.x, r0.x, l(0), l(2)
 mov r0.y, vForkInstanceID.x
 mov o[r0.x + 2].z, icb[r0.y].y
 ret

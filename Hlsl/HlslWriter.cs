@@ -262,10 +262,11 @@ public abstract class HlslWriter
         WriteConstantDeclarations();
         WriteThreadGroupSharedMemoryDeclarations();
 
-        // GS/DS signatures name the input struct even for one register.
+        // GS/DS signatures name the input struct even for one register, but a
+        // domain shader reading no control point has no struct to name.
         if (_registers.MethodInputRegisters.Count > 1
             || _shader.Type == ShaderType.Geometry
-            || _shader.Type == ShaderType.Domain)
+            || _shader.Type == ShaderType.Domain && _shader.InputSignatures.Count != 0)
         {
             WriteInputStructureDeclaration();
         }
@@ -1329,15 +1330,29 @@ public abstract class HlslWriter
         }
         if (_shader.Type == ShaderType.Domain)
         {
+            var parameters = new List<string>
+            {
+                $"{PatchConstantStructureName(_shader.Type)} {PatchConstants.ParameterName}",
+            };
             RegisterDeclaration location = _registers.MethodInputRegisters
                 .FirstOrDefault(r => r.RegisterKey is D3D10RegisterKey
                     { OperandType: OperandType.InputDomainPoint });
-            string domainLocation = location == null
-                ? ""
-                : CompileRegisterDeclaration(location) + ", ";
-            return $"{PatchConstantStructureName(_shader.Type)} {PatchConstants.ParameterName}, {domainLocation}"
-                + $"const OutputPatch<{GetInputStructureName()}, "
-                + $"{_registers.InputControlPointCount}> patch";
+            if (location != null)
+            {
+                parameters.Add(CompileRegisterDeclaration(location));
+            }
+            if (_registers.PrimitiveIdDeclaration != null)
+            {
+                parameters.Add(CompileRegisterDeclaration(_registers.PrimitiveIdDeclaration));
+            }
+            // A shader reading no control point declares a zero control point
+            // count, and HLSL refuses a patch of zero vertices.
+            if (_registers.InputControlPointCount != 0)
+            {
+                parameters.Add($"const OutputPatch<{GetInputStructureName()}, "
+                    + $"{_registers.InputControlPointCount}> patch");
+            }
+            return string.Join(", ", parameters);
         }
         if (_registers.MethodInputRegisters.Count == 0)
         {

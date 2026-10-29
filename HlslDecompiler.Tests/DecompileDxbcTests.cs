@@ -566,6 +566,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "load_before_branch_store")]
     [TestCase("cs_5_0", "raw_load_before_store")]
     [TestCase("cs_5_0", "switch_nested_break_carries")]
+    [TestCase("ds_5_0", "patch_constant_index")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

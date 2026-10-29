@@ -2934,6 +2934,13 @@ public sealed class NodeCompiler
                 string inputArray = arrayName.EndsWith("[0]") ? arrayName[..^3] : arrayName;
                 return $"{inputArray}[{index}]{swizzle}";
             }
+            // Patch constants made one array by dcl_indexrange: `constants.weights[i]`.
+            if (arrayKey.RegisterKey is D3D10RegisterKey patchArrayKey
+                && patchArrayKey.OperandType == OperandType.InputPatchConstant
+                && _registers.PatchConstantArray(patchArrayKey) is (string patchArray, int patchOffset))
+            {
+                return $"{patchArray}[{index}{(patchOffset == 0 ? "" : $" + {patchOffset}")}]{swizzle}";
+            }
             if (arrayKey.RegisterKey is D3D10RegisterKey d3d10ArrayKey
                 && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)
                     is ConstantDeclaration constantBufferArray)

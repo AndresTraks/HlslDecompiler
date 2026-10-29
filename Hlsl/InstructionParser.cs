@@ -4047,6 +4047,27 @@ public class InstructionParser
             new RegisterComponentKey(registerKey, swizzle[componentIndex]), index);
     }
 
+    // vpc[r0.x + 4]: a dcl_indexrange patch constant array read at a computed
+    // index (`constants.weights[k]` in a domain shader).
+    private HlslTreeNode GetDynamicPatchConstantInput(
+        D3D10Instruction instruction,
+        int operandIndex,
+        int componentIndex,
+        D3D10OperandTokenCollection.OperandIndex[] operandIndices)
+    {
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
+            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return new RelativeAddressNode(
+            new RegisterComponentKey(
+                new D3D10RegisterKey(OperandType.InputPatchConstant, (int)operandIndices[0].Immediate),
+                swizzle[componentIndex]),
+            index);
+    }
+
     // The shared aL node, so that the components of c0[aL] group together.
     private LoopCounterNode _loopCounter;
 
@@ -4200,6 +4221,8 @@ public class InstructionParser
                     OperandType.Input or OperandType.InputControlPoint or OperandType.OutputControlPoint
                         => GetDynamicVertexInput(
                             instruction, inputParameterIndex, componentIndex, operandIndices),
+                    OperandType.InputPatchConstant => GetDynamicPatchConstantInput(
+                        instruction, inputParameterIndex, componentIndex, operandIndices),
                     _ => throw new NotImplementedException(
                         $"Dynamically indexed {operandType} in {instruction.Opcode}"),
                 };

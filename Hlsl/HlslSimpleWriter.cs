@@ -4162,6 +4162,15 @@ public class HlslSimpleWriter : HlslWriter
             return _registers.GetRegisterName(
                 new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
         }
+        // Patch constants made one array by dcl_indexrange: `constants.weights[i]`,
+        // read at a computed index by a domain shader.
+        if (operandType == OperandType.InputPatchConstant && instruction.ForkInstance == null
+            && _registers.PatchConstantArray(
+                new D3D10RegisterKey(OperandType.InputPatchConstant, (int)operandIndices[0].Immediate))
+                is (string patchArray, int patchOffset))
+        {
+            return $"{patchArray}[{index}{(patchOffset == 0 ? "" : $" + {patchOffset}")}]";
+        }
         // Likewise a patch constant an unrolled join phase reads by its instance.
         if (operandType == OperandType.InputPatchConstant && instruction.ForkInstance is int readInstance)
         {

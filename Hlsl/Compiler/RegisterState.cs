@@ -887,6 +887,31 @@ public sealed class RegisterState
     }
 
     /// <summary>
+    /// The patch constant array a dynamic vpc read reaches: the signature's field
+    /// without its element subscript, and how far the base register sits from the
+    /// array's first element. Null when the base is not an array element.
+    /// </summary>
+    public (string Name, int Offset)? PatchConstantArray(D3D10RegisterKey registerKey)
+    {
+        if (!RegisterDeclarations.TryGetValue(registerKey, out RegisterDeclaration declaration)
+            || declaration.PatchConstantSignature == null)
+        {
+            return null;
+        }
+        RegisterSignature signature = declaration.PatchConstantSignature;
+        string reference = PatchConstants.Reference(signature, _shaderModel.PatchConstantSignatures);
+        if (!reference.EndsWith("]"))
+        {
+            return null;
+        }
+        string name = reference[..reference.IndexOf('[')];
+        string holder = _shaderModel.Type == ShaderType.Hull
+            ? OutputVariableName
+            : PatchConstants.ParameterName;
+        return ($"{holder}.{name}", signature.Index);
+    }
+
+    /// <summary>
     /// TEXCOORD0's x and y are; TEXCOORD0's y and TEXCOORD1's z are not. Patch
     /// constants are never packed together, so need no check.
     /// </summary>

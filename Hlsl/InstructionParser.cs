@@ -2031,11 +2031,10 @@ public class InstructionParser
             new D3D10RegisterKey(indexType, indexNumber), indexComponent);
         if (ActiveOutputs == null
             || !ActiveOutputs.TryGetValue(indexKey, out HlslTreeNode value)
-            || IndexConstant(value) is not ConstantNode constant)
+            || IndexValue(value) is not int offset)
         {
             return null;
         }
-        int offset = constant.IntegerValue ?? (int)constant.Value;
         return new D3D10RegisterKey(OperandType.Output, (int)indices[0].Immediate + offset);
     }
 
@@ -2052,12 +2051,26 @@ public class InstructionParser
     }
 
     // The instance id is a constant in each unrolled copy; fxc may index with
-    // arithmetic on it (`iadd r0.x, -vJoinInstanceID.x, l(1)`).
-    private static int? IndexValue(HlslTreeNode value)
+    // arithmetic on it (`iadd r0.x, -vJoinInstanceID.x, l(1)`) and pick between
+    // registers with a select (`movc r0.x, r0.x, vForkInstanceID.x, l(4)`).
+    private int? IndexValue(HlslTreeNode value)
     {
         if (IndexConstant(value) is ConstantNode constant)
         {
-            return constant.IntegerValue ?? (int)constant.Value;
+            if (constant.IntegerValue is int integerValue)
+            {
+                return integerValue;
+            }
+            // A select's immediates are still float-typed here; their raw bits are
+            // the integer an index wants (l(4) is 4, not the denormal 0).
+            foreach ((ConstantNode polymorphic, uint bits) in _polymorphicImmediates)
+            {
+                if (bits != 0 && ReferenceEquals(polymorphic, constant))
+                {
+                    return unchecked((int)bits);
+                }
+            }
+            return (int)constant.Value;
         }
         return value switch
         {
@@ -2065,9 +2078,37 @@ public class InstructionParser
             AddOperation add => IndexValue(add.Inputs[0]) + IndexValue(add.Inputs[1]),
             SubtractOperation subtract => IndexValue(subtract.Inputs[0]) - IndexValue(subtract.Inputs[1]),
             MultiplyOperation multiply => IndexValue(multiply.Inputs[0]) * IndexValue(multiply.Inputs[1]),
+            DivisionOperation divide => IndexValue(divide.Dividend) / IndexValue(divide.Divisor),
             MoveOperation move => IndexValue(move.Inputs[0]),
+            MoveConditionalOperation select => IndexValue(select.Condition) is int test
+                ? test != 0 ? IndexValue(select.Source1) : IndexValue(select.Source2)
+                : null,
+            ComparisonNode comparison => IndexComparisonValue(comparison),
             _ => null,
         };
+    }
+
+    // A comparison of known values, at -1 or 0 as DXBC writes it; movc only
+    // tests it against zero.
+    private int? IndexComparisonValue(ComparisonNode comparison)
+    {
+        int? left = IndexValue(comparison.Left);
+        int? right = IndexValue(comparison.Right);
+        if (left is not int l || right is not int r)
+        {
+            return null;
+        }
+        bool result = comparison.Comparison switch
+        {
+            IfComparison.LT => comparison.IsUnsigned ? (uint)l < (uint)r : l < r,
+            IfComparison.GT => comparison.IsUnsigned ? (uint)l > (uint)r : l > r,
+            IfComparison.LE => comparison.IsUnsigned ? (uint)l <= (uint)r : l <= r,
+            IfComparison.GE => comparison.IsUnsigned ? (uint)l >= (uint)r : l >= r,
+            IfComparison.EQ => l == r,
+            IfComparison.NE => l != r,
+            _ => false,
+        };
+        return result ? -1 : 0;
     }
 
     // Looks through the movs fxc copies vForkInstanceID with.

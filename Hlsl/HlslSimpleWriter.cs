@@ -2701,7 +2701,16 @@ public class HlslSimpleWriter : HlslWriter
                 D3D10Opcode.Mov => KnownIndex(instruction, 1, component),
                 D3D10Opcode.IAdd => KnownIndex(instruction, 1, component) + KnownIndex(instruction, 2, component),
                 D3D10Opcode.INeg => -KnownIndex(instruction, 1, component),
-                _ => null,
+                // fxc selects the register with the instance test when its range
+                // skips the tess factors' shared lanes.
+                D3D10Opcode.MovC => KnownIndex(instruction, 1, component) is int test
+                    ? test != 0 ? KnownIndex(instruction, 2, component) : KnownIndex(instruction, 3, component)
+                    : null,
+                D3D10Opcode.Udiv => KnownIndex(instruction, 1, component) is int dividend
+                    && KnownIndex(instruction, 2, component) is int divisor && divisor != 0
+                    ? (int)((uint)dividend / (uint)divisor)
+                    : null,
+                _ => KnownComparison(instruction, component),
             };
             var lane = new RegisterComponentKey(key, component);
             if (value is int known)
@@ -2713,6 +2722,58 @@ public class HlslSimpleWriter : HlslWriter
                 _knownIndices.Remove(lane);
             }
         }
+    }
+
+    /// <summary>
+    /// The output an unrolled instanced hull phase write reaches. The index is the
+    /// instance, or a constant the phase computed from it (`movc r0.x, r0.x,
+    /// vForkInstanceID.x, l(4)` when the run skips the tess factors' lanes).
+    /// </summary>
+    private D3D10RegisterKey ForkPhaseWrittenRegister(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.ForkInstance is not int instance
+            || instruction.GetOperandType(operandIndex) != OperandType.Output)
+        {
+            return null;
+        }
+        D3D10OperandTokenCollection.OperandIndex[] indices =
+            instruction.OperandTokens.GetOperandIndices(operandIndex);
+        if (indices.Length == 0 || !indices[0].IsRelative)
+        {
+            return null;
+        }
+        (OperandType indexType, int indexNumber, byte indexComponent) =
+            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, 0);
+        int offset = indexType == OperandType.Temp
+            && _knownIndices.TryGetValue(
+                new RegisterComponentKey(new D3D10RegisterKey(indexType, indexNumber), indexComponent),
+                out int known)
+            ? known
+            : instance;
+        return new D3D10RegisterKey(OperandType.Output, (int)indices[0].Immediate + offset);
+    }
+
+    // An integer comparison's -1/0 result, as DXBC writes it (only zero tests false).
+    private int? KnownComparison(D3D10Instruction instruction, int component)
+    {
+        bool? result = instruction.Opcode switch
+        {
+            D3D10Opcode.Ieq => Compare(instruction, component, (a, b) => a == b),
+            D3D10Opcode.Ine => Compare(instruction, component, (a, b) => a != b),
+            D3D10Opcode.Ige => Compare(instruction, component, (a, b) => a >= b),
+            D3D10Opcode.Ilt => Compare(instruction, component, (a, b) => a < b),
+            D3D10Opcode.UGE => Compare(instruction, component, (a, b) => (uint)a >= (uint)b),
+            D3D10Opcode.ULT => Compare(instruction, component, (a, b) => (uint)a < (uint)b),
+            _ => null,
+        };
+        return result is null ? null : result.Value ? -1 : 0;
+    }
+
+    private bool? Compare(D3D10Instruction instruction, int component, Func<int, int, bool> compare)
+    {
+        return KnownIndex(instruction, 1, component) is int a && KnownIndex(instruction, 2, component) is int b
+            ? compare(a, b)
+            : null;
     }
 
     private int? KnownIndex(D3D10Instruction instruction, int operand, int component)
@@ -4087,11 +4148,9 @@ public class HlslSimpleWriter : HlslWriter
                 + $"[{(rowOffset == 0 ? index : $"{index} + {rowOffset}")}]";
         }
         // An indexed output range is only written by an instanced hull phase, which
-        // was unrolled: the index is the instance, so name the register directly.
-        if (operandType == OperandType.Output && instruction.ForkInstance is int instance)
+        // was unrolled: the index is a known constant, so name the register directly.
+        if (ForkPhaseWrittenRegister(instruction, operandIndex) is D3D10RegisterKey writtenKey)
         {
-            var writtenKey = new D3D10RegisterKey(
-                OperandType.Output, (int)operandIndices[0].Immediate + instance);
             int outputMask = instruction.GetWriteMask(operandIndex);
             return _registers.GetRegisterName(
                 new RegisterComponentKey(writtenKey, FirstComponent(outputMask)));
@@ -4507,6 +4566,12 @@ public class HlslSimpleWriter : HlslWriter
         // A relatively addressed operand's decoded register number is meaningless.
         D3D10OperandTokenCollection.OperandIndex[] operandIndices =
             instruction.OperandTokens.GetOperandIndices(operandIndex);
+        // An unrolled hull phase's write names the register it reaches, and rebases
+        // its write mask on the field there (o0.y's y is `factor`, not `.y`).
+        if (ForkPhaseWrittenRegister(instruction, operandIndex) is D3D10RegisterKey writtenRegister)
+        {
+            registerKey = writtenRegister;
+        }
         string registerName;
         bool isPackedScalar = false;
         StructMemberAccess dynamicMember = null;

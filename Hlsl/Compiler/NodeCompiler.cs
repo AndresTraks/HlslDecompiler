@@ -2129,6 +2129,10 @@ public sealed class NodeCompiler
                     {
                         (left, right) = (SignedOperand(dividend, left), SignedOperand(divisor, right));
                     }
+                    else
+                    {
+                        (left, right) = UnsignedOperands(dividend, left, divisor, right);
+                    }
                     // % binds like /: bracket a sum, and a divisor that is a product
                     // or quotient.
                     bool bracketDividend = IsSum(dividend.First());
@@ -2171,6 +2175,15 @@ public sealed class NodeCompiler
                         format = (dividendIsAssociative || quotientLeft.StartsWith("(int") ? "{0}" : "({0})")
                             + " / "
                             + (divisorIsAssociative || quotientRight.StartsWith("(int") ? "{1}" : "({1})");
+                    }
+                    // udiv's quotient; a float division consumes no integers.
+                    else if (components.First().ConsumesInteger == true)
+                    {
+                        (quotientLeft, quotientRight) =
+                            UnsignedOperands(dividend, quotientLeft, divisor, quotientRight);
+                        format = (dividendIsAssociative || quotientLeft.StartsWith("(uint") ? "{0}" : "({0})")
+                            + " / "
+                            + (divisorIsAssociative || quotientRight.StartsWith("(uint") ? "{1}" : "({1})");
                     }
                     return string.Format(format, quotientLeft, quotientRight);
                 }
@@ -3913,6 +3926,38 @@ public sealed class NodeCompiler
         int width = operand.Count();
         string value = IsBracketed(compiled) || IsPlainName(compiled) ? compiled : $"({compiled})";
         return $"(int{(width == 1 ? "" : width.ToString())}){value}";
+    }
+
+    /// <summary>
+    /// udiv divides unsigned: with both operands typed int, HLSL would divide
+    /// signed, which differs for a negative value (`(uint)mode % 3`). One uint
+    /// operand makes the other one uint too, so one cast is enough: the first
+    /// that is not a literal.
+    /// </summary>
+    private (string Dividend, string Divisor) UnsignedOperands(
+        IEnumerable<HlslTreeNode> dividend, string compiledDividend,
+        IEnumerable<HlslTreeNode> divisor, string compiledDivisor)
+    {
+        if (IsUnsignedAlready(dividend.First()) || IsUnsignedAlready(divisor.First()))
+        {
+            return (compiledDividend, compiledDivisor);
+        }
+        if (dividend.First() is not ConstantNode)
+        {
+            return (UnsignedCast(dividend, compiledDividend), compiledDivisor);
+        }
+        if (divisor.First() is not ConstantNode)
+        {
+            return (compiledDividend, UnsignedCast(divisor, compiledDivisor));
+        }
+        return (compiledDividend, compiledDivisor);
+    }
+
+    private static string UnsignedCast(IEnumerable<HlslTreeNode> operand, string compiled)
+    {
+        int width = operand.Count();
+        string value = IsBracketed(compiled) || IsPlainName(compiled) ? compiled : $"({compiled})";
+        return $"(uint{(width == 1 ? "" : width.ToString())}){value}";
     }
 
     // `n`, `t2.xy`, `s[i + 1].x`: nothing a cast in front could split.

@@ -2138,6 +2138,8 @@ public class InstructionParser
             SubtractOperation subtract => IndexValue(subtract.Inputs[0]) - IndexValue(subtract.Inputs[1]),
             MultiplyOperation multiply => IndexValue(multiply.Inputs[0]) * IndexValue(multiply.Inputs[1]),
             DivisionOperation divide => IndexValue(divide.Dividend) / IndexValue(divide.Divisor),
+            // A udiv writing only its second destination is a remainder (`mod`).
+            ModuloOperation modulo => IndexValue(modulo.Dividend) % IndexValue(modulo.Divisor),
             MoveOperation move => IndexValue(move.Inputs[0]),
             MoveConditionalOperation select => IndexValue(select.Condition) is int test
                 ? test != 0 ? IndexValue(select.Source1) : IndexValue(select.Source2)

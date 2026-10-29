@@ -2706,6 +2706,13 @@ public class HlslSimpleWriter : HlslWriter
                 D3D10Opcode.MovC => KnownIndex(instruction, 1, component) is int test
                     ? test != 0 ? KnownIndex(instruction, 2, component) : KnownIndex(instruction, 3, component)
                     : null,
+                // A udiv with a null quotient destination writes the remainder, and
+                // its sources shift one token later.
+                D3D10Opcode.Udiv when instruction.GetOperandType(0) == OperandType.Null =>
+                    KnownIndex(instruction, 2, component) is int remainder
+                    && KnownIndex(instruction, 3, component) is int remainderOf && remainderOf != 0
+                    ? (int)((uint)remainder % (uint)remainderOf)
+                    : null,
                 D3D10Opcode.Udiv => KnownIndex(instruction, 1, component) is int dividend
                     && KnownIndex(instruction, 2, component) is int divisor && divisor != 0
                     ? (int)((uint)dividend / (uint)divisor)

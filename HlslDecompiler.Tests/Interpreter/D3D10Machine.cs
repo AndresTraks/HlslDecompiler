@@ -2239,12 +2239,13 @@ public class D3D10Machine
         OperandType type = instruction.GetOperandType(destinationIndex);
         int number = instruction.GetParamRegisterNumber(destinationIndex);
         // `mov o[vForkInstanceID.x + 0].x` in an unrolled fork phase: the register
-        // is the range start plus this copy's instance.
-        if (type == OperandType.Output && instruction.ForkInstance is int instance
+        // is the range start plus the index register's value, which fxc may compute
+        // with a select rather than pass through from the instance id.
+        if (type == OperandType.Output && instruction.ForkInstance is int
             && instruction.OperandTokens.GetOperandIndices(destinationIndex)
                 is [{ IsRelative: true } first, ..])
         {
-            number = (int)first.Immediate + instance;
+            number = (int)first.Immediate + RelativeIndex(instruction, destinationIndex, 0);
         }
         uint[] destination;
         switch (type)

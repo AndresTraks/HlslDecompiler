@@ -133,3 +133,4 @@ reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members
 reworded vs_5_0/struct_joint_index
 reordered cs_5_0/switch_nested_break_carries
+reworded hs_5_0/fork_factor_select

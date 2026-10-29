@@ -3059,8 +3059,10 @@ public class InstructionParser
                     pending.Push(reader);
                     continue;
                 }
-                // `v[i]` reads floats, but its index is an integer.
+                // `v[i]` reads floats, but its index is an integer; so is a computed
+                // field's (`patch[i].edge[j]`).
                 bool? consumed = reader is VectorComponentNode component && ReferenceEquals(component.Index, node)
+                    || reader is RelativeAddressNode relative && ReferenceEquals(relative.FieldIndex, node)
                     ? true
                     : reader is ComparisonNode comparison
                     ? (comparison.IsBitsTest ? null : comparison.IsInteger)
@@ -4013,10 +4015,28 @@ public class InstructionParser
         D3D10OperandTokenCollection.OperandIndex[] operandIndices)
     {
         const int VertexIndex = 0;
-        (OperandType indexType, int indexNumber, byte indexComponent) =
-            instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, VertexIndex);
-        HlslTreeNode index = GetActiveOutput(new RegisterComponentKey(
-            new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+        HlslTreeNode index;
+        if (operandIndices[VertexIndex].IsRelative)
+        {
+            (OperandType indexType, int indexNumber, byte indexComponent) =
+                instruction.OperandTokens.GetRelativeIndexOperand(operandIndex, VertexIndex);
+            index = GetActiveOutput(new RegisterComponentKey(
+                new D3D10RegisterKey(indexType, indexNumber), indexComponent));
+            // Add the immediate: `vicp[r0.x + 1]`. With one index it is the
+            // array's base register instead.
+            if (operandIndices.Length > 1 && operandIndices[VertexIndex].Immediate != 0)
+            {
+                index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate))
+                {
+                    ConsumesInteger = true,
+                };
+            }
+        }
+        else
+        {
+            // `v[0][r0.x + 1]`: a fixed vertex, only its field computed.
+            index = new ConstantNode((int)operandIndices[VertexIndex].Immediate);
+        }
 
         byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
         // A VS dcl_indexrange read `v[r0.x + base]` has one index: the register.
@@ -4027,15 +4047,6 @@ public class InstructionParser
                     new D3D10RegisterKey(OperandType.Input, (int)operandIndices[0].Immediate),
                     swizzle[componentIndex]),
                 index);
-        }
-
-        // Add the immediate: `vicp[r0.x + 1]`.
-        if (operandIndices[VertexIndex].Immediate != 0)
-        {
-            index = new AddOperation(index, new ConstantNode((int)operandIndices[VertexIndex].Immediate))
-            {
-                ConsumesInteger = true,
-            };
         }
 
         // Vertex 0 stands for all; control point outputs are keyed apart from inputs.

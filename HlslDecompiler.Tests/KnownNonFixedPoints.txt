@@ -59,7 +59,6 @@ reworded ds_5_0/isoline_curve
 reworded gs_5_0/struct_stream
 reworded hs_5_0/carried_constants
 reworded hs_5_0/output_patch_index
-reworded hs_5_0/patch_semantic_index
 reworded hs_5_0/quad_packed_weight
 reworded hs_5_0/split_control_points
 reworded hs_5_0/patch_constant_array_join

@@ -39,10 +39,10 @@ HS_CONST constants(InputPatch<HS_IN, 4> patch)
 	o.edges[1] = t5;
 	o.edges[2] = t6;
 	o.edges[3] = t7;
-	o.corner[0] = float3(patch[0].wpos.x, patch[0].wpos.y, patch[0].wpos.z) - eye;
-	o.corner[1] = float3(patch[1].wpos.x, patch[1].wpos.y, patch[1].wpos.z) - eye;
-	o.corner[2] = float3(patch[2].wpos.x, patch[2].wpos.y, patch[2].wpos.z) - eye;
-	o.corner[3] = float3(patch[3].wpos.x, patch[3].wpos.y, patch[3].wpos.z) - eye;
+	o.corner[0] = patch[0].wpos - eye;
+	o.corner[1] = patch[1].wpos - eye;
+	o.corner[2] = patch[2].wpos - eye;
+	o.corner[3] = patch[3].wpos - eye;
 	o.inside[0] = 0.5 * (o.edges[1] + o.edges[3]);
 	o.inside[1] = 0.5 * (o.edges[0] + o.edges[2]);
 

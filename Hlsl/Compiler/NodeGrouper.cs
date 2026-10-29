@@ -172,7 +172,7 @@ public class NodeGrouper
             // The same index node: c0[a0.x] and c0[a0.y] are two array elements.
             return relative1.RegisterComponentKey.RegisterKey.Equals(
                     relative2.RegisterComponentKey.RegisterKey)
-                && ReferenceEquals(relative1.Index, relative2.Index)
+                && IsSameIndex(relative1.Index, relative2.Index)
                 && ReferenceEquals(relative1.FieldIndex, relative2.FieldIndex);
         }
 
@@ -342,6 +342,15 @@ public class NodeGrouper
         }
 
         return false;
+    }
+
+    // A fixed index is a constant per component (`v[0][r0.x + 1]`'s vertex 0).
+    private static bool IsSameIndex(HlslTreeNode index1, HlslTreeNode index2)
+    {
+        return ReferenceEquals(index1, index2)
+            || index1 is ConstantNode { IntegerValue: int value1 }
+                && index2 is ConstantNode { IntegerValue: int value2 }
+                && value1 == value2;
     }
 
     /// <summary>

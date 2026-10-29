@@ -42,10 +42,10 @@ HS_CONST constants(InputPatch<HS_IN, 3> patch)
 	o.edges[1] = 1;
 	o.edges[2] = 1;
 	o.inside = 1;
-	o.weights[0] = float4(icb[0].w, icb[0].z, icb[0].y, icb[0].x);
-	o.weights[1] = float4(icb[1].w, icb[2].z, icb[1].y, icb[1].x);
-	o.weights[2] = float4(icb[2].w, icb[3].z, icb[2].y, icb[2].x);
-	o.weights[3] = float4(icb[3].w, icb[4].z, icb[3].y, icb[3].x);
+	o.weights[0] = icb[0].wzyx;
+	o.weights[1] = float4(icb[1].w, icb[2].z, icb[1].yx);
+	o.weights[2] = float4(icb[2].w, icb[3].z, icb[2].yx);
+	o.weights[3] = float4(icb[3].w, icb[4].z, icb[3].yx);
 
 	return o;
 }

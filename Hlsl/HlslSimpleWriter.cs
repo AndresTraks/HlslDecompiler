@@ -4204,8 +4204,13 @@ public class HlslSimpleWriter : HlslWriter
                 }
                 return $"{inputArray}[{index}]";
             }
-            // The vertex is the relative register plus the immediate (`vocp[r0.x + 3]`).
-            if (operandIndices[0].Immediate != 0)
+            // The vertex is the relative register plus the immediate (`vocp[r0.x + 3]`),
+            // or only the immediate when the field alone is computed (`v[0][r0.x + 1]`).
+            if (!operandIndices[0].IsRelative)
+            {
+                index = operandIndices[0].Immediate.ToString();
+            }
+            else if (operandIndices[0].Immediate != 0)
             {
                 index = $"{index} + {operandIndices[0].Immediate}";
             }

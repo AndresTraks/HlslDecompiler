@@ -4230,20 +4230,19 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     throw new NotImplementedException(fieldType.ToString());
                 }
-                field = $"[r{fieldNumber}.{"xyzw"[fieldComponent]}"
-                    + (operandIndices[1].Immediate == 0
-                        ? "" : $" + {operandIndices[1].Immediate}") + "]";
+                field = RegisterState.DynamicFieldName(
+                    vertexDeclaration, $"r{fieldNumber}.{"xyzw"[fieldComponent]}");
             }
             else if (vertexDeclaration.ArrayLength > 1 && !vertexDeclaration.Name.EndsWith("]"))
             {
                 // The first element of a grouped run, read at its own register.
-                field = "[0]";
+                field = vertexDeclaration.Name + "[0]";
             }
             else
             {
-                field = "";
+                field = vertexDeclaration.Name;
             }
-            return $"{vertexArray}[{index}].{vertexDeclaration.Name}{field}";
+            return $"{vertexArray}[{index}].{field}";
         }
 
         var registerKey = new D3D10RegisterKey(

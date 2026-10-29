@@ -195,6 +195,12 @@ public class RegisterDeclaration
     /// </summary>
     public int ArrayLength { get; set; } = 1;
 
+    /// <summary>
+    /// This register's element in the array its run was made into: 0 for the
+    /// first (which carries ArrayLength), 2 for `edge[2]`.
+    /// </summary>
+    public int ArrayElementIndex { get; set; }
+
     public int WriteMask { get; set; }
 
     // PSIZE and FOG must be scalar to compile, whatever the declared mask.

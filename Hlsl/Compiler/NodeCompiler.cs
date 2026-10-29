@@ -2841,6 +2841,16 @@ public sealed class NodeCompiler
     /// Compiles a value where an integer is wanted, such as an index or an element
     /// of an integer buffer: constructors are integer, and nothing gets asfloat.
     /// </summary>
+    // A grouped array's later elements are no parameters of their own, but still
+    // declarations (`patch[i].edge[1]`).
+    private RegisterDeclaration VertexInputDeclaration(D3D10RegisterKey vertexKey, int componentIndex)
+    {
+        return _registers.FindInputDeclaration(vertexKey, componentIndex)
+            ?? (_registers.RegisterDeclarations.TryGetValue(vertexKey, out RegisterDeclaration element)
+                ? element
+                : null);
+    }
+
     public string CompileAsInteger(IEnumerable<HlslTreeNode> group)
     {
         bool wasAssigningToInteger = _assigningToInteger;
@@ -2911,7 +2921,7 @@ public sealed class NodeCompiler
             if (arrayKey.RegisterKey is D3D10RegisterKey vertexKey
                 && vertexKey.OperandType is OperandType.Input or OperandType.OutputControlPoint
                 && vertexKey.GSVertex.HasValue
-                && _registers.FindInputDeclaration(vertexKey, arrayKey.ComponentIndex)
+                && VertexInputDeclaration(vertexKey, arrayKey.ComponentIndex)
                     is RegisterDeclaration vertex)
             {
                 // `vertices[i].semantic`; the member is found by component, since
@@ -2926,23 +2936,19 @@ public sealed class NodeCompiler
                 string field;
                 if (relativeAddress.FieldIndex != null)
                 {
-                    if (vertex.ArrayLength <= 1 && vertex.NameOverride == null)
-                    {
-                        throw new NotImplementedException(
-                            "a dynamically indexed input field that was not declared as an array");
-                    }
-                    field = $"[{CompileAsInteger([relativeAddress.FieldIndex])}]";
+                    field = RegisterState.DynamicFieldName(
+                        vertex, CompileAsInteger([relativeAddress.FieldIndex]));
                 }
                 else if (vertex.ArrayLength > 1 && !vertex.Name.EndsWith("]"))
                 {
                     // The first element of a grouped run, read at its own register.
-                    field = "[0]";
+                    field = vertex.Name + "[0]";
                 }
                 else
                 {
-                    field = "";
+                    field = vertex.Name;
                 }
-                return $"{vertexArray}[{index}].{vertex.Name}{field}{memberSwizzle}";
+                return $"{vertexArray}[{index}].{field}{memberSwizzle}";
             }
             // Input registers made one array by dcl_indexrange.
             if (arrayKey.RegisterKey is D3D10RegisterKey inputArrayKey

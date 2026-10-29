@@ -2726,10 +2726,33 @@ public sealed class RegisterState
                 foreach (RegisterDeclaration element in elements[i])
                 {
                     element.NameOverride = $"{name}[{i}]";
+                    element.ArrayElementIndex = i;
                     declarations.Remove(element);
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// `patch[i].edge[j + 2]`: the subscript of a field read at a computed index,
+    /// counted from the array's first register, not register 0. The read's base
+    /// register is an element of the array, whose own index is the offset.
+    /// </summary>
+    public static string DynamicFieldName(RegisterDeclaration element, string fieldIndex)
+    {
+        if (element.ArrayLength <= 1 && element.ArrayElementIndex == 0)
+        {
+            throw new NotImplementedException(
+                "a dynamically indexed input field that was not declared as an array");
+        }
+        if (element.ArrayElementIndex == 0)
+        {
+            return $"{element.Name}[{fieldIndex}]";
+        }
+        string array = element.Name[..element.Name.LastIndexOf('[')];
+        // An unparenthesized `mode & 3` would take the offset into its mask.
+        string operand = fieldIndex.Contains(' ') ? $"({fieldIndex})" : fieldIndex;
+        return $"{array}[{operand} + {element.ArrayElementIndex}]";
     }
 
     // The first element of an input array, read by itself.
@@ -2772,6 +2795,7 @@ public sealed class RegisterState
                 if (baseKey.OperandType == OperandType.Input)
                 {
                     element.NameOverride = $"{first.Name}[{offset}]";
+                    element.ArrayElementIndex = offset;
                 }
             }
         }

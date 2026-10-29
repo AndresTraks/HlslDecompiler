@@ -1696,16 +1696,19 @@ public class InstructionParser
             {
                 continue;
             }
-            foreach (var caseOutput in switchCase.Body.Last().Outputs)
+            foreach (IStatement exit in CaseExitStatements(switchCase.Body))
             {
-                if (!caseValues.TryGetValue(caseOutput.Key, out var values))
+                foreach (var caseOutput in exit.Outputs)
                 {
-                    values = [];
-                    caseValues[caseOutput.Key] = values;
-                }
-                if (!values.Contains(caseOutput.Value))
-                {
-                    values.Add(caseOutput.Value);
+                    if (!caseValues.TryGetValue(caseOutput.Key, out var values))
+                    {
+                        values = [];
+                        caseValues[caseOutput.Key] = values;
+                    }
+                    if (!values.Contains(caseOutput.Value))
+                    {
+                        values.Add(caseOutput.Value);
+                    }
                 }
             }
         }
@@ -1723,6 +1726,62 @@ public class InstructionParser
             switchStatement.Outputs[caseValue.Key] = joined.Count == 1
                 ? joined[0]
                 : new PhiNode([.. joined]);
+        }
+    }
+
+    /// <summary>
+    /// A case's statements that carry values out of the switch: the last statement
+    /// plus any break nested in the case's ifs, which leaves with its own values.
+    /// A loop's or inner switch's breaks leave those instead, so the walk stops
+    /// there.
+    /// </summary>
+    private static IEnumerable<IStatement> CaseExitStatements(IList<IStatement> body)
+    {
+        if (body.Count != 0)
+        {
+            yield return body.Last();
+        }
+        foreach (IStatement statement in body)
+        {
+            if (statement is IfStatement ifStatement)
+            {
+                foreach (IStatement exit in IfExitStatements(ifStatement.TrueBody))
+                {
+                    yield return exit;
+                }
+                if (ifStatement.FalseBody != null)
+                {
+                    foreach (IStatement exit in IfExitStatements(ifStatement.FalseBody))
+                    {
+                        yield return exit;
+                    }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<IStatement> IfExitStatements(IList<IStatement> body)
+    {
+        if (body.Count != 0 && body.Last() is BreakStatement)
+        {
+            yield return body.Last();
+        }
+        foreach (IStatement statement in body)
+        {
+            if (statement is IfStatement ifStatement)
+            {
+                foreach (IStatement exit in IfExitStatements(ifStatement.TrueBody))
+                {
+                    yield return exit;
+                }
+                if (ifStatement.FalseBody != null)
+                {
+                    foreach (IStatement exit in IfExitStatements(ifStatement.FalseBody))
+                    {
+                        yield return exit;
+                    }
+                }
+            }
         }
     }
 

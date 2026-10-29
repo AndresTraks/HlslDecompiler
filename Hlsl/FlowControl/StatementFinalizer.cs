@@ -942,6 +942,28 @@ public class StatementFinalizer
             }
         }
 
+        // A break nested in an if carries that if's join variable out of the case
+        // even when the case ends with a plain assignment after the if. It must
+        // share the case's variable, or the enclosing scope reads an unset one.
+        foreach (SwitchCase switchCase in switchStatement.Cases)
+        {
+            foreach (IfStatement bodyIf in switchCase.Body.OfType<IfStatement>())
+            {
+                foreach (var ifOutput in bodyIf.Outputs.ToList())
+                {
+                    if (ifOutput.Value is not TempVariableNode carried
+                        || !variableByRegister.TryGetValue(ifOutput.Key, out var owner)
+                        || ReferenceEquals(carried, owner)
+                        || (bodyIf.Inputs.TryGetValue(ifOutput.Key, out HlslTreeNode entryValue)
+                            && ReferenceEquals(entryValue, carried)))
+                    {
+                        continue;
+                    }
+                    Reassign(switchCase.Body, carried, owner);
+                }
+            }
+        }
+
         foreach (var entry in variableByRegister)
         {
             switchStatement.Outputs[entry.Key] = entry.Value;

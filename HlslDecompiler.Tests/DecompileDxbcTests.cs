@@ -565,6 +565,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "uav_load_into_float")]
     [TestCase("cs_5_0", "load_before_branch_store")]
     [TestCase("cs_5_0", "raw_load_before_store")]
+    [TestCase("cs_5_0", "switch_nested_break_carries")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     public void DecompileTest(string profile, string baseFilename)
     {

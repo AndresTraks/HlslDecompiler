@@ -267,6 +267,20 @@ internal sealed class ParsedIdioms
                 }
             }
         }
+        // Whole elements further in fold into the same imad: `s[i + 1]` of a
+        // three-register struct is `imad r0.x, i, l(3), l(3)`.
+        if (index is MultiplyAddOperation { Addend: ConstantNode { IntegerValue: int addend } } multiplyAdd
+            && addend % stride == 0)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (multiplyAdd.Inputs[i] is ConstantNode { IntegerValue: int factor } && factor == stride)
+                {
+                    element = new AddOperation(multiplyAdd.Inputs[1 - i], new ConstantNode(addend / stride));
+                    return true;
+                }
+            }
+        }
         element = null;
         return false;
     }

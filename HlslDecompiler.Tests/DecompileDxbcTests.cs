@@ -578,6 +578,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "early_return_overwrite")]
     [TestCase("ps_5_0", "switch_every_case_returns")]
     [TestCase("ps_5_0", "multiply_reciprocal_root")]
+    [TestCase("ps_4_0", "narrow_texture_load")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

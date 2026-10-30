@@ -26,7 +26,8 @@ float4 main(PS_IN i) : SV_Target
 	r2.zw = int2(0, 0);
 	r3 = r2 + int4(1, 0, 0, 0);
 	r2 = asint(sceneTex.Load(r2.xyw));
-	r3 = asint(depthTex.Load(r3.xyz));
+	r3.x = asint(depthTex.Load(r3.xyz));
+	r3.yzw = asint(float3(0, 0, 1));
 	r0.x = r3.x;
 	r0.w = asint(i.texcoord.x);
 	o = asfloat(r2) * asfloat(r1.x) + asfloat(r0);

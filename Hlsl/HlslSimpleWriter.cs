@@ -2868,6 +2868,10 @@ public class HlslSimpleWriter : HlslWriter
 
     private void WriteInstructionStatement(D3D10Instruction instruction)
     {
+        if (WriteNarrowResourceRead(instruction))
+        {
+            return;
+        }
         switch (instruction.Opcode)
         {
             case D3D10Opcode.Add:
@@ -5236,6 +5240,62 @@ public class HlslSimpleWriter : HlslWriter
 
     // The texture operand's swizzle picks the channel of each result component
     // (`t2.yzxw` puts green in x). Comparison samples return one value.
+    /// <summary>
+    /// A read of a texture with fewer than four components (Texture2D&lt;uint2&gt;) into
+    /// lanes it lacks: HLSL returns only its own components, so those lanes are
+    /// written apart, as the 0 or 1 the hardware fills them with.
+    /// </summary>
+    private bool WriteNarrowResourceRead(D3D10Instruction instruction)
+    {
+        if (instruction.Opcode is not (D3D10Opcode.LD or D3D10Opcode.LDMS or D3D10Opcode.Sample
+                or D3D10Opcode.SampleB or D3D10Opcode.SampleL or D3D10Opcode.SampleD)
+            || LoadedResource(instruction) is not { ShaderInputType: D3DShaderInputType.Texture } resource
+            || resource.ReturnComponents >= 4)
+        {
+            return false;
+        }
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(TextureOperandIndex(instruction));
+        int mask = DestinationMask(instruction);
+        int inRange = 0;
+        for (int c = 0; c < 4; c++)
+        {
+            if ((mask & (1 << c)) != 0 && swizzle[c] < resource.ReturnComponents)
+            {
+                inRange |= 1 << c;
+            }
+        }
+        if (inRange == mask)
+        {
+            return false;
+        }
+        int? previous = _destinationMaskOverride;
+        try
+        {
+            if (inRange != 0)
+            {
+                _destinationMaskOverride = inRange;
+                WriteInstructionStatement(instruction);
+            }
+            _destinationMaskOverride = mask & ~inRange;
+            string[] fill = [.. Enumerable.Range(0, 4)
+                .Where(c => (mask & ~inRange & (1 << c)) != 0)
+                .Select(c => swizzle[c] == 3 ? "1" : "0")];
+            string type = resource.ResourceReturnType switch
+            {
+                D3DResourceReturnType.SInt => "int",
+                D3DResourceReturnType.UInt => "uint",
+                _ => "float",
+            };
+            string value = fill.Length == 1 ? $"({type}){fill[0]}" : $"{type}{fill.Length}({string.Join(", ", fill)})";
+            WriteResult(instruction, "{0} = {1};", GetOperandName(instruction, 0), value);
+        }
+        finally
+        {
+            _destinationMaskOverride = previous;
+        }
+        return true;
+    }
+
     private static string GetResourceSwizzle(D3D10Instruction instruction)
     {
         if (instruction.Opcode is D3D10Opcode.SampleC or D3D10Opcode.SampleCLZ

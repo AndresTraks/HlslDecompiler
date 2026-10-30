@@ -903,7 +903,11 @@ public sealed class NodeCompiler
                 string masked = offset.All(o => o == 0) ? shifted : $"({shifted})";
                 return $"{masked} & {CompileIntegers([.. width.Select(w => w >= 32 ? -1 : (1 << w) - 1)])}";
             }
-            return $"({value} >> {CompileOperand(offsets)}) & ((1 << {CompileOperand(widths)}) - 1)";
+            // A literal width's mask computed here, as for bfi: fxc float-folds it.
+            string fieldMask = AllIntegers(widths, out int[] literalWidth)
+                ? CompileIntegers([.. literalWidth.Select(w => w >= 32 ? -1 : (1 << w) - 1)])
+                : $"((1 << {CompileOperand(widths)}) - 1)";
+            return $"({value} >> {CompileOperand(offsets)}) & {fieldMask}";
         }
 
         if (IsUnsignedAlready(extract.Value))
@@ -948,8 +952,11 @@ public sealed class NodeCompiler
                 : $"({value} & {keptText}) | ({shifted} & {maskText})";
         }
         // Masked before the shift, the form fxc folds back into one bfi; shifted
-        // then masked, it stays a shift, two ands and an or.
-        string widthMask = $"((1 << {CompileOperand(widths)}) - 1)";
+        // then masked, it stays a shift, two ands and an or. A literal width's mask
+        // is computed here: fxc folds `(1 << 31) - 1` at float precision, to 1 << 31.
+        string widthMask = AllIntegers(widths, out int[] literalWidth)
+            ? CompileIntegers([.. literalWidth.Select(w => w >= 32 ? -1 : (1 << w) - 1)])
+            : $"((1 << {CompileOperand(widths)}) - 1)";
         string maskExpression = $"({widthMask} << {CompileOperand(offsets)})";
         string inserted = $"(({insert} & {widthMask}) << {CompileOperand(offsets)})";
         return insertsIntoNothing

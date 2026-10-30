@@ -2302,6 +2302,22 @@ public class HlslSimpleWriter : HlslWriter
         return $"int{components.Length}(" + string.Join(", ", masks) + ")";
     }
 
+    // A literal 0 in every component read: a shift by it is left out.
+    private bool IsZeroImmediate(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.Immediate32)
+        {
+            return false;
+        }
+        if (instruction.GetParamRegisterKey(operandIndex).ImmediateSingle.Length == 1)
+        {
+            return instruction.GetParamInt(operandIndex, 0) == 0;
+        }
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        return GetSourceComponents(instruction, operandIndex, swizzle)
+            .All(c => instruction.GetParamInt(operandIndex, c) == 0);
+    }
+
     private bool IsIntegerDestination(D3D10Instruction instruction)
     {
         int? destinationIndex = instruction.GetDestinationParamIndex();
@@ -2868,7 +2884,9 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     int length = instruction.GetDestinationMaskLength();
                     string size = length == 1 ? "" : length.ToString();
-                    WriteResult(instruction, "{0} = ((uint{4}){3} >> {2}) & {1};",
+                    WriteResult(instruction, IsZeroImmediate(instruction, 2)
+                        ? "{0} = (uint{4}){3} & {1};"
+                        : "{0} = ((uint{4}){3} >> {2}) & {1};",
                         GetOperandName(instruction, 0), FieldMask(instruction, 1),
                         ShiftOperand(instruction, 2), ShiftOperand(instruction, 3), size);
                     break;
@@ -2879,7 +2897,9 @@ public class HlslSimpleWriter : HlslWriter
                     ShiftOperand(instruction, 2), ShiftOperand(instruction, 3));
                 break;
             case D3D10Opcode.BFI:
-                WriteResult(instruction, "{0} = ({4} & ~({1} << {2})) | (({3} << {2}) & ({1} << {2}));",
+                WriteResult(instruction, IsZeroImmediate(instruction, 2)
+                    ? "{0} = ({4} & ~{1}) | ({3} & {1});"
+                    : "{0} = ({4} & ~({1} << {2})) | (({3} << {2}) & ({1} << {2}));",
                     GetOperandName(instruction, 0), FieldMask(instruction, 1),
                     ShiftOperand(instruction, 2), ShiftOperand(instruction, 3),
                     ShiftOperand(instruction, 4));

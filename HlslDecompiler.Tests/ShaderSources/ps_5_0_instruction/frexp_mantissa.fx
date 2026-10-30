@@ -10,7 +10,7 @@ float4 main(float4 texcoord : TEXCOORD) : SV_Target
 	r0.x = r0.y & r0.x;
 	r0.x = r0.x >> 23;
 	r0.x = asint((float)r0.x);
-	r0.z = (1056964608 & ~(8388607 << 0)) | ((asint(texcoord.w) << 0) & (8388607 << 0));
+	r0.z = (1056964608 & ~8388607) | (asint(texcoord.w) & 8388607);
 	r0.y = r0.y & r0.z;
 	o.w = asfloat(r0.x) + asfloat(r0.y);
 	r0.x = asint(texcoord.z * 0.333333343);

@@ -2777,7 +2777,9 @@ public sealed class NodeCompiler
                 offsets.Add(add.Inputs.Single(input => input is ConstantNode { IntegerValue: not null }));
                 offset = true;
             }
-            else if (lane is ConstantNode)
+            // A lane that is a sum already: fxc adds it on its own, so the vector add
+            // would be one more instruction.
+            else if (lane is ConstantNode or AddOperation)
             {
                 return null;
             }

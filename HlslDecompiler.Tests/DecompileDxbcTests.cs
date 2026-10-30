@@ -582,6 +582,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "product_operand_brackets")]
     [TestCase("ps_5_0", "structured_matrix_rows")]
     [TestCase("ps_5_0", "bool_lane_output")]
+    [TestCase("ps_5_0", "load_offset_sum_lane")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

@@ -49,7 +49,7 @@ public class TruncateTemplate : NodeTemplate<AddOperation>
     {
         return node is SignLessOperation less
             && less.Inputs[1] is FractionalOperation fraction
-            && ReferenceEquals(fraction.Value, value)
+            && (ReferenceEquals(fraction.Value, value) || ParsedIdioms.DifferByWholeNumber(fraction.Value, value))
             && IsNegationOf(less.Inputs[0], fraction);
     }
 

@@ -283,7 +283,8 @@ internal sealed class ParsedIdioms
         return null;
     }
 
-    private static bool DifferByWholeNumber(HlslTreeNode a, HlslTreeNode b)
+    // Also for the templates: frac(a) is frac(b) where a and b differ by a whole number.
+    internal static bool DifferByWholeNumber(HlslTreeNode a, HlslTreeNode b)
     {
         (HlslTreeNode baseA, float scaleA, float offsetA) = ScaledOffset(Moved(a));
         (HlslTreeNode baseB, float scaleB, float offsetB) = ScaledOffset(Moved(b));
@@ -301,6 +302,8 @@ internal sealed class ParsedIdioms
                 return Offset(ScaledOffset(inputs[0]), constant.Value);
             case AddOperation when inputs[0] is ConstantNode constant:
                 return Offset(ScaledOffset(inputs[1]), constant.Value);
+            case SubtractOperation when inputs[1] is ConstantNode constant:
+                return Offset(ScaledOffset(inputs[0]), -constant.Value);
             case AddOperation when IsSameRead(inputs[0], inputs[1]):
                 return (inputs[0], 2, 0);
             case MultiplyOperation when inputs[1] is ConstantNode scale:

@@ -2656,7 +2656,10 @@ public sealed class NodeCompiler
                         }
                         string selects = string.Join(", ", components.Select(c =>
                             $"{Compile([c.Inputs[0]])} ? {Branch(c.Inputs[1])} : {Branch(c.Inputs[2])}"));
-                        return $"float{components.Count}({selects})";
+                        // Compiled as integers (under asfloat), the lanes are bits: a float
+                        // constructor would convert 1065353216 to a number.
+                        string selectType = !_assigningToInteger ? "float" : _assigningToUnsigned ? "uint" : "int";
+                        return $"{selectType}{components.Count}({selects})";
 
                         string Branch(HlslTreeNode branch)
                         {

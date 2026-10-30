@@ -93,6 +93,7 @@ reworded ps_5_0/any_not_all
 reworded ps_5_0/array_texel_offsets
 reworded ps_5_0/bit_scans
 reworded ps_5_0/bool_lane_output
+reworded ps_5_0/bool_mask_bits_vector
 reworded ps_5_0/depth_aware_blur
 reworded ps_5_0/environment_lighting
 reworded ps_5_0/frexp_mantissa

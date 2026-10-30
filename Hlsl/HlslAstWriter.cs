@@ -3524,6 +3524,25 @@ public class HlslAstWriter : HlslWriter
             {
                 TempVariableNode variable = variables[component.InfoComponent];
                 component.NamedAs = variable;
+                // A float sampleinfo beside a uint resinfo (fxc folds the count's utof
+                // into it) shares the uint call: its readers convert the count.
+                if (variable.IsInteger && component.ReturnType != D3D10ResInfoReturnType.Uint)
+                {
+                    var converted = new ConvertOperation(variable, "float") { SourceUnsigned = true };
+                    foreach (HlslTreeNode reader in component.Outputs.ToArray())
+                    {
+                        for (int i = 0; i < reader.Inputs.Count; i++)
+                        {
+                            if (ReferenceEquals(reader.Inputs[i], component))
+                            {
+                                reader.Inputs[i] = converted;
+                                converted.Outputs.Add(reader);
+                            }
+                        }
+                        component.Outputs.Remove(reader);
+                    }
+                    return (HlslTreeNode)new TempAssignmentNode(variable, component);
+                }
                 return (HlslTreeNode)NameSubexpression(component, variable);
             })]);
         }

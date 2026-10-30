@@ -2605,6 +2605,17 @@ public sealed class NodeCompiler
                                 : CompileAsInteger([n]))];
                             return $"{(_assigningToUnsigned ? "uint" : "int")}{parts.Count}({string.Join(", ", parts)})";
                         }
+                        // Into a float, likewise: a lane of integer bits (an int cbuffer
+                        // member moved as is) is reinterpreted by itself, not converted.
+                        if (!intoInteger && components.Count > 1
+                            && components.Any(c => c.Inputs[branch] is not ConstantNode && IsFloatValued(c.Inputs[branch]))
+                            && components.Any(c => c.Inputs[branch] is not ConstantNode && IsIntegerValued(c.Inputs[branch])))
+                        {
+                            List<string> parts = [.. nodes.Select(n => n is not ConstantNode && IsIntegerValued(n)
+                                ? $"asfloat({CompileAsInteger([n])})"
+                                : CompileAsFloat([n]))];
+                            return $"float{parts.Count}({string.Join(", ", parts)})";
+                        }
                         // Into an integer, a float branch is bits even beside constants.
                         bool otherIsConstant = components.All(c => c.Inputs[other] is ConstantNode);
                         // Into a float, an integer branch is bits beside a float constant.

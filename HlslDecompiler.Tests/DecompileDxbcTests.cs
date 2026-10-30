@@ -592,6 +592,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "bool_mask_bits_vector")]
     [TestCase("cs_5_0", "branch_float_after_selector")]
     [TestCase("cs_5_0", "bitfield_insert_condition")]
+    [TestCase("ps_5_0", "select_int_bits_lane")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

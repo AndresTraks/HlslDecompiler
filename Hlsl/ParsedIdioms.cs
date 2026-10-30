@@ -220,7 +220,17 @@ internal sealed class ParsedIdioms
             return;
         }
         int stride = _registerState.FindConstantOfComponent(read.RegisterComponentKey)?.RegistersPerElement ?? 1;
-        if (stride <= 1 || !TryStripElementStride(Moved(read.Index), stride, out HlslTreeNode element))
+        HlslTreeNode element = Moved(read.Index);
+        if (stride > 1 && !TryStripElementStride(element, stride, out element))
+        {
+            return;
+        }
+        // fxc floors a float index (`x - frac(x)`) before mova, and floors it again
+        // when compiled; written out, the floor is compiled twice.
+        HlslTreeNode unfloored = read.RegisterComponentKey.RegisterKey is D3D9RegisterKey
+            ? Unfloored(Moved(element))
+            : null;
+        if (stride <= 1 && unfloored == null)
         {
             return;
         }
@@ -236,6 +246,7 @@ internal sealed class ParsedIdioms
                 declaration.ComponentType = SInt32ComponentType;
             }
         }
+        element = unfloored ?? element;
         var stripped = new RelativeAddressNode(read.RegisterComponentKey, element)
         {
             IndexCountsElements = true,
@@ -245,6 +256,69 @@ internal sealed class ParsedIdioms
         };
         ReplaceEverywhere(read, stripped);
         TakeApart(read, HlslTreeNode.NewNodeSet());
+    }
+
+    // x of `x - frac(y)`, or null, where x and y differ by a whole number (fxc
+    // takes `2 * y + 1 - frac(y + y)`): frac ignores it.
+    private static HlslTreeNode Unfloored(HlslTreeNode value)
+    {
+        if (value is SubtractOperation subtract
+            && Moved(subtract.Subtrahend) is FractionalOperation fraction
+            && DifferByWholeNumber(subtract.Minuend, fraction.Inputs[0]))
+        {
+            return subtract.Minuend;
+        }
+        if (value is AddOperation add)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (Moved(add.Inputs[i]) is NegateOperation { Inputs: [var negated] }
+                    && Moved(negated) is FractionalOperation negatedFraction
+                    && DifferByWholeNumber(add.Inputs[1 - i], negatedFraction.Inputs[0]))
+                {
+                    return add.Inputs[1 - i];
+                }
+            }
+        }
+        return null;
+    }
+
+    private static bool DifferByWholeNumber(HlslTreeNode a, HlslTreeNode b)
+    {
+        (HlslTreeNode baseA, float scaleA, float offsetA) = ScaledOffset(Moved(a));
+        (HlslTreeNode baseB, float scaleB, float offsetB) = ScaledOffset(Moved(b));
+        float difference = offsetA - offsetB;
+        return IsSameRead(baseA, baseB) && scaleA == scaleB && difference == System.MathF.Floor(difference);
+    }
+
+    // value as base * scale + offset, with constant scale and offset.
+    private static (HlslTreeNode Base, float Scale, float Offset) ScaledOffset(HlslTreeNode value)
+    {
+        HlslTreeNode[] inputs = [.. value.Inputs.Select(Moved)];
+        switch (value)
+        {
+            case AddOperation when inputs[1] is ConstantNode constant:
+                return Offset(ScaledOffset(inputs[0]), constant.Value);
+            case AddOperation when inputs[0] is ConstantNode constant:
+                return Offset(ScaledOffset(inputs[1]), constant.Value);
+            case AddOperation when IsSameRead(inputs[0], inputs[1]):
+                return (inputs[0], 2, 0);
+            case MultiplyOperation when inputs[1] is ConstantNode scale:
+                return (inputs[0], scale.Value, 0);
+            case MultiplyOperation when inputs[0] is ConstantNode scale:
+                return (inputs[1], scale.Value, 0);
+            case MultiplyAddOperation when inputs[2] is ConstantNode addend && inputs[1] is ConstantNode scale:
+                return (inputs[0], scale.Value, addend.Value);
+            case MultiplyAddOperation when inputs[2] is ConstantNode addend && inputs[0] is ConstantNode scale:
+                return (inputs[1], scale.Value, addend.Value);
+            default:
+                return (value, 1, 0);
+        }
+
+        static (HlslTreeNode, float, float) Offset((HlslTreeNode Base, float Scale, float Offset) form, float by)
+        {
+            return (form.Base, form.Scale, form.Offset + by);
+        }
     }
 
     private static bool TryStripElementStride(HlslTreeNode index, int stride, out HlslTreeNode element)

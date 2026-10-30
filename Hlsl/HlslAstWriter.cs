@@ -610,6 +610,11 @@ public class HlslAstWriter : HlslWriter
                     {
                         return false;
                     }
+                    // Nothing reads a temp after a return; one left unnamed has no assignment form.
+                    if (statement is ReturnStatement && o.Value is not TempAssignmentNode)
+                    {
+                        return false;
+                    }
                     return true;
                 })
                 .ToDictionary();

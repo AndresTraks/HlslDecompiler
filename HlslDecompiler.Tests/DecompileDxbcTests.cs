@@ -575,6 +575,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "cbuffer_select_index")]
     [TestCase("cs_5_0", "struct_array_imad_index")]
     [TestCase("cs_5_0", "bitfield_insert_wide")]
+    [TestCase("ps_5_0", "early_return_overwrite")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

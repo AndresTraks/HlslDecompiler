@@ -38,19 +38,19 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	int2 t2 = i.sv_groupindex < uint2(4, 2);
 	if (i.sv_groupindex < 4) {
-		t2.x = asint(g0[i.sv_groupindex + 4] + g0[i.sv_groupindex]);
-		g0[i.sv_groupindex] = asfloat(t2.x);
+		float t3 = g0[i.sv_groupindex + 4] + g0[i.sv_groupindex];
+		g0[i.sv_groupindex] = t3;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex < 2) {
-		t2.y = asint(g0[i.sv_groupindex]);
-		t2.x = asint(g0[i.sv_groupindex + 2] + asfloat(t2.y));
-		g0[i.sv_groupindex] = asfloat(t2.x);
+		float t4 = g0[i.sv_groupindex];
+		float t5 = g0[i.sv_groupindex + 2] + t4;
+		g0[i.sv_groupindex] = t5;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex < 1) {
-		t2.x = asint(g0[1] + g0[0]);
-		g0[0] = asfloat(t2.x);
+		float t6 = g0[1] + g0[0];
+		g0[0] = t6;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex == 0) {

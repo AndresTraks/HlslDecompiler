@@ -675,7 +675,9 @@ public class StatementFinalizer
                     // unless it feeds a phi over the existing variable.
                     if (existing != null
                         && ((isIntegerValue != null && existing.IsInteger != isIntegerValue
-                                && !tempUsages.Any(u => u is PhiNode))
+                                // A loop carries the variable; a branch join takes the
+                                // branches' values, whatever the register held before.
+                                && !tempUsages.Any(u => u is PhiNode { IsLoopHeader: true }))
                             // A select on a condition overwriting it holds a value.
                             || (existing.IsBool && !HoldsOnlyACondition(tempValue, tempUsages))
                             || (!Reads(tempValue, existing)

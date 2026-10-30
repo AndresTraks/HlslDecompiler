@@ -292,9 +292,15 @@ internal static class ValueTypes
                 => first.IntegerValue != null && second.IntegerValue != null ? true
                     : first.IntegerValue == null && second.IntegerValue == null ? false
                     : (bool?)null,
-            // An integer arm beside an immediate (`and mask, bfi(...)`) makes an integer.
+            // An integer arm beside an immediate (`and mask, bfi(...)`) makes an integer;
+            // a float arm beside a float literal (`movc r, c, l(3.0), sample`) a float.
             MoveConditionalOperation select when select.Source1 is ConstantNode != select.Source2 is ConstantNode
-                => MadeType(select.Source1 is ConstantNode ? select.Source2 : select.Source1) == true ? true : null,
+                => MadeType(select.Source1 is ConstantNode ? select.Source2 : select.Source1) switch
+                {
+                    true => true,
+                    false when (select.Source1 as ConstantNode ?? (ConstantNode)select.Source2).IntegerValue == null => false,
+                    _ => null,
+                },
             // A comparison makes a mask (all ones or zeroes), an integer.
             ComparisonNode => true,
             // As do conditions combined: `lt; lt; and` is a mask, not a float.

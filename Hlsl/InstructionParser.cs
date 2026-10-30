@@ -2137,9 +2137,11 @@ public class InstructionParser
             AddOperation add => IndexValue(add.Inputs[0]) + IndexValue(add.Inputs[1]),
             SubtractOperation subtract => IndexValue(subtract.Inputs[0]) - IndexValue(subtract.Inputs[1]),
             MultiplyOperation multiply => IndexValue(multiply.Inputs[0]) * IndexValue(multiply.Inputs[1]),
-            DivisionOperation divide => IndexValue(divide.Dividend) / IndexValue(divide.Divisor),
+            DivisionOperation divide => IndexQuotient(
+                divide.Dividend, divide.Divisor, divide.IsSigned, remainder: false),
             // A udiv writing only its second destination is a remainder (`mod`).
-            ModuloOperation modulo => IndexValue(modulo.Dividend) % IndexValue(modulo.Divisor),
+            ModuloOperation modulo => IndexQuotient(
+                modulo.Dividend, modulo.Divisor, modulo.IsSigned, remainder: true),
             MoveOperation move => IndexValue(move.Inputs[0]),
             MoveConditionalOperation select => IndexValue(select.Condition) is int test
                 ? test != 0 ? IndexValue(select.Source1) : IndexValue(select.Source2)
@@ -2147,6 +2149,22 @@ public class InstructionParser
             ComparisonNode comparison => IndexComparisonValue(comparison),
             _ => null,
         };
+    }
+
+    // udiv is unsigned. A zero divisor gives the hardware's all-ones, which no
+    // index means, so the value is left unknown rather than throwing.
+    private int? IndexQuotient(HlslTreeNode dividend, HlslTreeNode divisor, bool signed, bool remainder)
+    {
+        if (IndexValue(dividend) is not int l || IndexValue(divisor) is not int r
+            || r == 0 || signed && r == -1 && l == int.MinValue)
+        {
+            return null;
+        }
+        if (signed)
+        {
+            return remainder ? l % r : l / r;
+        }
+        return unchecked((int)(remainder ? (uint)l % (uint)r : (uint)l / (uint)r));
     }
 
     // A comparison of known values, at -1 or 0 as DXBC writes it; movc only

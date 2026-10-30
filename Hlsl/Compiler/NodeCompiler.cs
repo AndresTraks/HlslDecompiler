@@ -1232,6 +1232,11 @@ public sealed class NodeCompiler
     private string CompileIntegerOperand(IEnumerable<HlslTreeNode> components)
     {
         List<HlslTreeNode> list = components.ToList();
+        // A condition as an integer is its mask; asint takes no bool.
+        if (IsBoolean(list[0]) && list[0] is not ComparisonNode)
+        {
+            return $"({Compile(list)} ? -1 : 0)";
+        }
         if (IsFloatValued(list[0]))
         {
             return $"asint({Compile(list)})";

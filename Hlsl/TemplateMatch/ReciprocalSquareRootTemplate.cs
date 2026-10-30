@@ -4,6 +4,6 @@ public class ReciprocalSquareRootTemplate : NodeTemplate<ReciprocalSquareRootOpe
 {
     public override HlslTreeNode Reduce(ReciprocalSquareRootOperation node)
     {
-        return new DivisionOperation(new ConstantNode(1), new SquareRootOperation(node.Value));
+        return new DivisionOperation(new ConstantNode(1), new SquareRootOperation(node.Value) { IsReciprocalRoot = true });
     }
 }

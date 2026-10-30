@@ -2156,6 +2156,14 @@ public sealed class NodeCompiler
                     {
                         return $"rsqrt({Compile(divisor.Select(d => d.Inputs[0]))})";
                     }
+                    // A multiply by an rsq is one too: a / sqrt(x) is a sqrt and a div.
+                    if (divisor.All(d => d is SquareRootOperation { IsReciprocalRoot: true }))
+                    {
+                        string factor = Compile(dividend);
+                        return string.Format(
+                            AssociativityTester.TestForMultiplication(dividend.First()) ? "{0} * rsqrt({1})" : "({0}) * rsqrt({1})",
+                            factor, Compile(divisor.Select(d => d.Inputs[0])));
+                    }
 
                     // A divisor that is a product or quotient needs brackets too.
                     bool dividendIsAssociative = AssociativityTester.TestForMultiplication(dividend.First());

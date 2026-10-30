@@ -24,7 +24,8 @@ public class MatrixMultiplicationGrouper
             MatrixMultiplicationContext submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
             // A struct member matrix has no extra column: the next register is the
             // next member.
-            if (submatrixGroup != null && submatrixGroup.MemberPath == null)
+            if (submatrixGroup != null && submatrixGroup.MemberPath == null
+                && submatrixGroup.MatrixDeclaration != null)
             {
                 RegisterInputNode[] wColumnNodes = components
                     .Select(g => g.Inputs[1])
@@ -62,7 +63,8 @@ public class MatrixMultiplicationGrouper
 
             submatrixNodes = components.Select(g => g.Inputs[1]).ToArray();
             submatrixGroup = TryGetMultiplicationGroup(submatrixNodes);
-            if (submatrixGroup != null && submatrixGroup.MemberPath == null)
+            if (submatrixGroup != null && submatrixGroup.MemberPath == null
+                && submatrixGroup.MatrixDeclaration != null)
             {
                 RegisterInputNode[] wColumnNodes = components
                     .Select(g => g.Inputs[0])

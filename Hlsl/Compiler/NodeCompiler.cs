@@ -1651,7 +1651,17 @@ public sealed class NodeCompiler
             && select.Source2 is ConstantNode { Value: 0 }
             && IsBoolean(select.Condition))
         {
-            return Compile([select.Condition]);
+            // A condition, not a float's bits: no asfloat around its mask.
+            bool wasReadingAsFloat = _readingAsFloat;
+            _readingAsFloat = false;
+            try
+            {
+                return Compile([select.Condition]);
+            }
+            finally
+            {
+                _readingAsFloat = wasReadingAsFloat;
+            }
         }
         if (lane is StepOperation step)
         {

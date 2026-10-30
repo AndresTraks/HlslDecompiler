@@ -584,6 +584,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "bool_lane_output")]
     [TestCase("ps_5_0", "load_offset_sum_lane")]
     [TestCase("vs_5_0", "tbuffer_matrix_bfi_index")]
+    [TestCase("ps_5_0", "evaluate_attribute_lanes")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

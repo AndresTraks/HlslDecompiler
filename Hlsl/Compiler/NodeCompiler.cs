@@ -2539,13 +2539,25 @@ public sealed class NodeCompiler
                 {
                     // The sample index or offset is one integer for all components.
                     string attribute = Compile(components.Select(g => g.Inputs[0]));
+                    // The whole attribute, then its lanes: fxc gives one call per lane of
+                    // an input the same destination, the last overwriting the others.
+                    // Leading lanes (.xy) are a truncation fxc compiles as one call; one
+                    // lane alone (.x) is split too, as its sibling lanes are.
+                    string lanes = "";
+                    if (System.Text.RegularExpressions.Regex.Match(attribute, @"^([\w.]+)(\.[xyzw]{1,4})$")
+                        is { Success: true } swizzled
+                        && !(swizzled.Groups[2].Value.Length > 2
+                            && "xyzw".StartsWith(swizzled.Groups[2].Value[1..], StringComparison.Ordinal)))
+                    {
+                        (attribute, lanes) = (swizzled.Groups[1].Value, swizzled.Groups[2].Value);
+                    }
                     if (evaluate.Place == EvaluateAttributeAt.Centroid)
                     {
-                        return $"{evaluate.HlslName}({attribute})";
+                        return $"{evaluate.HlslName}({attribute}){lanes}";
                     }
                     string at = CompileAsInteger(
                         evaluate.Inputs.Skip(1).ToList());
-                    return $"{evaluate.HlslName}({attribute}, {at})";
+                    return $"{evaluate.HlslName}({attribute}, {at}){lanes}";
                 }
 
             case FloatingModuloOperation _:

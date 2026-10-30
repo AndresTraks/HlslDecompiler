@@ -3078,9 +3078,13 @@ public class InstructionParser
                     continue;
                 }
                 // `v[i]` reads floats, but its index is an integer; so is a computed
-                // field's (`patch[i].edge[j]`).
+                // field's (`patch[i].edge[j]`), and a DXBC register index
+                // (`cb0[r0.y + 1]`; D3D9's a0 is loaded from a float by mova).
                 bool? consumed = reader is VectorComponentNode component && ReferenceEquals(component.Index, node)
-                    || reader is RelativeAddressNode relative && ReferenceEquals(relative.FieldIndex, node)
+                    || reader is RelativeAddressNode relative
+                        && (ReferenceEquals(relative.FieldIndex, node)
+                            || ReferenceEquals(relative.Index, node)
+                                && relative.RegisterComponentKey.RegisterKey is D3D10RegisterKey)
                     ? true
                     : reader is ComparisonNode comparison
                     ? (comparison.IsBitsTest ? null : comparison.IsInteger)

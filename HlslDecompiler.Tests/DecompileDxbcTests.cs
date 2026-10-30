@@ -572,6 +572,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "unsigned_divide_int_operands")]
     [TestCase("gs_5_0", "fixed_vertex_field_index")]
     [TestCase("ps_5_0", "cbuffer_masked_index_offset")]
+    [TestCase("cs_5_0", "cbuffer_select_index")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

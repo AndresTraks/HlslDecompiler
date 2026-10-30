@@ -964,6 +964,25 @@ public class StatementFinalizer
             }
         }
 
+        // The first case's variable may have taken the register's type for a literal
+        // (`r0.x` held the selector, an int, before `mov r0.x, l(1.0)`); the
+        // values the cases assign say what the variable holds.
+        foreach (var entry in variableByRegister)
+        {
+            List<bool?> kinds = [.. switchStatement.Cases
+                .Where(c => c.Body.Count != 0)
+                .Select(c => c.Body.Last().Outputs.TryGetValue(entry.Key, out HlslTreeNode value)
+                        && value is TempAssignmentNode assigned
+                    ? ValueTypes.IsIntegerValue(assigned.Value)
+                    : null)];
+            if (entry.Value.IsInteger && kinds.Contains(false) && !kinds.Contains(true))
+            {
+                entry.Value.IsInteger = false;
+                entry.Value.IsBits = false;
+                entry.Value.IsUnsigned = false;
+            }
+        }
+
         foreach (var entry in variableByRegister)
         {
             switchStatement.Outputs[entry.Key] = entry.Value;

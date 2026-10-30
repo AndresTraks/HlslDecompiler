@@ -14,30 +14,25 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	float2 t0 = (float2)sv_dispatchthreadid.xy + 0.25;
 	float2 t1 = t0 * texel;
-	int t2;
-	float3 t3;
+	float4 t2;
 	switch (isOdd & 3) {
 		case 0:
-			t2 = asint(src.SampleLevel(lin, 0.25 * texel + t1, 0).x);
-			t3 = src.SampleLevel(lin, 0.25 * texel + t1, 0).yzw;
+			t2 = src.SampleLevel(lin, 0.25 * texel + t1, 0);
 			break;
 		case 1:
-			float4 t4 = src.SampleLevel(lin, float2(texel.x * t0.x + 0.5 * texel.x, texel.y * t0.y), 0);
-			t2 = asint(0.5 * (src.SampleLevel(lin, t1, 0).x + t4.x));
-			t3 = 0.5 * (src.SampleLevel(lin, t1, 0).yzw + t4.yzw);
+			float4 t3 = src.SampleLevel(lin, float2(texel.x * t0.x + 0.5 * texel.x, texel.y * t0.y), 0);
+			t2 = 0.5 * (src.SampleLevel(lin, t1, 0) + t3);
 			break;
 		case 2:
-			float4 t5 = src.SampleLevel(lin, float2(texel.x * t0.x, texel.y * t0.y + 0.5 * texel.y), 0);
-			t2 = asint(0.5 * (src.SampleLevel(lin, t1, 0).x + t5.x));
-			t3 = 0.5 * (src.SampleLevel(lin, t1, 0).yzw + t5.yzw);
+			float4 t4 = src.SampleLevel(lin, float2(texel.x * t0.x, texel.y * t0.y + 0.5 * texel.y), 0);
+			t2 = 0.5 * (src.SampleLevel(lin, t1, 0) + t4);
 			break;
 		default:
-			float4 t6 = src.SampleLevel(lin, float2(texel.x * t0.x + 0.5 * texel.x, texel.y * t0.y), 0);
-			float4 t7 = src.SampleLevel(lin, float2(texel.x * t0.x, texel.y * t0.y + 0.5 * texel.y), 0);
-			float4 t8 = src.SampleLevel(lin, texel * t0 + 0.5 * texel, 0);
-			t2 = asint(0.25 * (src.SampleLevel(lin, t1, 0).x + t6.x + t7.x + t8.x));
-			t3 = 0.25 * (src.SampleLevel(lin, t1, 0).yzw + t6.yzw + t7.yzw + t8.yzw);
+			float4 t5 = src.SampleLevel(lin, float2(texel.x * t0.x + 0.5 * texel.x, texel.y * t0.y), 0);
+			float4 t6 = src.SampleLevel(lin, float2(texel.x * t0.x, texel.y * t0.y + 0.5 * texel.y), 0);
+			float4 t7 = src.SampleLevel(lin, texel * t0 + 0.5 * texel, 0);
+			t2 = 0.25 * (src.SampleLevel(lin, t1, 0) + t5 + t6 + t7);
 			break;
 	}
-	dst[sv_dispatchthreadid.xy] = float4(asfloat(t2), t3);
+	dst[sv_dispatchthreadid.xy] = t2;
 }

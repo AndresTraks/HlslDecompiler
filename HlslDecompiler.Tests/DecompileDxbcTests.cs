@@ -587,6 +587,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "evaluate_attribute_lanes")]
     [TestCase("cs_5_0", "bitfield_insert_wide_shift")]
     [TestCase("ps_5_0", "linkage_wider_parameter")]
+    [TestCase("cs_5_0", "switch_float_after_selector")]
     [TestCase("gs_5_0", "loop_indexed_input_array")]
     [TestCase("hs_5_0", "patch_packed_scalars")]
     [TestCase("hs_5_0", "fork_factor_select")]

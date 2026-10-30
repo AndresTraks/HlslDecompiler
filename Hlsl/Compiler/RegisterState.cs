@@ -1418,7 +1418,7 @@ public sealed class RegisterState
             string element = elementOfStride(stride / 4);
             if (within / stride != 0)
             {
-                element += $" + {within / stride}";
+                element = OffsetIndex(element, within / stride);
             }
             memberName += $"[{element}]";
             int inElement = within % stride;
@@ -2750,9 +2750,42 @@ public sealed class RegisterState
             return $"{element.Name}[{fieldIndex}]";
         }
         string array = element.Name[..element.Name.LastIndexOf('[')];
-        // An unparenthesized `mode & 3` would take the offset into its mask.
-        string operand = fieldIndex.Contains(' ') ? $"({fieldIndex})" : fieldIndex;
-        return $"{array}[{operand} + {element.ArrayElementIndex}]";
+        return $"{array}[{OffsetIndex(fieldIndex, element.ArrayElementIndex)}]";
+    }
+
+    /// <summary>
+    /// `index + offset`, bracketing an index whose operator binds more loosely than
+    /// +: `(mode & 3) + 2`, since `mode & 3 + 2` masks with 5.
+    /// </summary>
+    public static string OffsetIndex(string index, int offset)
+    {
+        string operand = BindsLooserThanAdd(index) ? $"({index})" : index;
+        return $"{operand} + {offset}";
+    }
+
+    // A shift, comparison, bitwise or logical operator, or ?:, outside brackets.
+    private static bool BindsLooserThanAdd(string expression)
+    {
+        int depth = 0;
+        for (int i = 0; i < expression.Length; i++)
+        {
+            char c = expression[i];
+            if (c is '(' or '[')
+            {
+                depth++;
+            }
+            else if (c is ')' or ']')
+            {
+                depth--;
+            }
+            else if (depth == 0
+                && (c is '<' or '>' or '&' or '|' or '^' or '?' or '='
+                    || c == '!' && i + 1 < expression.Length && expression[i + 1] == '='))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // The first element of an input array, read by itself.

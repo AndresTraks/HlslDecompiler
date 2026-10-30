@@ -90,7 +90,7 @@ public sealed class MatrixMultiplicationCompiler
                     context.ElementIndexNode, context.MatrixDeclaration.RegistersPerElement);
             if (context.ElementIndex is int and not 0)
             {
-                element += $" + {context.ElementIndex}";
+                element = RegisterState.OffsetIndex(element, context.ElementIndex.Value);
             }
             matrixName = $"{matrixName}[{element}]";
         }

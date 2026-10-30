@@ -695,7 +695,7 @@ public sealed class NodeCompiler
         }
         else if (index != 0)
         {
-            indexText = $"{indexText} + {index}";
+            indexText = RegisterState.OffsetIndex(indexText, index);
         }
         // A double's two dwords are one value.
         int[] values = [.. components.Select(c => (component + c) / wordsPerValue).Distinct()];
@@ -724,7 +724,7 @@ public sealed class NodeCompiler
             dword = CompileElementIndex(byteOffset, 4);
             if (component != 0)
             {
-                dword = $"{dword} + {component}";
+                dword = RegisterState.OffsetIndex(dword, component);
             }
         }
         return $"{name}[{address}][{dword}]";
@@ -2913,7 +2913,7 @@ public sealed class NodeCompiler
                 int literalOffset = arrayKey.RegisterKey.Number - literals.BaseRegisterIndex;
                 if (literalOffset != 0)
                 {
-                    index += $" + {literalOffset}";
+                    index = RegisterState.OffsetIndex(index, literalOffset);
                 }
                 return $"{literals.Name}[{index}]{swizzle}";
             }
@@ -2925,7 +2925,7 @@ public sealed class NodeCompiler
                 int rowOffset = immediateKey.Number
                     - _registers.ImmediateConstantBufferArrayStart(immediateKey.Number);
                 return $"{_registers.ImmediateConstantBufferName(immediateKey.Number)}"
-                    + $"[{(rowOffset == 0 ? index : $"{index} + {rowOffset}")}]{swizzle}";
+                    + $"[{(rowOffset == 0 ? index : RegisterState.OffsetIndex(index, rowOffset))}]{swizzle}";
             }
 
             // Named from the declaration; the base register need not be the first:
@@ -2977,7 +2977,7 @@ public sealed class NodeCompiler
                 && patchArrayKey.OperandType == OperandType.InputPatchConstant
                 && _registers.PatchConstantArray(patchArrayKey) is (string patchArray, int patchOffset))
             {
-                return $"{patchArray}[{index}{(patchOffset == 0 ? "" : $" + {patchOffset}")}]{swizzle}";
+                return $"{patchArray}[{(patchOffset == 0 ? index : RegisterState.OffsetIndex(index, patchOffset))}]{swizzle}";
             }
             if (arrayKey.RegisterKey is D3D10RegisterKey d3d10ArrayKey
                 && _registers.FindConstant(d3d10ArrayKey, arrayKey.ComponentIndex)
@@ -2995,7 +2995,7 @@ public sealed class NodeCompiler
                     string element = CompileRegisterIndexAsElement(relativeAddress, stride);
                     if (elementOffset / stride != 0)
                     {
-                        element += $" + {elementOffset / stride}";
+                        element = RegisterState.OffsetIndex(element, elementOffset / stride);
                     }
                     if (RegisterState.TryGetStructMemberAt(constantBufferArray, $"{arrayName}[{element}]",
                         elementOffset % stride, arrayKey.ComponentIndex, out StructMemberAccess member))
@@ -3043,7 +3043,7 @@ public sealed class NodeCompiler
                 }
                 if (elementOffset != 0)
                 {
-                    index += $" + {elementOffset}";
+                    index = RegisterState.OffsetIndex(index, elementOffset);
                 }
                 return $"{arrayName}[{index}]{swizzle}";
             }
@@ -3060,7 +3060,7 @@ public sealed class NodeCompiler
                     string element = CompileRegisterIndexAsElement(relativeAddress, stride);
                     if (registerOffset / stride != 0)
                     {
-                        element += $" + {registerOffset / stride}";
+                        element = RegisterState.OffsetIndex(element, registerOffset / stride);
                     }
                     if (RegisterState.TryGetStructMemberAtRegister(
                             array, $"{arrayName}[{element}]", registerOffset % stride,
@@ -3088,7 +3088,7 @@ public sealed class NodeCompiler
                 }
                 if (registerOffset != 0)
                 {
-                    index += $" + {registerOffset}";
+                    index = RegisterState.OffsetIndex(index, registerOffset);
                 }
             }
             return $"{arrayName}[{index}]{swizzle}";
@@ -3335,7 +3335,7 @@ public sealed class NodeCompiler
                 string index = CompileAsInteger([call.Index]);
                 instance = call.InstanceIndex == 0
                     ? $"{iface.InstanceName}[{index}]"
-                    : $"{iface.InstanceName}[{index} + {call.InstanceIndex}]";
+                    : $"{iface.InstanceName}[{RegisterState.OffsetIndex(index, call.InstanceIndex)}]";
             }
             return $"{instance}.{method.Name}({arguments}){callSwizzle}";
         }

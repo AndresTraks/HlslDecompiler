@@ -222,6 +222,11 @@ public class HlslSimpleWriter : HlslWriter
             : IsHalfTempRegister(registerKey) ? "half" : "float";
         // A register is as wide as the highest component written to it: `mova a0.xy`
         // loads two indices, and a temp written only to `.xy` needs no more than two.
+        // A temp passed to a class method is as wide as the method's parameter.
+        if (_registers.LinkageTempParameters.TryGetValue(registerKey, out int parameterWidth))
+        {
+            writeMask |= (1 << parameterWidth) - 1;
+        }
         string writeMaskName = ComponentTypeName(scalarType, writeMask);
         // A register only doubles are written to needs no float variable. Decided by
         // the writes, not the mask: one register may hold a double and a float mask.

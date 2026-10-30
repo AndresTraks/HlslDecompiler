@@ -1613,6 +1613,10 @@ public class HlslAstWriter : HlslWriter
         {
             WriteLine(condition == null ? "return;" : $"if ({condition}) return;");
         }
+        else if (!hasOutputStruct && outputs.Count == 0 && condition == null)
+        {
+            // Unreachable, e.g. after a switch whose every case returns: nothing was written.
+        }
         else if (!hasOutputStruct)
         {
             var single = outputs.Single();

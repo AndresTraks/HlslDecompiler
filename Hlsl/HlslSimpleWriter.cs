@@ -1963,9 +1963,16 @@ public class HlslSimpleWriter : HlslWriter
                     $"pow({GetSourceName(instruction, 1)}, {GetSourceName(instruction, 2)})");
                 break;
             case Opcode.Rcp:
-                WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"1 / {GetSourceName(instruction, 1)}");
-                break;
+                {
+                    // An int constant read through its float register would divide as
+                    // an integer: `1 / count` is 0.
+                    var source = instruction.GetParamRegisterKey(1);
+                    bool integerConstant = source.Type == RegisterType.Const
+                        && _registers.FindConstant(source)?.TypeInfo.ParameterType is ParameterType.Int or ParameterType.Bool;
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"{(integerConstant ? "1.0" : "1")} / {GetSourceName(instruction, 1)}");
+                    break;
+                }
             case Opcode.Rep:
                 int repRegisterNumber = instruction.GetParamRegisterNumber(0);
                 ConstantIntRegister loopRegister = _registers.FindConstantIntRegister(repRegisterNumber);

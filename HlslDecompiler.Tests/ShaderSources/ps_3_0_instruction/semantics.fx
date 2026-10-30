@@ -14,7 +14,7 @@ PS_OUT main(PS_IN i)
 {
 	PS_OUT o;
 
-	o.color.w = (i.vface >= 0) ? 1 : -1;
+	o.color.w = (i.vface > 0) ? 1 : -1;
 	o.color.xyz = i.vpos.xxy * float3(0, 1, 1) + float3(0.3, 0, 0);
 	o.depth = -123456;
 

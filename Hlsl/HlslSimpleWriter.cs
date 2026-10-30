@@ -1770,9 +1770,15 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine("if ({0} {2} {1}) break;", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 break;
             case Opcode.Cmp:
-                WriteLine(GetModifier(instruction), GetDestinationName(instruction),
-                    $"({GetSourceName(instruction, 1)} >= 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
-                break;
+                {
+                    // vFace is never 0; fxc compiles a branch on `vface >= 0` as always taken.
+                    string tested = GetSourceName(instruction, 1);
+                    bool face = instruction.GetParamRegisterType(1) == RegisterType.MiscType
+                        && instruction.GetParamRegisterNumber(1) == 1 && !tested.StartsWith('-');
+                    WriteLine(GetModifier(instruction), GetDestinationName(instruction),
+                        $"({tested} {(face ? ">" : ">=")} 0) ? {GetSourceName(instruction, 2)} : {GetSourceName(instruction, 3)}");
+                    break;
+                }
             case Opcode.Crs:
                 // Always reads three components, whatever the mask.
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),

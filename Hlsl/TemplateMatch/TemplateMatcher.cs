@@ -97,7 +97,8 @@ public class TemplateMatcher
                 new CompareSelectedConstantTemplate(),
                 new ConvertSelectedConstantTemplate(),
                 new ComparePositiveAndNegativeTemplate(),
-                new CompareCompareTemplate()),
+                new CompareCompareTemplate(),
+                new ComparisonSelectedConstantTemplate()),
 
             // Each matches one value; none claims another value's components.
             NodeStage("Intrinsics and idioms",

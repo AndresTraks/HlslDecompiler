@@ -3648,6 +3648,20 @@ public sealed class NodeCompiler
             {
                 (address, registerOffset) = (addFirst.Addend2, first);
             }
+            // fxc writes b * 4 + k as bfi(30, 2, b, k): b's bits above k's.
+            else if (address is BitFieldInsertOperation
+                {
+                    Width: ConstantNode { IntegerValue: int width },
+                    Offset: ConstantNode { IntegerValue: int shift },
+                    Value: ConstantNode { IntegerValue: int low },
+                } insert
+                && shift is > 0 and < 31 && width + shift >= 32
+                && 1 << shift == array.RegistersPerElement
+                && low >= 0 && low < array.RegistersPerElement)
+            {
+                address = new MultiplyOperation(insert.Insert, new ConstantNode(array.RegistersPerElement));
+                registerOffset = low;
+            }
             string matrixElement = CompileRegisterIndexAsElement(address, array.RegistersPerElement);
             compiled = RegisterState.MatrixRegisterComponents(
                 array.TypeInfo, $"{array.Name}[{matrixElement}]", registerOffset, swizzle);

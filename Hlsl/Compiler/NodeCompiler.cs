@@ -2670,6 +2670,14 @@ public sealed class NodeCompiler
                         {
                             return $"float{components.Count}({string.Join(", ", components.Select(c => Compile([c.Inputs[0]])))})";
                         }
+                        // Likewise into an integer: a bool converts to 1 or 0, one and.
+                        if (_assigningToInteger
+                            && components.All(c => c.Inputs[1] is ConstantNode { IntegerValue: 1 }
+                                && c.Inputs[2] is ConstantNode { Value: 0 }
+                                && IsBoolean(c.Inputs[0])))
+                        {
+                            return $"{(_assigningToUnsigned ? "uint" : "int")}{components.Count}({string.Join(", ", components.Select(c => Compile([c.Inputs[0]])))})";
+                        }
                         string selects = string.Join(", ", components.Select(c =>
                             $"{Compile([c.Inputs[0]])} ? {Branch(c.Inputs[1])} : {Branch(c.Inputs[2])}"));
                         // Compiled as integers (under asfloat), the lanes are bits: a float

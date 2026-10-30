@@ -17,7 +17,7 @@ PS_OUT main(PS_IN i)
 	int2 r0;
 	o.sv_target = asfloat(asint(i.texcoord) + i.u);
 	r0.x = (0 < i.texcoord.x) ? -1 : 0;
-	r0.y = (1056964608 & ~(((1 << 23) - 1) << 0)) | ((i.u << 0) & (((1 << 23) - 1) << 0));
+	r0.y = (1056964608 & ~(8388607 << 0)) | ((i.u << 0) & (8388607 << 0));
 	o.sv_depth = (r0.x != 0) ? asfloat(r0.y) : i.texcoord.y;
 
 	return o;

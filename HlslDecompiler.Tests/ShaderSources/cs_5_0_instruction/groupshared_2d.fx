@@ -22,7 +22,7 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	r0.xy = i.sv_groupthreadid.xy + int2(1, 1);
 	r0.y = r0.y & 7;
-	r0.x = (0 & ~(((1 << 3) - 1) << 3)) | ((r0.x << 3) & (((1 << 3) - 1) << 3));
+	r0.x = (0 & ~(7 << 3)) | ((r0.x << 3) & (7 << 3));
 	r0.xw = asint(float2(g0[i.sv_groupthreadid.y][(uint)(r0.xx).x / 4 + 0], g0[i.sv_groupthreadid.y][(uint)(r0.xx).x / 4 + 1]));
 	r0.yz = asint(float2(g0[r0.y][(uint)(r0.zz).x / 4 + 0], g0[r0.y][(uint)(r0.zz).x / 4 + 1]));
 	r0.xy = asint(asfloat(r0.yz) + asfloat(r0.xw));

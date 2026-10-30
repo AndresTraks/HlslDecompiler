@@ -31,7 +31,7 @@ float4 main(PS_IN i) : SV_Target
 	r0.yz = r0.yz & int2(3, 3);
 	r0.y = asint(x0[r0.y].x);
 	o.w = x0[0].x;
-	r0.w = ((uint)i.idx >> 2) & ((1 << 2) - 1);
+	r0.w = ((uint)i.idx >> 2) & 3;
 	x1[r0.w].x = r0.y;
 	r0.x = x1[r0.x].x;
 	o.z = asfloat(x1[r0.z].x);

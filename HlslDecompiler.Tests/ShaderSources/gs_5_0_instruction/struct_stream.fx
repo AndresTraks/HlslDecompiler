@@ -28,7 +28,7 @@ void main(point GS_IN i[1], inout TriangleStream<GS_OUT> stream)
 	o.sv_position.xy = asfloat(r0.xy);
 	o.sv_position.zw = i[0].sv_position.zw;
 	o.texcoord = float2(1, 0);
-	r1 = (int3(1, 2, 3) & ~(((1 << int3(30, 30, 30)) - 1) << int3(2, 2, 2))) | ((i[0].id << int3(2, 2, 2)) & (((1 << int3(30, 30, 30)) - 1) << int3(2, 2, 2)));
+	r1 = (int3(1, 2, 3) & ~(int3(1073741823, 1073741823, 1073741823) << int3(2, 2, 2))) | ((i[0].id << int3(2, 2, 2)) & (int3(1073741823, 1073741823, 1073741823) << int3(2, 2, 2)));
 	o.id = r1.x;
 	stream.Append(o);
 	o.sv_position.xy = asfloat(r0.zw);

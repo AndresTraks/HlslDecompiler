@@ -13,7 +13,7 @@ float4 main(PS_IN i) : SV_Target
 	float4 r2;
 	int2 r3;
 	r0.x = i.idx & 3;
-	r0.y = ((uint)i.idx >> 2) & ((1 << 2) - 1);
+	r0.y = ((uint)i.idx >> 2) & 3;
 	r1 = float4(0, 0, 0, 0);
 	r0.z = 0;
 	while (true) {

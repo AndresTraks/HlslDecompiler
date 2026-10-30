@@ -2280,6 +2280,28 @@ public class HlslSimpleWriter : HlslWriter
         return $"int{components.Length}(" + string.Join(", ", bits) + ")";
     }
 
+    /// <summary>
+    /// The low bits a bit field width selects. fxc folds `(1 << 31) - 1` at float
+    /// precision (to 1 << 31), so a literal width gets its mask computed here.
+    /// </summary>
+    private string FieldMask(D3D10Instruction instruction, int operandIndex)
+    {
+        if (instruction.GetOperandType(operandIndex) != OperandType.Immediate32)
+        {
+            return $"((1 << {ShiftOperand(instruction, operandIndex)}) - 1)";
+        }
+        string Mask(int width) => ((int)((1u << (width & 31)) - 1)).ToString(_culture);
+        D3D10RegisterKey registerKey = instruction.GetParamRegisterKey(operandIndex);
+        if (registerKey.ImmediateSingle.Length == 1)
+        {
+            return Mask(instruction.GetParamInt(operandIndex, 0));
+        }
+        byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
+        int[] components = GetSourceComponents(instruction, operandIndex, swizzle);
+        string[] masks = [.. components.Select(c => Mask(instruction.GetParamInt(operandIndex, c)))];
+        return $"int{components.Length}(" + string.Join(", ", masks) + ")";
+    }
+
     private bool IsIntegerDestination(D3D10Instruction instruction)
     {
         int? destinationIndex = instruction.GetDestinationParamIndex();
@@ -2846,8 +2868,8 @@ public class HlslSimpleWriter : HlslWriter
                 {
                     int length = instruction.GetDestinationMaskLength();
                     string size = length == 1 ? "" : length.ToString();
-                    WriteResult(instruction, "{0} = ((uint{4}){3} >> {2}) & ((1 << {1}) - 1);",
-                        GetOperandName(instruction, 0), ShiftOperand(instruction, 1),
+                    WriteResult(instruction, "{0} = ((uint{4}){3} >> {2}) & {1};",
+                        GetOperandName(instruction, 0), FieldMask(instruction, 1),
                         ShiftOperand(instruction, 2), ShiftOperand(instruction, 3), size);
                     break;
                 }
@@ -2857,8 +2879,8 @@ public class HlslSimpleWriter : HlslWriter
                     ShiftOperand(instruction, 2), ShiftOperand(instruction, 3));
                 break;
             case D3D10Opcode.BFI:
-                WriteResult(instruction, "{0} = ({4} & ~(((1 << {1}) - 1) << {2})) | (({3} << {2}) & (((1 << {1}) - 1) << {2}));",
-                    GetOperandName(instruction, 0), ShiftOperand(instruction, 1),
+                WriteResult(instruction, "{0} = ({4} & ~({1} << {2})) | (({3} << {2}) & ({1} << {2}));",
+                    GetOperandName(instruction, 0), FieldMask(instruction, 1),
                     ShiftOperand(instruction, 2), ShiftOperand(instruction, 3),
                     ShiftOperand(instruction, 4));
                 break;

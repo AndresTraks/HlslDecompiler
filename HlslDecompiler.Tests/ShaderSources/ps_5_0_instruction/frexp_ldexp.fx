@@ -11,7 +11,7 @@ float4 main(noperspective float4 sv_position : SV_Position) : SV_Target
 	r0.x = r0.x >> 23;
 	r1.y = (float)r0.x;
 	r0.x = asint(exp2(r1.y));
-	r0.z = (1056964608 & ~(((1 << 23) - 1) << 0)) | ((asint(sv_position.x) << 0) & (((1 << 23) - 1) << 0));
+	r0.z = (1056964608 & ~(8388607 << 0)) | ((asint(sv_position.x) << 0) & (8388607 << 0));
 	r0.y = r0.z & r0.y;
 	r1.x = (float)r0.y;
 	r0.y = r0.y << 3;

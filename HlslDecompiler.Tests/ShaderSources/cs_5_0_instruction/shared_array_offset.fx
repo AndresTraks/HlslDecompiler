@@ -11,7 +11,7 @@ RWStructuredBuffer<S> o : register(u0);
 void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 {
 	int2 r0;
-	r0.x = (0 & ~(((1 << 2) - 1) << 2)) | ((sv_dispatchthreadid.y << 2) & (((1 << 2) - 1) << 2));
+	r0.x = (0 & ~(3 << 2)) | ((sv_dispatchthreadid.y << 2) & (3 << 2));
 	r0.x = r0.x + 4;
 	r0.y = a[sv_dispatchthreadid.x].u[(r0.x - 4) / 4];
 	r0.y = (uint)r0.y >> 1;

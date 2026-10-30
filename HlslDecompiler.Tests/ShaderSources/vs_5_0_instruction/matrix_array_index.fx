@@ -11,7 +11,7 @@ float4 main(float4 position : POSITION) : SV_Position
 	int2 r0;
 	float4 r1;
 	r0.x = idx + 1;
-	r0.x = (0 & ~(((1 << 3) - 1) << 2)) | ((r0.x << 2) & (((1 << 3) - 1) << 2));
+	r0.x = (0 & ~(7 << 2)) | ((r0.x << 2) & (7 << 2));
 	r0.y = idx << 2;
 	r1.x = dot(position, transpose(m[r0.y / 4])[0]);
 	r1.y = dot(position, transpose(m[r0.y / 4])[1]);

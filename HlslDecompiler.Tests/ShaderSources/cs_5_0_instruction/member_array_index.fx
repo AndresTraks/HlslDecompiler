@@ -14,7 +14,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.x = a[sv_dispatchthreadid.x].n;
 	r0.y = r0.x & 3;
 	r0.z = r0.y + 1;
-	r0.xz = (int2(0, 0) & ~(((1 << int2(2, 2)) - 1) << int2(2, 2))) | ((r0.xz << int2(2, 2)) & (((1 << int2(2, 2)) - 1) << int2(2, 2)));
+	r0.xz = (int2(0, 0) & ~(int2(3, 3) << int2(2, 2))) | ((r0.xz << int2(2, 2)) & (int2(3, 3) << int2(2, 2)));
 	r0.z = asint(a[sv_dispatchthreadid.x].w[r0.z / 4]);
 	r0.z = asint(asfloat(r0.z) + asfloat(r0.z));
 	o[sv_dispatchthreadid.x].w[r0.x / 4] = asfloat(r0.z);

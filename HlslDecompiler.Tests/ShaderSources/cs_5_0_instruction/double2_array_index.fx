@@ -17,7 +17,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	double2 d2;
 	r0.x = asint(a[sv_dispatchthreadid.x].f);
 	d0 = (double)asfloat(r0.x);
-	r0.z = (0 & ~(((1 << 1) - 1) << 4)) | ((sv_dispatchthreadid.y << 4) & (((1 << 1) - 1) << 4));
+	r0.z = (0 & ~(1 << 4)) | ((sv_dispatchthreadid.y << 4) & (1 << 4));
 	r0.w = -(r0.z) + 16;
 	r1.x = r0.w + 8;
 	d1.y = a[sv_dispatchthreadid.x].q[r0.w / 16].x;

@@ -17,7 +17,7 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	r0.y = (int)sv_dispatchthreadid.x + -4;
 	r0.z = (r0.y < (int)n) ? -1 : 0;
 	r0.w = r0.z & 1;
-	r0.z = (2 & ~(((1 << 1) - 1) << 0)) | ((r0.z << 0) & (((1 << 1) - 1) << 0));
+	r0.z = (2 & ~(1 << 0)) | ((r0.z << 0) & (1 << 0));
 	r0.x = (r0.x != 0) ? r0.z : r0.w;
 	r0.z = r0.x + 4;
 	r0.w = s[0];

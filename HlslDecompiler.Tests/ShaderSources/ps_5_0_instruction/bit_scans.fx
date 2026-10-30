@@ -15,7 +15,7 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	r0.x = r0.y + r0.x;
 	o.x = (float)(uint)r0.x;
 	r0.x = (uint)packed.y >> 24;
-	r0.y = (r0.x & ~(((1 << 24) - 1) << 8)) | ((packed.z << 8) & (((1 << 24) - 1) << 8));
+	r0.y = (r0.x & ~(16777215 << 8)) | ((packed.z << 8) & (16777215 << 8));
 	r0.x = packed.y;
 	r0 = uint2(msad4(packed.x, uint2(r0.x, 0), uint4(packed.x, 0, 0, 0)).x, msad4(packed.x, uint2(r0.y, 0), uint4(packed.w, 0, 0, 0)).x);
 	r0.x = r0.y + r0.x;

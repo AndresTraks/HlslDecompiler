@@ -21,7 +21,7 @@ float4 main(PS_IN i) : SV_Target
 	float2 t4 = t1 + (t1 >= 0 ? -t3 : t3);
 	float3 t5 = -i.texcoord1 * asfloat(gbuffer1.Load(t0).y) + lightPosition.xyz;
 	float t6 = saturate(1 - length(t5) / lightPosition.w);
-	float t7 = saturate(dot(normalize(float3(t4, t2)), normalize(t5))) * t6 * t6;
+	float t7 = saturate(dot(normalize(float3(t4, t2)), normalize(t5))) * (t6 * t6);
 	float3 t8 = gbuffer0.Sample(samp, i.texcoord).xyz;
-	return float4(t7 * t8 * lightColour.xyz, 1);
+	return float4(t7 * (t8 * lightColour.xyz), 1);
 }

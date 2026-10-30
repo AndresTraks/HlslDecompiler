@@ -18,14 +18,15 @@ void main(uint3 sv_dispatchthreadid : SV_DispatchThreadID)
 	float3 t0 = normalize(2 * (((float3)sv_dispatchthreadid + 0.5) / (float3)gridSize) - 1);
 	float4 t1 = float4(0, 0, 0, 1);
 	for (uint t2 = 0; t2 < 16; t2 = t2 + 1) {
-		float t3 = noise.SampleLevel(linearSampler, 0.100000001 * (t0 * (float)t2 * stepSize + cameraPos), 0).x;
+		float t3 = noise.SampleLevel(linearSampler, 0.100000001 * (t0 * ((float)t2 * stepSize) + cameraPos), 0).x;
 		float t4 = saturate(t3) * density;
-		float4 t5 = float4(t1.w * t4 * fogColour.x * stepSize + t1.x, t1.w * exp(-t4 * stepSize), t1.w * t4 * fogColour.yz * stepSize + t1.yz);
-		if (t5.y < 0.00999999978) {
-			t1 = t5.xzwy;
+		float3 t5 = t1.w * (t4 * fogColour);
+		float4 t6 = float4(t5.x * stepSize + t1.x, t1.w * exp(-t4 * stepSize), t5.yz * stepSize + t1.yz);
+		if (t6.y < 0.00999999978) {
+			t1 = t6.xzwy;
 			break;
 		}
-		t1 = t5.xzwy;
+		t1 = t6.xzwy;
 	}
 	fogVolume[sv_dispatchthreadid] = t1;
 }

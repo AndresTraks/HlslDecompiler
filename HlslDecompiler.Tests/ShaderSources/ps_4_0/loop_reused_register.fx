@@ -39,5 +39,5 @@ float4 main(PS_IN i) : SV_Target
 		t5 = t5 + t13;
 	}
 	float4 t14 = albedo.Sample(samp, i.texcoord1);
-	return t14 * 0.111111112 * t5;
+	return t14 * (0.111111112 * t5);
 }

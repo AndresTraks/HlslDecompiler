@@ -60,7 +60,7 @@ PS_OUT main(PS_IN i)
 	float3 t12 = normalize(t11);
 	float t13 = 1 - saturate(dot(t12, normalize(i.texcoord1)));
 	float t14 = t13 * t13;
-	o.sv_target = float4(t2, t13 * t14 * t14);
+	o.sv_target = float4(t2, t13 * (t14 * t14));
 	o.sv_target1 = float4(0.5 * t12 + 0.5, mode == 2 ? t3.w : 1);
 	o.sv_target2 = t3.yz * float2(roughness, metallic);
 

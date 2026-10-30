@@ -54,7 +54,7 @@ void main(CS_IN i)
 		float t9 = saturate(1 - length(lights[t8].position - t0) / lights[t8].radius);
 		float t10 = t9 * t9;
 		float4 t11 = float4(lights[t8].colour, lights[t8].intensity);
-		t5 = t5 + t10 * t11.w * t11.xyz;
+		t5 = t5 + t10 * (t11.w * t11.xyz);
 	}
 	output[i.sv_dispatchthreadid.xy] = float4(t4 * t5, gbuffer.Load(int3(i.sv_dispatchthreadid.xy, 0)).w);
 }

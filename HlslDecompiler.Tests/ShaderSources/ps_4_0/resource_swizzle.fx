@@ -20,5 +20,5 @@ float4 main(float2 texcoord : TEXCOORD) : SV_Target
 	float4 t4 = albedoTex.Sample(samp, texcoord);
 	float3 t5 = normalTex.Sample(samp, texcoord).xyz;
 	float t6 = saturate(dot(2 * t5 - 1, normalize(t2)));
-	return t3 * t6 * t4 * lightColour;
+	return t3 * (t6 * (t4 * lightColour));
 }

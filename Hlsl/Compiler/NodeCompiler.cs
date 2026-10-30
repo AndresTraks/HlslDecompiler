@@ -2104,7 +2104,8 @@ public sealed class NodeCompiler
                     // Keep `a * (b / c)`: `a * b / c` rounds differently.
                     bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
                     bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First())
-                        && !IsQuotient(multiplicand2);
+                        && !IsQuotient(multiplicand2)
+                        && !(multiplicand2.First() is MultiplyOperation && multiplicand1.First() is not ConstantNode);
                     string first = Compile(multiplicand1, promoteToVectorSize);
                     string second = Compile(multiplicand2, promoteToVectorSize);
                     // Two named values at the top go in canonical order.

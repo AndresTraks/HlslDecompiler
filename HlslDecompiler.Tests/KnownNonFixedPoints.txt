@@ -62,6 +62,7 @@ reworded hs_5_0/output_patch_index
 reworded hs_5_0/quad_packed_weight
 reworded hs_5_0/split_control_points
 reworded hs_5_0/patch_constant_array_join
+reworded ps_2_0/lighting_intrinsics
 reworded ps_3_0/guarded_average
 reworded ps_3_0/if_else_in_loop
 reworded ps_3_0/if_nested
@@ -76,6 +77,7 @@ reworded ps_4_0/bool_lanes_to_float
 reworded ps_4_0/branch_flag
 reworded ps_4_0/dxbc_continue
 reworded ps_4_0/float_modulo_complement
+reworded ps_4_0/gbuffer_decode
 reworded ps_4_0/half_packing
 reworded ps_4_0/index_and_scale
 reworded ps_4_0/int_divide
@@ -84,7 +86,6 @@ reworded ps_4_0/loop_reused_register
 reworded ps_4_0/packed_cbuffer
 reworded ps_4_0/packed_interpolator
 reworded ps_4_0/precedence_mix
-reworded ps_4_0/resource_swizzle
 reworded ps_4_0/shadow_pcf
 reworded ps_4_0/vector_subscript
 reworded ps_4_1/cascade_shadow
@@ -112,6 +113,7 @@ reworded ps_5_0/occlusion_kernel
 reworded ps_5_0/octahedral_normal
 reworded ps_5_0/output_lanes_in_branches
 reworded ps_5_0/parallax_steps
+reworded ps_5_0/product_operand_brackets
 reworded ps_5_0/split_transform
 reworded ps_5_0/tangent_lighting
 reworded ps_5_0/typed_view_load
@@ -127,7 +129,6 @@ reworded vs_3_0/loop_nested_uniform
 reworded vs_3_0/loop_repeat_count
 reworded vs_3_0/nested_select
 reworded vs_4_0/dual_quaternion_skin
-reworded vs_4_0/integer_inputs
 reworded vs_4_0/packed_colour
 reworded vs_5_0/packed_matrix_members
 reworded vs_5_0/struct_joint_index

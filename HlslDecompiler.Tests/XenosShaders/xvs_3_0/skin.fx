@@ -1,0 +1,1 @@
+float4x3 bones[20]; float4x4 vp; float4 main(float4 p : POSITION, float4 w : BLENDWEIGHT, float4 i : BLENDINDICES) : POSITION { float3 q = 0; for (int k = 0; k < 4; k++) q += mul(p, bones[(int)i[k]]) * w[k]; return mul(float4(q, 1), vp); }

@@ -1,5 +1,7 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.DirectXShaderModel.Xenos;
 using HlslDecompiler.Util;
+using System.Buffers.Binary;
 using System.IO;
 using System.Text;
 
@@ -11,7 +13,8 @@ public enum ShaderFileFormat
     ShaderModel,
     Dxbc,
     Rgxa,
-    Effect
+    Effect,
+    Xenos
 }
 
 public class FormatDetector
@@ -41,6 +44,10 @@ public class FormatDetector
                 else if (EffectReader.IsEffectTag(signature))
                 {
                     format = ShaderFileFormat.Effect;
+                }
+                else if (XenosReader.IsXenos(BinaryPrimitives.ReverseEndianness(signature)))
+                {
+                    format = ShaderFileFormat.Xenos;
                 }
                 else
                 {

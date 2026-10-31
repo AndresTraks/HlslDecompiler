@@ -1,0 +1,1 @@
+struct O { float4 p : POSITION; float4 c0 : COLOR0; float4 c1 : COLOR1; float4 t0 : TEXCOORD0; float2 t5 : TEXCOORD5; float s : PSIZE; float f : FOG; }; O main(float4 p : POSITION, float4 c : COLOR0, float3 n : NORMAL) { O o; o.p = p; o.c0 = c; o.c1 = c.wzyx; o.t0 = float4(n, 1); o.t5 = n.xy; o.s = n.z; o.f = p.w; return o; }

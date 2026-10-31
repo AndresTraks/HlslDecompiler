@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.Util;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -7,10 +8,31 @@ namespace HlslDecompiler.DirectXShaderModel;
 
 public class ConstantTableCommentReader : BinaryReader
 {
+    private readonly bool _bigEndian;
+
     public ConstantTableCommentReader(D3D9Instruction instruction)
         : base(ReadRawTable(instruction))
     {
     }
+
+    /// <summary>A table on its own, as the Xbox 360 stores it: big-endian.</summary>
+    public ConstantTableCommentReader(Stream table, bool bigEndian)
+        : base(table)
+    {
+        _bigEndian = bigEndian;
+    }
+
+    public override short ReadInt16() =>
+        _bigEndian ? BinaryPrimitives.ReverseEndianness(base.ReadInt16()) : base.ReadInt16();
+
+    public override ushort ReadUInt16() =>
+        _bigEndian ? BinaryPrimitives.ReverseEndianness(base.ReadUInt16()) : base.ReadUInt16();
+
+    public override int ReadInt32() =>
+        _bigEndian ? BinaryPrimitives.ReverseEndianness(base.ReadInt32()) : base.ReadInt32();
+
+    public override uint ReadUInt32() =>
+        _bigEndian ? BinaryPrimitives.ReverseEndianness(base.ReadUInt32()) : base.ReadUInt32();
 
     public ConstantTable ReadTable()
     {
@@ -24,9 +46,10 @@ public class ConstantTableCommentReader : BinaryReader
         System.Diagnostics.Debug.Assert(ctabSize == 0x1C);
         long creatorPosition = ReadInt32();
 
-        int minorVersion = ReadByte();
-        int majorVersion = ReadByte();
-        var shaderType = (ShaderType)ReadUInt16();
+        uint version = ReadUInt32();
+        int minorVersion = (int)(version & 0xFF);
+        int majorVersion = (int)((version >> 8) & 0xFF);
+        var shaderType = (ShaderType)(version >> 16);
 
         int numConstants = ReadInt32();
         long constantInfoPosition = ReadInt32();

@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.DirectXShaderModel.Xenos;
 using HlslDecompiler.Hlsl;
 using HlslDecompiler.Util;
 using System;
@@ -116,6 +117,15 @@ class Program
                 }
             case ShaderFileFormat.Effect:
                 return DecompileEffect(inputStream, options);
+            case ShaderFileFormat.Xenos:
+                {
+                    XenosShader shader = new XenosReader(inputStream).ReadShader();
+                    if (!options.Disassemble)
+                    {
+                        throw new NotSupportedException("Xbox 360 shaders decompile only to assembly (--asm)");
+                    }
+                    return new XenosAsmWriter(shader).Write();
+                }
             default:
                 throw new InvalidDataException("Unknown shader type");
         }

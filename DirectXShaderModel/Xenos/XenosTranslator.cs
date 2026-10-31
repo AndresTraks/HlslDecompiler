@@ -275,6 +275,8 @@ public sealed class XenosTranslator
         // The control flow index an if closes at.
         public int End;
         public bool HasElse;
+        // The p0 its body runs on, opened by a predicated jump, until a setp in it.
+        public bool? Predicate;
     }
 
     // The control flow program: pairs from the start, up to the first exec's instructions.
@@ -305,10 +307,12 @@ public sealed class XenosTranslator
         return instructions;
     }
 
+    private readonly Stack<Block> _blocks = new();
+
     private void TranslateControlFlow()
     {
         List<ControlFlowInstruction> instructions = ControlFlowInstructions();
-        var blocks = new Stack<Block>();
+        var blocks = _blocks;
         for (int index = 0; index < instructions.Count; index++)
         {
             while (blocks.Count != 0 && blocks.Peek().Kind == BlockKind.If && blocks.Peek().End == index)
@@ -410,11 +414,10 @@ public sealed class XenosTranslator
         {
             // Jumping when p0 == condition runs the body when it is not.
             EmitPredicateIf(!cf.Condition);
+            blocks.Push(new Block { Kind = BlockKind.If, End = target, Predicate = !cf.Condition });
+            return;
         }
-        else
-        {
-            EmitBoolIf(cf.BoolAddress, !cf.Condition);
-        }
+        EmitBoolIf(cf.BoolAddress, !cf.Condition);
         blocks.Push(new Block { Kind = BlockKind.If, End = target });
     }
 
@@ -502,6 +505,12 @@ public sealed class XenosTranslator
     // its else around the opposite run.
     private void SetPredicate(bool? condition)
     {
+        // Inside a block a predicated jump opened on this condition, it holds.
+        if (condition != null && _openPredicate == null && _blocks.Count != 0
+            && _blocks.Peek().Predicate == condition && !_blocks.Peek().HasElse)
+        {
+            return;
+        }
         if (condition == _openPredicate)
         {
             return;
@@ -519,6 +528,14 @@ public sealed class XenosTranslator
             EmitPredicateIf(open);
             _openPredicate = open;
             _openPredicateHasElse = false;
+        }
+    }
+
+    private void ForgetBlockPredicates()
+    {
+        foreach (Block block in _blocks)
+        {
+            block.Predicate = null;
         }
     }
 
@@ -1183,6 +1200,7 @@ public sealed class XenosTranslator
                         Source(RegisterType.Temp, _scratch1, Swizzle(1, 1, 1, 1)), Source(RegisterType.Temp, _scratch2, Swizzle(1, 1, 1, 1)));
                     _predicateComparison = IfComparison.NE;
                     _predicateChanged = true;
+                    ForgetBlockPredicates();
                 }
                 break;
             case AluVectorOpcode.KillGt:
@@ -1426,6 +1444,7 @@ public sealed class XenosTranslator
                     }
                     _predicateComparison = comparison;
                     _predicateChanged = true;
+                    ForgetBlockPredicates();
                 }
                 if (mask != 0)
                 {
@@ -1452,6 +1471,7 @@ public sealed class XenosTranslator
                     Emit(Opcode.Cmp, Destination(RegisterType.Temp, _predicate, 0b0001), test, One(), Zero());
                     _predicateComparison = IfComparison.NE;
                     _predicateChanged = true;
+                    ForgetBlockPredicates();
                 }
                 break;
             case AluScalarOpcode.KillsGt:

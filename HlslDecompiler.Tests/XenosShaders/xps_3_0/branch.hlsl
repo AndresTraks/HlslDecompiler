@@ -2,15 +2,9 @@ float4 k;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
-	float t0 = texcoord.x;
-	float3 t1 = texcoord.yzw;
-	float t2 = (k.x < t0) ? 1 : 0;
-	if (t2 != 0) {
-		if (t2 != 0) {
-			float t3 = sqrt(abs(t0)) * k.x;
-			t0 = sqrt(abs(t1.z)) * k.w;
-			t1 = float3(t3, sqrt(abs(t1.xy)) * k.yz);
-		}
+	float4 t0 = texcoord;
+	if (((k.x < t0.x) ? 1 : 0) != 0) {
+		t0 = sqrt(abs(t0.wxyz)) * k.wxyz;
 	}
-	return float4(t1, t0);
+	return t0.yzwx;
 }

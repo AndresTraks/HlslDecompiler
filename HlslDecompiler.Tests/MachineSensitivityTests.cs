@@ -141,9 +141,9 @@ public class MachineSensitivityTests
 
     private static void AssertDiffers(string source, string variant, string profile = "cs_5_0")
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
         Assert.That(variant, Is.Not.EqualTo(source), "The variant changes nothing.");
 

@@ -70,7 +70,10 @@ mad oC0.yzw, v0.xxx, c0.xyy, c0.yxz
 `dotnet test` decompiles every shader in `HlslDecompiler.Tests/CompiledShaders`
 and compares the output with the goldens beside it: the disassembly in
 `ShaderAssembly`, and the HLSL of both writers in `ShaderSources`. The tiers
-that recompile need `fxc.exe` from the Windows SDK.
+that recompile call `d3dcompiler_47.dll`, the compiler behind `fxc.exe`, in
+process. Windows ships it; a Windows SDK's copy is preferred when one is
+installed, and `D3DCOMPILER_DLL` names another. Elsewhere they run `fxc.exe`
+under Wine, from `FXC_EXE`.
 
 When a change to the decompiler changes its output, bless the goldens instead
 of editing them by hand:

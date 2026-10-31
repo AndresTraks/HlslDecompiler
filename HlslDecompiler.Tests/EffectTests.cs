@@ -85,15 +85,15 @@ public class EffectTests
     [Category("Recompile")]
     public void PreshadersComputeWhatTheShadersWould(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         string sourceFilename = Path.Combine("EffectSources", profile, baseFilename + ".fx");
         string withoutFilename = Path.Combine("Effects", profile + "_op", baseFilename + ".fxc");
         FileUtil.MakeFolder(withoutFilename);
-        string diagnostics = RunFxc(profile, sourceFilename, withoutFilename, "/Op");
+        string diagnostics = RunFxc(profile, sourceFilename, withoutFilename, ShaderCompiler.NoPreshader);
         Assert.That(diagnostics, Is.Null, diagnostics);
 
         IList<ShaderModel> preshaded = ReadEffectShaders(Path.Combine(Root, profile, baseFilename + ".fxc"));
@@ -134,9 +134,9 @@ public class EffectTests
     [Category("Recompile")]
     public void EffectRecompilesToItself(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         string compiledFilename = Path.Combine(Root, profile, baseFilename + ".fxc");
@@ -249,24 +249,9 @@ public class EffectTests
     }
 
     // No entry point for an effect.
-    private static string RunFxc(string profile, string sourceFilename, string objectFilename, string option = null)
+    private static string RunFxc(string profile, string sourceFilename, string objectFilename, uint flags = 0)
     {
-        var startInfo = RecompileTests.CreateFxcProcessStartInfo();
-        startInfo.ArgumentList.Add("/nologo");
-        startInfo.ArgumentList.Add("/T");
-        startInfo.ArgumentList.Add(profile);
-        if (option != null)
-        {
-            startInfo.ArgumentList.Add(option);
-        }
-        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(sourceFilename));
-        startInfo.ArgumentList.Add("/Fo");
-        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(objectFilename));
-
-        using var process = System.Diagnostics.Process.Start(startInfo);
-        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        return process.ExitCode == 0 ? null : output.Trim();
+        return ShaderCompiler.Compile(profile, null, sourceFilename, objectFilename, flags);
     }
 
     [Test]
@@ -310,9 +295,9 @@ public class EffectTests
     [Category("Recompile")]
     public void ShadersRecompileAndComputeTheSame(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         IList<ShaderModel> shaders;

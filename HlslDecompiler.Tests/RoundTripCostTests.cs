@@ -320,9 +320,9 @@ public class RoundTripCostTests
     [TestCaseSource(nameof(Shaders))]
     public void RoundTripDoesNotCostMore(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         string compiled = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
@@ -356,16 +356,7 @@ public class RoundTripCostTests
 
     internal static int CountInstructions(string binaryFilename)
     {
-        var startInfo = RecompileTests.CreateFxcProcessStartInfo();
-        startInfo.ArgumentList.Add("/nologo");
-        startInfo.ArgumentList.Add("/dumpbin");
-        startInfo.ArgumentList.Add(RecompileTests.AsFxcPath(binaryFilename));
-
-        using var process = Process.Start(startInfo);
-        string output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-
-        return output.Split('\n')
+        return ShaderCompiler.Disassemble(binaryFilename).Split('\n')
             .Select(line => line.Trim())
             .Where(line => line.Length != 0 && !line.StartsWith("//"))
             .Count(line => !line.StartsWith("dcl") && !line.StartsWith("def")

@@ -32,9 +32,9 @@ public class CostSweepTests
             Assert.Fail("Set HLSL_SWEEP to the name of the rule to measure, "
                 + "e.g. HLSL_SWEEP=my-rule dotnet test --filter CostSweep");
         }
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found; a sweep is only instructions.");
+            Assert.Ignore("No HLSL compiler; a sweep is only instructions.");
         }
 
         string name = string.Join("+", flags);

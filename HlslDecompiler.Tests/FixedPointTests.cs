@@ -77,9 +77,9 @@ public class FixedPointTests
     [TestCaseSource(nameof(Shaders))]
     public void GoldenDecompilesToItself(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
         if (profile.StartsWith("ps_1_"))
         {
@@ -131,9 +131,9 @@ public class FixedPointTests
     [TestCaseSource(nameof(SecondRoundShaders))]
     public void SecondRoundComputesTheSame(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
         if (profile.StartsWith("ps_1_"))
         {

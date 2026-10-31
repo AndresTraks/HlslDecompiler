@@ -48,9 +48,9 @@ public class FlowAttributeTests
     [TestCaseSource(nameof(Shaders))]
     public void FlowAttributesKeepTheBranchesAndLoops(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         ShaderModel original = RecompileTests.ReadShaderModel(

@@ -17,7 +17,7 @@ public class WinePrefixWarmUp
     [OneTimeSetUp]
     public void HoldThePrefixOpen()
     {
-        if (OperatingSystem.IsWindows() || RecompileTests.FxcPath == null)
+        if (OperatingSystem.IsWindows() || ShaderCompiler.FxcPath == null)
         {
             return;
         }

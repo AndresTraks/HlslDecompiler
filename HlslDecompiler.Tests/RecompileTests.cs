@@ -3,7 +3,6 @@ using HlslDecompiler.Hlsl;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -23,10 +22,6 @@ public class RecompileTests
     private static readonly Dictionary<string, string> KnownFailures = new()
     {
     };
-
-    private static readonly Lazy<string> Fxc = new(FindFxc);
-
-    public static string FxcPath => Fxc.Value;
 
     public static IEnumerable<TestCaseData> InstructionShaders()
     {
@@ -68,9 +63,9 @@ public class RecompileTests
     [TestCaseSource(nameof(Shaders))]
     public void DecompiledOutputCompiles(string profile, string baseFilename)
     {
-        if (Fxc.Value == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         string compiledShaderFilename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
@@ -100,9 +95,9 @@ public class RecompileTests
     [Category("Recompile")]
     public void InstructionOutputCompiles(string profile, string baseFilename)
     {
-        if (Fxc.Value == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
 
         string compiledShaderFilename = Path.Combine("CompiledShaders", profile, baseFilename + ".fxc");
@@ -154,57 +149,13 @@ public class RecompileTests
         return Recompile(profile, hlslOutputFilename, Path.ChangeExtension(hlslOutputFilename, ".fxo"));
     }
 
-    // Off Windows, runs fxc under wine (from PATH, with the inherited WINEPREFIX).
-    public static ProcessStartInfo CreateFxcProcessStartInfo()
-    {
-        var startInfo = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo(Fxc.Value)
-            : new ProcessStartInfo("wine");
-        startInfo.RedirectStandardError = true;
-        startInfo.RedirectStandardOutput = true;
-        startInfo.UseShellExecute = false;
-        if (!OperatingSystem.IsWindows())
-        {
-            startInfo.ArgumentList.Add(Fxc.Value);
-        }
-        return startInfo;
-    }
-
-    /// <summary>
-    /// Wine does not translate arguments, so an absolute unix path reaches fxc as a
-    /// `/` option and it exits 1 silently. Mapped through Z:, the unix root in a
-    /// wine prefix. Every path handed to fxc must come through here.
-    /// </summary>
-    public static string AsFxcPath(string path)
-    {
-        if (OperatingSystem.IsWindows() || !Path.IsPathRooted(path))
-        {
-            return path;
-        }
-        return "Z:" + Path.GetFullPath(path).Replace('/', '\\');
-    }
-
     // fxc rejects ps_1_x (X3539); its decompilation is ps_2_0 HLSL.
     public static string CompileProfile(string profile) =>
         profile.StartsWith("ps_1_") ? "ps_2_0" : profile;
 
     private static string Recompile(string profile, string hlslOutputFilename, string objectFilename)
     {
-        var startInfo = CreateFxcProcessStartInfo();
-        startInfo.ArgumentList.Add("/nologo");
-        startInfo.ArgumentList.Add("/T");
-        startInfo.ArgumentList.Add(CompileProfile(profile));
-        startInfo.ArgumentList.Add("/E");
-        startInfo.ArgumentList.Add("main");
-        startInfo.ArgumentList.Add(AsFxcPath(hlslOutputFilename));
-        startInfo.ArgumentList.Add("/Fo");
-        startInfo.ArgumentList.Add(AsFxcPath(objectFilename));
-
-        using var process = Process.Start(startInfo);
-        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit();
-
-        return process.ExitCode == 0 ? null : output.Trim();
+        return ShaderCompiler.Compile(CompileProfile(profile), "main", hlslOutputFilename, objectFilename);
     }
 
     public static ShaderModel ReadShaderModel(string compiledShaderFilename)
@@ -235,28 +186,4 @@ public class RecompileTests
         return shaderReader.ReadShader();
     }
 
-    private static string FindFxc()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            // No SDK layout to search under Wine; FXC_EXE names the copied fxc.exe.
-            string fxcExe = Environment.GetEnvironmentVariable("FXC_EXE");
-            return fxcExe != null && File.Exists(fxcExe) ? fxcExe : null;
-        }
-
-        string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        string[] roots =
-        [
-            Path.Combine(programFiles, "Windows Kits", "10", "bin"),
-            Path.Combine(programFiles, "Windows Kits", "8.1", "bin"),
-        ];
-
-        return roots
-            .Where(Directory.Exists)
-            .SelectMany(root => Directory.EnumerateFiles(root, "fxc.exe", SearchOption.AllDirectories))
-            .Where(path => path.Contains(@"\x64\") || path.Contains(@"\x86\"))
-            // Prefer the newest SDK, and x64 over x86.
-            .OrderByDescending(path => path)
-            .FirstOrDefault();
-    }
 }

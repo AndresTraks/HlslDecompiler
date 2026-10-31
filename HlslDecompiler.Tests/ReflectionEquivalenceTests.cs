@@ -93,9 +93,9 @@ public class ReflectionEquivalenceTests
     [TestCaseSource(nameof(Shaders))]
     public void DecompiledOutputDeclaresTheSame(string profile, string baseFilename)
     {
-        if (RecompileTests.FxcPath == null)
+        if (!ShaderCompiler.IsAvailable)
         {
-            Assert.Ignore("fxc.exe not found. Install the Windows SDK to run recompilation tests.");
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
         }
         if (profile.StartsWith("ps_1_"))
         {

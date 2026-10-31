@@ -1912,6 +1912,21 @@ public sealed class NodeCompiler
                     return $"firstbithigh({value})";
                 }
 
+            // rcp() is Shader Model 5's; earlier compilers (the Xbox 360's
+            // among them) have only the division, which fxc compiles to rcp.
+            case ReciprocalOperation _ when _registers.IsShaderModel3OrEarlier:
+                {
+                    List<HlslTreeNode> divisor = [.. components.Select(g => g.Inputs[0])];
+                    bool divisorIsAssociative = AssociativityTester.TestForMultiplication(divisor[0])
+                        && divisor[0] is not MultiplyOperation && !IsQuotient(divisor);
+                    string value = Compile(divisor);
+                    // An integer divisor would divide as integers.
+                    string one = IsIntegerValued(divisor[0]) ? "1.0" : "1";
+                    string quotient = divisorIsAssociative ? $"{one} / {value}" : $"{one} / ({value})";
+                    // Bracketed when nested: the node is a call, which callers don't bracket.
+                    return _compileDepth > _topDepth ? $"({quotient})" : quotient;
+                }
+
             case ConsumerOperation _:
                 {
                     string name = operation.HlslFunction;

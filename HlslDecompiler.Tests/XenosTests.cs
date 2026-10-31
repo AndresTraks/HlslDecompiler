@@ -120,7 +120,6 @@ public class XenosTests
 
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
     {
-        ["xps_3_0/branch"] = "An if inside an if writes a lane-split assignment as float3(t1.x = t3;, ...).",
         ["xvs_3_0/skin"] = "dp4s of wzxy-swizzled rows group into mul(...).yzx, which permutes the result.",
     };
 

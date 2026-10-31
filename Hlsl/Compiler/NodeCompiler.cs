@@ -418,7 +418,14 @@ public sealed class NodeCompiler
                 return product;
             }
 
-            IList<IList<HlslTreeNode>> componentGroups = _nodeGrouper.GroupComponents(components);
+            // Lanes of one assignment are one statement: its values, not the
+            // assignments, go in a constructor (a parallel assignment whose cycle
+            // a named lane broke).
+            IList<IList<HlslTreeNode>> componentGroups = components[0] is TempAssignmentNode
+                && components.All(c => c is TempAssignmentNode assignment
+                    && assignment.TempVariable.DeclarationIndex == ((TempAssignmentNode)components[0]).TempVariable.DeclarationIndex)
+                ? [components]
+                : _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {
                 if (TryCompileTransposedDots(components) is string weighted)

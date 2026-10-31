@@ -120,11 +120,12 @@ class Program
             case ShaderFileFormat.Xenos:
                 {
                     XenosShader shader = new XenosReader(inputStream).ReadShader();
-                    if (!options.Disassemble)
+                    if (options.Disassemble)
                     {
-                        throw new NotSupportedException("Xbox 360 shaders decompile only to assembly (--asm)");
+                        return new XenosAsmWriter(shader).Write();
                     }
-                    return new XenosAsmWriter(shader).Write();
+                    // Decompiled through the shader model 3 bytecode it means.
+                    return DecompileShader(new XenosTranslator(shader).TranslateToShaderModel(), options);
                 }
             default:
                 throw new InvalidDataException("Unknown shader type");

@@ -22,6 +22,13 @@ public sealed class XenosShader
     /// <summary>The float register the first literal is in: c252 down, below the stage's 256.</summary>
     public int LiteralRegister { get; init; }
 
+    /// <summary>
+    /// Integer constants the compiler set itself, such as a constant loop's:
+    /// the register in the unified file (a pixel shader's start at 16) and its
+    /// value, a loop constant as count | start &lt;&lt; 8 | step &lt;&lt; 16.
+    /// </summary>
+    public IReadOnlyList<(int Register, uint Value)> IntegerLiterals { get; init; } = [];
+
     public XenosProgramConfig Config { get; init; } = new();
 
     /// <summary>A pixel shader's interpolated inputs, or a vertex shader's outputs.</summary>
@@ -48,6 +55,7 @@ public sealed class XenosShader
         new(Type, Constants, Microcode, Literals)
         {
             LiteralRegister = LiteralRegister,
+            IntegerLiterals = IntegerLiterals,
             Config = config,
             Declarations = declarations,
             VertexInputs = vertexInputs,

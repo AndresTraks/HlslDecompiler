@@ -11,8 +11,11 @@ fx_2_0, fx_4_0, fx_4_1 and fx_5_0.
 Shader Model 6+ (DXIL) is not supported.
 
 Xbox 360 shaders (Xenos microcode, as XNA Game Studio 3.1 and the XDK store
-them) disassemble with `--asm`, into the syntax XNA's Xbox 360 assembler reads
-back. They do not decompile to HLSL yet.
+them) decompile too: the microcode is translated into the shader model 3
+bytecode it means, which decompiles as any other. `--asm` writes the microcode
+in the syntax XNA's Xbox 360 assembler reads back. Not translated yet: a pixel
+shader indexing constants through a0 (ps_3_0 has no address register), memory
+export, and subroutines.
 
 A ps_1_x shader decompiles to HLSL for ps_2_0, since no compiler targets ps_1_x
 any more. Values are computed in floating point: hardware that ran ps_1_x in

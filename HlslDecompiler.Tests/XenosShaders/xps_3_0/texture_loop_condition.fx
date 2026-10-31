@@ -1,6 +1,6 @@
 sampler2D s : register(s0);
 float4 k[8] : register(c0);
-int n : register(i0);
+int n;
 float4 main(float2 uv : TEXCOORD0) : COLOR
 {
     float4 acc = 0;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 
@@ -13,8 +14,10 @@ namespace HlslDecompiler.DirectXShaderModel.Xenos;
 ///   0x04  offset of the data: the literal constants, then the microcode
 ///   0x10  offset of the constant table's size, which the table follows
 ///   0x14  offset of the compiler's literal table, or 0: its word 5 is the
-///         first literal's register in the unified float file (a pixel
-///         shader's start at 256) above the number of floats
+///         first float literal's register in the unified float file (a pixel
+///         shader's start at 256) above the number of floats. Integer
+///         literals follow as (0x2320 + 4 * register) << 16 | count, then
+///         count values; the unified integer file has a pixel shader's at 16.
 ///   0x18  offset of the program header, which runs up to the data
 /// </summary>
 public sealed class XenosReader
@@ -61,9 +64,23 @@ public sealed class XenosReader
         }
 
         int literalRegister = 0;
+        var integerLiterals = new List<(int, uint)>();
         if (literalTableOffset != 0)
         {
             literalRegister = (int)(Word(literalTableOffset + 5 * 4) >> 16) - (type == ShaderType.Pixel ? 256 : 0);
+            for (int offset = literalTableOffset + 5 * 4; offset < programOffset; offset += 4)
+            {
+                uint entry = Word(offset);
+                int code = (int)(entry >> 16), count = (int)(entry & 0xFFFF);
+                if (code >= 0x2320 && code < 0x23A0 && (code & 3) == 0 && count is > 0 and <= 32)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        integerLiterals.Add(((code - 0x2320) / 4 + i, Word(offset + 4 + i * 4)));
+                    }
+                    offset += count * 4;
+                }
+            }
         }
 
         var shader = new XenosShader(type, constants,
@@ -71,6 +88,7 @@ public sealed class XenosReader
             Words(dataOffset, literalBytes / 4))
         {
             LiteralRegister = literalRegister,
+            IntegerLiterals = integerLiterals,
         };
         return type == ShaderType.Vertex ? ReadVertexHeader(shader, header) : ReadPixelHeader(shader, header);
     }

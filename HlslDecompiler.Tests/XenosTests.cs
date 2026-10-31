@@ -105,6 +105,191 @@ public class XenosTests
             Is.EqualTo(Hex(Normalize(original.Microcode, original.PatchedAddresses))), "Microcode");
     }
 
+    // What the translation into shader model 3 cannot express. A listed shader
+    // that starts translating fails, so its entry gets removed.
+    private static readonly Dictionary<string, string> KnownUntranslatable = new()
+    {
+        ["xps_3_0/dynindex"] = "A pixel shader indexes constants through a0, which ps_3_0 does not have.",
+    };
+
+    // Decompiler bugs the translations expose, by tier. A listed shader that
+    // starts passing fails, so its entry gets removed.
+    private static readonly Dictionary<string, string> KnownDecompilationFailures = new()
+    {
+        ["xps_3_0/nested"] = "Nested loops: both counters are named Loop0.",
+    };
+
+    private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
+    {
+        ["xps_3_0/branch"] = "An if inside an if writes a lane-split assignment as float3(t1.x = t3;, ...).",
+        ["xps_3_0/nested"] = "Nested loops: both counters are named Loop0.",
+        ["xvs_3_0/skin"] = "dp4s of wzxy-swizzled rows group into mul(...).yzx, which permutes the result.",
+    };
+
+    // Runs check; for a listed shader, asserts it still fails and ignores the test.
+    private static void Expect(Dictionary<string, string> known, string profile, string baseFilename, Action check)
+    {
+        string key = $"{profile}/{baseFilename}";
+        if (!known.TryGetValue(key, out string reason))
+        {
+            check();
+            return;
+        }
+        bool failed;
+        try
+        {
+            check();
+            failed = false;
+        }
+        catch (Exception e) when (e is not IgnoreException)
+        {
+            failed = true;
+        }
+        Assert.That(failed, Is.True, $"{key} now passes. Remove it from the known failures.");
+        Assert.Ignore($"Known failure: {reason}");
+    }
+
+    /// <summary>The translation, or an ignored test for a known gap.</summary>
+    private static DirectXShaderModel.ShaderModel Translate(string profile, string baseFilename)
+    {
+        XenosShader shader;
+        using (var input = File.OpenRead(Fixture(profile, baseFilename, ".bin")))
+        {
+            shader = new XenosReader(input).ReadShader();
+        }
+        if (KnownUntranslatable.TryGetValue($"{profile}/{baseFilename}", out string reason))
+        {
+            Assert.Throws<NotSupportedException>(() => new XenosTranslator(shader).TranslateToShaderModel(),
+                $"{profile}/{baseFilename} now translates. Remove it from {nameof(KnownUntranslatable)}.");
+            Assert.Ignore($"Not translated: {reason}");
+        }
+        return new XenosTranslator(shader).TranslateToShaderModel();
+    }
+
+    /// <summary>
+    /// The translation into shader model 3 runs as fxc's D3D9 compile of the
+    /// same source does: the Xbox compiler's code, read through the translator,
+    /// against an independent compiler's.
+    /// </summary>
+    [TestCaseSource(nameof(Shaders))]
+    public void TranslationComputesWhatTheSourceDoes(string profile, string baseFilename)
+    {
+        if (!ShaderCompiler.IsAvailable)
+        {
+            Assert.Ignore(ShaderCompiler.UnavailableMessage);
+        }
+        string d3d9Profile = profile.Substring(1);
+        string compiled = Path.GetFullPath(Path.Combine("Xenos", profile, baseFilename + ".d3d9.fxo"));
+        FileUtil.MakeFolder(compiled);
+        string failure = ShaderCompiler.Compile(d3d9Profile, "main", Fixture(profile, baseFilename, ".fx"), compiled);
+        if (failure != null)
+        {
+            Assert.Ignore($"fxc does not compile the source for {d3d9Profile}: {failure}");
+        }
+        DirectXShaderModel.ShaderModel reference = RecompileTests.ReadShaderModel(compiled);
+
+        DirectXShaderModel.ShaderModel translated = Translate(profile, baseFilename);
+
+        List<string> differences;
+        try
+        {
+            // The translation on the left: a trial it leaves undefined (an index
+            // past its array, which fxc's code may handle another way) is dropped.
+            differences = [.. EquivalenceTests.CompareRuns(translated, reference, "the translation", "fxc's compile")];
+        }
+        catch (Interpreter.D3D9Machine.UnsupportedException e)
+        {
+            Assert.Ignore($"Not run: {e.Message}.");
+            return;
+        }
+        Assert.That(differences, Is.Empty, string.Join(Environment.NewLine, differences.Take(12)));
+    }
+
+    /// <summary>
+    /// The HLSL the AST writer makes of the translation matches its golden.
+    /// The translation is kept beside the output, as D3D9 bytecode, to read with --asm.
+    /// </summary>
+    [TestCaseSource(nameof(Shaders))]
+    public void DecompilesToTheExpectedHlsl(string profile, string baseFilename)
+    {
+        DirectXShaderModel.ShaderModel translated = Translate(profile, baseFilename);
+        Expect(KnownDecompilationFailures, profile, baseFilename, () => CheckHlslGolden(profile, baseFilename, translated));
+    }
+
+    private static void CheckHlslGolden(string profile, string baseFilename, DirectXShaderModel.ShaderModel translated)
+    {
+        string output = Path.Combine("Xenos", profile, baseFilename + ".out.hlsl");
+        FileUtil.MakeFolder(output);
+        using (var input = File.OpenRead(Fixture(profile, baseFilename, ".bin")))
+        {
+            File.WriteAllBytes(Path.ChangeExtension(output, ".d3d9.fxc"),
+                new XenosTranslator(new XenosReader(input).ReadShader()).Translate());
+        }
+        new Hlsl.HlslAstWriter(translated).Write(output);
+        Goldens.AssertMatches(output, Path.Combine(Root, profile, baseFilename + ".hlsl"),
+            "HLSL not equal at " + output);
+    }
+
+    /// <summary>
+    /// The decompiled HLSL compiles with XNA for the Xbox 360, and what it
+    /// compiles to computes what the original does, both read through the
+    /// translation: the decompiler's round trip, on the console's compiler.
+    /// </summary>
+    [TestCaseSource(nameof(Shaders))]
+    public void DecompiledHlslRecompilesToTheSameShader(string profile, string baseFilename)
+    {
+        if (Xna.Value == null)
+        {
+            Assert.Ignore("XnaXbox.exe not found: build it with tools/xna-xbox/build.ps1 or set XNA_XBOX_EXE.");
+        }
+        DirectXShaderModel.ShaderModel translated = Translate(profile, baseFilename);
+        Expect(KnownRoundTripFailures, profile, baseFilename, () => CheckRoundTrip(profile, baseFilename, translated));
+    }
+
+    private static void CheckRoundTrip(string profile, string baseFilename, DirectXShaderModel.ShaderModel translated)
+    {
+        string hlsl = Path.GetFullPath(Path.Combine("Xenos", profile, baseFilename + ".rt.hlsl"));
+        string recompiled = Path.ChangeExtension(hlsl, ".xbin");
+        FileUtil.MakeFolder(hlsl);
+        new Hlsl.HlslAstWriter(translated).Write(hlsl);
+        File.Delete(recompiled);
+
+        var startInfo = new ProcessStartInfo(Xna.Value)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("compile");
+        startInfo.ArgumentList.Add(profile.Substring(1));
+        startInfo.ArgumentList.Add(hlsl);
+        startInfo.ArgumentList.Add(recompiled);
+        using (var process = Process.Start(startInfo))
+        {
+            process.StandardOutput.ReadToEnd();
+            string errors = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            Assert.That(process.ExitCode, Is.Zero, $"{hlsl} does not compile for the Xbox 360:{Environment.NewLine}{errors}");
+        }
+
+        DirectXShaderModel.ShaderModel roundTrip;
+        using (var input = File.OpenRead(recompiled))
+        {
+            roundTrip = new XenosTranslator(new XenosReader(input).ReadShader()).TranslateToShaderModel();
+        }
+        List<string> differences;
+        try
+        {
+            differences = [.. EquivalenceTests.CompareRuns(translated, roundTrip, "the original", "its decompilation")];
+        }
+        catch (Interpreter.D3D9Machine.UnsupportedException e)
+        {
+            Assert.Ignore($"Not run: {e.Message}.");
+            return;
+        }
+        Assert.That(differences, Is.Empty, string.Join(Environment.NewLine, differences.Take(12)));
+    }
+
     private static string[] Hex(IEnumerable<uint> words) => words.Select(w => w.ToString("x8")).ToArray();
 
     private sealed record Parts(uint[] Header, uint[] Literals, uint[] Microcode, int[] PatchedAddresses)

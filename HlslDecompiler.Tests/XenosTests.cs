@@ -116,13 +116,11 @@ public class XenosTests
     // starts passing fails, so its entry gets removed.
     private static readonly Dictionary<string, string> KnownDecompilationFailures = new()
     {
-        ["xps_3_0/nested"] = "Nested loops: both counters are named Loop0.",
     };
 
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
     {
         ["xps_3_0/branch"] = "An if inside an if writes a lane-split assignment as float3(t1.x = t3;, ...).",
-        ["xps_3_0/nested"] = "Nested loops: both counters are named Loop0.",
         ["xvs_3_0/skin"] = "dp4s of wzxy-swizzled rows group into mul(...).yzx, which permutes the result.",
     };
 

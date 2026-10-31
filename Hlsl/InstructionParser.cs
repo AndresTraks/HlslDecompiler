@@ -963,7 +963,11 @@ public class InstructionParser
         {
             // loop aL, iN - the counter register is operand 0, the trip count is operand 1.
             D3D9RegisterKey registerKey = new D3D9RegisterKey(RegisterType.Loop, 0);
-            _registerState.DeclareRegister(registerKey, 1);
+            // Once: a nested loop has an aL of its own, but it is the same register.
+            if (!_registerState.RegisterDeclarations.ContainsKey(registerKey))
+            {
+                _registerState.DeclareRegister(registerKey, 1);
+            }
             InsertLoop(instruction, 1, hasLoopCounter: true);
         }
         else if (instruction.Opcode == Opcode.Rep)

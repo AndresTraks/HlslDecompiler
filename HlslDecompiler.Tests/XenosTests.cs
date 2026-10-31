@@ -118,6 +118,14 @@ public class XenosTests
     {
     };
 
+    // Where fxc's D3D9 compile is not a reference for the source's meaning.
+    private static readonly Dictionary<string, string> KnownReferenceDifferences = new()
+    {
+        ["xps_3_0/loop_break_continue"] = "fxc's ps_3_0 code skips the element after a continue (it steps "
+            + "the counter by 2), and on a break the Xbox code returns r from the iteration before, by "
+            + "Xenia's setp_clr and setp_pop, where fxc's returns it updated.",
+    };
+
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
     {
     };
@@ -185,7 +193,12 @@ public class XenosTests
         DirectXShaderModel.ShaderModel reference = RecompileTests.ReadShaderModel(compiled);
 
         DirectXShaderModel.ShaderModel translated = Translate(profile, baseFilename);
+        Expect(KnownReferenceDifferences, profile, baseFilename, () => CheckAgainstReference(translated, reference));
+    }
 
+    private static void CheckAgainstReference(DirectXShaderModel.ShaderModel translated,
+        DirectXShaderModel.ShaderModel reference)
+    {
         List<string> differences;
         try
         {
@@ -316,7 +329,7 @@ public class XenosTests
     /// - setTexLOD's source past x, and the attributes of setTexLOD and
     ///   setGradientH/V, which take none;
     /// - a scalar operation's unused source lanes, when the vector operation
-    ///   leaves the third operand to it;
+    ///   leaves the third operand to it, and the whole operand when it reads none;
     /// - an export's constant-0 bit when both operations write every lane.
     /// </summary>
     private static uint[] Normalize(uint[] microcode, int[] patchedAddresses)
@@ -393,6 +406,12 @@ public class XenosTests
                     bool constantForm = scalar >= 42 && scalar <= 47;
                     // W is the swizzle's top two bits, X its bottom two.
                     code[s + 1] &= twoLanes ? ~0x3Cu : noOperand ? ~0xFFu : constantForm ? ~0u : ~0x3Fu;
+                    if (noOperand)
+                    {
+                        // No third operand at all: its negation, register and select.
+                        code[s + 1] &= ~(1u << 24);
+                        code[s + 2] &= ~(0xFFu | (1u << 29));
+                    }
                 }
                 if (alu.IsExport && (alu.VectorWriteMask | alu.ScalarWriteMask) == 0xF)
                 {

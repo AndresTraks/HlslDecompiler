@@ -1,0 +1,1 @@
+float4 main(float4 a : TEXCOORD0, float4 b : TEXCOORD1, float4 c : TEXCOORD2, float4 d : TEXCOORD3, float4 e : TEXCOORD4, float4 f : TEXCOORD5, float4 g : TEXCOORD6, float4 h : COLOR1) : COLOR { return a * b + c * d + e * f + g * h; }

@@ -42,7 +42,7 @@ public sealed class XenosTranslator
     private readonly Dictionary<int, int> _cubeLanes = [];
     private uint[] _cubeDirection;
 
-    // A float register holding (0, 1, 0, 0), defined if used.
+    // A float register holding (0, 1, FLT_MAX, 0), defined if used.
     private readonly int _constantRegister;
     private bool _usesConstant;
 
@@ -145,6 +145,21 @@ public sealed class XenosTranslator
     // Inputs, then the moves into the registers the microcode reads them from.
     private void DeclareInterface()
     {
+        // A temp read before anything writes it is undefined (the compiler reads
+        // one where its value cannot matter); 0 makes the HLSL define it, and
+        // where it is written first the decompiler drops the 0 as dead.
+        var inputs = new HashSet<int>(_shader.Declarations.Where(_ => _isPixel).Select(d => d.Register));
+        if (_shader.Config.ParamGenRegister is int paramGenRegister)
+        {
+            inputs.Add(paramGenRegister);
+        }
+        for (int register = 0; register <= _shader.Config.MaxRegister; register++)
+        {
+            if (!inputs.Contains(register))
+            {
+                Emit(Opcode.Mov, Destination(RegisterType.Temp, register, 0b1111), Zero());
+            }
+        }
         if (_isPixel)
         {
             int input = 0;
@@ -216,7 +231,8 @@ public sealed class XenosTranslator
         {
             tokens.Add(InstructionToken(Opcode.Def, 5));
             tokens.Add(Destination(RegisterType.Const, _constantRegister, 0b1111));
-            tokens.AddRange([BitConverter.SingleToUInt32Bits(0), BitConverter.SingleToUInt32Bits(1), 0, 0]);
+            tokens.AddRange([BitConverter.SingleToUInt32Bits(0), BitConverter.SingleToUInt32Bits(1),
+                BitConverter.SingleToUInt32Bits(float.MaxValue), 0]);
         }
     }
 
@@ -457,21 +473,27 @@ public sealed class XenosTranslator
         }
     }
 
-    private bool UsesPredicateStack() => ExecutedAlu().Any(alu =>
-        alu.VectorOpcode is >= AluVectorOpcode.SetpEqPush and <= AluVectorOpcode.SetpGePush
-            || alu.ScalarOpcode is AluScalarOpcode.SetpPop);
+    // The predicate stack, or a setp that runs under a predicate: the snapshot
+    // is then p0 itself, which one set under a predicate updates where it runs.
+    private bool UsesPredicateStack() => ExecutedAlu().Any(executed =>
+        executed.Alu.VectorOpcode is >= AluVectorOpcode.SetpEqPush and <= AluVectorOpcode.SetpGePush
+            || executed.Alu.ScalarOpcode is AluScalarOpcode.SetpPop or AluScalarOpcode.SetpInv
+                or AluScalarOpcode.SetpRstr or AluScalarOpcode.SetpClr
+            || executed.Predicated && executed.Alu.ScalarOpcode is >= AluScalarOpcode.SetpEq and <= AluScalarOpcode.SetpGe);
 
-    private IEnumerable<AluInstruction> ExecutedAlu()
+    private IEnumerable<(AluInstruction Alu, bool Predicated)> ExecutedAlu()
     {
         IReadOnlyList<uint> code = _shader.Microcode;
         foreach (ControlFlowInstruction cf in ControlFlowInstructions().Where(cf => cf.IsExec))
         {
+            bool predicatedExec = cf.Opcode is ControlFlowOpcode.CondExecPred or ControlFlowOpcode.CondExecPredEnd;
             for (int k = 0; k < cf.ExecCount; k++)
             {
                 if (((cf.Sequence >> (2 * k)) & 1) == 0)
                 {
                     int s = (cf.ExecAddress + k) * 3;
-                    yield return new AluInstruction(code[s], code[s + 1], code[s + 2]);
+                    var alu = new AluInstruction(code[s], code[s + 1], code[s + 2]);
+                    yield return (alu, predicatedExec || alu.IsPredicated);
                 }
             }
         }
@@ -481,24 +503,9 @@ public sealed class XenosTranslator
     private bool UsesPrevious()
     {
         IReadOnlyList<uint> code = _shader.Microcode;
-        foreach (ControlFlowInstruction cf in ControlFlowInstructions().Where(cf => cf.IsExec))
-        {
-            for (int k = 0; k < cf.ExecCount; k++)
-            {
-                if (((cf.Sequence >> (2 * k)) & 1) != 0)
-                {
-                    continue;
-                }
-                int s = (cf.ExecAddress + k) * 3;
-                var alu = new AluInstruction(code[s], code[s + 1], code[s + 2]);
-                if (alu.ScalarOpcode is AluScalarOpcode.AddsPrev or AluScalarOpcode.MulsPrev
-                    or AluScalarOpcode.SubsPrev or AluScalarOpcode.RetainPrev && alu.ScalarWriteMask != 0)
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ExecutedAlu().Any(executed => executed.Alu.ScalarOpcode is AluScalarOpcode.AddsPrev
+            or AluScalarOpcode.MulsPrev or AluScalarOpcode.SubsPrev
+            or AluScalarOpcode.RetainPrev && executed.Alu.ScalarWriteMask != 0);
     }
 
     // Predication: one ifc around a run of instructions on the same condition,
@@ -1162,9 +1169,9 @@ public sealed class XenosTranslator
             case AluVectorOpcode.SetpGtPush:
             case AluVectorOpcode.SetpGePush:
                 {
-                    if (!_predicateIsBoolean || _openPredicate != null)
+                    if (!_predicateIsBoolean)
                     {
-                        throw new NotSupportedException("A predicate push under a predicate");
+                        throw new NotSupportedException("A predicate push without the predicate stack");
                     }
                     IfComparison comparison = alu.VectorOpcode switch
                     {
@@ -1429,7 +1436,7 @@ public sealed class XenosTranslator
                     };
                     // Under a predicate, the snapshot changes only where the setp
                     // runs, which works only while the comparison stays the same.
-                    if (_openPredicate != null && comparison != _predicateComparison)
+                    if (!_predicateIsBoolean && _openPredicate != null && comparison != _predicateComparison)
                     {
                         throw new NotSupportedException("A predicate set under a different predicate");
                     }
@@ -1455,9 +1462,9 @@ public sealed class XenosTranslator
             case AluScalarOpcode.SetpPop:
                 {
                     // a - 1 <= 0: p0 set and 0; else a - 1.
-                    if (!_predicateIsBoolean || _openPredicate != null)
+                    if (!_predicateIsBoolean)
                     {
-                        throw new NotSupportedException("setp_pop under a predicate");
+                        throw new NotSupportedException("setp_pop without the predicate stack");
                     }
                     uint decremented = Destination(RegisterType.Temp, _scratch1, 0b0001);
                     Emit(Opcode.Add, [decremented, .. A(), Source(RegisterType.Const, _constantRegister, Swizzle(1, 1, 1, 1), SourceModifier.Negate)]);
@@ -1469,6 +1476,55 @@ public sealed class XenosTranslator
                         Emit(Opcode.Cmp, destination, test, Zero(), value);
                     }
                     Emit(Opcode.Cmp, Destination(RegisterType.Temp, _predicate, 0b0001), test, One(), Zero());
+                    _predicateComparison = IfComparison.NE;
+                    _predicateChanged = true;
+                    ForgetBlockPredicates();
+                }
+                break;
+            case AluScalarOpcode.SetpInv:
+            case AluScalarOpcode.SetpRstr:
+            case AluScalarOpcode.SetpClr:
+                {
+                    if (!_predicateIsBoolean)
+                    {
+                        throw new NotSupportedException($"{alu.ScalarOpcode} without the predicate stack");
+                    }
+                    uint predicate = Destination(RegisterType.Temp, _predicate, 0b0001);
+                    switch (alu.ScalarOpcode)
+                    {
+                        case AluScalarOpcode.SetpInv:
+                            {
+                                // a == 1: p0 set and 0; else p0 clear and a, or 1 where a is 0.
+                                Emit(Opcode.Add, [Destination(RegisterType.Temp, _scratch1, 0b0001), .. A(),
+                                    Source(RegisterType.Const, _constantRegister, Swizzle(1, 1, 1, 1), SourceModifier.Negate)]);
+                                _usesConstant = true;
+                                uint isOne = Source(RegisterType.Temp, _scratch1, Swizzle(0, 0, 0, 0), SourceModifier.AbsAndNegate);
+                                if (mask != 0)
+                                {
+                                    Emit(Opcode.Cmp, [Destination(RegisterType.Temp, _scratch2, 0b0001), .. A(negate: true, abs: true), One(), .. A()]);
+                                    Emit(Opcode.Cmp, destination, isOne, Zero(), Source(RegisterType.Temp, _scratch2, Swizzle(0, 0, 0, 0)));
+                                }
+                                Emit(Opcode.Cmp, predicate, isOne, One(), Zero());
+                            }
+                            break;
+                        case AluScalarOpcode.SetpRstr:
+                            // a == 0: p0 set; the result is a either way.
+                            Emit(Opcode.Cmp, [predicate, .. A(negate: true, abs: true), One(), Zero()]);
+                            if (mask != 0)
+                            {
+                                Emit(Opcode.Mov, [destination, .. A()]);
+                            }
+                            break;
+                        default:
+                            // p0 cleared, the result FLT_MAX.
+                            if (mask != 0)
+                            {
+                                _usesConstant = true;
+                                Emit(Opcode.Mov, destination, Source(RegisterType.Const, _constantRegister, Swizzle(2, 2, 2, 2)));
+                            }
+                            Emit(Opcode.Mov, predicate, Zero());
+                            break;
+                    }
                     _predicateComparison = IfComparison.NE;
                     _predicateChanged = true;
                     ForgetBlockPredicates();

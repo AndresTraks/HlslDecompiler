@@ -1,0 +1,1 @@
+float4x4 wvp; float4x3 w; float3 eye; struct O { float4 p : POSITION; float3 n : TEXCOORD0; float f : FOG; }; O main(float4 p : POSITION, float3 n : NORMAL) { O o; o.p = mul(p, wvp); o.n = normalize(mul(n, (float3x3)w)); o.f = saturate(distance(mul(p, w), eye) * 0.01); return o; }

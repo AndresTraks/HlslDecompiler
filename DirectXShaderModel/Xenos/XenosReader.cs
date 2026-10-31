@@ -95,9 +95,10 @@ public sealed class XenosReader
 
     // Word 2: PsMaxReg in bits 8-15, PsResource bit 17, a parameter register
     // bit 18, PsGenIndex bit 19 (the export counts above are derived). Word 3:
-    // PsGenScreenXY bit 1, PsParamGenReg in bits 8-13. Word 6 masks the
-    // interpolated registers, below those sampled at the center. Words 8 on:
-    // one interpolator each, as mask << 12 | register << 8 | usage << 4 | index.
+    // PsGenScreenXY bit 1, PsParamGenReg in bits 8-13. Word 5's low five bits
+    // count the interpolators, word 6 masks the interpolated registers, below
+    // those sampled at the center. Words 8 on: one interpolator each, as
+    // mask << 12 | register << 8 | usage << 4 | index.
     private static XenosShader ReadPixelHeader(XenosShader shader, uint[] header)
     {
         bool hasParamGen = ((header[2] >> 18) & 1) != 0;
@@ -111,7 +112,7 @@ public sealed class XenosReader
         };
 
         uint centroid = header[6] & ~(header[6] >> 16) & 0xFFFF;
-        var declarations = new XenosDeclaration[Math.Max(header.Length - 8, 0)];
+        var declarations = new XenosDeclaration[Math.Min((int)(header[5] & 0x1F), Math.Max(header.Length - 8, 0))];
         for (int i = 0; i < declarations.Length; i++)
         {
             XenosDeclaration declaration = ReadDeclaration(header[8 + i]);
@@ -122,9 +123,9 @@ public sealed class XenosReader
 
     // Word 2: VsMaxReg in bits 0-7, VsResource bit 16, the export count less
     // one in bits 20-23 (derived), VsExportMode in bits 24-27, VsGenIndex bit
-    // 31. Words 6, 7 and 8 count the index declarations, the vertex inputs and
-    // the outputs, whose entries follow in that order, then one word per output
-    // that the runtime patches.
+    // 31. Word 5's low five bits count the outputs; words 6, 7 and 8 the index
+    // declarations, the vertex inputs and the words the runtime patches (one
+    // per export instruction it binds). The entries follow in that order:
     //   index:  mask << 9 | register << 8 | 0x90, the register r0 or r1
     //   input:  usage index << 16 | usage << 12 | instruction address
     //   output: as a pixel shader's interpolator
@@ -140,7 +141,7 @@ public sealed class XenosReader
 
         int indexCount = (int)header[6];
         int inputCount = (int)header[7];
-        int outputCount = (int)header[8];
+        int outputCount = (int)(header[5] & 0x1F);
         int next = 9;
 
         XenosIndexDeclaration? index = null;

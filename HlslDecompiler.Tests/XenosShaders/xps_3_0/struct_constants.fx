@@ -1,0 +1,1 @@
+struct L { float4 dir; float4 col; }; L lights[3]; float4 main(float3 n : TEXCOORD0) : COLOR { float4 r = 0; for (int i = 0; i < 3; i++) r += saturate(dot(n, lights[i].dir.xyz)) * lights[i].col; return r; }

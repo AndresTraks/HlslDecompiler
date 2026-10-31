@@ -75,7 +75,31 @@ public class D3D9Machine
             // There is no colour output register: the colour is r0, as it is left.
             machine._results["COLOR0"] = [.. machine._temp[0]];
         }
-        return machine.Killed ? [] : machine._results;
+        return machine.Killed ? [] : Observed(machine._results);
+    }
+
+    // What the hardware takes from each output: the point size, fog and depth
+    // are their x alone, and depth is clamped to [0, 1]. fxc fills o#.yzw of a
+    // PSIZE; the Xbox 360 compiler saturates depth where fxc leaves it to this.
+    private static Dictionary<string, float[]> Observed(Dictionary<string, float[]> results)
+    {
+        var observed = new Dictionary<string, float[]>();
+        foreach ((string name, float[] value) in results)
+        {
+            if (name.StartsWith("PSIZE") || name.StartsWith("FOG"))
+            {
+                observed[name] = [value[0], 0, 0, 0];
+            }
+            else if (name.StartsWith("DEPTH"))
+            {
+                observed[name] = [float.IsNaN(value[0]) ? value[0] : Math.Clamp(value[0], 0, 1), 0, 0, 0];
+            }
+            else
+            {
+                observed[name] = value;
+            }
+        }
+        return observed;
     }
 
     /// <summary>
@@ -122,17 +146,17 @@ public class D3D9Machine
                 switch (declaration.RegisterSet)
                 {
                     case RegisterSet.Float4:
-                        Array.Copy(value, _const[register], 4);
+                        Array.Copy(TypedValue(declaration.TypeInfo.ParameterType, name, value), _const[register], 4);
+                        break;
+                    case RegisterSet.Int4 when declaration.TypeInfo.Columns == 1 && declaration.TypeInfo.Rows == 1:
+                        // A scalar int sets a loop's count, starting at 0 and stepping
+                        // by 1, as the runtime writes it.
+                        _constInt[register] = [Integer(name, value, 0), 0, 1, 0];
                         break;
                     case RegisterSet.Int4:
-                        // Small, so a loop count terminates; in even trials cycled from
-                        // a fixed offset, so every count 0-3 is reached.
-                        float[] offset = PseudoRandom.Vector(name, 0);
                         for (int c = 0; c < 4; c++)
                         {
-                            _constInt[register][c] = _trial % 2 == 0
-                                ? (_trial / 2 + (int)(Math.Abs(offset[c]) * 1000)) % 4
-                                : (int)Math.Abs(value[c] * 4) % 4;
+                            _constInt[register][c] = Integer(name, value, c);
                         }
                         break;
                     case RegisterSet.Bool:
@@ -146,7 +170,9 @@ public class D3D9Machine
         // An fx_2_0 preshader fills registers the shader's table does not name.
         if (Preshader.Find(_shader) is Preshader preshader)
         {
-            foreach (((PreshaderRegisterTable table, int offset), double value) in PreshaderMachine.Run(preshader, Named))
+            foreach (((PreshaderRegisterTable table, int offset), double value) in PreshaderMachine.Run(preshader,
+                name => TypedValue(preshader.Inputs.Declarations
+                    .FirstOrDefault(d => name.StartsWith(d.Name + "["))?.TypeInfo.ParameterType, name, Named(name))))
             {
                 int register = offset / 4;
                 int component = offset % 4;
@@ -164,6 +190,38 @@ public class D3D9Machine
                 }
             }
         }
+    }
+
+    private List<D3D9ConstantDeclaration> _constantTable;
+
+    private List<D3D9ConstantDeclaration> ConstantTable => _constantTable ??= [.. ReadConstantTable()];
+
+    // A float register's value by the declared type. A bool fxc keeps in a float
+    // register is 1 or 0, as the bool register it might have had (the Xbox 360
+    // compiler uses b#, and a preshader reads it too); an int likewise holds the
+    // integer an integer register would.
+    private float[] TypedValue(ParameterType? type, string name, float[] value)
+    {
+        switch (type)
+        {
+            case ParameterType.Bool:
+                float flag = PseudoRandom.Vector(name, _trial)[0] > 0 ? 1 : 0;
+                return [flag, flag, flag, flag];
+            case ParameterType.Int:
+                return [Integer(name, value, 0), Integer(name, value, 1), Integer(name, value, 2), Integer(name, value, 3)];
+            default:
+                return value;
+        }
+    }
+
+    // Small, so a loop count terminates; in even trials cycled from a fixed
+    // offset, so every count 0-3 is reached.
+    private int Integer(string name, float[] value, int component)
+    {
+        float[] offset = PseudoRandom.Vector(name, 0);
+        return _trial % 2 == 0
+            ? (_trial / 2 + (int)(Math.Abs(offset[component]) * 1000)) % 4
+            : (int)Math.Abs(value[component] * 4) % 4;
     }
 
     private IEnumerable<D3D9ConstantDeclaration> ReadConstantTable()
@@ -223,8 +281,11 @@ public class D3D9Machine
                         _texture[number], 4);
                     break;
                 case RegisterType.Sampler:
+                    // A sampler1D is declared 2D: its v is the rest of the register.
                     _samplerDimensions[number] = instruction.GetDeclSamplerTextureType() switch
                     {
+                        SamplerTextureType.TwoD when ReadConstantTable().Any(d => d.RegisterSet == RegisterSet.Sampler
+                            && d.ContainsIndex(number) && d.TypeInfo.ParameterType == ParameterType.Sampler1D) => 1,
                         SamplerTextureType.TwoD => 2,
                         _ => 3,
                     };
@@ -884,8 +945,15 @@ public class D3D9Machine
         int number = instruction.GetParamRegisterNumber(index);
         if (instruction.Params.HasRelativeAddressing(index))
         {
-            // Made up indices may be out of range; both programs clamp alike.
-            number = Math.Clamp(number + RelativeOffset(instruction, index), 0, 255);
+            int indexed = number + RelativeOffset(instruction, index);
+            // An index past its array is undefined: code from another compiler need
+            // not agree there. Elsewhere, made up indices clamp alike in both.
+            if (type == RegisterType.Const && ConstantTable.FirstOrDefault(d => d.RegisterSet == RegisterSet.Float4
+                    && d.ContainsIndex(number)) is D3D9ConstantDeclaration array && !array.ContainsIndex(indexed))
+            {
+                throw new D3D10Machine.UndefinedTrialException($"{array.Name}[{indexed - array.RegisterIndex}] is past the array");
+            }
+            number = Math.Clamp(indexed, 0, 255);
         }
 
         float[] register = Read(type, number);
@@ -975,10 +1043,11 @@ public class D3D9Machine
             case RegisterType.Loop:
                 return Broadcast(_loopCounter);
             case RegisterType.MiscType:
-                // vPos has two components; vFace is one value, broadcast.
+                // vPos has two components, never negative (the Xbox 360 packs the
+                // face into its sign); vFace is one value, broadcast.
                 float[] misc = Named(number == 0 ? "VPOS" : "VFACE");
                 return number == 0
-                    ? [misc[0], misc[1], 0, 0]
+                    ? [Math.Abs(misc[0]), Math.Abs(misc[1]), 0, 0]
                     : Broadcast(misc[0]);
             default:
                 throw new UnsupportedException($"reading register type {type}");

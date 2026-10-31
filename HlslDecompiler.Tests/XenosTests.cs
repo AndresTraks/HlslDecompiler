@@ -120,7 +120,6 @@ public class XenosTests
 
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
     {
-        ["xvs_3_0/skin"] = "dp4s of wzxy-swizzled rows group into mul(...).yzx, which permutes the result.",
     };
 
     // Runs check; for a listed shader, asserts it still fails and ignores the test.

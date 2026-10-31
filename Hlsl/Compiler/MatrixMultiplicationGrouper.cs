@@ -308,14 +308,18 @@ public class MatrixMultiplicationGrouper
             return vector;
         }
 
-        var vectorSwizzled = vector.ToArray();
-        for (int i = 0; i < firstMatrixRow.Count; i++)
+        // Row lane i reads column c, so it multiplies the vector's lane c: lane i
+        // of the vector as read goes to c (the inverse of the row's swizzle,
+        // which a swap like .yx hides and a rotation like .wzxy does not).
+        int[] columns = [.. firstMatrixRow.Select(row => ((IHasComponentIndex)row).ComponentIndex)];
+        if (columns.Any(c => c >= vector.Count) || columns.Distinct().Count() != columns.Length)
         {
-            var component = ((IHasComponentIndex)firstMatrixRow[i]).ComponentIndex;
-            if (i != component)
-            {
-                vectorSwizzled[i] = vector[component];
-            }
+            return vector;
+        }
+        var vectorSwizzled = vector.ToArray();
+        for (int i = 0; i < columns.Length; i++)
+        {
+            vectorSwizzled[columns[i]] = vector[i];
         }
         return vectorSwizzled;
     }

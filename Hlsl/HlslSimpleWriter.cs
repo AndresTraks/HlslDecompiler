@@ -13,6 +13,8 @@ namespace HlslDecompiler;
 public class HlslSimpleWriter : HlslWriter
 {
     private int _loopVariableIndex = -1;
+    // D3D9 ifs open around the instruction being written.
+    private int _openIfs;
     private readonly CultureInfo _culture = CultureInfo.InvariantCulture;
     // Per phase, not per shader: a hull shader's phases read their own immediates.
     private IntegerOperandAnalysis _integerOperandAnalysis;
@@ -1826,6 +1828,7 @@ public class HlslSimpleWriter : HlslWriter
             case Opcode.Endif:
                 indent = indent.Substring(0, indent.Length - 1);
                 WriteLine("}");
+                _openIfs--;
                 break;
             case Opcode.EndLoop:
             case Opcode.EndRep:
@@ -1857,11 +1860,13 @@ public class HlslSimpleWriter : HlslWriter
                 WriteBranchAttribute();
                 WriteLine("if ({0}) {{", GetSourceName(instruction, 0));
                 indent += "\t";
+                _openIfs++;
                 break;
             case Opcode.IfC:
                 WriteBranchAttribute();
                 WriteLine("if ({0} {2} {1}) {{", GetSourceName(instruction, 0), GetSourceName(instruction, 1), instruction.Comparison.ToHlslString());
                 indent += "\t";
+                _openIfs++;
                 break;
             case Opcode.Lit:
                 {
@@ -1882,7 +1887,9 @@ public class HlslSimpleWriter : HlslWriter
                 int loopRegisterNumber = instruction.GetParamRegisterNumber(1);
                 ConstantIntRegister intRegister = _registers.FindConstantIntRegister(loopRegisterNumber);
                 _loopVariableIndex++;
-                if (WritesFlowAttributes || (intRegister == null && LoopSamplesWithGradients(instruction)))
+                // A uniform count in a branch too: fxc otherwise unrolls it, and an int
+                // bound to its i# register alone fails (X4509).
+                if (WritesFlowAttributes || (intRegister == null && (LoopSamplesWithGradients(instruction) || _openIfs > 0)))
                 {
                     WriteLine("[loop]");
                 }

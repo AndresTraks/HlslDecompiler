@@ -793,7 +793,12 @@ public class StatementFinalizer
 
             if (i >= 1 && statements[i - 1] is AssignmentStatement preLoopStatement)
             {
-                UseLoopVariablesInBody(loopStatement, preLoopStatement);
+                UseLoopVariablesInBody(loopStatement, preLoopStatement.Outputs, preLoopStatement);
+            }
+            else if (i == 0)
+            {
+                // First in a branch: what enters was assigned before the branch.
+                UseLoopVariablesInBody(loopStatement, loopStatement.Inputs, null);
             }
         }
     }
@@ -824,6 +829,19 @@ public class StatementFinalizer
         return null;
     }
 
+    // A branch ending in a loop hands out its header phi: the loop carries the
+    // variable that enters it, which the body reassigns.
+    private static TempVariableNode LoopCarriedVariable(IList<IStatement> body,
+        KeyValuePair<RegisterComponentKey, HlslTreeNode> output)
+    {
+        if (output.Value is not PhiNode { IsLoopHeader: true } || body[^1] is not LoopStatement loop
+            || !loop.Inputs.TryGetValue(output.Key, out HlslTreeNode entering))
+        {
+            return null;
+        }
+        return (entering as TempAssignmentNode)?.TempVariable ?? GetExistingVariable(entering);
+    }
+
     /// <summary>
     /// Puts both branches' assignments of a register on one variable declared above
     /// the if; the first branch's variable wins and all become reassignments.
@@ -840,10 +858,11 @@ public class StatementFinalizer
             }
             foreach (var output in body.Last().Outputs)
             {
-                // Either an assignment or a nested if's merged variable.
+                // Either an assignment, a nested if's merged variable, or what a loop
+                // that ends the branch carries.
                 var assignment = output.Value as TempAssignmentNode;
                 TempVariableNode branchVariable =
-                    assignment?.TempVariable ?? output.Value as TempVariableNode;
+                    assignment?.TempVariable ?? output.Value as TempVariableNode ?? LoopCarriedVariable(body, output);
                 if (branchVariable == null)
                 {
                     continue;
@@ -1305,14 +1324,15 @@ public class StatementFinalizer
     /// A register assigned before the loop reuses that variable wherever the body
     /// assigns it, including inside branches and before a <c>continue</c>.
     /// </summary>
-    private void UseLoopVariablesInBody(LoopStatement loopStatement, AssignmentStatement preLoopStatement)
+    private void UseLoopVariablesInBody(LoopStatement loopStatement,
+        IDictionary<RegisterComponentKey, HlslTreeNode> preLoopValues, IStatement preLoopStatement)
     {
         new StatementVisitor(loopStatement.Body).Visit(bodyStatement =>
         {
             foreach (var bodyOutput in bodyStatement.Outputs.ToList())
             {
-                if (!preLoopStatement.Outputs.TryGetValue(bodyOutput.Key, out var preLoopValue)
-                    || ((preLoopValue as TempAssignmentNode)?.TempVariable ?? preLoopValue as TempVariableNode)
+                if (!preLoopValues.TryGetValue(bodyOutput.Key, out var preLoopValue)
+                    || ((preLoopValue as TempAssignmentNode)?.TempVariable ?? GetExistingVariable(preLoopValue))
                         is not TempVariableNode loopVariable)
                 {
                     continue;
@@ -1367,7 +1387,7 @@ public class StatementFinalizer
     /// </summary>
     private void SplitUncarriedLoopValues()
     {
-        foreach (var carry in _loopMerges)
+        foreach (var carry in _loopMerges.Where(c => c.PreLoop != null))
         {
             VariableLiveness liveness = VariableLiveness.Analyze(_statements, exact: true);
             if (liveness.MayBeReadAfter(carry.Carried, carry.PreLoop)

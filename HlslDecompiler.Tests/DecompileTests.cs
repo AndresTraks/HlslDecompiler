@@ -96,6 +96,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "vface_branch")]
     [TestCase("ps_3_0", "int_constant_reciprocal")]
     [TestCase("vs_3_0", "truncate_offset_index")]
+    [TestCase("vs_3_0", "loop_in_branch_join")]
     [TestCase("vs_3_0", "grass_wave")]
     [TestCase("vs_3_0", "constant")]
     [TestCase("vs_3_0", "constant_struct")]

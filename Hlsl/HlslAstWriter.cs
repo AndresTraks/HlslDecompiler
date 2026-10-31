@@ -14,6 +14,8 @@ public class HlslAstWriter : HlslWriter
     private ISet<HlslTreeNode> _doubleValues = new HashSet<HlslTreeNode>();
     private TemplateMatcher _templateMatcher;
     private int _loopDepth;
+    // Ifs the statement being written is in.
+    private int _branchDepth;
     private readonly HashSet<HlslTreeNode> _declaredVariables = HlslTreeNode.NewNodeSet();
 
     // Declaration numbers taken so far, whatever nodes stand under them.
@@ -559,7 +561,15 @@ public class HlslAstWriter : HlslWriter
         }
         else if (statement is IfStatement ifStatement)
         {
-            WriteIfStatement(ifStatement);
+            _branchDepth++;
+            try
+            {
+                WriteIfStatement(ifStatement);
+            }
+            finally
+            {
+                _branchDepth--;
+            }
         }
         else if (statement is SwitchStatement switchStatement)
         {
@@ -1066,7 +1076,7 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
-        if (WritesFlowAttributes || NeedsLoopAttribute(loop))
+        if (WritesFlowAttributes || NeedsLoopAttribute(loop) || (_branchDepth > 0 && IsCountedByUniform(loop)))
         {
             WriteLine("[loop]");
         }
@@ -1248,6 +1258,18 @@ public class HlslAstWriter : HlslWriter
             roots.AddRange(statement.HeldNodes);
         });
         return Reachable(roots.Where(r => r != null)).Any(IsGradientOperation);
+    }
+
+    /// <summary>
+    /// A loop aL, iN whose count an integer constant sets. In a branch, fxc
+    /// tries to unroll it, and with the integer bound to its i# register alone
+    /// it fails (X4509) where [loop] keeps the loop instruction. A rep, with no
+    /// counter to index by, it keeps either way.
+    /// </summary>
+    private static bool IsCountedByUniform(LoopStatement loop)
+    {
+        return loop.RepeatCount is not uint && loop.HasLoopCounter
+            && loop.RepeatCountNode is not null and not ConstantNode;
     }
 
     // A derivative, or a sample that takes its mip level from derivatives.

@@ -567,7 +567,15 @@ public sealed class XenosAsmWriter
     }
 
     // The shortest text that reads back as the same float.
-    private static string FormatFloat(float value) => value.ToString(CultureInfo.InvariantCulture);
+    // The assembler has no bit form: its non-finite literals are the Microsoft
+    // float tokens, where 1.#QNAN always assembles the same quiet NaN.
+    private static string FormatFloat(float value) => value switch
+    {
+        float v when float.IsPositiveInfinity(v) => "1.#INF",
+        float v when float.IsNegativeInfinity(v) => "-1.#INF",
+        float v when float.IsNaN(v) => "1.#QNAN",
+        _ => value.ToString(CultureInfo.InvariantCulture),
+    };
 
     private static readonly string[] VectorNames =
     [

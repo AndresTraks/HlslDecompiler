@@ -89,8 +89,11 @@ public sealed class ConstantDeclarationCompiler
     // A non-array reports 0 or 1. RegisterCount is no substitute: an element can
     // take one register or several.
     private static string GetArrayCountSpecifier(ShaderTypeInfo typeInfo)
+        => GetArrayCountSpecifier(typeInfo, typeInfo.NumElements);
+
+    private static string GetArrayCountSpecifier(ShaderTypeInfo typeInfo, int elements)
     {
-        int arrayCount = Math.Max(typeInfo.NumElements, 1);
+        int arrayCount = Math.Max(elements, 1);
         return arrayCount > 1 ? $"[{arrayCount}]" : "";
     }
 
@@ -115,8 +118,16 @@ public sealed class ConstantDeclarationCompiler
             char type = "bics"[registerSet];
             registerSpecifier = $" : register({type}{declaration.RegisterIndex})";
         }
+        // A table (an XDK's among them) can declare a window of more registers than
+        // its element count covers; the microcode reads the extra elements the
+        // window names them by. Declare through the last one the window reaches so
+        // those subscripts stand: an array whose registers overlap another's is
+        // fine for fxc and for XNA.
+        int stride = declaration.RegistersPerElement;
+        int elements = Math.Max(declaration.TypeInfo.NumElements,
+            (declaration.RegisterCount + stride - 1) / stride);
         return $"{typeName} {declaration.Name}"
-            + $"{GetArrayCountSpecifier(declaration.TypeInfo)}{registerSpecifier};";
+            + $"{GetArrayCountSpecifier(declaration.TypeInfo, elements)}{registerSpecifier};";
     }
 
     private static string GetScalarTypeName(ParameterType parameterType)

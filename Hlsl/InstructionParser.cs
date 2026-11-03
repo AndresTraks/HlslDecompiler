@@ -1972,7 +1972,18 @@ public class InstructionParser
             // value there is stale.
             return new DoubleBitsNode(pairedDouble, 1);
         }
-        return ActiveOutputs[registerComponent];
+        if (!ActiveOutputs.TryGetValue(registerComponent, out HlslTreeNode output))
+        {
+            if (registerComponent.RegisterKey.IsTempRegister)
+            {
+                // A read before any write has no defined value; it reads as
+                // zero, the cleared-register reading fxc and the reference
+                // rasterizer agree on.
+                return new ConstantNode(0.0f);
+            }
+            throw new InvalidOperationException($"No value for {registerComponent}");
+        }
+        return output;
     }
 
     private void SetActiveOutput(RegisterComponentKey registerComponent, HlslTreeNode value)

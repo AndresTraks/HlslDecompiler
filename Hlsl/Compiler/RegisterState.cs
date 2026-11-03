@@ -2136,7 +2136,8 @@ public sealed class RegisterState
     public void DeclareRegister(D3D9RegisterKey registerKey, int writeMask)
     {
         var registerDeclaration = CreateRegisterDeclarationFromRegisterKey(registerKey, ResultModifier.None, writeMask);
-        RegisterDeclarations.Add(registerKey, registerDeclaration);
+        // Two constant table names can share one register; the register is declared once.
+        RegisterDeclarations.TryAdd(registerKey, registerDeclaration);
     }
 
     private const int ConstantRegisterSizeInBytes = 4 * sizeof(float);

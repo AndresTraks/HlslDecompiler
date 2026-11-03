@@ -46,6 +46,22 @@ public sealed class XenosTranslator
     private readonly int _constantRegister;
     private bool _usesConstant;
 
+    // The float constants the translation itself defines: a fetch's LOD bias.
+    private readonly Dictionary<(uint, uint, uint, uint), int> _definedConstants = [];
+    // And its fetch offsets, packed several to a register and read through a
+    // swizzle: one 3D, two 2D, or four 1D offsets fit in a float4.
+    private readonly Dictionary<(int Count, uint X, uint Y, uint Z), uint> _offsetSources = [];
+    private readonly List<OffsetRegister> _offsetRegisters = [];
+    private readonly HashSet<int> _usedConstantRegisters;
+
+    private sealed class OffsetRegister
+    {
+        public int Count;
+        public int Register;
+        public int LanesUsed;
+        public readonly float[] Lanes = new float[4];
+    }
+
     private readonly Dictionary<int, int> _vertexInputs = [];
     private readonly List<(DeclUsage Usage, int Index, int Register, int Mask, bool Centroid)> _inputDeclarations = [];
     private readonly Dictionary<int, int> _interpolatorOutputs = [];
@@ -79,7 +95,22 @@ public sealed class XenosTranslator
         _previous = first + 7;
         _usesPrevious = UsesPrevious();
         _predicateIsBoolean = UsesPredicateStack();
-        _constantRegister = FreeConstantRegister();
+        _usedConstantRegisters = new HashSet<int>();
+        foreach (D3D9ConstantDeclaration declaration in _shader.Constants.Declarations)
+        {
+            if (declaration.RegisterSet == RegisterSet.Float4)
+            {
+                for (int i = 0; i < declaration.RegisterCount; i++)
+                {
+                    _usedConstantRegisters.Add(declaration.RegisterIndex + i);
+                }
+            }
+        }
+        for (int i = 0; i < _shader.Literals.Count / 4; i++)
+        {
+            _usedConstantRegisters.Add(_shader.LiteralRegister + i);
+        }
+        _constantRegister = AllocateConstantRegister();
     }
 
     public byte[] Translate()
@@ -114,32 +145,75 @@ public sealed class XenosTranslator
     private int IntegerBase => _isPixel ? 16 : 0;
     private int BoolBase => _isPixel ? 128 : 0;
 
-    // The highest float register neither the constant table nor the literals use.
-    private int FreeConstantRegister()
+    // The highest float register the constant table, the literals and the
+    // translation's own defined constants do not use.
+    private int AllocateConstantRegister()
     {
-        var used = new HashSet<int>();
-        foreach (D3D9ConstantDeclaration declaration in _shader.Constants.Declarations)
-        {
-            if (declaration.RegisterSet == RegisterSet.Float4)
-            {
-                for (int i = 0; i < declaration.RegisterCount; i++)
-                {
-                    used.Add(declaration.RegisterIndex + i);
-                }
-            }
-        }
-        for (int i = 0; i < _shader.Literals.Count / 4; i++)
-        {
-            used.Add(_shader.LiteralRegister + i);
-        }
         for (int register = 255; register >= 0; register--)
         {
-            if (!used.Contains(register))
+            if (_usedConstantRegisters.Add(register))
             {
                 return register;
             }
         }
         throw new NotSupportedException("No free float constant register");
+    }
+
+    // A float4 constant the translation defines itself and reads directly.
+    private uint DefinedConstant(float x, float y, float z, float w = 0)
+    {
+        var key = (BitConverter.SingleToUInt32Bits(x), BitConverter.SingleToUInt32Bits(y),
+            BitConverter.SingleToUInt32Bits(z), BitConverter.SingleToUInt32Bits(w));
+        if (!_definedConstants.TryGetValue(key, out int register))
+        {
+            register = AllocateConstantRegister();
+            _definedConstants[key] = register;
+        }
+        return Source(RegisterType.Const, register);
+    }
+
+    // The offset of a fetch of the dimension's count lanes, reading through a
+    // packed offset register: the lanes the coordinate source replicates, the
+    // offset replicates the same way, through the swizzle.
+    private uint OffsetConstant(int count, float x, float y, float z)
+    {
+        var key = (count, BitConverter.SingleToUInt32Bits(x), BitConverter.SingleToUInt32Bits(y),
+            BitConverter.SingleToUInt32Bits(z));
+        if (_offsetSources.TryGetValue(key, out uint source))
+        {
+            return source;
+        }
+        int lanes = count == 1 ? 1 : count == 2 ? 2 : 3;
+        OffsetRegister packed = _offsetRegisters.FirstOrDefault(r => r.Count == count && r.LanesUsed + lanes <= 4);
+        if (packed == null)
+        {
+            packed = new OffsetRegister
+            {
+                Count = count,
+                Register = AllocateConstantRegister(),
+            };
+            _offsetRegisters.Add(packed);
+        }
+        int lane = packed.LanesUsed;
+        packed.LanesUsed = lane + lanes;
+        packed.Lanes[lane] = x;
+        uint swizzle = count switch
+        {
+            1 => Replicate(lane),
+            2 => Swizzle(lane, lane + 1, lane, lane),
+            _ => Swizzle(0, 1, 2, 0),
+        };
+        if (count > 1)
+        {
+            packed.Lanes[lane + 1] = y;
+        }
+        if (count > 2)
+        {
+            packed.Lanes[lane + 2] = z;
+        }
+        source = Source(RegisterType.Const, packed.Register, swizzle);
+        _offsetSources[key] = source;
+        return source;
     }
 
     // Inputs, then the moves into the registers the microcode reads them from.
@@ -233,6 +307,19 @@ public sealed class XenosTranslator
             tokens.Add(Destination(RegisterType.Const, _constantRegister, 0b1111));
             tokens.AddRange([BitConverter.SingleToUInt32Bits(0), BitConverter.SingleToUInt32Bits(1),
                 BitConverter.SingleToUInt32Bits(float.MaxValue), 0]);
+        }
+        foreach (((uint x, uint y, uint z, uint w) constant, int register) in
+            _definedConstants.OrderBy(k => k.Value))
+        {
+            tokens.Add(InstructionToken(Opcode.Def, 5));
+            tokens.Add(Destination(RegisterType.Const, register, 0b1111));
+            tokens.AddRange([constant.x, constant.y, constant.z, constant.w]);
+        }
+        foreach (OffsetRegister register in _offsetRegisters)
+        {
+            tokens.Add(InstructionToken(Opcode.Def, 5));
+            tokens.Add(Destination(RegisterType.Const, register.Register, 0b1111));
+            tokens.AddRange(register.Lanes.Select(BitConverter.SingleToUInt32Bits));
         }
     }
 
@@ -648,10 +735,6 @@ public sealed class XenosTranslator
 
     private void TranslateTextureFetch(FetchInstruction fetch)
     {
-        if (fetch.LodBias != 0 || fetch.OffsetX != 0 || fetch.OffsetY != 0 || fetch.OffsetZ != 0)
-        {
-            throw new NotSupportedException("A texture fetch with an LOD bias or offset");
-        }
         // A vertex shader's texture fetch constants start at 16.
         int sampler = fetch.TextureFetchConstant - (_isPixel ? 0 : 16);
         _samplers.Add(sampler);
@@ -659,6 +742,12 @@ public sealed class XenosTranslator
         uint[] coordinates = [Source(RegisterType.Temp, fetch.Source, FetchSourceSwizzle(fetch, count))];
         if (fetch.Dimension == FetchDimension.Cube)
         {
+            if (fetch.OffsetX != 0 || fetch.OffsetY != 0 || fetch.OffsetZ != 0)
+            {
+                // The offset shifts a face's texel address; the direction the
+                // texCUBE lowering samples has no texel address to shift.
+                throw new NotSupportedException("A cube fetch with a texel offset");
+            }
             if (!_cubeLanes.ContainsKey(fetch.Source))
             {
                 throw new NotSupportedException("A cube fetch not from a cube instruction");
@@ -669,12 +758,30 @@ public sealed class XenosTranslator
         else
         {
             CheckNotFromCube(fetch.Source, FetchLanes(fetch, count));
+            if (fetch.OffsetX != 0 || fetch.OffsetY != 0 || fetch.OffsetZ != 0)
+            {
+                // SM3 has no fetch offsets. The Xenos one shifts the texel
+                // address by half texels at the sampled LOD; this adds that
+                // number to the fetch coordinates instead - exact when the
+                // addressing counts coordinates as texels, off by the texel
+                // size otherwise, and the translator has no texture size to
+                // scale it by.
+                Emit(Opcode.Add,
+                    Destination(RegisterType.Temp, _scratch1, 0b1111), coordinates[0],
+                    OffsetConstant(count, fetch.OffsetX * 0.5f, fetch.OffsetY * 0.5f, fetch.OffsetZ * 0.5f));
+                coordinates = [Source(RegisterType.Temp, _scratch1)];
+            }
         }
+        float bias = fetch.LodBias / 16.0f;
         uint samplerSource = Source(RegisterType.Sampler, sampler);
         uint result = Destination(RegisterType.Temp, _scratch2, 0b1111);
 
         if (fetch.UseRegisterGradients)
         {
+            if (fetch.LodBias != 0)
+            {
+                throw new NotSupportedException("An LOD bias with register gradients");
+            }
             Emit(Opcode.TexLDD, [result, .. coordinates, samplerSource,
                 Source(RegisterType.Temp, _gradientH), Source(RegisterType.Temp, _gradientV)]);
         }
@@ -682,8 +789,17 @@ public sealed class XenosTranslator
         {
             // The LOD, or with the computed one the bias, goes in w.
             Emit(Opcode.Mov, [Destination(RegisterType.Temp, _scratch1, 0b0111), .. coordinates]);
-            Emit(Opcode.Mov, Destination(RegisterType.Temp, _scratch1, 0b1000),
-                Source(RegisterType.Temp, _lod, Swizzle(0, 0, 0, 0)));
+            if (fetch.LodBias != 0)
+            {
+                Emit(Opcode.Add, Destination(RegisterType.Temp, _scratch1, 0b1000),
+                    Source(RegisterType.Temp, _lod, Swizzle(0, 0, 0, 0)),
+                    DefinedConstant(bias, bias, bias, bias));
+            }
+            else
+            {
+                Emit(Opcode.Mov, Destination(RegisterType.Temp, _scratch1, 0b1000),
+                    Source(RegisterType.Temp, _lod, Swizzle(0, 0, 0, 0)));
+            }
             if (fetch.UseComputedLod)
             {
                 Emit(Opcode.Tex, (int)TexldControls.Bias, result, Source(RegisterType.Temp, _scratch1), samplerSource);
@@ -693,11 +809,20 @@ public sealed class XenosTranslator
                 Emit(Opcode.TexLDL, result, Source(RegisterType.Temp, _scratch1), samplerSource);
             }
         }
+        else if (fetch.LodBias != 0 && fetch.UseComputedLod && _isPixel)
+        {
+            // A bias on the computed LOD: tex2Dbias.
+            Emit(Opcode.Mov, [Destination(RegisterType.Temp, _scratch1, 0b0111), .. coordinates]);
+            Emit(Opcode.Mov, Destination(RegisterType.Temp, _scratch1, 0b1000),
+                DefinedConstant(bias, bias, bias, bias));
+            Emit(Opcode.Tex, (int)TexldControls.Bias, result, Source(RegisterType.Temp, _scratch1), samplerSource);
+        }
         else if (!fetch.UseComputedLod || !_isPixel)
         {
-            // Neither LOD, or a vertex shader's, which has no derivatives: LOD 0.
+            // Neither LOD, or a vertex shader's, which has no derivatives: LOD 0, biased where it has one.
             Emit(Opcode.Mov, [Destination(RegisterType.Temp, _scratch1, 0b0111), .. coordinates]);
-            Emit(Opcode.Mov, Destination(RegisterType.Temp, _scratch1, 0b1000), Zero());
+            Emit(Opcode.Mov, Destination(RegisterType.Temp, _scratch1, 0b1000),
+                fetch.LodBias != 0 ? DefinedConstant(bias, bias, bias, bias) : Zero());
             Emit(Opcode.TexLDL, result, Source(RegisterType.Temp, _scratch1), samplerSource);
         }
         else

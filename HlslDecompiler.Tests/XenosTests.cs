@@ -124,6 +124,10 @@ public class XenosTests
         ["xps_3_0/loop_break_continue"] = "fxc's ps_3_0 code skips the element after a continue (it steps "
             + "the counter by 2), and on a break the Xbox code returns r from the iteration before, by "
             + "Xenia's setp_clr and setp_pop, where fxc's returns it updated.",
+        ["xps_3_0/texoffsets"] = "the fixture's fetches shift the texel address and bias the LOD, which no "
+            + "ps_3_0 instruction states; fxc's compile samples the unshifted coordinates, while the "
+            + "decompilation shifts by the offset's own magnitude in texture units - the right tap only "
+            + "where the addressing counts texels, not normalized units.",
     };
 
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()

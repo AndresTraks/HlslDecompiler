@@ -29,6 +29,10 @@ public class InstructionParser
     private readonly HashSet<HlslTreeNode> _doubleValues =
         new(ReferenceEqualityComparer.Instance);
 
+    // The phis that join an if's branches, so a loop the join enters can tell
+    // them from a loop's own phis (SeedLoopHeaderPhis).
+    private readonly HashSet<HlslTreeNode> _ifJoins = HlslTreeNode.NewNodeSet();
+
     /// <summary>
     /// Components holding a double's high word (the double is keyed one below).
     /// </summary>
@@ -1239,7 +1243,10 @@ public class InstructionParser
     {
         foreach (RegisterComponentKey key in ScanLoopBodyDestinations())
         {
-            if (loop.Outputs.TryGetValue(key, out HlslTreeNode preLoopValue) && preLoopValue is not PhiNode)
+            // A loop's own phis (an enclosing header, a loop's exit) carry the value
+            // already. An if's join entering the loop is carried like any value.
+            if (loop.Outputs.TryGetValue(key, out HlslTreeNode preLoopValue)
+                && (preLoopValue is not PhiNode || _ifJoins.Contains(preLoopValue)))
             {
                 loop.Outputs[key] = new PhiNode(preLoopValue);
             }
@@ -1891,7 +1898,7 @@ public class InstructionParser
                 {
                     continue;
                 }
-                ifStatement.Outputs[registerComponent] = new PhiNode(trueNode, falseNode);
+                ifStatement.Outputs[registerComponent] = NewIfJoin(trueNode, falseNode);
             }
             else if (ifStatement.Outputs.TryGetValue(registerComponent, out var parentNode))
             {
@@ -1899,7 +1906,7 @@ public class InstructionParser
                 {
                     continue;
                 }
-                ifStatement.Outputs[registerComponent] = new PhiNode(trueNode, parentNode);
+                ifStatement.Outputs[registerComponent] = NewIfJoin(trueNode, parentNode);
             }
             else
             {
@@ -1923,7 +1930,7 @@ public class InstructionParser
                     {
                         continue;
                     }
-                    ifStatement.Outputs[registerComponent] = new PhiNode(falseNode, parentNode);
+                    ifStatement.Outputs[registerComponent] = NewIfJoin(falseNode, parentNode);
                 }
                 else
                 {
@@ -1931,6 +1938,13 @@ public class InstructionParser
                 }
             }
         }
+    }
+
+    private PhiNode NewIfJoin(HlslTreeNode a, HlslTreeNode b)
+    {
+        var join = new PhiNode(a, b);
+        _ifJoins.Add(join);
+        return join;
     }
 
     private static IDictionary<RegisterComponentKey, HlslTreeNode> BranchOutputs(

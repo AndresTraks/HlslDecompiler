@@ -789,15 +789,53 @@ public class StatementFinalizer
         }
         else if (statement is LoopStatement loopStatement)
         {
+            // An assignment before the loop moves its header phi's readers onto
+            // its variable (see the phi readers above); a join entering the loop
+            // has no assignment, so its variable takes them here.
+            foreach (PhiNode header in loopStatement.Outputs.Values.OfType<PhiNode>()
+                .Where(phi => phi.IsLoopHeader && phi.Outputs.Count != 0).ToList())
+            {
+                // By now the join is lowered to its variable.
+                if (GetExistingVariable(header.PreLoopValue) is TempVariableNode variable)
+                {
+                    foreach (var reader in header.Outputs)
+                    {
+                        for (int j = 0; j < reader.Inputs.Count; j++)
+                        {
+                            if (ReferenceEquals(reader.Inputs[j], header))
+                            {
+                                reader.Inputs[j] = variable;
+                            }
+                        }
+                        variable.Outputs.Add(reader);
+                    }
+                    header.Outputs.Clear();
+                    ReplaceInStatementNodes(header, variable);
+                    // And what statements hand on: an if after the loop must see
+                    // the variable it may leave unchanged.
+                    new StatementVisitor(_statements).Visit(holder =>
+                    {
+                        foreach (var map in new[] { holder.Inputs, holder.Outputs })
+                        {
+                            foreach (var key in map.Where(e => ReferenceEquals(e.Value, header))
+                                .Select(e => e.Key).ToList())
+                            {
+                                map[key] = variable;
+                            }
+                        }
+                    });
+                }
+            }
             InsertTempVariableAssignments(loopStatement.Body);
 
             if (i >= 1 && statements[i - 1] is AssignmentStatement preLoopStatement)
             {
                 UseLoopVariablesInBody(loopStatement, preLoopStatement.Outputs, preLoopStatement);
             }
-            else if (i == 0)
+            else
             {
-                // First in a branch: what enters was assigned before the branch.
+                // First in a branch, or after an if or another loop: what enters
+                // was assigned further up.
                 UseLoopVariablesInBody(loopStatement, loopStatement.Inputs, null);
             }
         }

@@ -183,7 +183,7 @@ public class SelfUpdatingBranchJoinTests
     }
 
     // The text, then fxc's compile of it computes what the shader does.
-    private static void AssertDecompiles(ShaderModel shader, string expected)
+    internal static void AssertDecompiles(ShaderModel shader, string expected)
     {
         string hlsl = WriteHlslAst(shader);
         Console.WriteLine(hlsl);
@@ -194,7 +194,7 @@ public class SelfUpdatingBranchJoinTests
             if (ShaderCompiler.IsAvailable)
             {
                 string path = Path.Combine(TestContext.CurrentContext.TestDirectory,
-                    nameof(SelfUpdatingBranchJoinTests) + "_" + TestContext.CurrentContext.Test.MethodName + ".hlsl");
+                    TestContext.CurrentContext.Test.ClassName.Split('.')[^1] + "_" + TestContext.CurrentContext.Test.MethodName + ".hlsl");
                 File.WriteAllText(path, hlsl);
                 string failure = RecompileTests.RunFxc("ps_3_0", path, path + ".fxo");
                 Assert.That(failure, Is.Null);

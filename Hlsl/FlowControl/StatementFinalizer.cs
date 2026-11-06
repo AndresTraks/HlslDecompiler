@@ -883,9 +883,22 @@ public class StatementFinalizer
                     }
                     else if (!ReferenceEquals(branchVariable, variable))
                     {
-                        branchVariable.Replace(variable);
-                        // Replace does not reach held references.
-                        ReplaceInStatementNodes(branchVariable, variable);
+                        // A write updating the register's entry value (`cmp r0.w,
+                        // -r0.w, a, b` names itself) holds the entry's variable,
+                        // which reads above the if also read; renaming it would
+                        // move those reads onto the join's variable, which they
+                        // precede. Only the reads after the if follow the
+                        // assignment onto the new variable.
+                        if (Reads(assignment.Value, branchVariable))
+                        {
+                            ReplaceReadsAfter(ifStatement, branchVariable, variable);
+                        }
+                        else
+                        {
+                            branchVariable.Replace(variable);
+                            // Replace does not reach held references.
+                            ReplaceInStatementNodes(branchVariable, variable);
+                        }
                         assignment.TempVariable = variable;
                     }
                 }
@@ -899,6 +912,87 @@ public class StatementFinalizer
                     assignment.IsReassignment = true;
                 }
                 ifStatement.Outputs[output.Key] = variable;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Moves the reads of a variable that follow an if onto another. Reads above
+    /// the if and in its bodies keep the variable, as does a node computed on both
+    /// sides of it.
+    /// </summary>
+    private void ReplaceReadsAfter(IfStatement ifStatement, TempVariableNode from, TempVariableNode to)
+    {
+        var inside = new HashSet<IStatement>(ReferenceEqualityComparer.Instance);
+        foreach (IList<IStatement> body in new[] { ifStatement.TrueBody, ifStatement.FalseBody })
+        {
+            if (body != null)
+            {
+                new StatementVisitor(body).Visit(statement => inside.Add(statement));
+            }
+        }
+
+        HashSet<HlslTreeNode> before = HlslTreeNode.NewNodeSet();
+        HashSet<HlslTreeNode> after = HlslTreeNode.NewNodeSet();
+        var afterStatements = new List<IStatement>();
+        bool passed = false;
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (ReferenceEquals(statement, ifStatement))
+            {
+                passed = true;
+                return;
+            }
+            if (inside.Contains(statement))
+            {
+                return;
+            }
+            if (passed)
+            {
+                afterStatements.Add(statement);
+            }
+            foreach (HlslTreeNode root in statement.Outputs.Values.Concat(statement.HeldNodes))
+            {
+                CollectExpression(root, passed ? after : before);
+            }
+        });
+
+        foreach (HlslTreeNode reader in from.Outputs.Distinct().ToList())
+        {
+            if (!after.Contains(reader) || before.Contains(reader))
+            {
+                continue;
+            }
+            for (int i = 0; i < reader.Inputs.Count; i++)
+            {
+                if (ReferenceEquals(reader.Inputs[i], from))
+                {
+                    reader.Inputs[i] = to;
+                    from.Outputs.Remove(reader);
+                    to.Outputs.Add(reader);
+                }
+            }
+        }
+        foreach (IStatement statement in afterStatements)
+        {
+            statement.ReplaceHeldNode(from, to);
+        }
+    }
+
+    private static void CollectExpression(HlslTreeNode root, HashSet<HlslTreeNode> nodes)
+    {
+        var pending = new Stack<HlslTreeNode>();
+        pending.Push(root);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (node == null || !nodes.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                pending.Push(input);
             }
         }
     }

@@ -635,7 +635,8 @@ public class StatementFinalizer
                     || sharedRegisters.Contains(newAssignment.Key);
                 statement.Inputs.TryGetValue(newAssignment.Key, out var inputAssignment);
                 var tempInputAssignment = inputAssignment as TempAssignmentNode;
-                TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment);
+                TempVariableNode tempInputVariable = GetExistingVariable(inputAssignment)
+                    ?? CarriedVariable(inputAssignment);
                 // A value that is already a variable (an atomic's out parameter) needs
                 // no copy, unless the register had a variable or a phi reads it.
                 if (tempValue is TempVariableNode && tempInputAssignment == null && tempInputVariable == null
@@ -811,19 +812,7 @@ public class StatementFinalizer
                     }
                     header.Outputs.Clear();
                     ReplaceInStatementNodes(header, variable);
-                    // And what statements hand on: an if after the loop must see
-                    // the variable it may leave unchanged.
-                    new StatementVisitor(_statements).Visit(holder =>
-                    {
-                        foreach (var map in new[] { holder.Inputs, holder.Outputs })
-                        {
-                            foreach (var key in map.Where(e => ReferenceEquals(e.Value, header))
-                                .Select(e => e.Key).ToList())
-                            {
-                                map[key] = variable;
-                            }
-                        }
-                    });
+                    ReplaceInStatementMaps(header, variable);
                 }
             }
             InsertTempVariableAssignments(loopStatement.Body);
@@ -865,6 +854,17 @@ public class StatementFinalizer
             return merged;
         }
         return null;
+    }
+
+    // A loop header phi whose values both went into one variable, as one entering
+    // the loop in an assignment does: what follows the loop holds that variable.
+    private static TempVariableNode CarriedVariable(HlslTreeNode value)
+    {
+        return value is PhiNode { IsLoopHeader: true } header
+            && header.Inputs.Count != 0
+            && header.Inputs.All(input => ReferenceEquals(input, header.Inputs[0]))
+            ? header.Inputs[0] as TempVariableNode
+            : null;
     }
 
     // A branch ending in a loop hands out its header phi: the loop carries the
@@ -1920,6 +1920,25 @@ public class StatementFinalizer
     {
         new StatementVisitor(_statements).Visit(
             statement => statement.ReplaceHeldNode(node, replacement));
+    }
+
+    /// <summary>
+    /// Replace for what statements hand on: an if after a loop must see the
+    /// variable the loop carries, which it may leave unchanged.
+    /// </summary>
+    private void ReplaceInStatementMaps(HlslTreeNode node, HlslTreeNode replacement)
+    {
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var map in new[] { statement.Inputs, statement.Outputs })
+            {
+                foreach (var key in map.Where(e => ReferenceEquals(e.Value, node))
+                    .Select(e => e.Key).ToList())
+                {
+                    map[key] = replacement;
+                }
+            }
+        });
     }
 
     /// <summary>

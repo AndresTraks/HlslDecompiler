@@ -12,6 +12,7 @@ public class LoopCarriedOneSidedIfTests
     private const uint X = 0x00;    // .x replicated
     private const uint Y = 0x55;    // .y replicated
     private const uint Z = 0xAA;    // .z replicated
+    private const uint W = 0xFF;    // .w replicated
 
     private static uint Oc(uint mask = 0xF) => Destination(RegisterType.ColorOut, 0, mask);
 
@@ -77,6 +78,58 @@ public class LoopCarriedOneSidedIfTests
             		t1 = 0.5;
             	}
             	return t1 + t3;
+            }
+
+            """);
+    }
+
+    [Test]
+    public void LaneAdvancedInLoopKeptByOneSidedIfAfterIt()
+    {
+        // r2.y enters the loop in an assignment and leaves it in the loop's
+        // variable; the one-sided if after the loop must overwrite that variable,
+        // not a new one left unset when the if is skipped.
+        ShaderModel shader = Assemble(ShaderType.Pixel, 3, [
+            Constant(0, 0f, 1f, 0.5f, -0.5f),
+            ConstantInt(0, 255, 0, 0, 0),
+            Declaration(DeclUsage.TexCoord, RegisterType.Input, 0),
+            Instruction(Opcode.Mov, Rd(2, 0x2), V(0, X)),
+            Instruction(Opcode.Mov, Rd(2, 0x8), V(0, Z)),
+            Instruction(Opcode.Cmp, Rd(0, 0x1), V(0, Y), C(0, Y), C(0, X)),
+            Instruction(Opcode.Cmp, Rd(3, 0x1), V(0, Z), C(0, Y), C(0, X)),
+            Instruction(Opcode.Rep, Source(RegisterType.ConstInt, 0)),
+            Instruction(Opcode.IfC, IfComparison.NE, R(0, X), C(0, X)),
+            Instruction(Opcode.Add, Rd(2, 0xA), R(2), C(0, 0x7F)),           // r2.yw += (-0.5, 1)
+            Instruction(Opcode.Cmp, Rd(0, 0x1), R(2, Y, SourceModifier.Negate), C(0, X), C(0, Y)),
+            Instruction(Opcode.Endif),
+            Instruction(Opcode.BreakC, IfComparison.EQ, R(0, X), C(0, X)),
+            Instruction(Opcode.EndRep),
+            Instruction(Opcode.IfC, IfComparison.NE, R(3, X), C(0, X)),
+            Instruction(Opcode.Mov, Rd(2, 0x2), C(0, Z)),
+            Instruction(Opcode.Endif),
+            Instruction(Opcode.Add, Oc(), R(2, Y), R(2, W)),
+            Instruction(Opcode.End),
+        ]);
+
+        SelfUpdatingBranchJoinTests.AssertDecompiles(shader, """
+            float4 main(float4 texcoord : TEXCOORD) : COLOR
+            {
+            	float t0 = texcoord.y >= 0 ? 1 : 0;
+            	float t1 = texcoord.z >= 0 ? 1 : 0;
+            	float2 t2 = texcoord.xz;
+            	for (int i = 0; i < 255; i++) {
+            		if (t0 != 0) {
+            			t2 = t2 + float2(-0.5, 1);
+            			t0 = -t2.x >= 0 ? 0 : 1;
+            		}
+            		if (t0 == 0) {
+            			break;
+            		}
+            	}
+            	if (t1 != 0) {
+            		t2.x = 0.5;
+            	}
+            	return t2.x + t2.y;
             }
 
             """);

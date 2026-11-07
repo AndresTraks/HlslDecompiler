@@ -2110,9 +2110,10 @@ public class HlslAstWriter : HlslWriter
         // normalize has many consumers but is never written out. Text too large to
         // compile (a chain of values each read twice doubles at every link) is
         // counted by consumers instead; naming them makes it small enough.
+        CompileMeasurement measured = null;
         Dictionary<HlslTreeNode, int> written =
             WrittenOutSize(registerGroups.SelectMany(g => g)) <= WrittenOutBudget
-                ? MeasureAndNumber(registerGroups).WrittenCounts()
+                ? (measured = MeasureAndNumber(registerGroups)).WrittenCounts()
                 : consumers;
 
         // Deepest first, so an inner shared node is named before its container.
@@ -2147,7 +2148,9 @@ public class HlslAstWriter : HlslWriter
             reachable.Add(node);
         }
         resourceInfo.AddRange(NameCandidates(candidates, reachable, roots));
-        resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots));
+        // Nothing named since the measurement: it is the first round's compile.
+        resourceInfo.AddRange(NameRepeatedText(registerGroups, resourceInfo, roots,
+            resourceInfo.Count == 0 ? measured : null));
         if (MergeVectorReads(resourceInfo, _lastRecording))
         {
             CloseUpNumbering(resourceInfo);
@@ -2386,15 +2389,18 @@ public class HlslAstWriter : HlslWriter
     /// <summary>
     /// Names expressions the statement's text repeats, one at a time, recompiling
     /// after each. Measured on text because grouping changes what is written.
+    /// A measurement of these groups already made stands for the first compile.
     /// </summary>
     private List<HlslTreeNode[]> NameRepeatedText(
-        IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots)
+        IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots,
+        CompileMeasurement measured)
     {
         var assignments = new List<HlslTreeNode[]>();
         while (true)
         {
             IEnumerable<HlslTreeNode[]> groups = registerGroups.Concat(named).Concat(assignments);
-            CompileMeasurement measurement = MeasureAndNumber(groups);
+            CompileMeasurement measurement = measured ?? MeasureAndNumber(groups);
+            measured = null;
             List<(HlslTreeNode[] Nodes, string Text)> recording = measurement.Recording;
             HashSet<HlslTreeNode> grouped = measurement.Grouped;
             List<HlslTreeNode[]> groupMatches = measurement.GroupMatches;
@@ -2656,7 +2662,8 @@ public class HlslAstWriter : HlslWriter
         {
             return;
         }
-        HashSet<HlslTreeNode> inScope = ValuesOf(body.Skip(index));
+        // Collected only for a group of dot products: most statements have none.
+        HashSet<HlslTreeNode> inScope = null;
         for (int g = 0; g < registerGroups.Count; g++)
         {
             HlslTreeNode[] group = registerGroups[g];
@@ -2667,6 +2674,7 @@ public class HlslAstWriter : HlslWriter
             }
             TempAssignmentNode[] assignments = [.. group.Cast<TempAssignmentNode>()];
             HlslTreeNode[] rows = [.. assignments.Select(assignment => assignment.Value)];
+            inScope ??= ValuesOf(body.Skip(index));
             HashSet<HlslTreeNode> candidates = HlslTreeNode.NewNodeSet();
             foreach (HlslTreeNode node in inScope)
             {
@@ -3368,13 +3376,14 @@ public class HlslAstWriter : HlslWriter
     {
         return recording
             .GroupBy(r => r.Text)
+            // Text written once or short repeats nothing worth naming.
+            .Where(g => (g.Count() - 1) * g.Key.Length >= RepeatedTextBudget)
             .Select(g => (Occurrences: g.Select(r => new NodeList(Broadcast(r.Nodes)))
                     .Distinct().Select(n => n.Nodes).ToList(),
                 Repeated: (g.Count() - 1) * g.Key.Length))
             .Where(r => r.Occurrences.Count > 1)
             // All one width: Broadcast can shrink one occurrence to a single node.
             .Where(r => r.Occurrences.All(nodes => nodes.Length == r.Occurrences[0].Length))
-            .Where(r => r.Repeated >= RepeatedTextBudget)
             .Where(r => r.Occurrences.All(nodes =>
                 nodes.All(n => IsNameable(n) && !roots.Contains(n) && !grouped.Contains(n))))
             .Where(r => r.Occurrences[0].Any(n => n is not ConstantNode))
@@ -3814,16 +3823,14 @@ public class HlslAstWriter : HlslWriter
                 {
                     continue;
                 }
-                // Never one computed from another (e.g. `mul r1.x, 2, r1.x`).
-                if (other.IsInputOf(candidate) || candidate.IsInputOf(other))
-                {
-                    continue;
-                }
                 // Groupable with the first, made by the same instruction, or read as
-                // lanes of one (three dp3s into r3.xyz, then `min r0.xyz, r3.xyz`).
-                if (nodeGrouper.CanGroupComponents(candidate, other)
-                    || HlslTreeNode.IsSameInstruction(candidate, other)
-                    || IsReadAsSiblingLane(candidate, other))
+                // lanes of one (three dp3s into r3.xyz, then `min r0.xyz, r3.xyz`);
+                // never one computed from another (e.g. `mul r1.x, 2, r1.x`). The
+                // graph walks last: most pairs fail the cheaper tests.
+                if ((nodeGrouper.CanGroupComponents(candidate, other)
+                        || HlslTreeNode.IsSameInstruction(candidate, other)
+                        || IsReadAsSiblingLane(candidate, other))
+                    && !other.IsInputOf(candidate) && !candidate.IsInputOf(other))
                 {
                     group.Add(other);
                     named.Add(other);
@@ -3896,7 +3903,7 @@ public class HlslAstWriter : HlslWriter
     private List<HlslTreeNode[]> NamePreciseValues(IList<HlslTreeNode[]> registerGroups,
         List<HlslTreeNode> order, HashSet<HlslTreeNode> roots)
     {
-        if (!_phaseShader.Instructions.OfType<D3D10Instruction>().Any(i => i.PreciseMask != 0))
+        if (!HasPreciseInstructions())
         {
             return [];
         }
@@ -3948,6 +3955,21 @@ public class HlslAstWriter : HlslWriter
             assignments.Add(named);
         }
         return assignments;
+    }
+
+    // Asked for every statement written; the instructions are scanned once per phase.
+    private ShaderModel _preciseScanned;
+    private bool _hasPreciseInstructions;
+
+    private bool HasPreciseInstructions()
+    {
+        if (!ReferenceEquals(_preciseScanned, _phaseShader))
+        {
+            _preciseScanned = _phaseShader;
+            _hasPreciseInstructions = _phaseShader.Instructions.OfType<D3D10Instruction>()
+                .Any(i => i.PreciseMask != 0);
+        }
+        return _hasPreciseInstructions;
     }
 
     // Number of distinct nodes in the expression.

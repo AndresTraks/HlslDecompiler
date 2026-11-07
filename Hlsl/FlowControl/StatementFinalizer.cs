@@ -51,10 +51,29 @@ public class StatementFinalizer
     private void FinalizeStatements()
     {
         FindReturnedOutputJoins();
+        // Removes map entries and graph edges, no held node.
+        _namedHolderCounts = CountNamedHolders();
         RemoveUnusedAssignmentInputOutput();
+        _namedHolderCounts = null;
         FindCarriedByJump();
+        // No statement is added or removed until the returns are set.
+        _storesAndJumps = FindStatements(statement =>
+            statement is IndexableTempStoreStatement or BreakStatement or ContinueStatement);
+        _slotHolders = FindStatements(statement => statement.HeldSlots.Any());
+        _namedSlotHolders = FindStatements(statement => statement.HeldSlots.Any(slot => slot.IsNamed));
+        // The removal only removes from the maps and changes no held node, so who
+        // held a node at the start still covers everyone who holds it.
+        _mapHolders = StatementsByMapValue();
+        _namedHolderCounts = CountNamedHolders();
         RemoveUnusedAssignments(_statements);
+        _mapHolders = null;
+        _namedHolderCounts = null;
+        IndexMapsByValue();
         InsertTempVariableAssignments(_statements);
+        _storesAndJumps = null;
+        _slotHolders = null;
+        _namedSlotHolders = null;
+        _mapsByValue = null;
         LowerResolvedPhis();
         LoopRecovery.Recover(_statements);
         if (_hasReturnValue)
@@ -116,7 +135,7 @@ public class StatementFinalizer
                         {
                             if (entry != null)
                             {
-                                map[output.Key] = entry;
+                                SetInMap(map, output.Key, entry);
                             }
                             else
                             {
@@ -429,6 +448,11 @@ public class StatementFinalizer
             // By register, not component: of a load's four components only the one a
             // condition reads looks shared.
             HashSet<RegisterComponentKey> sharedRegisters = SharedWithHoldingStatement(assignmentOutputs);
+            // What the statement's outputs read, walked once when first asked rather
+            // than per reader.
+            // The next statement's condition or clip values do not change here.
+            ReadThrough written = null;
+            HashSet<HlslTreeNode> nextReads = null;
             foreach (var assignmentOutput in assignmentOutputs)
             {
                 var assignmentNode = assignmentOutput.Value;
@@ -447,7 +471,7 @@ public class StatementFinalizer
                 // unless it is a loop phi nothing reads: the loop writes the register
                 // before reading it, so fxc only reused it.
                 if (assignmentNode.Outputs.All(v => IsUnreadLoopStart(v, assignmentNode)
-                    || (v is not PhiNode && v.IsInputOf(assignment.Outputs.Values))))
+                    || (v is not PhiNode && (written ??= new ReadThrough(assignment.Outputs)).Contains(v))))
                 {
                     // A local array store may inline the value only if it is the very
                     // next statement; a store between could change what it reads.
@@ -469,8 +493,9 @@ public class StatementFinalizer
                     if (nextStatement is ClipStatement clip)
                     {
                         // Only when the clip is its sole reader.
-                        if (assignmentNode.IsInputOf(clip.Values)
-                            && assignmentNode.Outputs.All(o => o is not PhiNode && o.IsInputOf(clip.Values)))
+                        nextReads ??= Below(clip.Values);
+                        if (nextReads.Contains(assignmentNode)
+                            && assignmentNode.Outputs.All(o => o is not PhiNode && nextReads.Contains(o)))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);
                             clip.Inputs.Remove(assignmentOutput.Key);
@@ -481,8 +506,9 @@ public class StatementFinalizer
                         // The condition inlines a value only it reads. A phi reader is
                         // the value leaving: a loop's header phi is upstream of the
                         // condition too, through the loop, so IsInputOf counts it in.
-                        if (assignmentNode.IsInputOf(ifStatement.Comparison)
-                            && assignmentNode.Outputs.All(o => o is not PhiNode && o.IsInputOf(ifStatement.Comparison))
+                        nextReads ??= Below(ifStatement.Comparison);
+                        if (nextReads.Contains(assignmentNode)
+                            && assignmentNode.Outputs.All(o => o is not PhiNode && nextReads.Contains(o))
                             && !sharedRegisters.Contains(assignmentOutput.Key))
                         {
                             assignment.Outputs.Remove(assignmentOutput.Key);
@@ -597,12 +623,27 @@ public class StatementFinalizer
                 {
                     continue;
                 }
-                new StatementVisitor(_statements).Visit(holder =>
+                // Asked of every held node in the shader: found from the values up,
+                // through their readers, rather than from each node down.
+                // The old value first: usually only the step reads it, and then
+                // nothing reads both, without walking everything the new value feeds.
+                HashSet<HlslTreeNode> readersOfOld = ReadersOf(old, fed.Value);
+                if (readersOfOld.Count == 1 && !fed.Value.IsInputOf(old))
+                {
+                    continue;
+                }
+                HashSet<HlslTreeNode> readersOfNew = ReadersOf(fed.Value, null);
+                if (!readersOfOld.Any(node => !ReferenceEquals(node, fed.Value) && readersOfNew.Contains(node)))
+                {
+                    continue;
+                }
+                // Statements without a slot hold nothing.
+                VisitSlotHolders(holder =>
                 {
                     foreach (HlslTreeNode root in holder.HeldNodes)
                     {
                         if (root != null && !ReferenceEquals(root, fed.Value)
-                            && fed.Value.IsInputOf(root) && ReadsAvoiding(root, old, fed.Value))
+                            && readersOfNew.Contains(root) && readersOfOld.Contains(root))
                         {
                             if (!mixedReaders.TryGetValue(fed.Key, out List<HlslTreeNode> readers))
                             {
@@ -949,7 +990,7 @@ public class StatementFinalizer
                 {
                     assignment.IsReassignment = true;
                 }
-                ifStatement.Outputs[output.Key] = variable;
+                SetInMap(ifStatement.Outputs, output.Key, variable);
             }
         }
     }
@@ -1138,7 +1179,7 @@ public class StatementFinalizer
 
         foreach (var entry in variableByRegister)
         {
-            switchStatement.Outputs[entry.Key] = entry.Value;
+            SetInMap(switchStatement.Outputs, entry.Key, entry.Value);
         }
     }
 
@@ -1194,13 +1235,13 @@ public class StatementFinalizer
                 }
                 else if (ReferenceEquals(output.Value, from))
                 {
-                    statement.Outputs[output.Key] = to;
+                    SetInMap(statement.Outputs, output.Key, to);
                 }
             }
             foreach (var input in statement.Inputs
                 .Where(i => ReferenceEquals(i.Value, from)).ToList())
             {
-                statement.Inputs[input.Key] = to;
+                SetInMap(statement.Inputs, input.Key, to);
             }
         });
     }
@@ -1303,7 +1344,7 @@ public class StatementFinalizer
                 IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(key) == true,
             };
             AssignJoinedOutput(ifStatement, key, variable);
-            ifStatement.Outputs[key] = variable;
+            SetInMap(ifStatement.Outputs, key, variable);
         }
         return true;
     }
@@ -1416,7 +1457,7 @@ public class StatementFinalizer
                 {
                     if (map.TryGetValue(key, out HlslTreeNode held) && ReferenceEquals(held, join))
                     {
-                        map[key] = variable;
+                        SetInMap(map, key, variable);
                     }
                 }
             });
@@ -1424,7 +1465,7 @@ public class StatementFinalizer
         }
     }
 
-    private static void AssignJoinedOutput(IfStatement ifStatement, RegisterComponentKey key,
+    private void AssignJoinedOutput(IfStatement ifStatement, RegisterComponentKey key,
         TempVariableNode variable)
     {
         foreach (IList<IStatement> body in FallThroughPaths(ifStatement))
@@ -1436,7 +1477,7 @@ public class StatementFinalizer
             }
             else if (write != null)
             {
-                write.Outputs[key] = new TempAssignmentNode(variable, write.Outputs[key]) { IsReassignment = true };
+                SetInMap(write.Outputs, key, new TempAssignmentNode(variable, write.Outputs[key]) { IsReassignment = true });
             }
             else
             {
@@ -1550,7 +1591,7 @@ public class StatementFinalizer
                 {
                     if (ReferenceEquals(output.Value, carry.Carried))
                     {
-                        statement.Outputs[output.Key] = own;
+                        SetInMap(statement.Outputs, output.Key, own);
                     }
                     else if (statement is not (IfStatement or LoopStatement or SwitchStatement)
                         && !(statement.Inputs.TryGetValue(output.Key, out HlslTreeNode input)
@@ -1624,11 +1665,11 @@ public class StatementFinalizer
         {
             foreach (var output in statement.Outputs.Where(o => ReferenceEquals(o.Value, from)).ToList())
             {
-                statement.Outputs[output.Key] = to;
+                SetInMap(statement.Outputs, output.Key, to);
             }
             foreach (var input in statement.Inputs.Where(i => ReferenceEquals(i.Value, from)).ToList())
             {
-                statement.Inputs[input.Key] = to;
+                SetInMap(statement.Inputs, input.Key, to);
             }
             foreach (var assignment in statement.Outputs.Values
                 .Concat(statement.Inputs.Values)
@@ -1691,14 +1732,38 @@ public class StatementFinalizer
     private bool IsSharedWithHoldingStatement(HlslTreeNode node)
     {
         int holders = 0;
+        if (_namedHolderCounts != null)
+        {
+            _namedHolderCounts.TryGetValue(node, out holders);
+        }
+        else
+        {
+            VisitNamedSlotHolders(statement =>
+            {
+                if (statement.NamedHeldNodes.Contains(node))
+                {
+                    holders++;
+                }
+            });
+        }
+        return holders > 1 || (holders == 1 && node.Outputs.Count != 0);
+    }
+
+    // Per node, how many statements hold it by name, while no statement's held
+    // nodes change; null otherwise. Matched as Contains matches, a constant by value.
+    private Dictionary<HlslTreeNode, int> _namedHolderCounts;
+
+    private Dictionary<HlslTreeNode, int> CountNamedHolders()
+    {
+        var counts = new Dictionary<HlslTreeNode, int>();
         new StatementVisitor(_statements).Visit(statement =>
         {
-            if (statement.NamedHeldNodes.Contains(node))
+            foreach (HlslTreeNode node in statement.NamedHeldNodes.Where(node => node != null).Distinct())
             {
-                holders++;
+                counts[node] = counts.GetValueOrDefault(node) + 1;
             }
         });
-        return holders > 1 || (holders == 1 && node.Outputs.Count != 0);
+        return counts;
     }
 
     /// <summary>
@@ -1799,14 +1864,14 @@ public class StatementFinalizer
                 {
                     IsInteger = _integerOperandAnalysis?.IsIntegerOutputSignature(output.Key) == true,
                 };
-                statement.Outputs[output.Key] = new TempAssignmentNode(variable, value);
+                SetInMap(statement.Outputs, output.Key, new TempAssignmentNode(variable, value));
                 foreach (IStatement later in order.Skip(i + 1))
                 {
                     foreach (var map in new[] { later.Inputs, later.Outputs })
                     {
                         if (map.TryGetValue(output.Key, out HlslTreeNode held) && ReferenceEquals(held, value))
                         {
-                            map[output.Key] = variable;
+                            SetInMap(map, output.Key, variable);
                         }
                     }
                 }
@@ -1880,10 +1945,54 @@ public class StatementFinalizer
         return types.Count == 1 ? types.Single() : null;
     }
 
+    // The stores and jumps, and the statements with a named slot (fixed by the
+    // statement's kind), in visiting order, while no statement is added or
+    // removed; null otherwise.
+    private List<IStatement> _storesAndJumps;
+    private List<IStatement> _slotHolders;
+    private List<IStatement> _namedSlotHolders;
+
+    private List<IStatement> FindStatements(Func<IStatement, bool> predicate)
+    {
+        var found = new List<IStatement>();
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            if (predicate(statement))
+            {
+                found.Add(statement);
+            }
+        });
+        return found;
+    }
+
+    private void VisitSlotHolders(Action<IStatement> visit)
+    {
+        if (_slotHolders != null)
+        {
+            _slotHolders.ForEach(visit);
+        }
+        else
+        {
+            new StatementVisitor(_statements).Visit(visit);
+        }
+    }
+
+    private void VisitNamedSlotHolders(Action<IStatement> visit)
+    {
+        if (_namedSlotHolders != null)
+        {
+            _namedSlotHolders.ForEach(visit);
+        }
+        else
+        {
+            new StatementVisitor(_statements).Visit(visit);
+        }
+    }
+
     private IStatement[] FindHoldingStatements(HlslTreeNode node)
     {
         var holders = new List<IStatement>();
-        new StatementVisitor(_statements).Visit(statement =>
+        Action<IStatement> visit = statement =>
         {
             if (statement is IndexableTempStoreStatement store
                 && (store.Index == node || store.Values.Contains(node)))
@@ -1895,7 +2004,15 @@ public class StatementFinalizer
             {
                 holders.Add(statement);
             }
-        });
+        };
+        if (_storesAndJumps != null)
+        {
+            _storesAndJumps.ForEach(visit);
+        }
+        else
+        {
+            new StatementVisitor(_statements).Visit(visit);
+        }
         return [.. holders];
     }
 
@@ -1905,8 +2022,12 @@ public class StatementFinalizer
     /// </summary>
     private bool IsRenderedByAnyStatement(HlslTreeNode node)
     {
+        if (_namedHolderCounts != null)
+        {
+            return _namedHolderCounts.ContainsKey(node);
+        }
         bool rendered = false;
-        new StatementVisitor(_statements).Visit(statement =>
+        VisitNamedSlotHolders(statement =>
         {
             rendered |= statement.NamedHeldNodes.Contains(node);
         });
@@ -1914,12 +2035,12 @@ public class StatementFinalizer
     }
 
     /// <summary>
-    /// Replace for held references, which are not graph edges.
+    /// Replace for held references, which are not graph edges. Only named slots
+    /// can be replaced.
     /// </summary>
     private void ReplaceInStatementNodes(HlslTreeNode node, HlslTreeNode replacement)
     {
-        new StatementVisitor(_statements).Visit(
-            statement => statement.ReplaceHeldNode(node, replacement));
+        VisitNamedSlotHolders(statement => statement.ReplaceHeldNode(node, replacement));
     }
 
     /// <summary>
@@ -1935,7 +2056,7 @@ public class StatementFinalizer
                 foreach (var key in map.Where(e => ReferenceEquals(e.Value, node))
                     .Select(e => e.Key).ToList())
                 {
-                    map[key] = replacement;
+                    SetInMap(map, key, replacement);
                 }
             }
         });
@@ -1968,6 +2089,133 @@ public class StatementFinalizer
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// The value and every node reading it, along readers not through <paramref name="avoid"/>:
+    /// the nodes <see cref="ReadsAvoiding"/> finds it from, walking up instead of down.
+    /// A phi reads its inputs only as a loop-carried update, which walks down stop at.
+    /// </summary>
+    private static HashSet<HlslTreeNode> ReadersOf(HlslTreeNode value, HlslTreeNode avoid)
+    {
+        HashSet<HlslTreeNode> readers = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>();
+        stack.Push(value);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (ReferenceEquals(node, avoid) || !readers.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode reader in node.Outputs)
+            {
+                if (reader is not PhiNode)
+                {
+                    stack.Push(reader);
+                }
+            }
+        }
+        return readers;
+    }
+
+    /// <summary>
+    /// The roots and every node they read: the nodes <see cref="HlslTreeNode.IsInputOf(IEnumerable{HlslTreeNode})"/>
+    /// finds an input of the roots among.
+    /// </summary>
+    private static HashSet<HlslTreeNode> Below(IEnumerable<HlslTreeNode> roots)
+    {
+        HashSet<HlslTreeNode> below = HlslTreeNode.NewNodeSet();
+        var stack = new Stack<HlslTreeNode>(roots);
+        while (stack.Count != 0)
+        {
+            HlslTreeNode node = stack.Pop();
+            if (!below.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                stack.Push(input);
+            }
+        }
+        return below;
+    }
+
+    /// <summary>
+    /// <see cref="Below"/> of a map's values, kept exact while entries are only
+    /// removed: each node counts the values and the readers in the set holding it,
+    /// and leaves with the last.
+    /// </summary>
+    private sealed class ReadThrough
+    {
+        private readonly IDictionary<RegisterComponentKey, HlslTreeNode> _map;
+        private readonly Dictionary<RegisterComponentKey, HlslTreeNode> _held;
+        private readonly Dictionary<HlslTreeNode, int> _holders = new(ReferenceEqualityComparer.Instance);
+
+        public ReadThrough(IDictionary<RegisterComponentKey, HlslTreeNode> map)
+        {
+            _map = map;
+            _held = new Dictionary<RegisterComponentKey, HlslTreeNode>(map);
+            foreach (HlslTreeNode value in _held.Values)
+            {
+                Hold(value);
+            }
+        }
+
+        public bool Contains(HlslTreeNode node)
+        {
+            if (_map.Count != _held.Count)
+            {
+                foreach (RegisterComponentKey key in _held.Keys.Where(key => !_map.ContainsKey(key)).ToList())
+                {
+                    Release(_held[key]);
+                    _held.Remove(key);
+                }
+            }
+            return _holders.ContainsKey(node);
+        }
+
+        private void Hold(HlslTreeNode value)
+        {
+            var stack = new Stack<HlslTreeNode>();
+            stack.Push(value);
+            while (stack.Count != 0)
+            {
+                HlslTreeNode node = stack.Pop();
+                if (_holders.TryGetValue(node, out int count))
+                {
+                    _holders[node] = count + 1;
+                    continue;
+                }
+                _holders[node] = 1;
+                foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+                {
+                    stack.Push(input);
+                }
+            }
+        }
+
+        private void Release(HlslTreeNode value)
+        {
+            var stack = new Stack<HlslTreeNode>();
+            stack.Push(value);
+            while (stack.Count != 0)
+            {
+                HlslTreeNode node = stack.Pop();
+                int count = _holders[node] - 1;
+                if (count != 0)
+                {
+                    _holders[node] = count;
+                    continue;
+                }
+                _holders.Remove(node);
+                foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+                {
+                    stack.Push(input);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -2081,27 +2329,64 @@ public class StatementFinalizer
             || (node is MoveOperation move && move.Inputs[0] is ConstantNode or RegisterInputNode);
     }
 
-    private void RemoveAnyAssignment(HlslTreeNode node)
-    {
+    // Per node, the statements whose input or output maps held it, while only
+    // removals change the maps; null otherwise.
+    private Dictionary<HlslTreeNode, List<IStatement>> _mapHolders;
 
+    private Dictionary<HlslTreeNode, List<IStatement>> StatementsByMapValue()
+    {
+        var holders = new Dictionary<HlslTreeNode, List<IStatement>>(ReferenceEqualityComparer.Instance);
         new StatementVisitor(_statements).Visit(statement =>
         {
-            if (statement.Inputs.Values.Contains(node))
+            foreach (HlslTreeNode value in statement.Inputs.Values.Concat(statement.Outputs.Values))
             {
-                foreach (var item in statement.Inputs.Where(o => o.Value == node).ToList())
+                if (value == null)
                 {
-                    statement.Inputs.Remove(item.Key);
+                    continue;
                 }
-            }
-
-            if (statement.Outputs.Values.Contains(node))
-            {
-                foreach (var item in statement.Outputs.Where(o => o.Value == node).ToList())
+                if (!holders.TryGetValue(value, out List<IStatement> list))
                 {
-                    statement.Outputs.Remove(item.Key);
+                    holders[value] = list = [];
+                }
+                if (list.Count == 0 || !ReferenceEquals(list[^1], statement))
+                {
+                    list.Add(statement);
                 }
             }
         });
+        return holders;
+    }
+
+    private void RemoveAnyAssignment(HlslTreeNode node)
+    {
+        if (_mapHolders != null)
+        {
+            if (_mapHolders.TryGetValue(node, out List<IStatement> holders))
+            {
+                holders.ForEach(statement => RemoveFromMaps(statement, node));
+            }
+            return;
+        }
+        new StatementVisitor(_statements).Visit(statement => RemoveFromMaps(statement, node));
+    }
+
+    private static void RemoveFromMaps(IStatement statement, HlslTreeNode node)
+    {
+        if (statement.Inputs.Values.Contains(node))
+        {
+            foreach (var item in statement.Inputs.Where(o => o.Value == node).ToList())
+            {
+                statement.Inputs.Remove(item.Key);
+            }
+        }
+
+        if (statement.Outputs.Values.Contains(node))
+        {
+            foreach (var item in statement.Outputs.Where(o => o.Value == node).ToList())
+            {
+                statement.Outputs.Remove(item.Key);
+            }
+        }
     }
 
     /// <summary>
@@ -2166,16 +2451,77 @@ public class StatementFinalizer
 
     private void ReplaceAnyAssignment(RegisterComponentKey componentKey, HlslTreeNode node, HlslTreeNode replacement)
     {
+        if (_mapsByValue != null)
+        {
+            if (_mapsByValue.TryGetValue(node, out var maps))
+            {
+                foreach (var map in maps.ToList())
+                {
+                    if (map.TryGetValue(componentKey, out var held) && held == node)
+                    {
+                        SetInMap(map, componentKey, replacement);
+                    }
+                }
+            }
+            return;
+        }
         new StatementVisitor(_statements).Visit(s =>
         {
             if (s.Inputs.TryGetValue(componentKey, out var input) && input == node)
             {
-                s.Inputs[componentKey] = replacement;
+                SetInMap(s.Inputs, componentKey, replacement);
             }
             if (s.Outputs.TryGetValue(componentKey, out var output) && output == node)
             {
-                s.Outputs[componentKey] = replacement;
+                SetInMap(s.Outputs, componentKey, replacement);
             }
         });
+    }
+
+    // Per node, every input or output map it was ever put in, while the maps are
+    // only written through SetInMap; null otherwise. By map, not statement, in
+    // case statements share one.
+    private Dictionary<HlslTreeNode, List<IDictionary<RegisterComponentKey, HlslTreeNode>>> _mapsByValue;
+
+    private void IndexMapsByValue()
+    {
+        _mapsByValue = new(ReferenceEqualityComparer.Instance);
+        new StatementVisitor(_statements).Visit(statement =>
+        {
+            foreach (var map in new[] { statement.Inputs, statement.Outputs })
+            {
+                foreach (HlslTreeNode value in map.Values)
+                {
+                    RecordInMap(map, value);
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// Every write of a value into a statement's input or output map, so that
+    /// <see cref="_mapsByValue"/> sees it.
+    /// </summary>
+    private void SetInMap(IDictionary<RegisterComponentKey, HlslTreeNode> map,
+        RegisterComponentKey key, HlslTreeNode value)
+    {
+        map[key] = value;
+        RecordInMap(map, value);
+    }
+
+    private void RecordInMap(IDictionary<RegisterComponentKey, HlslTreeNode> map, HlslTreeNode value)
+    {
+        if (_mapsByValue == null || value == null)
+        {
+            return;
+        }
+        if (!_mapsByValue.TryGetValue(value, out var maps))
+        {
+            _mapsByValue[value] = maps = [];
+        }
+        if (!maps.Any(held => ReferenceEquals(held, map)))
+        {
+            maps.Add(map);
+        }
     }
 }

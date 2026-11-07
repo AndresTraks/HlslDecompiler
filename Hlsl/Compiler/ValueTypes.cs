@@ -43,10 +43,11 @@ internal static class ValueTypes
             }
         }
         // All computed before any is stored: answers for one value ask about others.
+        HashSet<HlslTreeNode> belowSigned = BelowSignedReaders(values);
         var facts = values.Select(value => new TypeFacts(
             value.ConsumesInteger, MadeType(value), InstructionParser.GetConsumedType(value),
             IsBitsValue(value, HlslTreeNode.NewNodeSet()),
-            MadeUnsigned(value), ConsumedAsUnsigned(value), IndexesABuffer(value))).ToList();
+            MadeUnsigned(value), ConsumedAsUnsigned(value, belowSigned), IndexesABuffer(value))).ToList();
         for (int i = 0; i < values.Count; i++)
         {
             values[i].Types = facts[i];
@@ -146,10 +147,63 @@ internal static class ValueTypes
     }
 
     /// <summary>
+    /// The nodes with a reader <see cref="ReadsAsUnsigned"/> can answer for somewhere
+    /// above them, the readers included: the walk up from any other node finds no
+    /// answer. Taken over everything connected to the values, since the walk goes
+    /// where readers lead. Asked before any facts are stored, as the walk is.
+    /// </summary>
+    private static HashSet<HlslTreeNode> BelowSignedReaders(IEnumerable<HlslTreeNode> values)
+    {
+        var connected = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(values);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (node == null || !connected.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode next in node.Inputs.Concat(node.Outputs))
+            {
+                pending.Push(next);
+            }
+        }
+        var below = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in connected)
+        {
+            // Every reader ReadsAsUnsigned answers for, through some input.
+            if (node is ComparisonNode { IsInteger: true, Comparison: IfComparison.LT
+                    or IfComparison.LE or IfComparison.GT or IfComparison.GE }
+                or ShiftRightOperation or MinimumOperation or MaximumOperation
+                or BitsToDoubleOperation or ConvertOperation { SourceUnsigned: bool }
+                || (node is DivisionOperation or ModuloOperation && node.ReadsIntegers == true)
+                || (node is NegateOperation && IsIntegerValue(node) == true))
+            {
+                pending.Push(node);
+            }
+        }
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (node == null || !below.Add(node))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        return below;
+    }
+
+    /// <summary>
     /// The signedness the readers agree on, looking through sign-neutral operations;
     /// null where they disagree or none says.
     /// </summary>
-    private static bool? ConsumedAsUnsigned(HlslTreeNode value)
+    /// <param name="belowSigned">If given, <see cref="BelowSignedReaders"/>: readers
+    /// outside it are passed over, as they and theirs say nothing.</param>
+    private static bool? ConsumedAsUnsigned(HlslTreeNode value, HashSet<HlslTreeNode> belowSigned = null)
     {
         bool? unsigned = null;
         var visited = HlslTreeNode.NewNodeSet();
@@ -160,6 +214,10 @@ internal static class ValueTypes
             HlslTreeNode node = pending.Pop();
             foreach (HlslTreeNode reader in node.Outputs)
             {
+                if (belowSigned != null && !belowSigned.Contains(reader))
+                {
+                    continue;
+                }
                 if (!visited.Add(reader))
                 {
                     continue;

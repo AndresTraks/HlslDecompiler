@@ -132,6 +132,9 @@ public class XenosTests
 
     private static readonly Dictionary<string, string> KnownRoundTripFailures = new()
     {
+        ["xps_3_0/loop_flag_carried"] = "XNA's microcode compiler fails internally (X4800) on the second "
+            + "loop's break once the first loop steps its counter as the decompilation writes it; fxc's "
+            + "D3D9 compile of the same HLSL computes what the original does.",
     };
 
     // Runs check; for a listed shader, asserts it still fails and ignores the test.

@@ -367,11 +367,23 @@ public class HlslAstWriter : HlslWriter
         });
     }
 
+    // The loop counters each open block declares: a for's counter belongs to the
+    // block around it, so a later loop in that block or within it takes another name.
+    private readonly Stack<HashSet<string>> _blockCounters = new();
+
     private void WriteStatements(IList<IStatement> statements)
     {
-        foreach (IStatement statement in statements)
+        _blockCounters.Push([]);
+        try
         {
-            WriteStatement(statement);
+            foreach (IStatement statement in statements)
+            {
+                WriteStatement(statement);
+            }
+        }
+        finally
+        {
+            _blockCounters.Pop();
         }
     }
 
@@ -1282,20 +1294,28 @@ public class HlslAstWriter : HlslWriter
     }
 
     // Counters must not shadow an enclosing counter or the input struct `i`;
-    // the counter is renamed, not the struct.
+    // the counter is renamed, not the struct. Nor may one repeat a counter an
+    // earlier loop declared in an open block (X3078): it takes the next depth's name.
     private string GetLoopVariableName(int depth)
     {
         bool inputInScope = _registers.MethodInputRegisters.Count > 1
             || _shader.Type == ShaderType.Geometry;
         bool outputInScope = HasOutputStruct;
 
-        string name = depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
-        while ((inputInScope && name == _registers.InputVariableName)
-            || (outputInScope && name == _registers.OutputVariableName))
+        for (; ; depth++)
         {
-            name += "_";
+            string name = depth < 3 ? new string((char)('i' + depth), 1) : $"i{depth}";
+            while ((inputInScope && name == _registers.InputVariableName)
+                || (outputInScope && name == _registers.OutputVariableName))
+            {
+                name += "_";
+            }
+            if (!_blockCounters.Any(counters => counters.Contains(name)))
+            {
+                _blockCounters.Peek().Add(name);
+                return name;
+            }
         }
-        return name;
     }
 
     private void WriteSwitchStatement(SwitchStatement switchStatement)

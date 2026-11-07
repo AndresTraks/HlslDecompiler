@@ -31,7 +31,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float t8 = t7;
 	float t9 = t7 == 0 ? 1.0 : 0.0;
 	float t10 = t4.y == 0 ? 1.0 : 0.0;
-	for (int i = 0; i < 255; i++) {
+	for (int j = 0; j < 255; j++) {
 		if (t9 != 0) {
 			t4.z = (2 < t2) ? 1 : 0;
 		}

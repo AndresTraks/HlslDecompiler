@@ -1978,6 +1978,59 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
+    // Nodes a statement may write out unnamed and still be compiled to measure:
+    // a large real statement holds a few hundred thousand, measured in well under
+    // a second.
+    private const long WrittenOutBudget = 1_000_000;
+
+    /// <summary>
+    /// How many nodes the roots' text holds with nothing named: a node read twice
+    /// is written twice. Counting stops past the budget.
+    /// </summary>
+    private static long WrittenOutSize(IEnumerable<HlslTreeNode> roots)
+    {
+        var rootSet = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode root in roots)
+        {
+            rootSet.Add(root);
+        }
+        // Inputs first: a node is sized once all its inputs are.
+        var sizes = new Dictionary<HlslTreeNode, long>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<(HlslTreeNode Node, bool Expanded)>(rootSet.Select(root => (root, false)));
+        while (stack.Count != 0)
+        {
+            (HlslTreeNode node, bool expanded) = stack.Pop();
+            if (sizes.ContainsKey(node))
+            {
+                continue;
+            }
+            if (!expanded)
+            {
+                stack.Push((node, true));
+                foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+                {
+                    if (!sizes.ContainsKey(input))
+                    {
+                        stack.Push((input, false));
+                    }
+                }
+                continue;
+            }
+            long size = 1;
+            foreach (HlslTreeNode input in HlslTreeNode.TraversableInputs(node))
+            {
+                size = Math.Min(size + sizes[input], WrittenOutBudget + 1);
+            }
+            sizes[node] = size;
+        }
+        long total = 0;
+        foreach (HlslTreeNode root in rootSet)
+        {
+            total = Math.Min(total + sizes[root], WrittenOutBudget + 1);
+        }
+        return total;
+    }
+
     private static bool ReadsAnyOf(HlslTreeNode node, HashSet<HlslTreeNode> variables)
     {
         return Reachable([node]).Any(variables.Contains);
@@ -2034,8 +2087,13 @@ public class HlslAstWriter : HlslWriter
 
         // Named: sizeable subexpressions written more than once, then repeated text.
         // Counted from compiled text, not graph consumers: a length inside a
-        // normalize has many consumers but is never written out.
-        Dictionary<HlslTreeNode, int> written = MeasureAndNumber(registerGroups).WrittenCounts();
+        // normalize has many consumers but is never written out. Text too large to
+        // compile (a chain of values each read twice doubles at every link) is
+        // counted by consumers instead; naming them makes it small enough.
+        Dictionary<HlslTreeNode, int> written =
+            WrittenOutSize(registerGroups.SelectMany(g => g)) <= WrittenOutBudget
+                ? MeasureAndNumber(registerGroups).WrittenCounts()
+                : consumers;
 
         // Deepest first, so an inner shared node is named before its container.
         var candidates = new List<HlslTreeNode>();

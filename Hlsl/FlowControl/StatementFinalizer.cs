@@ -711,7 +711,10 @@ public class StatementFinalizer
                         ?? (_integerOperandAnalysis?.IsIntegerRegister(newAssignment.Key) == true);
                     bool isBits = ValueTypes.IsBitsVariable(tempValue, isInteger);
                     tempValue.Outputs.Clear();
-                    TempVariableNode existing = tempInputAssignment?.TempVariable ?? tempInputVariable;
+                    // No value before it here (an outer write's lanes both branches overwrite
+                    // drop as dead), yet joined after the if with the register's variable.
+                    TempVariableNode existing = tempInputAssignment?.TempVariable ?? tempInputVariable
+                        ?? (inputAssignment == null ? JoinedVariable(tempUsages) : null);
                     // A reused register is a new variable when the type differs, or
                     // when the value does not read the old one (`t = t + x` does),
                     // unless it feeds a phi over the existing variable.
@@ -723,7 +726,7 @@ public class StatementFinalizer
                             // A select on a condition overwriting it holds a value.
                             || (existing.IsBool && !HoldsOnlyACondition(tempValue, tempUsages))
                             || (!Reads(tempValue, existing)
-                                && !tempUsages.Any(u => u is PhiNode phi && Merges(phi, existing)))))
+                                && !tempUsages.Any(u => u is PhiNode phi && JoinsWith(phi, existing)))))
                     {
                         existing = null;
                         tempInputAssignment = null;
@@ -2441,6 +2444,57 @@ public class StatementFinalizer
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Whether the phi, or a join it feeds, merges the variable: a nested if whose
+    /// branches both overwrite the register joins the variable at the outer if.
+    /// </summary>
+    private static bool JoinsWith(PhiNode phi, TempVariableNode variable)
+    {
+        return JoinsWith(phi, variable, HlslTreeNode.NewNodeSet());
+    }
+
+    private static bool JoinsWith(PhiNode phi, TempVariableNode variable, HashSet<HlslTreeNode> seen)
+    {
+        return seen.Add(phi)
+            && (Merges(phi, variable) || phi.Outputs.OfType<PhiNode>().Any(outer => JoinsWith(outer, variable, seen)));
+    }
+
+    // The one variable the joins a value feeds merge it with, if only one.
+    private static TempVariableNode JoinedVariable(List<HlslTreeNode> usages)
+    {
+        var variables = new HashSet<TempVariableNode>(ReferenceEqualityComparer.Instance);
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<PhiNode>(usages.OfType<PhiNode>());
+        while (pending.Count != 0)
+        {
+            PhiNode phi = pending.Pop();
+            if (phi.IsLoopHeader || !seen.Add(phi))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode input in phi.Inputs)
+            {
+                if (input is TempVariableNode variable)
+                {
+                    variables.Add(variable);
+                }
+                else if (input is TempAssignmentNode assignment)
+                {
+                    variables.Add(assignment.TempVariable);
+                }
+                else if (input is PhiNode inner)
+                {
+                    pending.Push(inner);
+                }
+            }
+            foreach (PhiNode outer in phi.Outputs.OfType<PhiNode>())
+            {
+                pending.Push(outer);
+            }
+        }
+        return variables.Count == 1 ? variables.First() : null;
     }
 
     /// <summary>

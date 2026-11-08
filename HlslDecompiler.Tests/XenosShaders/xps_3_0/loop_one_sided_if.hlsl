@@ -5,9 +5,9 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float t4 = texcoord.w;
 	float t3 = abs(t0) >= 0 ? 0 : 1;
 	float t1 = step(0, texcoord.z) * step(0, t2);
-	float3 t5 = float3(1 - (0 >= 0 ? 1 : 0) * (t1 == 0 ? 0.0 : 1.0), t3, 0);
+	float3 t5 = float3(1 - (t1 == 0 ? 0.0 : 1.0), t3, 0);
 	float3 t6 = float3(t1 == 0 ? t0 : 1 + t0, 0, 0);
-	if ((0 >= 0 ? 1 : 0) * (t1 == 0 ? 0.0 : 1.0) != 0) {
+	if ((t1 == 0 ? 0.0 : 1.0) != 0) {
 		t3 = texcoord.z;
 		t6.z = t3;
 	}

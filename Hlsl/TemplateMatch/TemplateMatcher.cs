@@ -90,6 +90,9 @@ public class TemplateMatcher
 
             // Before the intrinsics, which match sign, step etc. by these comparisons.
             NodeStage("Comparisons and selects",
+                new SetComparisonConstantTemplate(),
+                new SetComparisonSelectedTemplate(),
+                new SetComparisonTestedTemplate(),
                 new CompareConstantTemplate(),
                 new CompareNegativeWithZeroTemplate(),
                 new CompareAbsoluteWithZeroTemplate(),

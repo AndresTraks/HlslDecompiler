@@ -313,8 +313,7 @@ public class XenosTests
     private static readonly Dictionary<string, string> KnownNonFixedPoints = new()
     {
         ["xps_3_0/alllanes"] = "all and any are written out as step and max chains.",
-        ["xps_3_0/branch"] = "the comparison is written as a 0/1 select tested against 0, and the else arm folds into rotated "
-            + "lanes (t0.wxyz), which XNA compiles to another shader.",
+        ["xps_3_0/branch"] = "the else arm folds into rotated lanes (t0.wxyz), which XNA compiles to another shader.",
         ["xps_3_0/centroid"] = "centroid is written as a modifier, which XNA compiles unlike the _centroid semantic, and the "
             + "color input is marked centroid too.",
         ["xps_3_0/clip_complex"] = "clip of a difference is written as clip of a negated 0/1 comparison.",

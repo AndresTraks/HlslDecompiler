@@ -5,7 +5,7 @@ float4 main(float2 texcoord : TEXCOORD) : COLOR
 {
 	float4 t0 = k;
 	[branch]
-	if (((0.5 < texcoord.x) ? 1 : 0) != 0) {
+	if (texcoord.x > 0.5) {
 		t0 = tex2D(s, texcoord) * k;
 	}
 	return t0;

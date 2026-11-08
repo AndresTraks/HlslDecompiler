@@ -4,8 +4,8 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
 	float t0 = texcoord.x;
 	float3 t1 = texcoord.yzw;
-	float t2 = 1 - (0 >= 0 ? 1 : 0) * (((k.x < t0) ? 1 : 0) == 0 ? 0.0 : 1.0);
-	if ((0 >= 0 ? 1 : 0) * (((k.x < t0) ? 1 : 0) == 0 ? 0.0 : 1.0) != 0) {
+	float t2 = 1 - ((k.x < t0) ? 1 : 0);
+	if (k.x < t0) {
 		float t3 = 2 * t0;
 		t0 = 2 * t1.z;
 		t1 = float3(t3, 2 * t1.xy);

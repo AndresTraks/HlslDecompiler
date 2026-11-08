@@ -9,7 +9,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	if (b) {
 		[loop]
 		for (int i = 0; i < n; i++) {
-			if (((k[i].x < t0.x) ? 1 : 0) != 0) {
+			if (k[i].x < t0.x) {
 				t0 = t0 - k[i];
 			} else {
 				t0 = t0 + 0.5 * k[i];

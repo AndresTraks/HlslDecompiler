@@ -3,7 +3,7 @@ float3 c1;
 
 float4 main(float3 texcoord : TEXCOORD) : COLOR
 {
-	float4 t0 = (0 < -abs(texcoord.x)) ? 1 : 0;
+	float4 t0 = 0;
 	[loop]
 	for (int i = 0; i < 2; i++) {
 		float3 t1;

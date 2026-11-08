@@ -899,12 +899,16 @@ public class StatementFinalizer
 
     // A loop header phi whose values both went into one variable, as one entering
     // the loop in an assignment does: what follows the loop holds that variable.
+    // The body's value may still be the join of a nested if, over that variable.
     private static TempVariableNode CarriedVariable(HlslTreeNode value)
     {
-        return value is PhiNode { IsLoopHeader: true } header
-            && header.Inputs.Count != 0
-            && header.Inputs.All(input => ReferenceEquals(input, header.Inputs[0]))
-            ? header.Inputs[0] as TempVariableNode
+        if (value is not PhiNode { IsLoopHeader: true } header || header.Inputs.Count == 0)
+        {
+            return null;
+        }
+        TempVariableNode carried = GetExistingVariable(header.Inputs[0]);
+        return carried != null && header.Inputs.All(input => ReferenceEquals(GetExistingVariable(input), carried))
+            ? carried
             : null;
     }
 

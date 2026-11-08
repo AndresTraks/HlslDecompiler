@@ -62,4 +62,55 @@ public class NestedIfLaneJoinTests
 
             """);
     }
+
+    // A value a loop carries through nested ifs leaves it as the join of the outer
+    // if, over the loop's variable: an if after the loop that writes it in one
+    // branch still holds that variable, rather than one of its own left unassigned
+    // on the other path.
+    [Test]
+    public void ValueCarriedThroughNestedIfsStaysOnTheLoopVariable()
+    {
+        const uint Z = 0xAA;
+        ShaderModel shader = Assemble(ShaderType.Pixel, 3, [
+            Constant(0, 0f, 1f, -0.5f, 0.5f),
+            ConstantInt(0, 255, 0, 0, 0),
+            Declaration(DeclUsage.TexCoord, RegisterType.Input, 0),
+            Instruction(Opcode.Mov, Rd(0, 0x2), V(0, X)),
+            Instruction(Opcode.Loop, Source(RegisterType.Loop, 0), Source(RegisterType.ConstInt, 0)),
+            Instruction(Opcode.IfC, IfComparison.NE, V(0, W), C(0, X)),
+            Instruction(Opcode.IfC, IfComparison.NE, V(0, Y), C(0, X)),
+            Instruction(Opcode.Add, Rd(0, 0x2), R(0, Y), C(0, Z)),            // r0.y -= 0.5
+            Instruction(Opcode.Endif),
+            Instruction(Opcode.Endif),
+            Instruction(Opcode.BreakC, IfComparison.EQ, V(0, W), C(0, X)),
+            Instruction(Opcode.EndLoop),
+            Instruction(Opcode.IfC, IfComparison.NE, V(0, Z), C(0, X)),
+            Instruction(Opcode.Mov, Rd(0, 0x2), C(0, W)),                     // r0.y = 0.5
+            Instruction(Opcode.Endif),
+            Instruction(Opcode.Mov, Destination(RegisterType.ColorOut, 0), R(0, Y)),
+            Instruction(Opcode.End),
+        ]);
+
+        SelfUpdatingBranchJoinTests.AssertDecompiles(shader, """
+            float4 main(float4 texcoord : TEXCOORD) : COLOR
+            {
+            	float t0 = texcoord.x;
+            	for (int i = 0; i < 255; i++) {
+            		if (texcoord.w != 0) {
+            			if (texcoord.y != 0) {
+            				t0 = t0 - 0.5;
+            			}
+            		}
+            		if (texcoord.w == 0) {
+            			break;
+            		}
+            	}
+            	if (texcoord.z != 0) {
+            		t0 = 0.5;
+            	}
+            	return t0;
+            }
+
+            """);
+    }
 }

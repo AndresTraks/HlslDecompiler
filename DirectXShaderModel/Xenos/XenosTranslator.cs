@@ -82,6 +82,10 @@ public sealed class XenosTranslator
     private int _positionOutput = -1;
     private int _pointSizeOutput = -1;
     private readonly HashSet<int> _samplers = [];
+    // Texture sizes the translation asks the caller for, by sampler: the
+    // register of each, declared in the constant table after the shader's own.
+    private readonly Dictionary<int, int> _textureSizes = [];
+    private readonly List<D3D9ConstantDeclaration> _addedDeclarations = [];
 
     // The predicate: p0 is (snapshot comparison 0), snapshot in _predicate.x.
     private IfComparison _predicateComparison = IfComparison.None;
@@ -726,9 +730,71 @@ public sealed class XenosTranslator
                     WriteFetchResult(fetch, Source(RegisterType.Temp, _scratch2));
                 }
                 break;
+            case FetchOpcode.GetTextureComputedLod:
+                TranslateComputedLod(fetch);
+                break;
             default:
                 throw new NotSupportedException($"Fetch {fetch.Opcode}");
         }
+    }
+
+    /// <summary>
+    /// The LOD a fetch at the source would sample at. SM3 has no instruction
+    /// for it, and it depends on the texture's size, which the shader does not
+    /// hold: the size is a uniform the caller sets. The LOD is log2 of the
+    /// longer of the coordinates' screen gradients in texels, isotropic and
+    /// unclamped, as the fetch constant's state is not in the shader either.
+    /// </summary>
+    private void TranslateComputedLod(FetchInstruction fetch)
+    {
+        if (!_isPixel)
+        {
+            throw new NotSupportedException("A computed LOD in a vertex shader");
+        }
+        if (fetch.Dimension != FetchDimension.D2)
+        {
+            throw new NotSupportedException($"A computed LOD of a {fetch.Dimension} texture");
+        }
+        if (fetch.LodBias != 0)
+        {
+            // XNA's assembler takes no bias on getCompTexLOD.
+            throw new NotSupportedException("A computed LOD with a bias");
+        }
+        uint size = TextureSize(fetch.TextureFetchConstant);
+        int x = fetch.TextureSourceSwizzle & 3, y = (fetch.TextureSourceSwizzle >> 2) & 3;
+        uint coordinates = Source(RegisterType.Temp, fetch.Source, Swizzle(x, y, x, y));
+        uint all = Destination(RegisterType.Temp, _scratch2, 0b1111);
+        uint gradients = Source(RegisterType.Temp, _scratch2);
+        // x, y: ddx of the coordinates, z, w: their ddy, in texels, squared.
+        Emit(Opcode.DSX, Destination(RegisterType.Temp, _scratch2, 0b0011), coordinates);
+        Emit(Opcode.DSY, Destination(RegisterType.Temp, _scratch2, 0b1100), coordinates);
+        Emit(Opcode.Mul, all, gradients, WithSwizzle(size, Swizzle(0, 1, 0, 1)));
+        Emit(Opcode.Mul, all, gradients, gradients);
+        // The squared lengths in x, y, the longer in x; half its log is the LOD's.
+        Emit(Opcode.Add, Destination(RegisterType.Temp, _scratch2, 0b0011),
+            Source(RegisterType.Temp, _scratch2, Swizzle(0, 2, 2, 2)), Source(RegisterType.Temp, _scratch2, Swizzle(1, 3, 3, 3)));
+        Emit(Opcode.Max, Destination(RegisterType.Temp, _scratch2, 0b0001),
+            Source(RegisterType.Temp, _scratch2, Replicate(0)), Source(RegisterType.Temp, _scratch2, Replicate(1)));
+        Emit(Opcode.Log, all, Source(RegisterType.Temp, _scratch2, Replicate(0)));
+        Emit(Opcode.Mul, all, gradients, DefinedConstant(0.5f, 0.5f, 0.5f, 0.5f));
+        WriteFetchResult(fetch, gradients);
+    }
+
+    // A sampler's texture size, as a float2 uniform named after the sampler,
+    // in the lowest float register nothing else uses.
+    private uint TextureSize(int sampler)
+    {
+        if (!_textureSizes.TryGetValue(sampler, out int register))
+        {
+            register = Enumerable.Range(0, 256).First(r => _usedConstantRegisters.Add(r));
+            _textureSizes[sampler] = register;
+            string name = _shader.Constants.Declarations
+                .FirstOrDefault(d => d.RegisterSet == RegisterSet.Sampler && d.ContainsIndex(sampler))?.Name
+                ?? $"s{sampler}";
+            _addedDeclarations.Add(new D3D9ConstantDeclaration(name + "_size", RegisterSet.Float4, (short)register, 1,
+                new ShaderTypeInfo(ParameterClass.Vector, ParameterType.Float, 1, 2, 1, null)));
+        }
+        return Source(RegisterType.Const, register);
     }
 
     private uint PairSwizzle(FetchInstruction fetch)
@@ -1864,7 +1930,7 @@ public sealed class XenosTranslator
     private uint[] ConstantTableComment()
     {
         ConstantTable table = _shader.Constants;
-        IList<D3D9ConstantDeclaration> declarations = table.Declarations;
+        IList<D3D9ConstantDeclaration> declarations = [.. table.Declarations, .. _addedDeclarations];
         var data = new List<byte>();
         void Int(int value) => data.AddRange(BitConverter.GetBytes(value));
         void Short(int value) => data.AddRange(BitConverter.GetBytes((short)value));

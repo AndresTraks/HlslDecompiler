@@ -338,6 +338,8 @@ public class XenosTests
         ["xps_3_0/normalize_reflect"] = "normalize is written out as rsqrt of a dot.",
         ["xps_3_0/sample_in_branch"] = "the comparison is written as a 0/1 select tested against 0.",
         ["xps_3_0/struct_constants"] = "XNA unrolls the loop.",
+        ["xps_3_0/tex_computed_lod"] = "getCompTexLOD has no intrinsic: the source compiles it from inline microcode, "
+            + "which the decompilation writes as the LOD's formula over a declared texture size.",
         ["xps_3_0/tex_bias_lod"] = "the coordinates' unread lane is written as a copy of another (texcoord.xyyw).",
         ["xps_3_0/texcube_two"] = "the dot products' sum is named and its terms reordered.",
         ["xps_3_0/texlod"] = "tex2Dproj is written as a divide, and the coordinates' unread lane as a copy of another.",

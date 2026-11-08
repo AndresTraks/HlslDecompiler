@@ -4,7 +4,7 @@ float4x4 m;
 struct VS_IN
 {
 	float4 position : POSITION;
-	float4 normal : NORMAL;
+	float3 normal : NORMAL;
 };
 
 float4 main(VS_IN i) : POSITION

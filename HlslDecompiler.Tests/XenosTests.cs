@@ -345,19 +345,17 @@ public class XenosTests
         ["xps_3_0/vface_branch"] = "VFACE is read from the sign of VPOS's x, so the decompilation declares VPOS.",
         ["xps_3_0/vpos"] = "VFACE is read from the sign of VPOS's x, and VPOS through abs.",
         ["xps_3_0/whileloop"] = "the while's condition is written as a flag tested in a for loop that breaks.",
-        ["xvs_3_0/branch"] = "NORMAL is declared float4, and mul is split into a float4x3 "
-            + "cast in reversed lanes (zyx) and a transposed dot.",
+        ["xvs_3_0/branch"] = "mul is split into a float4x3 cast in reversed lanes (zyx) and a transposed dot.",
         ["xvs_3_0/dyn"] = "the (int) casts are written out as truncation through frac.",
         ["xvs_3_0/literals_sin"] = "the multiply-adds are split by lane into dots, and the literals written at float "
             + "precision (1.75000012).",
-        ["xvs_3_0/manyin"] = "every input is declared float4, and the sum's terms are reordered.",
+        ["xvs_3_0/manyin"] = "the sum's terms are reordered.",
         ["xvs_3_0/matrix_array_loop"] = "the loop's mul is written as transposed dots over rotated lanes, with the "
             + "matrix index in a float lane.",
-        ["xvs_3_0/normal_fog"] = "NORMAL is declared float4, and normalize and distance are written out.",
-        ["xvs_3_0/outputs"] = "the outputs are declared in another order than the source's, which changes XNA's code, "
-            + "and NORMAL is declared float4.",
+        ["xvs_3_0/normal_fog"] = "normalize and distance are written out.",
+        ["xvs_3_0/outputs"] = "the outputs are declared in another order than the source's, which changes XNA's code.",
         ["xvs_3_0/skin"] = "XNA unrolls the loop, and the (int) casts are written out as truncation through frac.",
-        ["xvs_3_0/texcoord_transform"] = "TEXCOORD is declared float4, and mul is written out as transposed dots.",
+        ["xvs_3_0/texcoord_transform"] = "mul is written out as transposed dots.",
     };
 
     /// <summary>

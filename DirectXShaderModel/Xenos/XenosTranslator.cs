@@ -297,7 +297,8 @@ public sealed class XenosTranslator
             int input = 0;
             foreach (XenosVertexInput vertexInput in _shader.VertexInputs)
             {
-                _inputDeclarations.Add((vertexInput.Usage, vertexInput.UsageIndex, input, 0b1111, false));
+                _inputDeclarations.Add((vertexInput.Usage, vertexInput.UsageIndex, input,
+                    FetchedLanes(vertexInput.Address), false));
                 _vertexInputs[vertexInput.Address] = input++;
             }
             int output = 0;
@@ -595,6 +596,25 @@ public sealed class XenosTranslator
                 }
             }
         }
+    }
+
+    // The lanes of a vertex input its fetch reads, x up to the last: the width
+    // the source declared it (a float3 fetches xyz_ or xyz1). The fetch's format
+    // is the runtime's to patch, so the destination swizzle is what tells.
+    private int FetchedLanes(int address)
+    {
+        IReadOnlyList<uint> code = _shader.Microcode;
+        var fetch = new FetchInstruction(code[address * 3], code[address * 3 + 1], code[address * 3 + 2]);
+        int width = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            int lane = (fetch.DestinationSwizzle >> (3 * i)) & 0b111;
+            if (lane < 4)
+            {
+                width = Math.Max(width, lane + 1);
+            }
+        }
+        return width == 0 ? 0b1111 : (1 << width) - 1;
     }
 
     // The predicate stack, or a setp that runs under a predicate: the snapshot

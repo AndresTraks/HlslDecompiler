@@ -4,7 +4,7 @@ float4x4 wvp;
 struct VS_IN
 {
 	float4 position : POSITION;
-	float4 texcoord : TEXCOORD;
+	float2 texcoord : TEXCOORD;
 };
 
 struct VS_OUT
@@ -18,7 +18,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.texcoord = i.texcoord.xy;
+	o.texcoord = i.texcoord;
 	o.color = 2 * tint;
 	o.position = mul(i.position, wvp);
 

@@ -2,7 +2,7 @@ struct VS_IN
 {
 	float4 position : POSITION;
 	float4 color : COLOR;
-	float4 normal : NORMAL;
+	float3 normal : NORMAL;
 };
 
 struct VS_OUT
@@ -20,7 +20,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.texcoord = float4(i.normal.xyz, 1);
+	o.texcoord = float4(i.normal, 1);
 	o.texcoord5 = i.normal.xy;
 	o.color = i.color;
 	o.color1 = i.color.wzyx;

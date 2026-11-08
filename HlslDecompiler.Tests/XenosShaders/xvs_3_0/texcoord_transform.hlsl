@@ -3,7 +3,7 @@ float4x4 tm;
 struct VS_IN
 {
 	float4 position : POSITION;
-	float4 texcoord : TEXCOORD;
+	float2 texcoord : TEXCOORD;
 };
 
 struct VS_OUT
@@ -16,7 +16,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.texcoord = float2(dot(transpose(tm)[0].xyw, float3(i.texcoord.xy, 1)), dot(transpose(tm)[1].xyw, float3(i.texcoord.xy, 1)));
+	o.texcoord = float2(dot(transpose(tm)[0].xyw, float3(i.texcoord, 1)), dot(transpose(tm)[1].xyw, float3(i.texcoord, 1)));
 	o.position = i.position;
 
 	return o;

@@ -3,9 +3,9 @@ float4x4 m;
 struct VS_IN
 {
 	float4 position : POSITION;
-	float4 normal : NORMAL;
+	float3 normal : NORMAL;
 	float4 color : COLOR;
-	float4 texcoord3 : TEXCOORD3;
+	float2 texcoord3 : TEXCOORD3;
 };
 
 struct VS_OUT
@@ -20,7 +20,7 @@ VS_OUT main(VS_IN i)
 {
 	VS_OUT o;
 
-	o.texcoord2 = i.normal.xyz * i.texcoord3.x;
+	o.texcoord2 = i.normal * i.texcoord3.x;
 	o.color1 = i.color;
 	o.fog = i.texcoord3.y;
 	o.position = mul(i.position, m);

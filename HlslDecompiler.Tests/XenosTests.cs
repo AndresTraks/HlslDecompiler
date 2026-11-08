@@ -320,7 +320,6 @@ public class XenosTests
         ["xps_3_0/cross"] = "cross is written out as its products.",
         ["xps_3_0/dots"] = "length, distance and normalize are written out, and the lane order of the distance's "
             + "difference (zxy or yzx) changes across a round trip.",
-        ["xps_3_0/dynindex"] = "the (int) casts are written out as truncation through frac.",
         ["xps_3_0/if_else_chain"] = "the else-if chain is written as flag arithmetic over 0/1 selects.",
         ["xps_3_0/literal_loop"] = "XNA unrolls the loop and folds its literals.",
         ["xps_3_0/loop_break_continue"] = "continue and break are written as the predicate counter's arithmetic.",
@@ -346,7 +345,6 @@ public class XenosTests
         ["xps_3_0/vpos"] = "VFACE is read from the sign of VPOS's x, and VPOS through abs.",
         ["xps_3_0/whileloop"] = "the while's condition is written as a flag tested in a for loop that breaks.",
         ["xvs_3_0/branch"] = "mul is split into a float4x3 cast in reversed lanes (zyx) and a transposed dot.",
-        ["xvs_3_0/dyn"] = "the (int) casts are written out as truncation through frac.",
         ["xvs_3_0/literals_sin"] = "the multiply-adds are split by lane into dots, and the literals written at float "
             + "precision (1.75000012).",
         ["xvs_3_0/manyin"] = "the sum's terms are reordered.",
@@ -354,7 +352,7 @@ public class XenosTests
             + "matrix index in a float lane.",
         ["xvs_3_0/normal_fog"] = "normalize and distance are written out.",
         ["xvs_3_0/outputs"] = "the outputs are declared in another order than the source's, which changes XNA's code.",
-        ["xvs_3_0/skin"] = "XNA unrolls the loop, and the (int) casts are written out as truncation through frac.",
+        ["xvs_3_0/skin"] = "XNA unrolls the loop.",
         ["xvs_3_0/texcoord_transform"] = "mul is written out as transposed dots.",
     };
 

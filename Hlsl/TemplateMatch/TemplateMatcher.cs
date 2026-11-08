@@ -111,6 +111,7 @@ public class TemplateMatcher
                 new SignTemplate(),
                 new FloorTemplate(),
                 new TruncateTemplate(),
+                new SignedFloorTruncateTemplate(),
                 new GuardedReciprocalTemplate(),
                 new PowerTemplate(),
                 new NaturalExponentialTemplate(),

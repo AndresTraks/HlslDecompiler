@@ -908,6 +908,29 @@ public class StatementFinalizer
             : null;
     }
 
+    // A nested if's merged variable, where statements after the if in the branch
+    // still carry the join it replaced (`if (..) y = a; else y = b; x = c;`).
+    private static TempVariableNode NestedIfVariable(IList<IStatement> body,
+        KeyValuePair<RegisterComponentKey, HlslTreeNode> output)
+    {
+        if (output.Value is not PhiNode)
+        {
+            return null;
+        }
+        for (int i = body.Count - 1; i >= 0; i--)
+        {
+            if (!body[i].Outputs.TryGetValue(output.Key, out HlslTreeNode value))
+            {
+                return null;
+            }
+            if (!ReferenceEquals(value, output.Value))
+            {
+                return body[i] is IfStatement ? value as TempVariableNode : null;
+            }
+        }
+        return null;
+    }
+
     // A branch ending in a loop hands out its header phi: the loop carries the
     // variable that enters it, which the body reassigns.
     private static TempVariableNode LoopCarriedVariable(IList<IStatement> body,
@@ -941,7 +964,8 @@ public class StatementFinalizer
                 // that ends the branch carries.
                 var assignment = output.Value as TempAssignmentNode;
                 TempVariableNode branchVariable =
-                    assignment?.TempVariable ?? output.Value as TempVariableNode ?? LoopCarriedVariable(body, output);
+                    assignment?.TempVariable ?? output.Value as TempVariableNode ?? LoopCarriedVariable(body, output)
+                    ?? NestedIfVariable(body, output);
                 if (branchVariable == null)
                 {
                     continue;

@@ -1,1 +1,10 @@
-float4 main(float2 p : VPOS, float f : VFACE) : COLOR { return float4(p, f, 1); }
+struct PS_IN
+{
+	float2 vpos : VPOS;
+	float vface : VFACE;
+};
+
+float4 main(PS_IN i) : COLOR
+{
+	return float4(i.vpos, i.vface, 1);
+}

@@ -1,1 +1,13 @@
-float4 k; float4 main(float4 a : TEXCOORD0) : COLOR { float4 r = a; [branch] if (a.x > k.x) r = sqrt(a) * k; else r = a.yzwx; return r; }
+float4 k;
+
+float4 main(float4 texcoord : TEXCOORD) : COLOR
+{
+	float4 t0 = texcoord;
+	[branch]
+	if (texcoord.x > k.x) {
+		t0 = sqrt(texcoord) * k;
+	} else {
+		t0 = texcoord.yzwx;
+	}
+	return t0;
+}

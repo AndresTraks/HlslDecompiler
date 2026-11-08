@@ -1,1 +1,4 @@
-float4 main(float4 a : TEXCOORD0) : COLOR { return float4(pow(a.x, a.y), log2(a.z), exp2(a.w), rsqrt(a.x)) + frac(a) + floor(a) + sign(a) + abs(a); }
+float4 main(float4 texcoord : TEXCOORD) : COLOR
+{
+	return float4(pow(abs(texcoord.x), texcoord.y), log2(abs(texcoord.z)), exp2(texcoord.w), rsqrt(abs(texcoord.x))) + frac(texcoord) + floor(texcoord) + sign(texcoord) + abs(texcoord);
+}

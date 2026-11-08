@@ -1,1 +1,4 @@
-float4 main(float4 a : TEXCOORD0) : COLOR { return all(a) ? 1 : (any(a) ? 0.5 : 0); }
+float4 main(float4 texcoord : TEXCOORD) : COLOR
+{
+	return all(texcoord) ? 1 : (any(texcoord) ? 0.5 : 0);
+}

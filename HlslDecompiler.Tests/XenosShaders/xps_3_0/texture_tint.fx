@@ -1,7 +1,8 @@
-sampler2D s : register(s0);
-float4 tint : register(c0);
-float4 main(float2 uv : TEXCOORD0) : COLOR
+sampler2D s;
+float4 tint;
+
+float4 main(float2 texcoord : TEXCOORD) : COLOR
 {
-    float4 c = tex2D(s, uv);
-    return c * tint + float4(0.5, 0.25, 0, 0) * c.w;
+	float4 t0 = tex2D(s, texcoord);
+	return float4(t0.xy * tint.xy + float2(0.5, 0.25) * t0.w, t0.zw * tint.zw);
 }

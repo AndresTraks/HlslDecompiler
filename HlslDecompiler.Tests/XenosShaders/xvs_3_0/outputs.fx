@@ -1,1 +1,32 @@
-struct O { float4 p : POSITION; float4 c0 : COLOR0; float4 c1 : COLOR1; float4 t0 : TEXCOORD0; float2 t5 : TEXCOORD5; float s : PSIZE; float f : FOG; }; O main(float4 p : POSITION, float4 c : COLOR0, float3 n : NORMAL) { O o; o.p = p; o.c0 = c; o.c1 = c.wzyx; o.t0 = float4(n, 1); o.t5 = n.xy; o.s = n.z; o.f = p.w; return o; }
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 color : COLOR;
+	float3 normal : NORMAL;
+};
+
+struct VS_OUT
+{
+	float4 position : POSITION;
+	float4 color : COLOR;
+	float4 color1 : COLOR1;
+	float4 texcoord : TEXCOORD;
+	float2 texcoord5 : TEXCOORD5;
+	float psize : PSIZE;
+	float fog : FOG;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.texcoord = float4(i.normal, 1);
+	o.texcoord5 = i.normal.xy;
+	o.color = i.color;
+	o.color1 = i.color.wzyx;
+	o.fog = i.position.w;
+	o.position = i.position;
+	o.psize = i.normal.z;
+
+	return o;
+}

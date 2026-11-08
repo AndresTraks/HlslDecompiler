@@ -1,3 +1,29 @@
-float4x4 m : register(c0);
-struct O { float4 p : POSITION; float4 c : COLOR1; float3 t : TEXCOORD2; float f : FOG; };
-O main(float4 p : POSITION, float3 n : NORMAL, float4 c : COLOR0, float2 t : TEXCOORD3) { O o; o.p = mul(p, m); o.c = c; o.t = n * t.x; o.f = t.y; return o; }
+float4x4 m;
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 normal : NORMAL;
+	float4 color : COLOR;
+	float4 texcoord3 : TEXCOORD3;
+};
+
+struct VS_OUT
+{
+	float3 texcoord2 : TEXCOORD2;
+	float4 color1 : COLOR1;
+	float fog : FOG;
+	float4 position : POSITION;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.texcoord2 = i.normal.xyz * i.texcoord3.x;
+	o.color1 = i.color;
+	o.fog = i.texcoord3.y;
+	o.position = mul(i.position, m);
+
+	return o;
+}

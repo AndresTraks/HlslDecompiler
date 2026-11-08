@@ -1,1 +1,12 @@
-float4 k; float4 main(float4 a : TEXCOORD0, float f : VFACE) : COLOR { return f > 0 ? a * k : a.wzyx; }
+float4 k;
+
+struct PS_IN
+{
+	float4 texcoord : TEXCOORD;
+	float vface : VFACE;
+};
+
+float4 main(PS_IN i) : COLOR
+{
+	return i.vface > 0 ? i.texcoord * k : i.texcoord.wzyx;
+}

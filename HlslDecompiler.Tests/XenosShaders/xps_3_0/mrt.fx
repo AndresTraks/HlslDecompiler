@@ -1,1 +1,17 @@
-struct O { float4 a : COLOR0; float4 b : COLOR1; float d : DEPTH; }; O main(float4 a : TEXCOORD0) { O o; o.a = a; o.b = a.wzyx; o.d = a.x; return o; }
+struct PS_OUT
+{
+	float depth : DEPTH;
+	float4 color : COLOR;
+	float4 color1 : COLOR1;
+};
+
+PS_OUT main(float4 texcoord : TEXCOORD)
+{
+	PS_OUT o;
+
+	o.depth = saturate(texcoord.x);
+	o.color = texcoord;
+	o.color1 = texcoord.wzyx;
+
+	return o;
+}

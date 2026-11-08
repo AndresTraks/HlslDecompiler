@@ -1,1 +1,12 @@
-float4 k[32]; float4 main(float4 p : POSITION, float4 i : TEXCOORD0) : POSITION { return p * k[(int)i.x] + k[(int)i.y]; }
+float4 k[32];
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 texcoord : TEXCOORD;
+};
+
+float4 main(VS_IN i) : POSITION
+{
+	return i.position * k[(int)i.texcoord.x] + k[(int)i.texcoord.y];
+}

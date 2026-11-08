@@ -1,1 +1,17 @@
-bool b; float4x4 m; float4 main(float4 p : POSITION, float3 n : NORMAL) : POSITION { float4 r = mul(p, m); if (b) r.xyz += n; return r; }
+bool b;
+float4x4 m;
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float3 normal : NORMAL;
+};
+
+float4 main(VS_IN i) : POSITION
+{
+	float4 t0 = mul(i.position, m);
+	if (b) {
+		t0.xyz = t0.xyz + i.normal;
+	}
+	return t0;
+}

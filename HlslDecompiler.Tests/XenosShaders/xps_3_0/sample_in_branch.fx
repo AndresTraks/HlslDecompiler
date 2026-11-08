@@ -1,1 +1,12 @@
-sampler2D s; float4 k; float4 main(float2 a : TEXCOORD0) : COLOR { float4 r = k; [branch] if (a.x > 0.5) r = tex2D(s, a) * k; return r; }
+float4 k;
+sampler2D s;
+
+float4 main(float2 texcoord : TEXCOORD) : COLOR
+{
+	float4 t0 = k;
+	[branch]
+	if (texcoord.x > 0.5) {
+		t0 = tex2D(s, texcoord) * k;
+	}
+	return t0;
+}

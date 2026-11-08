@@ -1,1 +1,6 @@
-float3 k; float4 main(float3 a : TEXCOORD0) : COLOR { return float4(cross(a, k), 1) + float4(reflect(a, k), 0); }
+float3 k;
+
+float4 main(float3 texcoord : TEXCOORD) : COLOR
+{
+	return float4(cross(texcoord, k), 1) + float4(reflect(texcoord, k), 0);
+}

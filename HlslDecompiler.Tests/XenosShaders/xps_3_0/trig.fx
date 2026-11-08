@@ -1,1 +1,4 @@
-float4 main(float4 a : TEXCOORD0) : COLOR { return float4(sin(a.x), cos(a.y), tan(a.z), atan2(a.w, a.x)); }
+float4 main(float4 texcoord : TEXCOORD) : COLOR
+{
+	return float4(sin(texcoord.x), cos(texcoord.y), tan(texcoord.z), atan2(texcoord.w, texcoord.x));
+}

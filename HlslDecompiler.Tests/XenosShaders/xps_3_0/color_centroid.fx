@@ -1,1 +1,10 @@
-float4 main(float4 c : COLOR1, float4 p : TEXCOORD0) : COLOR { return c.zyxw + p.w; }
+struct PS_IN
+{
+	float4 texcoord : TEXCOORD;
+	centroid float4 color1 : COLOR1;
+};
+
+float4 main(PS_IN i) : COLOR
+{
+	return i.color1.zyxw + i.texcoord.w;
+}

@@ -1,1 +1,13 @@
-sampler2D s; float4 main(float4 p : POSITION, float2 t : TEXCOORD0) : POSITION { return p + tex2Dlod(s, float4(t, 0, 0)); }
+sampler2D s;
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 texcoord : TEXCOORD;
+};
+
+float4 main(VS_IN i) : POSITION
+{
+	float4 t0 = tex2Dlod(s, float4(i.texcoord.xyy, 0));
+	return i.position + t0;
+}

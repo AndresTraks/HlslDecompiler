@@ -1,11 +1,26 @@
-float4x4 wvp : register(c0);
 float4 tint : register(c4);
-struct VOut { float4 pos : POSITION; float4 col : COLOR0; float2 uv : TEXCOORD0; };
-VOut main(float4 pos : POSITION, float2 uv : TEXCOORD0)
+float4x4 wvp;
+
+struct VS_IN
 {
-    VOut o;
-    o.pos = mul(pos, wvp);
-    o.col = tint * 2;
-    o.uv = uv;
-    return o;
+	float4 position : POSITION;
+	float4 texcoord : TEXCOORD;
+};
+
+struct VS_OUT
+{
+	float2 texcoord : TEXCOORD;
+	float4 color : COLOR;
+	float4 position : POSITION;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.texcoord = i.texcoord.xy;
+	o.color = 2 * tint;
+	o.position = mul(i.position, wvp);
+
+	return o;
 }

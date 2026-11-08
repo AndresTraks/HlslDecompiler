@@ -1,1 +1,25 @@
-struct O { float4 p : POSITION; float s : PSIZE; float4 c : COLOR0; }; float scale; O main(float4 p : POSITION, float4 c : COLOR0) { O o; o.p = p; o.s = scale / p.w; o.c = c; return o; }
+float scale;
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 color : COLOR;
+};
+
+struct VS_OUT
+{
+	float4 color : COLOR;
+	float4 position : POSITION;
+	float psize : PSIZE;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.color = i.color;
+	o.position = i.position;
+	o.psize = scale / i.position.w;
+
+	return o;
+}

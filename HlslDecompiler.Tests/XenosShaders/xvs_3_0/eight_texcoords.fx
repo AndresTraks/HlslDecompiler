@@ -1,1 +1,35 @@
-struct O { float4 p : POSITION; float4 t0 : TEXCOORD0; float4 t1 : TEXCOORD1; float4 t2 : TEXCOORD2; float4 t3 : TEXCOORD3; float4 t4 : TEXCOORD4; float4 t5 : TEXCOORD5; float4 t6 : TEXCOORD6; float4 t7 : TEXCOORD7; }; O main(float4 p : POSITION, float4 c : COLOR0) { O o; o.p = p; o.t0 = c; o.t1 = c * 2; o.t2 = c.wzyx; o.t3 = p * c; o.t4 = p + c; o.t5 = p.yzwx; o.t6 = c * p.x; o.t7 = frac(p); return o; }
+struct VS_IN
+{
+	float4 position : POSITION;
+	float4 color : COLOR;
+};
+
+struct VS_OUT
+{
+	float4 texcoord : TEXCOORD;
+	float4 texcoord1 : TEXCOORD1;
+	float4 texcoord2 : TEXCOORD2;
+	float4 texcoord3 : TEXCOORD3;
+	float4 texcoord4 : TEXCOORD4;
+	float4 texcoord5 : TEXCOORD5;
+	float4 texcoord6 : TEXCOORD6;
+	float4 texcoord7 : TEXCOORD7;
+	float4 position : POSITION;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.texcoord = i.color;
+	o.texcoord1 = 2 * i.color;
+	o.texcoord2 = i.color.wzyx;
+	o.texcoord3 = i.position * i.color;
+	o.texcoord4 = i.position + i.color;
+	o.texcoord5 = i.position.yzwx;
+	o.texcoord6 = float4(i.position.x * i.color.x, i.color.yzw * i.position.xxx);
+	o.texcoord7 = frac(i.position);
+	o.position = i.position;
+
+	return o;
+}

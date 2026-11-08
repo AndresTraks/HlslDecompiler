@@ -1,1 +1,23 @@
-float4x4 tm; float4 main(float4 p : POSITION, float2 t : TEXCOORD0, out float2 ot : TEXCOORD0) : POSITION { ot = mul(float4(t, 0, 1), tm).xy; return p; }
+float4x4 tm;
+
+struct VS_IN
+{
+	float4 position : POSITION;
+	float2 texcoord : TEXCOORD;
+};
+
+struct VS_OUT
+{
+	float2 texcoord : TEXCOORD;
+	float4 position : POSITION;
+};
+
+VS_OUT main(VS_IN i)
+{
+	VS_OUT o;
+
+	o.texcoord = mul(float4(i.texcoord, 0, 1), tm).xy;
+	o.position = i.position;
+
+	return o;
+}

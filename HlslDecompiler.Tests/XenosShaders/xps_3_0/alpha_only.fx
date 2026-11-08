@@ -1,1 +1,7 @@
-sampler2D s; float k; float4 main(float2 a : TEXCOORD0) : COLOR { return float4(0, 0, 0, tex2D(s, a).w * k); }
+float k;
+sampler2D s;
+
+float4 main(float2 texcoord : TEXCOORD) : COLOR
+{
+	return float4(0, 0, 0, k * tex2D(s, texcoord).w);
+}

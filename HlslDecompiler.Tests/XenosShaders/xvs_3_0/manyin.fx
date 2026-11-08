@@ -1,1 +1,15 @@
-float4 main(float4 p : POSITION, float3 n : NORMAL, float3 t : TANGENT, float3 b : BINORMAL, float2 u0 : TEXCOORD0, float2 u1 : TEXCOORD1, float4 c : COLOR0) : POSITION { return p + float4(n + t + b, 0) + float4(u0, u1) + c; }
+struct VS_IN
+{
+	float4 position : POSITION;
+	float3 normal : NORMAL;
+	float3 tangent : TANGENT;
+	float3 binormal : BINORMAL;
+	float2 texcoord : TEXCOORD;
+	float2 texcoord1 : TEXCOORD1;
+	float4 color : COLOR;
+};
+
+float4 main(VS_IN i) : POSITION
+{
+	return i.position + float4(i.normal + i.tangent + i.binormal, 0) + float4(i.texcoord, i.texcoord1) + i.color;
+}

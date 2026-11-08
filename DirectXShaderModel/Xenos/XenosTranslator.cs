@@ -1849,11 +1849,8 @@ public sealed class XenosTranslator
                 break;
             case AluScalarOpcode.MaxAs:
             case AluScalarOpcode.MaxAsf:
-                if (_isPixel)
-                {
-                    // ps_3_0 has no address register: its register type 3 is t#.
-                    throw new NotSupportedException("maxas in a pixel shader");
-                }
+                // ps_3_0 has no address register, but no t# either: its
+                // register type 3 is a0 here, as in a vertex shader.
                 if (alu.ScalarOpcode == AluScalarOpcode.MaxAs)
                 {
                     // mova rounds to the nearest, as maxas does.

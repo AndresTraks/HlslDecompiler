@@ -1465,8 +1465,9 @@ public class AsmWriter
         switch (registerType)
         {
             case RegisterType.Addr:
-                // Addr and Texture share a number: a# in vertex, t# in pixel shaders.
-                registerTypeName = shader.Type == ShaderType.Pixel ? "t" : "a";
+                // Addr and Texture share a number: a# in vertex, t# in pixel shaders
+                // before ps_3_0, which has no t# (the Xbox 360 translation's a0).
+                registerTypeName = shader.Type == ShaderType.Pixel && shader.MajorVersion < 3 ? "t" : "a";
                 break;
             case RegisterType.AttrOut:
                 registerTypeName = "oD";

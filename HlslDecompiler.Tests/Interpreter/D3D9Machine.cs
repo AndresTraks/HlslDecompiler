@@ -1107,7 +1107,8 @@ public class D3D9Machine
         {
             case RegisterType.Temp:
                 return _temp[number];
-            case RegisterType.Addr when _shader.Type == ShaderType.Vertex:
+            // ps_3_0 has no t#: the Xbox 360 translation's a0 is register type 3 there too.
+            case RegisterType.Addr when _shader.Type == ShaderType.Vertex || _shader.MajorVersion == 3:
                 return _address;
             case RegisterType.Texture:
                 return _texture[number];

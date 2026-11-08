@@ -109,7 +109,6 @@ public class XenosTests
     // that starts translating fails, so its entry gets removed.
     private static readonly Dictionary<string, string> KnownUntranslatable = new()
     {
-        ["xps_3_0/dynindex"] = "A pixel shader indexes constants through a0, which ps_3_0 does not have.",
     };
 
     // Decompiler bugs the translations expose, by tier. A listed shader that
@@ -323,6 +322,7 @@ public class XenosTests
         ["xps_3_0/cross"] = "cross is written out as its products.",
         ["xps_3_0/dots"] = "length, distance and normalize are written out, and the lane order of the distance's "
             + "difference (zxy or yzx) changes across a round trip.",
+        ["xps_3_0/dynindex"] = "the (int) casts are written out as truncation through frac.",
         ["xps_3_0/if_else_chain"] = "the else-if chain is written as flag arithmetic over 0/1 selects.",
         ["xps_3_0/literal_loop"] = "XNA unrolls the loop and folds its literals.",
         ["xps_3_0/loop_break_continue"] = "continue and break are written as the predicate counter's arithmetic.",

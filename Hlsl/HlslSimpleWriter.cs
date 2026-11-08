@@ -1697,9 +1697,10 @@ public class HlslSimpleWriter : HlslWriter
         if (instruction is D3D9Instruction d3d9)
         {
             RegisterType type = d3d9.GetParamRegisterType(destIndex);
-            // Addr and Texture share a type number: a0 in a vertex shader, tN in a pixel shader.
+            // Addr and Texture share a type number: a0 in a vertex shader, tN in a pixel
+            // shader before ps_3_0, which has no tN (the Xbox 360 translation's a0).
             return type == RegisterType.Temp
-                || (type == RegisterType.Addr && _shader.Type != ShaderType.Pixel);
+                || (type == RegisterType.Addr && (_shader.Type != ShaderType.Pixel || _shader.MajorVersion == 3));
         }
         return instruction is D3D10Instruction d3d10 && d3d10.GetParamRegisterKey(destIndex).IsTempRegister;
     }
@@ -4011,7 +4012,9 @@ public class HlslSimpleWriter : HlslWriter
 
         string registerName;
         // Addr/Texture told apart by shader type, not opcode: vs_1_1 writes a0 with mov.
-        if (registerKey.Type == RegisterType.Addr && _shader.Type == ShaderType.Vertex)
+        // ps_3_0 has no tN: there it is the Xbox 360 translation's a0.
+        if (registerKey.Type == RegisterType.Addr
+            && (_shader.Type == ShaderType.Vertex || _shader.MajorVersion == 3))
         {
             registerName = "a" + registerKey.Number;
         }

@@ -1768,6 +1768,9 @@ public class HlslSimpleWriter : HlslWriter
                 WriteLine(GetModifier(instruction), GetDestinationName(instruction),
                     $"{GetSourceName(instruction, 1)} + {GetSourceName(instruction, 2)}");
                 break;
+            case Opcode.Break:
+                WriteLine("break;");
+                break;
             case Opcode.BreakC:
                 // fxc writes an unconditional break as `break_ne c11.y, -c11.y` over def 1.
                 if (IsSettledComparison(instruction))

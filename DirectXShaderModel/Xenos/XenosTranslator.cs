@@ -16,7 +16,7 @@ namespace HlslDecompiler.DirectXShaderModel.Xenos;
 /// predicated instructions compared against a snapshot of what set the
 /// predicate. What is not handled throws NotSupportedException.
 /// </summary>
-public sealed class XenosTranslator
+public sealed partial class XenosTranslator
 {
     private readonly XenosShader _shader;
     private readonly List<uint> _code = [];
@@ -101,7 +101,11 @@ public sealed class XenosTranslator
     // With the predicate stack (setp_*_push, setp_pop) the snapshot is p0 itself, 1 or 0.
     private readonly bool _predicateIsBoolean;
 
-    public XenosTranslator(XenosShader shader)
+    public XenosTranslator(XenosShader shader) : this(shader, structuredPredicate: true)
+    {
+    }
+
+    private XenosTranslator(XenosShader shader, bool structuredPredicate)
     {
         _shader = shader;
         _isPixel = shader.Type == ShaderType.Pixel;
@@ -117,6 +121,7 @@ public sealed class XenosTranslator
         _savedDirections = first + 8;
         _usesPrevious = UsesPrevious();
         _predicateIsBoolean = UsesPredicateStack();
+        _structuredPredicate = structuredPredicate && _predicateIsBoolean;
         _usedConstantRegisters = new HashSet<int>();
         foreach (D3D9ConstantDeclaration declaration in _shader.Constants.Declarations)
         {
@@ -135,11 +140,34 @@ public sealed class XenosTranslator
         _constantRegister = AllocateConstantRegister();
     }
 
-    public byte[] Translate()
+    public byte[] Translate() => Translated().Bytes;
+
+    // With the predicate stack as structure where its counters can be followed,
+    // else as their arithmetic.
+    private (byte[] Bytes, List<bool> FlowAttributes) Translated()
+    {
+        if (_structuredPredicate)
+        {
+            try
+            {
+                return (TranslateOnce(), _hasFlowAttribute);
+            }
+            catch (UnstructuredPredicateException)
+            {
+                var arithmetic = new XenosTranslator(_shader, structuredPredicate: false);
+                return (arithmetic.TranslateOnce(), arithmetic._hasFlowAttribute);
+            }
+        }
+        return (TranslateOnce(), _hasFlowAttribute);
+    }
+
+    private byte[] TranslateOnce()
     {
         DeclareInterface();
+        int body = _code.Count;
         TranslateControlFlow();
         ClosePredicate();
+        DefineConditions(body);
 
         var tokens = new List<uint> { (_isPixel ? 0xFFFF0000u : 0xFFFE0000u) | 0x0300 };
         tokens.AddRange(ConstantTableComment());
@@ -159,19 +187,20 @@ public sealed class XenosTranslator
     /// <summary>The translation, read as the D3D9 path reads bytecode.</summary>
     public ShaderModel TranslateToShaderModel()
     {
-        using var stream = new MemoryStream(Translate());
+        (byte[] bytes, List<bool> flowAttributes) = Translated();
+        using var stream = new MemoryStream(bytes);
         using var reader = new ShaderReader(stream);
         ShaderModel model = reader.ReadShader();
         // The bytecode cannot say which ifs branch: marked on the read instructions.
         var flow = model.Instructions.OfType<D3D9Instruction>()
             .Where(i => i.Opcode is Opcode.If or Opcode.IfC or Opcode.Loop).ToList();
-        if (flow.Count != _hasFlowAttribute.Count)
+        if (flow.Count != flowAttributes.Count)
         {
-            throw new InvalidOperationException($"{flow.Count} ifs and loops read, {_hasFlowAttribute.Count} emitted");
+            throw new InvalidOperationException($"{flow.Count} ifs and loops read, {flowAttributes.Count} emitted");
         }
         for (int i = 0; i < flow.Count; i++)
         {
-            flow[i].HasFlowAttribute = _hasFlowAttribute[i];
+            flow[i].HasFlowAttribute = flowAttributes[i];
         }
         return model;
     }
@@ -415,6 +444,9 @@ public sealed class XenosTranslator
         public bool HasElse;
         // The p0 its body runs on, opened by a predicated jump, until a setp in it.
         public bool? Predicate;
+        // The predicate stack's state where it opened, and at its body's end once in its else.
+        public PredicateState Entry;
+        public PredicateState BodyEnd;
     }
 
     // The control flow program: pairs from the start, up to the first exec's instructions.
@@ -457,7 +489,12 @@ public sealed class XenosTranslator
             {
                 ClosePredicate();
                 Emit(Opcode.Endif);
-                blocks.Pop();
+                Block block = blocks.Pop();
+                if (_structuredPredicate)
+                {
+                    EnterControlFlow();
+                    JoinPredicate(block.HasElse ? block.BodyEnd : block.Entry);
+                }
             }
 
             ControlFlowInstruction cf = instructions[index];
@@ -479,11 +516,24 @@ public sealed class XenosTranslator
                 case ControlFlowOpcode.CondExecEnd:
                 case ControlFlowOpcode.CondExecPredClean:
                 case ControlFlowOpcode.CondExecPredCleanEnd:
-                    ClosePredicate();
-                    EmitBoolIf(cf.BoolAddress, cf.Condition);
-                    TranslateExec(cf, null);
-                    ClosePredicate();
-                    Emit(Opcode.Endif);
+                    {
+                        ClosePredicate();
+                        PredicateState entry = default;
+                        if (_structuredPredicate)
+                        {
+                            EnterControlFlow();
+                            entry = CapturePredicate();
+                        }
+                        EmitBoolIf(cf.BoolAddress, cf.Condition);
+                        TranslateExec(cf, null);
+                        ClosePredicate();
+                        Emit(Opcode.Endif);
+                        if (_structuredPredicate)
+                        {
+                            EnterControlFlow();
+                            JoinPredicate(entry);
+                        }
+                    }
                     break;
                 case ControlFlowOpcode.CondJmp:
                     TranslateJump(cf, index, blocks);
@@ -494,23 +544,34 @@ public sealed class XenosTranslator
                     {
                         throw new NotSupportedException("loop with Repeat=true");
                     }
+                    if (_structuredPredicate)
+                    {
+                        StartLoopPredicate();
+                    }
                     _hasFlowAttribute.Add(true);
                     Emit(Opcode.Loop, Source(RegisterType.Loop, 0),
                         Source(RegisterType.ConstInt, cf.LoopId - IntegerBase));
                     blocks.Push(new Block { Kind = BlockKind.Loop });
                     break;
                 case ControlFlowOpcode.LoopEnd:
-                    ClosePredicate();
-                    if (cf.IsPredicatedBreak)
                     {
-                        EmitPredicateBreak(cf.Condition);
+                        bool repeatsBreak = _structuredPredicate && RepeatsBreak(cf);
+                        ClosePredicate();
+                        if (cf.IsPredicatedBreak && !repeatsBreak)
+                        {
+                            EmitPredicateBreak(cf.Condition);
+                        }
+                        Emit(Opcode.EndLoop);
+                        if (blocks.Count == 0 || blocks.Peek().Kind != BlockKind.Loop)
+                        {
+                            throw new NotSupportedException("endloop out of a loop");
+                        }
+                        blocks.Pop();
+                        if (_structuredPredicate)
+                        {
+                            EndLoopPredicate(cf);
+                        }
                     }
-                    Emit(Opcode.EndLoop);
-                    if (blocks.Count == 0 || blocks.Peek().Kind != BlockKind.Loop)
-                    {
-                        throw new NotSupportedException("endloop out of a loop");
-                    }
-                    blocks.Pop();
                     break;
                 default:
                     throw new NotSupportedException($"Control flow {cf.Opcode}");
@@ -537,27 +598,39 @@ public sealed class XenosTranslator
         {
             throw new NotSupportedException("A backward jump");
         }
+        if (_structuredPredicate)
+        {
+            EnterControlFlow();
+        }
         if (cf.IsUnconditional)
         {
             if (blocks.Count != 0 && blocks.Peek().Kind == BlockKind.If && blocks.Peek().End == index + 1
                 && !blocks.Peek().HasElse)
             {
                 Emit(Opcode.Else);
-                blocks.Peek().HasElse = true;
-                blocks.Peek().End = target;
+                Block block = blocks.Peek();
+                block.HasElse = true;
+                block.End = target;
+                if (_structuredPredicate)
+                {
+                    block.BodyEnd = CapturePredicate();
+                    RestorePredicate(block.Entry);
+                }
                 return;
             }
             throw new NotSupportedException("An unconditional jump that is not an else");
         }
+        PredicateState entry = _structuredPredicate ? CapturePredicate() : default;
         if (cf.IsPredicated)
         {
             // Jumping when p0 == condition runs the body when it is not.
             EmitPredicateIf(!cf.Condition, isBranch: true);
-            blocks.Push(new Block { Kind = BlockKind.If, End = target, Predicate = !cf.Condition });
+            _materializedP0 = null;
+            blocks.Push(new Block { Kind = BlockKind.If, End = target, Predicate = !cf.Condition, Entry = entry });
             return;
         }
         EmitBoolIf(cf.BoolAddress, !cf.Condition);
-        blocks.Push(new Block { Kind = BlockKind.If, End = target });
+        blocks.Push(new Block { Kind = BlockKind.If, End = target, Entry = entry });
     }
 
     // A bool's if skips code, as a jump or a conditional exec: a branch.
@@ -581,8 +654,50 @@ public sealed class XenosTranslator
             if ((sequence & 1) != 0)
             {
                 var fetch = new FetchInstruction(d0, d1, d2);
-                SetPredicate(fetch.IsPredicated ? fetch.PredicateCondition : predicate);
+                bool? condition = fetch.IsPredicated ? fetch.PredicateCondition : predicate;
+                if (_structuredPredicate)
+                {
+                    CheckFetch(fetch, condition);
+                }
+                if (!SetPredicate(condition))
+                {
+                    continue;
+                }
+                if (_structuredPredicate)
+                {
+                    EmitZeroReads();
+                }
                 TranslateFetch(fetch, address);
+                if (_structuredPredicate)
+                {
+                    ForgetCounters(fetch.Destination, FetchWrittenLanes(fetch));
+                }
+            }
+            else if (_structuredPredicate)
+            {
+                var alu = new AluInstruction(d0, d1, d2);
+                bool? condition = alu.IsPredicated ? alu.PredicateCondition : predicate;
+                CheckCounterReads(alu, condition);
+                // What only moves the stack runs inside the ifs open; a clear on
+                // !p0 is a break of its own.
+                if (ClearsUnlessP0(alu, condition))
+                {
+                    if (KnownP0().Length == 0)
+                    {
+                        continue;
+                    }
+                }
+                else if (condition != null || !IsStackOnly(alu))
+                {
+                    if (!SetPredicate(condition))
+                    {
+                        continue;
+                    }
+                }
+                EmitZeroReads();
+                _instructionCondition = condition;
+                TranslateAlu(alu);
+                ForgetWrittenCounters(alu);
             }
             else
             {
@@ -653,25 +768,35 @@ public sealed class XenosTranslator
     }
 
     // Predication: one ifc around a run of instructions on the same condition,
-    // its else around the opposite run.
-    private void SetPredicate(bool? condition)
+    // its else around the opposite run. Whether the instruction runs anywhere.
+    private bool SetPredicate(bool? condition)
     {
+        if (_structuredPredicate)
+        {
+            Literal[] required = Required(condition);
+            if (required == null)
+            {
+                return false;
+            }
+            OpenConditions(required);
+            return true;
+        }
         // Inside a block a predicated jump opened on this condition, it holds.
         if (condition != null && _openPredicate == null && _blocks.Count != 0
             && _blocks.Peek().Predicate == condition && !_blocks.Peek().HasElse)
         {
-            return;
+            return true;
         }
         if (condition == _openPredicate)
         {
-            return;
+            return true;
         }
         if (condition != null && _openPredicate != null && !_openPredicateHasElse)
         {
             Emit(Opcode.Else);
             _openPredicate = condition;
             _openPredicateHasElse = true;
-            return;
+            return true;
         }
         ClosePredicate();
         if (condition is bool open)
@@ -680,6 +805,7 @@ public sealed class XenosTranslator
             _openPredicate = open;
             _openPredicateHasElse = false;
         }
+        return true;
     }
 
     private void ForgetBlockPredicates()
@@ -692,6 +818,7 @@ public sealed class XenosTranslator
 
     private void ClosePredicate()
     {
+        CloseConditions();
         if (_openPredicate != null)
         {
             Emit(Opcode.Endif);
@@ -702,6 +829,11 @@ public sealed class XenosTranslator
     // A predicated jump's if is a branch; predicated instructions' is not.
     private void EmitPredicateIf(bool condition, bool isBranch)
     {
+        if (_structuredPredicate)
+        {
+            EmitStructuredPredicateIf(condition, isBranch);
+            return;
+        }
         if (_predicateComparison == IfComparison.None)
         {
             throw new NotSupportedException("A predicate read before it is set");
@@ -713,6 +845,11 @@ public sealed class XenosTranslator
 
     private void EmitPredicateBreak(bool condition)
     {
+        if (_structuredPredicate)
+        {
+            EmitStructuredPredicateBreak(condition);
+            return;
+        }
         if (_predicateComparison == IfComparison.None)
         {
             throw new NotSupportedException("A predicate read before it is set");
@@ -1024,8 +1161,9 @@ public sealed class XenosTranslator
         Target scalarTarget = alu.IsExport ? target : new Target(RegisterType.Temp, alu.ScalarDestination, false);
 
         // Co-issued halves read before either writes: a vector result the scalar
-        // half reads goes through scratch.
+        // half reads goes through scratch. A push followed as structure writes none.
         bool scalarReadsVectorResult = vectorMask != 0 && !target.IsExport
+            && !(_structuredPredicate && IsPush(alu.VectorOpcode))
             && ScalarReadsTemp(alu, target.Register);
         Target vectorWrite = scalarReadsVectorResult ? new Target(RegisterType.Temp, _scratch0, false) : vectorTarget;
 
@@ -1136,6 +1274,10 @@ public sealed class XenosTranslator
         while (_cubesInFlight.Any(c => c.Register == register))
         {
             register++;
+        }
+        if (register >= _lowestConditionRegister)
+        {
+            throw new UnstructuredPredicateException("No temp left for a cube direction");
         }
         Emit(Opcode.Mov, [Destination(RegisterType.Temp, register, 0b0111), .. cube.Direction]);
         cube.Direction = [Source(RegisterType.Temp, register, Swizzle(0, 1, 2, 2))];
@@ -1508,6 +1650,11 @@ public sealed class XenosTranslator
                         AluVectorOpcode.SetpGtPush => IfComparison.GT,
                         _ => IfComparison.GE,
                     };
+                    if (_structuredPredicate)
+                    {
+                        Push(alu, comparison, mask);
+                        break;
+                    }
                     // x: the counter, from the first operand's x, 0 where it is 0 and
                     // the second's x passes, else one more. w likewise sets p0.
                     if (mask != 0)
@@ -1768,6 +1915,15 @@ public sealed class XenosTranslator
                     {
                         throw new NotSupportedException("A predicate set under a different predicate");
                     }
+                    if (_structuredPredicate)
+                    {
+                        if (mask != 0)
+                        {
+                            throw new NotSupportedException("A setp's result");
+                        }
+                        SetPredicateComparison(A(), comparison);
+                        break;
+                    }
                     if (_predicateIsBoolean)
                     {
                         EmitComparison(Destination(RegisterType.Temp, _predicate, 0b0001), A(), comparison);
@@ -1786,6 +1942,12 @@ public sealed class XenosTranslator
                     // 0 where the predicate is set, 1 where it is not.
                     throw new NotSupportedException("A setp's result");
                 }
+                break;
+            case AluScalarOpcode.SetpPop when _structuredPredicate:
+            case AluScalarOpcode.SetpInv when _structuredPredicate:
+            case AluScalarOpcode.SetpRstr when _structuredPredicate:
+            case AluScalarOpcode.SetpClr when _structuredPredicate:
+                MoveStack(alu, mask);
                 break;
             case AluScalarOpcode.SetpPop:
                 {

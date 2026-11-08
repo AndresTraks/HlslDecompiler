@@ -2,62 +2,50 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
 	float t2 = texcoord.x;
 	float t0 = texcoord.y;
-	float t1 = t0 >= 0 ? 1 : 0;
+	float2 t1 = float2(t0 >= 0 ? 1 : 0, 0);
 	float2 t3 = texcoord.zw;
-	float3 t4 = float3(1 - t1, t1, 0);
-	float t5 = 1;
-	float t6 = t1;
+	float2 t4 = float2(t1.x, 0);
+	float2 t5 = 0;
+	float2 t6 = float2(t1.x, 0);
 	[loop]
 	for (int i = 0; i < 255; i++) {
-		t4.x = t4.x + 1 - (t4.x == 0 ? 1.0 : 0.0) * (-t3.x >= 0 ? 0 : 1) * (t4.x + 1);
-		if ((t4.x == 0 ? 1.0 : 0.0) * (-t3.x >= 0 ? 0 : 1) != 0) {
-			t2 = t2 + 0.25;
-			t0 = t0 + 0.5;
-			t3 = t3 + float2(-1, -0.75);
-		}
-		float t7 = -(t4.x - 1) >= 0 ? 1 : 0;
-		t4.x = -(t4.x - 1) >= 0 ? 0 : t4.x - 1;
-		if (t7 != 0) {
-			t7 = -t3.y >= 0 ? 0 : 1;
+		float t7 = -t3.x >= 0 ? 0 : 1;
+		if (t4.x != 0) {
+			if (t7 != 0) {
+				t2 = t2 + 0.25;
+				t0 = t0 + 0.5;
+				t3 = t3 + float2(-1, -0.75);
+			}
+			t6.x = -t3.y >= 0 ? 0 : 1;
 			t4.y = -t3.y >= 0 ? 0 : 1;
 		}
-		if (t7 == 0) {
-			t4.x = 340282346638528859811704183484516925440.0;
-			t7 = 0;
+		if (t4.x != 0) {
+			t4.x = t4.y;
 		}
-		if (t7 == 0) {
+		if (t4.x == 0) {
 			break;
 		}
 	}
-	float t8 = 1 - (t4.y == 0 ? 1.0 : 0.0);
-	float t9 = t8;
-	float t10 = t8 == 0 ? 1.0 : 0.0;
-	float t11 = 1;
-	float t12 = t4.y == 0 ? 1.0 : 0.0;
+	float t8 = t6.x == 0 ? 1.0 : 0.0;
 	[loop]
 	for (int j = 0; j < 255; j++) {
-		if (t10 != 0) {
-			t4.z = (2 < t2) ? 1 : 0;
+		if (t8 != 0) {
+			float t9 = (2 < t2) ? 1 : 0;
+			float t10 = t9 == 0 ? 0.0 : 1.0;
+			if (t10 != 0) {
+				t2 = t2 - 0.5;
+				t0 = t0 - 0.25;
+				t3 = t3 - float2(0.75, 1);
+				t6.x = -t0 >= 0 ? 0 : 1;
+			}
+			t5.y = t6.x == 0 ? 1.0 : 0.0;
 		}
-		t9 = t9 + 1 - (t9 == 0 ? 1.0 : 0.0) * (t4.z == 0 ? 0.0 : 1.0) * (t9 + 1);
-		if ((t9 == 0 ? 1.0 : 0.0) * (t4.z == 0 ? 0.0 : 1.0) != 0) {
-			t2 = t2 - 0.5;
-			t0 = t0 - 0.25;
-			t3 = t3 - float2(0.75, 1);
-			t4.y = -t0 >= 0 ? 0 : 1;
+		if (t8 != 0) {
+			t8 = t5.y;
 		}
-		t10 = -(t9 - 1) >= 0 ? 1 : 0;
-		t9 = -(t9 - 1) >= 0 ? 0 : t9 - 1;
-		if (t10 != 0) {
-			t10 = t4.y == 0 ? 1.0 : 0.0;
-		}
-		if (t10 == 0) {
-			t9 = 340282346638528859811704183484516925440.0;
-			t10 = 0;
-		}
-		if (t10 == 0) {
+		if (t8 == 0) {
 			break;
 		}
 	}
-	return float4(t2, t0, t3) + t4.y;
+	return float4(t2, t0, t3) + t6.x;
 }

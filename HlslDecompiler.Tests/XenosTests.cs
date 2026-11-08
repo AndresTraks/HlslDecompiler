@@ -320,12 +320,14 @@ public class XenosTests
         ["xps_3_0/cross"] = "cross is written out as its products.",
         ["xps_3_0/dots"] = "length, distance and normalize are written out, and the lane order of the distance's "
             + "difference (zxy or yzx) changes across a round trip.",
-        ["xps_3_0/if_else_chain"] = "the else-if chain is written as flag arithmetic over 0/1 selects.",
+        ["xps_3_0/if_else_chain"] = "the else-if is written as an if in the else, testing the opposite comparison "
+            + "as a 0/1 select.",
         ["xps_3_0/literal_loop"] = "XNA unrolls the loop and folds its literals.",
-        ["xps_3_0/loop_break_continue"] = "continue and break are written as the predicate counter's arithmetic.",
-        ["xps_3_0/loop_flag_carried"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
-        ["xps_3_0/loop_if_after"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
-        ["xps_3_0/loop_one_sided_if"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
+        ["xps_3_0/loop_break_continue"] = "continue is written as an if around the rest of the body, and the break's "
+            + "comparison as a 0/1 select.",
+        ["xps_3_0/loop_flag_carried"] = "the loops' flag conditions are written as flags tested at the end of the body.",
+        ["xps_3_0/loop_if_after"] = "the loop's flag condition is written as a flag tested at the end of the body.",
+        ["xps_3_0/loop_one_sided_if"] = "the loop's flag condition is written as a flag tested at the end of the body.",
         ["xps_3_0/many_interpolators"] = "the COLOR1 input is marked centroid, and the sum's terms are reordered.",
         ["xps_3_0/matrix"] = "mul is split by columns into casts and transposed dots.",
         ["xps_3_0/modf"] = "modf and fmod are written out.",
@@ -343,7 +345,7 @@ public class XenosTests
         ["xps_3_0/trig"] = "tan and atan2 are written out.",
         ["xps_3_0/vface_branch"] = "VFACE is read from the sign of VPOS's x, so the decompilation declares VPOS.",
         ["xps_3_0/vpos"] = "VFACE is read from the sign of VPOS's x, and VPOS through abs.",
-        ["xps_3_0/whileloop"] = "the while's condition is written as a flag tested in a for loop that breaks.",
+        ["xps_3_0/whileloop"] = "the while's condition is written as flags tested at the end of a for loop's body.",
         ["xvs_3_0/branch"] = "mul is split into a float4x3 cast in reversed lanes (zyx) and a transposed dot.",
         ["xvs_3_0/literals_sin"] = "the multiply-adds are split by lane into dots, and the literals written at float "
             + "precision (1.75000012).",

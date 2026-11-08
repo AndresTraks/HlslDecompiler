@@ -4634,7 +4634,7 @@ public class HlslSimpleWriter : HlslWriter
             // One double per value computed, at the slot pair the swizzle names.
             byte[] doubleSwizzle = instruction.GetSourceSwizzleComponents(operandIndex);
             string[] doubles = [.. Enumerable.Range(0, instruction.ValueCount)
-                .Select(value => ConstantFormatter.Format(instruction.GetParamDouble(
+                .Select(value => ConstantFormatter.FormatHlsl(instruction.GetParamDouble(
                     operandIndex, doubleSwizzle[instruction.GetValuePair(value) * 2] / 2)))];
             if (doubles.All(d => d == doubles[0]))
             {
@@ -4653,7 +4653,7 @@ public class HlslSimpleWriter : HlslWriter
             {
                 string scalar = isInteger
                     ? instruction.GetParamInt(operandIndex, 0).ToString(_culture)
-                    : ConstantFormatter.Format(registerKey.ImmediateSingle[0]);
+                    : ConstantFormatter.FormatHlsl(registerKey.ImmediateSingle[0]);
                 return asBits ? AsInt(scalar) : scalar;
             }
             byte[] swizzle = instruction.GetSourceSwizzleComponents(operandIndex);
@@ -4662,7 +4662,7 @@ public class HlslSimpleWriter : HlslWriter
             string[] constant = [.. components
                 .Select(s => isInteger
                     ? instruction.GetParamInt(operandIndex, s).ToString(_culture)
-                    : ConstantFormatter.Format(registerKey.ImmediateSingle[s]))];
+                    : ConstantFormatter.FormatHlsl(registerKey.ImmediateSingle[s]))];
             // A vector constructor has a sign of its own, unlike a bare literal.
             string immediateType = isInteger
                 ? (ReadsUnsignedImmediates(instruction) ? "uint" : "int")

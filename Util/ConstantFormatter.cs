@@ -27,6 +27,15 @@ public class ConstantFormatter
         return value.ToString("R", _culture);
     }
 
+    // HLSL has no INF or NaN name: the compilers read the MSVC spellings, the
+    // Xbox 360's and fxc's from shader model 4 (fxc's shader model 3 takes no
+    // such literal at all).
+    public static string FormatHlsl(double value) => double.IsNaN(value) ? "1.#QNAN"
+        : double.IsInfinity(value) ? (double.IsPositive(value) ? "1.#INF" : "-1.#INF")
+        : Format(value);
+
+    public static string FormatHlsl(float value) => FormatHlsl((double)value);
+
     public static string Format(float value)
     {
         // decimal cannot hold NaN or infinity.

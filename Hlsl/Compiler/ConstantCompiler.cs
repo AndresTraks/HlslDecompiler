@@ -32,6 +32,6 @@ public sealed class ConstantCompiler
     private string CompileConstant(ConstantNode firstConstant)
     {
         return firstConstant.IntegerValue?.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            ?? ConstantFormatter.Format(firstConstant.Value);
+            ?? ConstantFormatter.FormatHlsl(firstConstant.Value);
     }
 }

@@ -1799,7 +1799,7 @@ public sealed class NodeCompiler
     private string CompileDoubleConstant(List<HlslTreeNode> components)
     {
         string[] values = [.. components.Select(c =>
-            ConstantFormatter.Format(((DoubleConstantNode)c).Value))];
+            ConstantFormatter.FormatHlsl(((DoubleConstantNode)c).Value))];
         if (values.All(v => v == values[0]))
         {
             return values[0];

@@ -268,25 +268,7 @@ public class XenosTests
         string recompiled = Path.ChangeExtension(hlsl, ".xbin");
         FileUtil.MakeFolder(hlsl);
         new Hlsl.HlslAstWriter(translated).Write(hlsl);
-        File.Delete(recompiled);
-
-        var startInfo = new ProcessStartInfo(Xna.Value)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        };
-        startInfo.ArgumentList.Add("compile");
-        startInfo.ArgumentList.Add(profile.Substring(1));
-        startInfo.ArgumentList.Add(hlsl);
-        startInfo.ArgumentList.Add(recompiled);
-        using (var process = Process.Start(startInfo))
-        {
-            process.StandardOutput.ReadToEnd();
-            string errors = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            Assert.That(process.ExitCode, Is.Zero, $"{hlsl} does not compile for the Xbox 360:{Environment.NewLine}{errors}");
-        }
+        CompileWithXna(profile, hlsl, recompiled);
 
         DirectXShaderModel.ShaderModel roundTrip;
         using (var input = File.OpenRead(recompiled))
@@ -304,6 +286,111 @@ public class XenosTests
             return;
         }
         Assert.That(differences, Is.Empty, string.Join(Environment.NewLine, differences.Take(12)));
+    }
+
+    private static void CompileWithXna(string profile, string hlsl, string compiled)
+    {
+        File.Delete(compiled);
+        var startInfo = new ProcessStartInfo(Xna.Value)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("compile");
+        startInfo.ArgumentList.Add(profile.Substring(1));
+        startInfo.ArgumentList.Add(hlsl);
+        startInfo.ArgumentList.Add(compiled);
+        using var process = Process.Start(startInfo);
+        process.StandardOutput.ReadToEnd();
+        string errors = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        Assert.That(process.ExitCode, Is.Zero, $"{hlsl} does not compile for the Xbox 360:{Environment.NewLine}{errors}");
+    }
+
+    // Sources the decompiler does not yet write back as they are, by the first
+    // thing that differs. A listed shader that becomes a fixed point fails, so
+    // its entry gets removed.
+    private static readonly Dictionary<string, string> KnownNonFixedPoints = new()
+    {
+        ["xps_3_0/alllanes"] = "all and any are written out as step and max chains.",
+        ["xps_3_0/boolconst"] = "the decompilation binds b to register(b0), which changes XNA's code though b is there already.",
+        ["xps_3_0/branch"] = "the comparison is written as a 0/1 select tested against 0, the else arm folds into rotated "
+            + "lanes (t0.wxyz), and without [branch] XNA flattens the rewrite.",
+        ["xps_3_0/centroid"] = "centroid is written as a modifier, which XNA compiles unlike the _centroid semantic, and the "
+            + "color input is marked centroid too.",
+        ["xps_3_0/clip_complex"] = "clip of a difference is written as clip of a negated 0/1 comparison.",
+        ["xps_3_0/cross"] = "cross is written out as its products.",
+        ["xps_3_0/dots"] = "length, distance and normalize are written out, and the lane order of the distance's "
+            + "difference (zxy or yzx) changes across a round trip.",
+        ["xps_3_0/if_else_chain"] = "the else-if chain is written as flag arithmetic over 0/1 selects.",
+        ["xps_3_0/literal_loop"] = "XNA unrolls the loop and folds its literals.",
+        ["xps_3_0/loop_break_continue"] = "continue and break are written as the predicate counter's arithmetic.",
+        ["xps_3_0/loop_flag_carried"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
+        ["xps_3_0/loop_if_after"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
+        ["xps_3_0/loop_if_else_join"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the loop counter shares a vector "
+            + "with the sum.",
+        ["xps_3_0/loop_one_sided_if"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
+        ["xps_3_0/many_interpolators"] = "the COLOR1 input is marked centroid, and the sum's terms are reordered.",
+        ["xps_3_0/matrix"] = "mul is split by columns into casts and transposed dots.",
+        ["xps_3_0/modf"] = "modf and fmod are written out.",
+        ["xps_3_0/nested"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the sum is kept in reversed lanes (wzyx).",
+        ["xps_3_0/normalize_reflect"] = "normalize is written out as rsqrt of a dot.",
+        ["xps_3_0/sample_in_branch"] = "the comparison is written as a 0/1 select tested against 0.",
+        ["xps_3_0/struct_constants"] = "XNA unrolls the loop.",
+        ["xps_3_0/tex_bias_lod"] = "the coordinates' unread lane is written as a copy of another (texcoord.xyyw).",
+        ["xps_3_0/texcube_two"] = "the dot products' sum is named and its terms reordered.",
+        ["xps_3_0/texlod"] = "tex2Dproj is written as a divide, and the coordinates' unread lane as a copy of another.",
+        ["xps_3_0/texoffsets"] = "the .bin's fetches are patched after compiling, so no source compiles to it.",
+        ["xps_3_0/texture_loop_condition"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the sum is kept in reversed "
+            + "lanes (wzyx).",
+        ["xps_3_0/trig"] = "tan and atan2 are written out.",
+        ["xps_3_0/vface_branch"] = "VFACE is read from the sign of VPOS's x, so the decompilation declares VPOS.",
+        ["xps_3_0/vpos"] = "VFACE is read from the sign of VPOS's x, and VPOS through abs.",
+        ["xps_3_0/whileloop"] = "the while's condition is written as a flag tested in a for loop that breaks.",
+        ["xvs_3_0/bool_else"] = "the decompilation binds b to register(b0), which changes XNA's code though b is there already.",
+        ["xvs_3_0/branch"] = "b is bound to register(b0), NORMAL is declared float4, and mul is split into a float4x3 "
+            + "cast in reversed lanes (zyx) and a transposed dot.",
+        ["xvs_3_0/dyn"] = "the (int) casts are written out as truncation through frac.",
+        ["xvs_3_0/literals_sin"] = "the multiply-adds are split by lane into dots, and the literals written at float "
+            + "precision (1.75000012).",
+        ["xvs_3_0/manyin"] = "every input is declared float4, and the sum's terms are reordered.",
+        ["xvs_3_0/matrix_array_loop"] = "the loop's mul is written as transposed dots over rotated lanes, with the "
+            + "matrix index in a float lane.",
+        ["xvs_3_0/normal_fog"] = "NORMAL is declared float4, and normalize and distance are written out.",
+        ["xvs_3_0/outputs"] = "the outputs are declared in another order than the source's, which changes XNA's code, "
+            + "and NORMAL is declared float4.",
+        ["xvs_3_0/skin"] = "XNA unrolls the loop, and the (int) casts are written out as truncation through frac.",
+        ["xvs_3_0/texcoord_transform"] = "TEXCOORD is declared float4, and mul is written out as transposed dots.",
+    };
+
+    /// <summary>
+    /// The source is a fixed point: the decompilation writes it back unchanged,
+    /// and, with the XNA helper built, XNA compiles it to the fixture's shader.
+    /// </summary>
+    [TestCaseSource(nameof(Shaders))]
+    public void SourceIsWhatTheDecompilationWrites(string profile, string baseFilename)
+    {
+        DirectXShaderModel.ShaderModel translated = Translate(profile, baseFilename);
+        Expect(KnownNonFixedPoints, profile, baseFilename, () => CheckFixedPoint(profile, baseFilename, translated));
+    }
+
+    private static void CheckFixedPoint(string profile, string baseFilename, DirectXShaderModel.ShaderModel translated)
+    {
+        string output = Path.GetFullPath(Path.Combine("Xenos", profile, baseFilename + ".fp.hlsl"));
+        FileUtil.MakeFolder(output);
+        new Hlsl.HlslAstWriter(translated).Write(output);
+        string source = Fixture(profile, baseFilename, ".fx");
+        Assert.That(File.ReadAllText(output), Is.EqualTo(File.ReadAllText(source)),
+            $"The decompilation at {output} is not the source");
+        if (Xna.Value == null)
+        {
+            return;
+        }
+        string compiled = Path.ChangeExtension(output, ".xbin");
+        CompileWithXna(profile, source, compiled);
+        Assert.That(File.ReadAllBytes(compiled), Is.EqualTo(File.ReadAllBytes(Fixture(profile, baseFilename, ".bin"))),
+            "XNA does not compile the source to the fixture's shader");
     }
 
     private static string[] Hex(IEnumerable<uint> words) => words.Select(w => w.ToString("x8")).ToArray();

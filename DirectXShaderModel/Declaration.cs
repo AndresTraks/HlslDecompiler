@@ -116,7 +116,7 @@ public class RegisterDeclaration
 
     public D3D10InterpolationMode InterpolationMode { get; init; }
 
-    private string InterpolationModifier => InterpolationMode switch
+    public string InterpolationModifier => InterpolationMode switch
     {
         D3D10InterpolationMode.Constant => "nointerpolation ",
         D3D10InterpolationMode.LinearCentroid => "centroid ",

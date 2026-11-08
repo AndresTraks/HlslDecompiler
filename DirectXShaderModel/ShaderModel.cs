@@ -39,6 +39,12 @@ public class ShaderModel
     /// </summary>
     public IList<RegisterSignature> ControlPointSignatures { get; init; }
 
+    /// <summary>
+    /// Whether a centroid input is written with the _centroid semantic rather than
+    /// the centroid keyword: the Xbox 360's compiler reads only the semantic.
+    /// </summary>
+    public bool CentroidInSemantic { get; set; }
+
     public ShaderModel(int majorVersion,
         int minorVersion,
         ShaderType type,

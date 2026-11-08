@@ -314,8 +314,6 @@ public class XenosTests
     {
         ["xps_3_0/alllanes"] = "all and any are written out as step and max chains.",
         ["xps_3_0/branch"] = "the else arm folds into rotated lanes (t0.wxyz), which XNA compiles to another shader.",
-        ["xps_3_0/centroid"] = "centroid is written as a modifier, which XNA compiles unlike the _centroid semantic, and the "
-            + "color input is marked centroid too.",
         ["xps_3_0/clip_complex"] = "clip of a difference is written as clip of a negated 0/1 comparison.",
         ["xps_3_0/cross"] = "cross is written out as its products.",
         ["xps_3_0/dots"] = "length, distance and normalize are written out, and the lane order of the distance's "
@@ -328,7 +326,7 @@ public class XenosTests
         ["xps_3_0/loop_flag_carried"] = "the loops' flag conditions are written as flags tested at the end of the body.",
         ["xps_3_0/loop_if_after"] = "the loop's flag condition is written as a flag tested at the end of the body.",
         ["xps_3_0/loop_one_sided_if"] = "the loop's flag condition is written as a flag tested at the end of the body.",
-        ["xps_3_0/many_interpolators"] = "the COLOR1 input is marked centroid, and the sum's terms are reordered.",
+        ["xps_3_0/many_interpolators"] = "the sum's terms are reordered.",
         ["xps_3_0/matrix"] = "mul is split by columns into casts and transposed dots.",
         ["xps_3_0/modf"] = "modf and fmod are written out.",
         ["xps_3_0/nested"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the sum is kept in reversed lanes (wzyx).",

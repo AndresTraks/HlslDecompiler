@@ -7,7 +7,7 @@ struct PS_IN
 	float4 texcoord4 : TEXCOORD4;
 	float4 texcoord5 : TEXCOORD5;
 	float4 texcoord6 : TEXCOORD6;
-	centroid float4 color1 : COLOR1;
+	float4 color1 : COLOR1;
 };
 
 float4 main(PS_IN i) : COLOR

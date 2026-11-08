@@ -202,6 +202,7 @@ public sealed partial class XenosTranslator
         {
             flow[i].HasFlowAttribute = flowAttributes[i];
         }
+        model.CentroidInSemantic = true;
         return model;
     }
 
@@ -302,8 +303,10 @@ public sealed partial class XenosTranslator
             int input = 0;
             foreach (XenosDeclaration declaration in _shader.Declarations)
             {
+                // The Xbox 360's compiler samples every COLOR input at the centroid,
+                // whatever the source says: only another input's centroid is the source's.
                 _inputDeclarations.Add((declaration.Usage, declaration.UsageIndex, input, declaration.Mask,
-                    declaration.IsCentroid));
+                    declaration.IsCentroid && declaration.Usage != DeclUsage.Color));
                 Emit(Opcode.Mov, Destination(RegisterType.Temp, declaration.Register, declaration.Mask),
                     Source(RegisterType.Input, input));
                 input++;

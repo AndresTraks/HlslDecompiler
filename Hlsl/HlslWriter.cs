@@ -1434,9 +1434,13 @@ public abstract class HlslWriter
         };
     }
 
-    private static string CompileRegisterDeclaration(RegisterDeclaration input)
+    private string CompileRegisterDeclaration(RegisterDeclaration input)
     {
         string subscript = input.ArrayLength > 1 ? $"[{input.ArrayLength}]" : "";
+        if (_shader.CentroidInSemantic && input.ResultModifier.HasFlag(ResultModifier.Centroid))
+        {
+            return $"{input.InterpolationModifier}{input.ValueTypeName} {input.Name}{subscript} : {input.Semantic}_centroid";
+        }
         return $"{input.TypeName} {input.Name}{subscript} : {input.Semantic}";
     }
 }

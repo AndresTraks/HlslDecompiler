@@ -1543,9 +1543,12 @@ public class HlslAstWriter : HlslWriter
         IDictionary<RegisterComponentKey, HlslTreeNode> inputs)
     {
         // Not variables the block was handed; a register reused for a fresh one is new.
+        // A phi hands one only once declared: a loop's phi over a value set first
+        // in this block (its entry a zeroed register) hands nothing yet.
         var newAssignments = outputs
             .Where(o => o.Value is TempVariableNode)
-            .Where(o => !(inputs.TryGetValue(o.Key, out HlslTreeNode input) && HandsVariable(input, o.Value)))
+            .Where(o => !(inputs.TryGetValue(o.Key, out HlslTreeNode input) && HandsVariable(input, o.Value)
+                && (input is not PhiNode || IsDeclared((TempVariableNode)o.Value))))
             .ToDictionary();
         if (newAssignments.Count > 0)
         {
@@ -1573,6 +1576,12 @@ public class HlslAstWriter : HlslWriter
         return ReferenceEquals(input, variable)
             || (input is TempAssignmentNode assignment && ReferenceEquals(assignment.TempVariable, variable))
             || (input is PhiNode phi && phi.Inputs.Any(i => HandsVariable(i, variable)));
+    }
+
+    private bool IsDeclared(TempVariableNode variable)
+    {
+        return _declaredVariables.Contains(variable)
+            || (variable.DeclarationIndex is int index && _declaredIndices.Contains(index));
     }
 
     /// <summary>

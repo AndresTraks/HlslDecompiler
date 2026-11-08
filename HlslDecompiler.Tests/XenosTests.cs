@@ -313,9 +313,8 @@ public class XenosTests
     private static readonly Dictionary<string, string> KnownNonFixedPoints = new()
     {
         ["xps_3_0/alllanes"] = "all and any are written out as step and max chains.",
-        ["xps_3_0/boolconst"] = "the decompilation binds b to register(b0), which changes XNA's code though b is there already.",
-        ["xps_3_0/branch"] = "the comparison is written as a 0/1 select tested against 0, the else arm folds into rotated "
-            + "lanes (t0.wxyz), and without [branch] XNA flattens the rewrite.",
+        ["xps_3_0/branch"] = "the comparison is written as a 0/1 select tested against 0, and the else arm folds into rotated "
+            + "lanes (t0.wxyz), which XNA compiles to another shader.",
         ["xps_3_0/centroid"] = "centroid is written as a modifier, which XNA compiles unlike the _centroid semantic, and the "
             + "color input is marked centroid too.",
         ["xps_3_0/clip_complex"] = "clip of a difference is written as clip of a negated 0/1 comparison.",
@@ -328,15 +327,12 @@ public class XenosTests
         ["xps_3_0/loop_break_continue"] = "continue and break are written as the predicate counter's arithmetic.",
         ["xps_3_0/loop_flag_carried"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
         ["xps_3_0/loop_if_after"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
-        ["xps_3_0/loop_if_else_join"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the loop counter shares a vector "
-            + "with the sum.",
         ["xps_3_0/loop_one_sided_if"] = "the loop's flag condition is written as the predicate counter's arithmetic.",
         ["xps_3_0/many_interpolators"] = "the COLOR1 input is marked centroid, and the sum's terms are reordered.",
         ["xps_3_0/matrix"] = "mul is split by columns into casts and transposed dots.",
         ["xps_3_0/modf"] = "modf and fmod are written out.",
         ["xps_3_0/nested"] = "the zero is written (0 < -abs(x)) ? 1 : 0, and the sum is kept in reversed lanes (wzyx).",
         ["xps_3_0/normalize_reflect"] = "normalize is written out as rsqrt of a dot.",
-        ["xps_3_0/sample_in_branch"] = "the comparison is written as a 0/1 select tested against 0.",
         ["xps_3_0/struct_constants"] = "XNA unrolls the loop.",
         ["xps_3_0/tex_computed_lod"] = "getCompTexLOD has no intrinsic: the source compiles it from inline microcode, "
             + "which the decompilation writes as the LOD's formula over a declared texture size.",
@@ -350,8 +346,7 @@ public class XenosTests
         ["xps_3_0/vface_branch"] = "VFACE is read from the sign of VPOS's x, so the decompilation declares VPOS.",
         ["xps_3_0/vpos"] = "VFACE is read from the sign of VPOS's x, and VPOS through abs.",
         ["xps_3_0/whileloop"] = "the while's condition is written as a flag tested in a for loop that breaks.",
-        ["xvs_3_0/bool_else"] = "the decompilation binds b to register(b0), which changes XNA's code though b is there already.",
-        ["xvs_3_0/branch"] = "b is bound to register(b0), NORMAL is declared float4, and mul is split into a float4x3 "
+        ["xvs_3_0/branch"] = "NORMAL is declared float4, and mul is split into a float4x3 "
             + "cast in reversed lanes (zyx) and a transposed dot.",
         ["xvs_3_0/dyn"] = "the (int) casts are written out as truncation through frac.",
         ["xvs_3_0/literals_sin"] = "the multiply-adds are split by lane into dots, and the literals written at float "

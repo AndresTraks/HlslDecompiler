@@ -6,6 +6,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float3 t2 = texcoord.yzw;
 	float t1 = (t0 < k.x) ? 1 : 0;
 	float t3 = t1 == 0 ? 0.0 : 1.0;
+	[loop]
 	for (int i = 0; i < 16; i++) {
 		if (t3 != 0) {
 			t0 = 1.5 * t0 + 0.100000001;

@@ -1088,7 +1088,8 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteLoopStatement(LoopStatement loop)
     {
-        if (WritesFlowAttributes || NeedsLoopAttribute(loop) || (_branchDepth > 0 && IsCountedByUniform(loop)))
+        if (WritesFlowAttributes || loop.HasLoopAttribute || NeedsLoopAttribute(loop)
+            || (_branchDepth > 0 && IsCountedByUniform(loop)))
         {
             WriteLine("[loop]");
         }
@@ -1394,7 +1395,7 @@ public class HlslAstWriter : HlslWriter
         // Name the condition's repeated operands above the if. The predicate itself
         // stays unnamed (see IStatement.NamedHeldNodes); its operands cost nothing.
         WriteSharedSubexpressions([[.. tested]]);
-        if (WritesFlowAttributes)
+        if (WritesFlowAttributes || ifStatement.HasBranchAttribute)
         {
             WriteLine("[branch]");
         }

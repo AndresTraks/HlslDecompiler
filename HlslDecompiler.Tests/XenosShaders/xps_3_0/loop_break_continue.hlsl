@@ -7,6 +7,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float4 t1 = t0;
 	float2 t2 = 0;
 	float4 t3 = t0;
+	[loop]
 	for (int i = 0; i < n; i++) {
 		t2.x = t2.x + 1 - (t2.x == 0 ? 1.0 : 0.0) * (k[i].w >= 0 ? 1 : 0) * (t2.x + 1);
 		if ((t2.x == 0 ? 1.0 : 0.0) * (k[i].w >= 0 ? 1 : 0) != 0) {

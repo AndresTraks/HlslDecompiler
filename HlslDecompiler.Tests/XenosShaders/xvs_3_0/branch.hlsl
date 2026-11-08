@@ -11,6 +11,7 @@ float4 main(VS_IN i) : POSITION
 {
 	float3 t0 = mul(i.position, (float4x3)m).zyx;
 	float t1 = dot(transpose(m)[3], i.position);
+	[branch]
 	if (b) {
 		t0 = t0 + i.normal.zyx;
 	}

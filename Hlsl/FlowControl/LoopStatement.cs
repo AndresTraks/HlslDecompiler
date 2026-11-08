@@ -14,6 +14,9 @@ public class LoopStatement : IStatement
 
     // Only `loop aL, iN` has a counter register the body can index constants by.
     public bool HasLoopCounter { get; set; }
+
+    /// <summary>Written [loop]: see <see cref="DirectXShaderModel.D3D9Instruction.HasFlowAttribute"/>.</summary>
+    public bool HasLoopAttribute { get; init; }
     public IList<IStatement> Body { get; } = [];
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }

@@ -5,6 +5,7 @@ int n : register(i0);
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {
 	float4 t0 = texcoord;
+	[branch]
 	if (b) {
 		[loop]
 		for (int i = 0; i < n; i++) {

@@ -12,6 +12,9 @@ public class IfStatement : IStatement
     public IDictionary<RegisterComponentKey, HlslTreeNode> Inputs { get; }
     public IDictionary<RegisterComponentKey, HlslTreeNode> Outputs { get; }
 
+    /// <summary>Written [branch]: see <see cref="DirectXShaderModel.D3D9Instruction.HasFlowAttribute"/>.</summary>
+    public bool HasBranchAttribute { get; init; }
+
     public bool IsTrueParsed { get; set; } = false;
     public bool IsParsed { get; set; } = false;
 

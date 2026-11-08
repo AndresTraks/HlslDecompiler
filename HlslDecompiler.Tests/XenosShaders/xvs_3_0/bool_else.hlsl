@@ -4,6 +4,7 @@ float4 k;
 float4 main(float4 position : POSITION) : POSITION
 {
 	float4 t0;
+	[branch]
 	if (b) {
 		t0 = position * k;
 	} else {

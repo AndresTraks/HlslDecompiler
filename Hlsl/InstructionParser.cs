@@ -1328,7 +1328,11 @@ public class InstructionParser
         ConstantIntRegister countRegister = _registerState.FindConstantIntRegister(loopRegisterNumber);
         // From a defi, else the x of a uniform iN.
         uint? repeatCount = countRegister?[0];
-        var loop = new LoopStatement(repeatCount, ActiveOutputs) { HasLoopCounter = hasLoopCounter };
+        var loop = new LoopStatement(repeatCount, ActiveOutputs)
+        {
+            HasLoopCounter = hasLoopCounter,
+            HasLoopAttribute = instruction is D3D9Instruction { HasFlowAttribute: true },
+        };
         if (repeatCount == null)
         {
             loop.RepeatCountNode = new RegisterInputNode(
@@ -1854,7 +1858,7 @@ public class InstructionParser
 
     private void InsertIfStatement(D3D9Instruction instruction)
     {
-        var ifStatement = new IfStatement(GetInputs(instruction, 0), ActiveOutputs);
+        var ifStatement = new IfStatement(GetInputs(instruction, 0), ActiveOutputs) { HasBranchAttribute = instruction.HasFlowAttribute };
 
         InsertStatement(ifStatement);
     }
@@ -1865,7 +1869,7 @@ public class InstructionParser
             .Select(i => GetInputs(instruction, i))
             .Select(inputs => new ComparisonNode(inputs[0], inputs[1], instruction.Comparison))
             .ToArray();
-        var ifStatement = new IfStatement(comparison, ActiveOutputs);
+        var ifStatement = new IfStatement(comparison, ActiveOutputs) { HasBranchAttribute = instruction.HasFlowAttribute };
 
         InsertStatement(ifStatement);
     }

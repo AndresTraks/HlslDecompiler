@@ -6,6 +6,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float2 t3 = texcoord.zw;
 	float3 t4 = float3(1 - (0 >= 0 ? 1 : 0) * t1, t1, 0);
 	float t5 = t1;
+	[loop]
 	for (int i = 0; i < 255; i++) {
 		t4.x = t4.x + 1 - (t4.x == 0 ? 1.0 : 0.0) * (-t3.x >= 0 ? 0 : 1) * (t4.x + 1);
 		if ((t4.x == 0 ? 1.0 : 0.0) * (-t3.x >= 0 ? 0 : 1) != 0) {
@@ -31,6 +32,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 	float t8 = t7;
 	float t9 = t7 == 0 ? 1.0 : 0.0;
 	float t10 = t4.y == 0 ? 1.0 : 0.0;
+	[loop]
 	for (int j = 0; j < 255; j++) {
 		if (t9 != 0) {
 			t4.z = (2 < t2) ? 1 : 0;

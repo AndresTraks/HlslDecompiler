@@ -86,6 +86,10 @@ public sealed class XenosTranslator
     // register of each, declared in the constant table after the shader's own.
     private readonly Dictionary<int, int> _textureSizes = [];
     private readonly List<D3D9ConstantDeclaration> _addedDeclarations = [];
+    // Per if and loop emitted, in order, whether it is written [branch] or
+    // [loop]: every loop, and an if that skips code as the Xbox 360 one did,
+    // where XNA's compiler made a branch, not predicated instructions.
+    private readonly List<bool> _hasFlowAttribute = [];
 
     // The predicate: p0 is (snapshot comparison 0), snapshot in _predicate.x.
     private IfComparison _predicateComparison = IfComparison.None;
@@ -157,7 +161,19 @@ public sealed class XenosTranslator
     {
         using var stream = new MemoryStream(Translate());
         using var reader = new ShaderReader(stream);
-        return reader.ReadShader();
+        ShaderModel model = reader.ReadShader();
+        // The bytecode cannot say which ifs branch: marked on the read instructions.
+        var flow = model.Instructions.OfType<D3D9Instruction>()
+            .Where(i => i.Opcode is Opcode.If or Opcode.IfC or Opcode.Loop).ToList();
+        if (flow.Count != _hasFlowAttribute.Count)
+        {
+            throw new InvalidOperationException($"{flow.Count} ifs and loops read, {_hasFlowAttribute.Count} emitted");
+        }
+        for (int i = 0; i < flow.Count; i++)
+        {
+            flow[i].HasFlowAttribute = _hasFlowAttribute[i];
+        }
+        return model;
     }
 
     private int IntegerBase => _isPixel ? 16 : 0;
@@ -477,6 +493,7 @@ public sealed class XenosTranslator
                     {
                         throw new NotSupportedException("loop with Repeat=true");
                     }
+                    _hasFlowAttribute.Add(true);
                     Emit(Opcode.Loop, Source(RegisterType.Loop, 0),
                         Source(RegisterType.ConstInt, cf.LoopId - IntegerBase));
                     blocks.Push(new Block { Kind = BlockKind.Loop });
@@ -534,7 +551,7 @@ public sealed class XenosTranslator
         if (cf.IsPredicated)
         {
             // Jumping when p0 == condition runs the body when it is not.
-            EmitPredicateIf(!cf.Condition);
+            EmitPredicateIf(!cf.Condition, isBranch: true);
             blocks.Push(new Block { Kind = BlockKind.If, End = target, Predicate = !cf.Condition });
             return;
         }
@@ -542,8 +559,10 @@ public sealed class XenosTranslator
         blocks.Push(new Block { Kind = BlockKind.If, End = target });
     }
 
+    // A bool's if skips code, as a jump or a conditional exec: a branch.
     private void EmitBoolIf(int boolAddress, bool condition)
     {
+        _hasFlowAttribute.Add(true);
         Emit(Opcode.If, Source(RegisterType.ConstBool, boolAddress - BoolBase));
         if (!condition)
         {
@@ -637,7 +656,7 @@ public sealed class XenosTranslator
         ClosePredicate();
         if (condition is bool open)
         {
-            EmitPredicateIf(open);
+            EmitPredicateIf(open, isBranch: false);
             _openPredicate = open;
             _openPredicateHasElse = false;
         }
@@ -660,12 +679,14 @@ public sealed class XenosTranslator
         }
     }
 
-    private void EmitPredicateIf(bool condition)
+    // A predicated jump's if is a branch; predicated instructions' is not.
+    private void EmitPredicateIf(bool condition, bool isBranch)
     {
         if (_predicateComparison == IfComparison.None)
         {
             throw new NotSupportedException("A predicate read before it is set");
         }
+        _hasFlowAttribute.Add(isBranch);
         Emit(Opcode.IfC, (int)(condition ? _predicateComparison : Opposite(_predicateComparison)),
             Source(RegisterType.Temp, _predicate, Swizzle(0, 0, 0, 0)), Zero());
     }

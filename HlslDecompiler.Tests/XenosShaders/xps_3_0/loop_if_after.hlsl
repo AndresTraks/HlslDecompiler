@@ -11,6 +11,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 		t3 = texcoord.z;
 		t6.z = t3;
 	}
+	[loop]
 	for (int i = 0; i < 255; i++) {
 		t5.x = t5.x + 1 - (t5.x == 0 ? 1.0 : 0.0) * (t1 == 0 ? 0.0 : 1.0) * (t5.x + 1);
 		if ((t5.x == 0 ? 1.0 : 0.0) * (t1 == 0 ? 0.0 : 1.0) != 0) {
@@ -38,6 +39,7 @@ float4 main(float4 texcoord : TEXCOORD) : COLOR
 			break;
 		}
 	}
+	[branch]
 	if (texcoord.z >= 0) {
 		t6.x = 0.5;
 	}

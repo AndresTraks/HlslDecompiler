@@ -45,7 +45,14 @@ public class D3D9Instruction : Instruction
     /// usage field (a zero usage would otherwise read as POSITION).
     /// </summary>
     public bool HasImpliedInputSemantics { get; set; }
-    
+
+    /// <summary>
+    /// Set by the Xbox 360 translation on a loop, and on an if its compiler made
+    /// a branch, not predicated instructions: written [loop] or [branch], so it
+    /// compiles back to one.
+    /// </summary>
+    public bool HasFlowAttribute { get; set; }
+
     /// <summary>Shader model 1 indexes only through a0.x and names no register.</summary>
     public bool HasSeparateRelativeToken
     {

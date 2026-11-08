@@ -31,16 +31,29 @@ public sealed class XenosTranslator
     private readonly int _gradientH;
     private readonly int _gradientV;
     private readonly int _previous;
+    // From here up, cube directions moved out of a register written before their fetch.
+    private readonly int _savedDirections;
 
     // The scalar result ps, kept in _previous.x where a *_prev operation reads it.
     private readonly bool _usesPrevious;
 
     // texCUBE compiles to a cube instruction, ALU work that turns its result
     // into face coordinates, and a tfetchCube of those: together a texld of the
-    // direction the cube instruction was given. The lanes that derive from the
-    // cube result, by register, until the fetch; what computes them is skipped.
-    private readonly Dictionary<int, int> _cubeLanes = [];
-    private uint[] _cubeDirection;
+    // direction the cube instruction was given. The lanes that derive from a
+    // cube result, by register, with the cube each comes from, until its fetch;
+    // what computes them is skipped. Several cubes can await their fetches.
+    private readonly Dictionary<int, Cube[]> _cubeLanes = [];
+
+    // The fetch reads the direction from its register; a write to it before
+    // then moves the direction out first (Register is -1 for a constant direction).
+    private sealed class Cube
+    {
+        public uint[] Direction;
+        public int Register;
+        public int Lanes;
+    }
+
+    private readonly List<Cube> _cubesInFlight = [];
 
     // A float register holding (0, 1, FLT_MAX, 0), defined if used.
     private readonly int _constantRegister;
@@ -93,6 +106,7 @@ public sealed class XenosTranslator
         _gradientH = first + 5;
         _gradientV = first + 6;
         _previous = first + 7;
+        _savedDirections = first + 8;
         _usesPrevious = UsesPrevious();
         _predicateIsBoolean = UsesPredicateStack();
         _usedConstantRegisters = new HashSet<int>();
@@ -748,12 +762,11 @@ public sealed class XenosTranslator
                 // texCUBE lowering samples has no texel address to shift.
                 throw new NotSupportedException("A cube fetch with a texel offset");
             }
-            if (!_cubeLanes.ContainsKey(fetch.Source))
-            {
-                throw new NotSupportedException("A cube fetch not from a cube instruction");
-            }
-            coordinates = _cubeDirection;
-            _cubeLanes.Clear();
+            Cube cube = CubeOf(fetch.Source, FetchLanes(fetch, count))
+                ?? CubeOf(fetch.Source, 0b1111)
+                ?? throw new NotSupportedException("A cube fetch not from a cube instruction");
+            coordinates = cube.Direction;
+            ForgetCube(cube);
         }
         else
         {
@@ -841,7 +854,7 @@ public sealed class XenosTranslator
         {
             written |= ((swizzle >> (3 * i)) & 0b111) != 7 ? 1 << i : 0;
         }
-        MarkCubeLanes(new Target(RegisterType.Temp, fetch.Destination, false), written, true, false);
+        MarkCubeLanes(new Target(RegisterType.Temp, fetch.Destination, false), written, true, null);
         var lanes = new int[4];
         int fromValue = 0, zero = 0, one = 0;
         for (int i = 0; i < 4; i++)
@@ -916,17 +929,15 @@ public sealed class XenosTranslator
         {
             // What reads lanes from the cube result only feeds the cube fetch: it
             // is skipped, and the lanes it writes derive from the cube in turn.
-            bool vectorFromCube = vectorRuns && (alu.VectorOpcode == AluVectorOpcode.Cube
-                || ReadsCubeLanes(alu, vectorMask));
-            bool scalarFromCube = scalarRuns && ScalarReadsCubeLanes(alu);
-            if (vectorFromCube && alu.VectorOpcode == AluVectorOpcode.Cube)
-            {
-                TranslateVector(alu, vectorTarget, vectorMask);
-            }
-            MarkCubeLanes(vectorTarget, vectorMask, vectorRuns, vectorFromCube);
-            MarkCubeLanes(scalarTarget, scalarMask, scalarRuns, scalarFromCube);
-            vectorRuns &= !vectorFromCube;
-            scalarRuns &= !scalarFromCube;
+            // Both halves read before either writes.
+            Cube vectorCube = !vectorRuns ? null
+                : alu.VectorOpcode == AluVectorOpcode.Cube ? StartCube(alu, vectorTarget)
+                : CubeRead(alu, vectorMask);
+            Cube scalarCube = scalarRuns ? ScalarCubeRead(alu) : null;
+            MarkCubeLanes(vectorTarget, vectorMask, vectorRuns, vectorCube);
+            MarkCubeLanes(scalarTarget, scalarMask, scalarRuns, scalarCube);
+            vectorRuns &= vectorCube == null;
+            scalarRuns &= scalarCube == null;
             scalarReadsVectorResult &= vectorRuns && scalarRuns;
             vectorWrite = scalarReadsVectorResult ? vectorWrite : vectorTarget;
         }
@@ -993,56 +1004,151 @@ public sealed class XenosTranslator
         throw new NotSupportedException($"Export {export}");
     }
 
-    private void MarkCubeLanes(Target target, int mask, bool runs, bool fromCube)
+    // cube r, v.zzxy, v.yxzz: the direction is the first operand's z, w, x.
+    private Cube StartCube(AluInstruction alu, Target target)
+    {
+        if (target.Type != RegisterType.Temp)
+        {
+            throw new NotSupportedException("A cube exported");
+        }
+        int x = VectorComponent(alu, 1, 2), y = VectorComponent(alu, 1, 3), z = VectorComponent(alu, 1, 0);
+        var cube = new Cube
+        {
+            Direction = AluSource(alu, 1, Swizzle(x, y, z, z)),
+            Register = alu.SourceIsTemp(1) ? alu.SourceRegister(1) & 0x3F : -1,
+            Lanes = 1 << x | 1 << y | 1 << z,
+        };
+        _cubesInFlight.Add(cube);
+        return cube;
+    }
+
+    // Moves the direction into a register of its own, the first no other cube holds.
+    private void SaveDirection(Cube cube)
+    {
+        int register = _savedDirections;
+        while (_cubesInFlight.Any(c => c.Register == register))
+        {
+            register++;
+        }
+        Emit(Opcode.Mov, [Destination(RegisterType.Temp, register, 0b0111), .. cube.Direction]);
+        cube.Direction = [Source(RegisterType.Temp, register, Swizzle(0, 1, 2, 2))];
+        cube.Register = register;
+        cube.Lanes = 0b0111;
+    }
+
+    // The fetch has read its direction: its lanes derive from nothing now.
+    private void ForgetCube(Cube cube)
+    {
+        foreach (int register in _cubeLanes.Keys.ToList())
+        {
+            Cube[] cubes = _cubeLanes[register];
+            for (int i = 0; i < 4; i++)
+            {
+                if (cubes[i] == cube)
+                {
+                    cubes[i] = null;
+                }
+            }
+            if (cubes.All(c => c == null))
+            {
+                _cubeLanes.Remove(register);
+            }
+        }
+        _cubesInFlight.Remove(cube);
+    }
+
+    // The written lanes derive from the cube, or from none.
+    private void MarkCubeLanes(Target target, int mask, bool runs, Cube cube)
     {
         if (!runs || mask == 0)
         {
             return;
         }
-        if (fromCube && target.IsExport)
+        if (cube != null && target.IsExport)
         {
             throw new NotSupportedException("A cube result exported");
         }
-        int lanes = _cubeLanes.GetValueOrDefault(target.Register);
-        lanes = fromCube ? lanes | mask : lanes & ~mask;
-        if (lanes == 0)
+        if (cube == null && !target.IsExport && target.Type == RegisterType.Temp)
+        {
+            foreach (Cube overwritten in _cubesInFlight.Where(c =>
+                c.Register == target.Register && (c.Lanes & mask) != 0))
+            {
+                SaveDirection(overwritten);
+            }
+        }
+        Cube[] cubes = _cubeLanes.GetValueOrDefault(target.Register) ?? new Cube[4];
+        for (int i = 0; i < 4; i++)
+        {
+            if ((mask & (1 << i)) != 0)
+            {
+                cubes[i] = cube;
+            }
+        }
+        if (cubes.All(c => c == null))
         {
             _cubeLanes.Remove(target.Register);
         }
         else
         {
-            _cubeLanes[target.Register] = lanes;
+            _cubeLanes[target.Register] = cubes;
         }
     }
 
-    // Whether the vector half reads lanes of the cube result.
-    private bool ReadsCubeLanes(AluInstruction alu, int mask)
+    // The cube these lanes of the register derive from, if any.
+    private Cube CubeOf(int register, int lanes)
     {
-        for (int i = 1; i <= VectorOperandCount(alu.VectorOpcode); i++)
+        Cube found = null;
+        if (_cubeLanes.TryGetValue(register, out Cube[] cubes))
         {
-            if (alu.SourceIsTemp(i) && _cubeLanes.TryGetValue(alu.SourceRegister(i) & 0x3F, out int lanes)
-                && (VectorLanesRead(alu, i, mask) & lanes) != 0)
+            for (int i = 0; i < 4; i++)
             {
-                return true;
+                if ((lanes & (1 << i)) != 0 && cubes[i] != null)
+                {
+                    if (found != null && found != cubes[i])
+                    {
+                        throw new NotSupportedException("Lanes of two cube results read together");
+                    }
+                    found = cubes[i];
+                }
             }
         }
-        return false;
+        return found;
     }
 
-    private bool ScalarReadsCubeLanes(AluInstruction alu)
+    // The cube whose result lanes the vector half reads, if any.
+    private Cube CubeRead(AluInstruction alu, int mask)
+    {
+        Cube found = null;
+        for (int i = 1; i <= VectorOperandCount(alu.VectorOpcode); i++)
+        {
+            if (alu.SourceIsTemp(i)
+                && CubeOf(alu.SourceRegister(i) & 0x3F, VectorLanesRead(alu, i, mask)) is Cube cube)
+            {
+                if (found != null && found != cube)
+                {
+                    throw new NotSupportedException("Lanes of two cube results read together");
+                }
+                found = cube;
+            }
+        }
+        return found;
+    }
+
+    private Cube ScalarCubeRead(AluInstruction alu)
     {
         int a = ScalarA(alu), b = ScalarB(alu);
         switch (ScalarOperandForm(alu.ScalarOpcode))
         {
             case 1:
             case 2:
-                return alu.SourceIsTemp(3) && _cubeLanes.TryGetValue(alu.SourceRegister(3) & 0x3F, out int lanes)
-                    && ((1 << a | (ScalarOperandForm(alu.ScalarOpcode) == 2 ? 1 << b : 0)) & lanes) != 0;
+                return alu.SourceIsTemp(3)
+                    ? CubeOf(alu.SourceRegister(3) & 0x3F,
+                        1 << a | (ScalarOperandForm(alu.ScalarOpcode) == 2 ? 1 << b : 0))
+                    : null;
             case 3:
-                return _cubeLanes.TryGetValue(alu.ScalarConstantOperationTemp, out int tempLanes)
-                    && ((1 << b) & tempLanes) != 0;
+                return CubeOf(alu.ScalarConstantOperationTemp, 1 << b);
             default:
-                return false;
+                return null;
         }
     }
 
@@ -1078,7 +1184,8 @@ public sealed class XenosTranslator
 
     private void CheckNotFromCube(int register, int lanes)
     {
-        if (_cubeLanes.TryGetValue(register, out int cube) && (cube & lanes) != 0)
+        if (_cubeLanes.TryGetValue(register, out Cube[] cubes)
+            && Enumerable.Range(0, 4).Any(i => (lanes & (1 << i)) != 0 && cubes[i] != null))
         {
             throw new NotSupportedException("A cube result read other than by its fetch");
         }
@@ -1188,17 +1295,6 @@ public sealed class XenosTranslator
                 break;
             case AluVectorOpcode.Max:
                 Emit(Opcode.Max, [destination, .. S(1), .. S(2)]);
-                break;
-            case AluVectorOpcode.Cube:
-                {
-                    // cube r, v.zzxy, v.yxzz: the direction is the first operand's z, w, x.
-                    if (target.Type != RegisterType.Temp)
-                    {
-                        throw new NotSupportedException("A cube exported");
-                    }
-                    int x = VectorComponent(alu, 1, 2), y = VectorComponent(alu, 1, 3), z = VectorComponent(alu, 1, 0);
-                    _cubeDirection = AluSource(alu, 1, Swizzle(x, y, z, z));
-                }
                 break;
             case AluVectorOpcode.MaxA:
                 if (_isPixel)

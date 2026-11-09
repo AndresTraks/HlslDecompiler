@@ -49,11 +49,19 @@ public class D3D9ConstantDeclaration : ConstantDeclaration
     /// </summary>
     public bool IsPreshaderInput { get; init; }
 
-    public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo)
+    /// <summary>
+    /// The initializer from the constant table, in register layout, or null. Each
+    /// array element, struct member and matrix row or column starts at a register
+    /// boundary; see <see cref="ShaderTypeInfo.DefaultValueRegisterCount"/>.
+    /// </summary>
+    public byte[] DefaultValue { get; init; }
+
+    public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo, byte[] defaultValue = null)
         : base(name, registerIndex, typeInfo)
     {
         RegisterSet = registerSet;
         RegisterCount = registerCount;
+        DefaultValue = defaultValue;
     }
 
     public bool ContainsIndex(int index)

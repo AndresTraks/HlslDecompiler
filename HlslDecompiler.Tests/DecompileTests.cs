@@ -27,6 +27,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "float4_construct")]
     [TestCase("ps_3_0", "float4_construct2")]
     [TestCase("ps_3_0", "float4_constant")]
+    [TestCase("ps_3_0", "default_values")]
     [TestCase("ps_3_0", "multiply_subtract")]
     [TestCase("ps_3_0", "absolute_multiply")]
     [TestCase("ps_3_0", "modifier")]

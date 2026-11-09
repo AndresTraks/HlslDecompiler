@@ -1,6 +1,8 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.Util;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HlslDecompiler.Hlsl;
@@ -126,8 +128,171 @@ public sealed class ConstantDeclarationCompiler
         int stride = declaration.RegistersPerElement;
         int elements = Math.Max(declaration.TypeInfo.NumElements,
             (declaration.RegisterCount + stride - 1) / stride);
+        string initializer = declaration.DefaultValue != null
+            ? $" = {DefaultValue(declaration.TypeInfo, declaration.DefaultValue, elements)}"
+            : "";
         return $"{typeName} {declaration.Name}"
-            + $"{GetArrayCountSpecifier(declaration.TypeInfo, elements)}{registerSpecifier};";
+            + $"{GetArrayCountSpecifier(declaration.TypeInfo, elements)}{registerSpecifier}{initializer};";
+    }
+
+    /// <summary>
+    /// The constant table's initializer as HLSL. A value is stored in registers;
+    /// each array element, struct member and matrix row or column starts one, and
+    /// an array the register window widened past its element count ends in zeros.
+    /// </summary>
+    private static string DefaultValue(ShaderTypeInfo typeInfo, byte[] data, int elements)
+    {
+        int position = 0;
+        int stored = Math.Max(typeInfo.NumElements, 1);
+        var values = new List<string>();
+        for (int i = 0; i < elements; i++)
+        {
+            values.Add(i < stored
+                ? FormatValue(typeInfo, data, ref position, withElements: false)
+                : ZeroValue(typeInfo));
+        }
+        return elements > 1 ? $"{{ {string.Join(", ", values)} }}" : values[0];
+    }
+
+    private static string FormatValue(ShaderTypeInfo typeInfo, byte[] data, ref int position, bool withElements)
+    {
+        if (withElements && typeInfo.NumElements > 1)
+        {
+            var elements = new List<string>();
+            for (int i = 0; i < typeInfo.NumElements; i++)
+            {
+                elements.Add(FormatValue(typeInfo, data, ref position, withElements: false));
+            }
+            return $"{{ {string.Join(", ", elements)} }}";
+        }
+
+        switch (typeInfo.ParameterClass)
+        {
+            case ParameterClass.Scalar:
+            case ParameterClass.Vector:
+                {
+                    int components = typeInfo.ParameterClass == ParameterClass.Scalar ? 1 : typeInfo.Columns;
+                    var values = new List<string>();
+                    for (int i = 0; i < components; i++)
+                    {
+                        values.Add(FormatComponent(typeInfo.ParameterType, data, position + i * 4));
+                    }
+                    position += 16;
+                    return JoinValue(typeInfo, values);
+                }
+
+            // A matrix stores its columns (or rows) one register each, four
+            // components in a register, and the constructor takes rows in order.
+            case ParameterClass.MatrixColumns:
+            case ParameterClass.MatrixRows:
+                {
+                    bool byRows = typeInfo.ParameterClass == ParameterClass.MatrixRows;
+                    int outer = byRows ? typeInfo.Rows : typeInfo.Columns;
+                    int inner = byRows ? typeInfo.Columns : typeInfo.Rows;
+                    int registersPerOuter = (inner + 3) / 4;
+                    string[,] components = new string[typeInfo.Rows, typeInfo.Columns];
+                    for (int o = 0; o < outer; o++)
+                    {
+                        for (int i = 0; i < inner; i++)
+                        {
+                            int offset = position + (o * registersPerOuter + i / 4) * 16 + (i % 4) * 4;
+                            int row = byRows ? o : i;
+                            int column = byRows ? i : o;
+                            components[row, column] = FormatComponent(typeInfo.ParameterType, data, offset);
+                        }
+                    }
+                    position += outer * registersPerOuter * 16;
+                    return JoinValue(typeInfo, [.. Enumerable.Range(0, typeInfo.Rows * typeInfo.Columns)
+                        .Select(i => components[i / typeInfo.Columns, i % typeInfo.Columns])]);
+                }
+
+            // Each struct member starts at a register boundary, so the values
+            // advance the position by their own register counts.
+            case ParameterClass.Struct:
+                {
+                    var members = new List<string>();
+                    foreach (ShaderStructMemberInfo member in typeInfo.MemberInfo)
+                    {
+                        members.Add(FormatValue(member.TypeInfo, data, ref position, withElements: true));
+                    }
+                    return $"{{ {string.Join(", ", members)} }}";
+                }
+
+            default:
+                return "0";
+        }
+    }
+
+    private static string JoinValue(ShaderTypeInfo typeInfo, IList<string> components)
+    {
+        if (components.Count == 1)
+        {
+            return components[0];
+        }
+        // A scalar converts to any numeric vector or matrix, and fxc reads the
+        // same initializer back as one.
+        if (typeInfo.ParameterType is ParameterType.Float or ParameterType.Int or ParameterType.Uint
+            && components.All(component => component == "0"))
+        {
+            return "0";
+        }
+        return $"{ConstructorTypeName(typeInfo)}({string.Join(", ", components)})";
+    }
+
+    private static string ConstructorTypeName(ShaderTypeInfo typeInfo)
+    {
+        return typeInfo.ParameterClass switch
+        {
+            ParameterClass.Scalar => GetScalarTypeName(typeInfo.ParameterType),
+            ParameterClass.Vector => GetScalarTypeName(typeInfo.ParameterType) + typeInfo.Columns,
+            ParameterClass.MatrixRows or ParameterClass.MatrixColumns =>
+                $"{GetScalarTypeName(typeInfo.ParameterType)}{typeInfo.Rows}x{typeInfo.Columns}",
+            _ => "",
+        };
+    }
+
+    private static string FormatComponent(ParameterType type, byte[] data, int offset)
+    {
+        uint bits = BitConverter.ToUInt32(data, offset);
+        float value = BitConverter.UInt32BitsToSingle(bits);
+        return type switch
+        {
+            ParameterType.Float => ConstantFormatter.FormatHlsl(value),
+            ParameterType.Bool => value != 0 ? "true" : "false",
+            ParameterType.Int => ((int)value).ToString(CultureInfo.InvariantCulture),
+            ParameterType.Uint => ((uint)value).ToString(CultureInfo.InvariantCulture),
+            _ => ((int)bits).ToString(CultureInfo.InvariantCulture),
+        };
+    }
+
+    // An element past the ones the table stored: an array's window can be wider.
+    private static string ZeroValue(ShaderTypeInfo typeInfo)
+    {
+        switch (typeInfo.ParameterClass)
+        {
+            case ParameterClass.Scalar:
+            case ParameterClass.Vector:
+            case ParameterClass.MatrixRows:
+            case ParameterClass.MatrixColumns:
+                {
+                    int count = typeInfo.ParameterClass switch
+                    {
+                        ParameterClass.Scalar => 1,
+                        ParameterClass.Vector => typeInfo.Columns,
+                        _ => typeInfo.Rows * typeInfo.Columns,
+                    };
+                    return JoinValue(typeInfo, [.. Enumerable.Repeat(ZeroComponent(typeInfo.ParameterType), count)]);
+                }
+            case ParameterClass.Struct:
+                return $"{{ {string.Join(", ", typeInfo.MemberInfo.Select(m => ZeroValue(m.TypeInfo)))} }}";
+            default:
+                return "0";
+        }
+    }
+
+    private static string ZeroComponent(ParameterType type)
+    {
+        return type == ParameterType.Bool ? "false" : "0";
     }
 
     private static string GetScalarTypeName(ParameterType parameterType)

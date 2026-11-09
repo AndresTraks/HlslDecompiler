@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.Util;
+using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -91,13 +92,37 @@ public class ConstantTableCommentReader : BinaryReader
         BaseStream.Position = typeInfoOffset;
         ShaderTypeInfo typeInfo = ReadTypeInfo();
 
+        byte[] defaultValue = null;
         if (defaultValueOffset != 0)
         {
             BaseStream.Position = defaultValueOffset;
-            // TODO
+            defaultValue = ReadDefaultValue(typeInfo);
         }
 
-        return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, typeInfo);
+        return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, typeInfo, defaultValue);
+    }
+
+    /// <summary>
+    /// A default value is a register per array element, struct member and matrix
+    /// row or column; each holds up to four components. An Xbox 360 table stores
+    /// it big-endian, so it is read back little-endian for the writers.
+    /// </summary>
+    private byte[] ReadDefaultValue(ShaderTypeInfo typeInfo)
+    {
+        int registers = typeInfo.DefaultValueRegisterCount;
+        if (registers == 0)
+        {
+            return null;
+        }
+        byte[] value = ReadBytes(registers * 16);
+        if (_bigEndian)
+        {
+            for (int i = 0; i < value.Length; i += 4)
+            {
+                Array.Reverse(value, i, 4);
+            }
+        }
+        return value;
     }
 
     private ShaderTypeInfo ReadTypeInfo()

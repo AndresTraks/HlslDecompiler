@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace HlslDecompiler.DirectXShaderModel;
 
@@ -22,6 +24,27 @@ public class ShaderTypeInfo
         Columns = columns;
         NumElements = numElements;
         MemberInfo = memberInfo;
+    }
+
+    /// <summary>
+    /// The registers a constant table default value occupies: each array element,
+    /// struct member and matrix row or column starts at a register boundary, with
+    /// up to four components in each register.
+    /// </summary>
+    public int DefaultValueRegisterCount
+    {
+        get
+        {
+            int registers = ParameterClass switch
+            {
+                ParameterClass.Scalar or ParameterClass.Vector => 1,
+                ParameterClass.MatrixColumns => Columns * ((Rows + 3) / 4),
+                ParameterClass.MatrixRows => Rows * ((Columns + 3) / 4),
+                ParameterClass.Struct => MemberInfo?.Sum(m => m.TypeInfo.DefaultValueRegisterCount) ?? 0,
+                _ => 0,
+            };
+            return registers * Math.Max(NumElements, 1);
+        }
     }
 
     public override string ToString()

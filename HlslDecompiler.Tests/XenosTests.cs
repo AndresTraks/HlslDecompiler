@@ -1,4 +1,5 @@
-﻿using HlslDecompiler.DirectXShaderModel.Xenos;
+﻿using HlslDecompiler.DirectXShaderModel;
+using HlslDecompiler.DirectXShaderModel.Xenos;
 using NUnit.Framework;
 using System;
 using System.Buffers.Binary;
@@ -383,6 +384,50 @@ public class XenosTests
         CompileWithXna(profile, source, compiled);
         Assert.That(File.ReadAllBytes(compiled), Is.EqualTo(File.ReadAllBytes(Fixture(profile, baseFilename, ".bin"))),
             "XNA does not compile the source to the fixture's shader");
+    }
+
+    /// <summary>
+    /// A fixture whose source gives a constant a default value: XNA stores it in
+    /// the Xbox table big-endian, the reader flips it, and the translation's CTAB
+    /// comment keeps it, which the D3D9 path would otherwise lose. The source
+    /// writes it back too (defaults is a fixed point), but this checks the bytes
+    /// survive the reader, the translator and the AST writer directly.
+    /// </summary>
+    [Test]
+    public void AConstantDefaultSurvivesTheReaderAndTheTranslation()
+    {
+        byte[] defaultValue = new[] { 1f, 2f, 3f, 4f }.SelectMany(BitConverter.GetBytes).ToArray();
+
+        // The reader flips the Xbox table's big-endian default to little-endian.
+        XenosShader source;
+        using (var input = File.OpenRead(Fixture("xvs_3_0", "defaults", ".bin")))
+        {
+            source = new XenosReader(input).ReadShader();
+        }
+        D3D9ConstantDeclaration tint = source.Constants.Declarations.First(d => d.Name == "tint");
+        Assert.That(tint.DefaultValue, Is.EqualTo(defaultValue),
+            "the reader did not flip the Xbox table's default");
+
+        // The translation's CTAB comment carries the default back.
+        byte[] translated = new XenosTranslator(source).Translate();
+        ConstantTable table;
+        using (var stream = new MemoryStream(translated))
+        using (var reader = new ShaderReader(stream))
+        {
+            D3D9Instruction ctab = reader.ReadShader().Instructions.OfType<D3D9Instruction>()
+                .First(i => i.Opcode == Opcode.Comment && i.Params.Count > 0 && i.Params[0] == 0x42415443);
+            using (var ctabReader = new ConstantTableCommentReader(ctab))
+            {
+                table = ctabReader.ReadTable();
+            }
+        }
+        Assert.That(table.Declarations.First(d => d.Name == "tint").DefaultValue,
+            Is.EqualTo(defaultValue), "the translation lost the default in the CTAB comment");
+
+        // And the decompiled HLSL declares it with the initializer.
+        var hlsl = new StringWriter();
+        new Hlsl.HlslAstWriter(new XenosTranslator(source).TranslateToShaderModel()).Write(hlsl);
+        Assert.That(hlsl.ToString(), Does.Contain("float4 tint : register(c4) = float4(1, 2, 3, 4)"));
     }
 
     private static string[] Hex(IEnumerable<uint> words) => words.Select(w => w.ToString("x8")).ToArray();

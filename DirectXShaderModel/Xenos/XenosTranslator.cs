@@ -2151,6 +2151,7 @@ public sealed partial class XenosTranslator
         Int(0);
 
         var typeFixups = new List<(int At, ShaderTypeInfo Type)>();
+        var defaultValueFixups = new List<(int At, byte[] Value)>();
         foreach (D3D9ConstantDeclaration declaration in declarations)
         {
             strings.Add((data.Count, declaration.Name));
@@ -2161,6 +2162,7 @@ public sealed partial class XenosTranslator
             Short(0);
             typeFixups.Add((data.Count, declaration.TypeInfo));
             Int(0);
+            defaultValueFixups.Add((data.Count, declaration.DefaultValue));
             Int(0);
         }
 
@@ -2190,6 +2192,19 @@ public sealed partial class XenosTranslator
                 }
             }
         }
+
+        // A default value is the initializer in register layout, after the type
+        // infos, so each offset can point at it. The reader already read the Xbox
+        // 360 table's value little-endian; a null one stays offset 0.
+        foreach ((int at, byte[] value) in defaultValueFixups)
+        {
+            if (value is { Length: > 0 })
+            {
+                patches.Add((at, data.Count));
+                data.AddRange(value);
+            }
+        }
+
         foreach ((int at, string text) in strings)
         {
             patches.Add((at, data.Count));

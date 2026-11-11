@@ -280,9 +280,36 @@ public class HlslAstWriter : HlslWriter
         return onlyPartialPrecision;
     }
 
-    private static bool IsPartialPrecisionAssignment(HlslTreeNode node)
+    private bool IsPartialPrecisionAssignment(HlslTreeNode node)
     {
-        return node is TempAssignmentNode { Value: ConvertOperation { TargetType: "half" } };
+        if (node is not TempAssignmentNode assignment)
+        {
+            return false;
+        }
+        // The value itself was asked for at partial precision.
+        if (assignment.Value is ConvertOperation { TargetType: "half" })
+        {
+            return true;
+        }
+        // A copy of a variable already declared half holds half values.
+        if (assignment.Value is TempVariableNode variable)
+        {
+            return variable.IsHalf;
+        }
+        // A partial precision input, read without a cast because its signature
+        // already declares it half.
+        if (assignment.Value is RegisterInputNode input
+            && _registers.MethodInputRegisters.FirstOrDefault(d =>
+                d.RegisterKey.Equals(input.RegisterComponentKey.RegisterKey))
+                ?.ResultModifier.HasFlag(ResultModifier.PartialPrecision) == true)
+        {
+            return true;
+        }
+        // A variable named for a value several partial precision reads share: the
+        // cast sits on each reader rather than on the one write.
+        return assignment.TempVariable.Outputs.Count > 0
+            && assignment.TempVariable.Outputs.All(reader =>
+                reader is ConvertOperation { TargetType: "half" });
     }
 
     private void MarkPartialPrecision(HlslTreeNode[] group)

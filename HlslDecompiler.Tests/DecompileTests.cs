@@ -41,6 +41,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "partial_precision")]
     [TestCase("ps_3_0", "partial_precision_variable")]
     [TestCase("ps_3_0", "partial_precision_sample")]
+    [TestCase("ps_3_0", "partial_precision_reused")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]
     [TestCase("ps_3_0", "semantics")]

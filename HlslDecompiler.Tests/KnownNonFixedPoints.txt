@@ -68,6 +68,7 @@ reworded ps_3_0/if_else_in_loop
 reworded ps_3_0/if_nested
 reworded ps_3_0/loop_counter_reuse
 reworded ps_3_0/partial_precision
+reworded ps_3_0/partial_precision_reused
 reworded ps_3_0/point_lights
 reworded ps_3_0/temp_assignment
 reworded ps_3_0/tex1d

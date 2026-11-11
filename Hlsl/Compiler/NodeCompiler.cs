@@ -60,6 +60,44 @@ public sealed class NodeCompiler
         };
     }
 
+    /// <summary>
+    /// Whether HLSL types the value half: built only from half casts, half
+    /// variables, partial precision inputs and literals, which take the other
+    /// operand's type. A variable named but not yet written counts if
+    /// <paramref name="halfVariables"/> holds it.
+    /// </summary>
+    public bool IsHalfValued(HlslTreeNode node, ISet<HlslTreeNode> halfVariables = null)
+    {
+        return IsHalfValued(node, halfVariables, new Dictionary<HlslTreeNode, bool>(ReferenceEqualityComparer.Instance));
+    }
+
+    private bool IsHalfValued(HlslTreeNode node, ISet<HlslTreeNode> halfVariables, Dictionary<HlslTreeNode, bool> known)
+    {
+        if (known.TryGetValue(node, out bool half))
+        {
+            return half;
+        }
+        half = node switch
+        {
+            ConvertOperation cast => cast.TargetType == "half",
+            TempVariableNode variable => variable.IsHalf || halfVariables?.Contains(variable) == true,
+            RegisterInputNode input => IsPartialPrecisionInput(input),
+            ConstantNode => true,
+            Operation operation => operation.Inputs.All(input => IsHalfValued(input, halfVariables, known)),
+            _ => false,
+        };
+        known[node] = half;
+        return half;
+    }
+
+    // An input its signature declares half.
+    public bool IsPartialPrecisionInput(RegisterInputNode input)
+    {
+        return _registers.MethodInputRegisters.FirstOrDefault(d =>
+                d.RegisterKey.Equals(input.RegisterComponentKey.RegisterKey))
+            ?.ResultModifier.HasFlag(ResultModifier.PartialPrecision) == true;
+    }
+
     // The innermost counted loop's variable, which aL refers to; set by the writer.
     public string LoopVariableName { get; set; }
 
@@ -1580,6 +1618,11 @@ public sealed class NodeCompiler
                 ? "bool"
             : reinterpretFloats || (_assigningToInteger && !components.Any(IsFloatValued))
                 ? integerType
+            // A float constructor reads a half cast lane at full precision, and fxc
+            // then drops the _pp of the instruction computing it.
+            : components.Any(c => c is ConvertOperation { TargetType: "half" })
+                && components.All(c => IsHalfValued(c))
+                ? "half"
                 : "float";
         var parts = new List<string>();
         for (int g = 0; g < componentGroups.Count; g++)
@@ -1619,6 +1662,12 @@ public sealed class NodeCompiler
             {
                 parts.Add(boolLane);
                 continue;
+            }
+            // A half lane needs no cast to half.
+            if (type == "half")
+            {
+                group = [.. group.Select(c => c is ConvertOperation { TargetType: "half" } cast
+                    && IsHalfValued(cast.Value) ? cast.Value : c)];
             }
             string compiled = Compile(group, group.Count);
             if (reinterpretFloats && IsFloatValued(group[0]))

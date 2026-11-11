@@ -298,10 +298,7 @@ public class HlslAstWriter : HlslWriter
         }
         // A partial precision input, read without a cast because its signature
         // already declares it half.
-        if (assignment.Value is RegisterInputNode input
-            && _registers.MethodInputRegisters.FirstOrDefault(d =>
-                d.RegisterKey.Equals(input.RegisterComponentKey.RegisterKey))
-                ?.ResultModifier.HasFlag(ResultModifier.PartialPrecision) == true)
+        if (assignment.Value is RegisterInputNode input && _compiler.IsPartialPrecisionInput(input))
         {
             return true;
         }
@@ -2470,7 +2467,8 @@ public class HlslAstWriter : HlslWriter
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
-                    ?? ScatteredInstruction(readers, recording, roots);
+                    ?? ScatteredInstruction(readers, recording, roots)
+                    ?? DroppedHalfCast(readers, roots, named.Concat(assignments));
             if (occurrences == null)
             {
                 _lastRecording = recording;
@@ -3303,6 +3301,68 @@ public class HlslAstWriter : HlslWriter
             return [group];
         }
         return null;
+    }
+
+    /// <summary>
+    /// Names a partial precision instruction's lanes where fxc would drop their
+    /// `(half)` cast: read by full-precision arithmetic, or written to a float
+    /// output, the cast folds away, and a vector instruction is _pp only if every
+    /// lane is. A half variable keeps it: `half4 t = x * k` rather than
+    /// `(half4)(x * k) * c`.
+    /// </summary>
+    private List<HlslTreeNode[]> DroppedHalfCast(
+        HashSet<HlslTreeNode> readers,
+        HashSet<HlslTreeNode> roots,
+        IEnumerable<HlslTreeNode[]> named)
+    {
+        // Variables named so far are marked half only when written; their value says.
+        HashSet<HlslTreeNode> halfVariables = HlslTreeNode.NewNodeSet();
+        foreach (TempAssignmentNode assignment in named.SelectMany(group => group).OfType<TempAssignmentNode>())
+        {
+            if (assignment.Value is ConvertOperation { TargetType: "half" })
+            {
+                halfVariables.Add(assignment.TempVariable);
+            }
+        }
+        foreach (IGrouping<int, ConvertOperation> instruction in readers
+            .OfType<ConvertOperation>()
+            .Where(cast => cast.TargetType == "half"
+                && cast.Value.SourceInstruction != 0
+                && !roots.Contains(cast)
+                && !cast.Outputs.Any(reader => reader is TempAssignmentNode))
+            .GroupBy(cast => cast.Value.SourceInstruction))
+        {
+            ConvertOperation[] lanes = [.. instruction.OrderBy(cast => cast.Value.SourceComponent)];
+            if (lanes.Select(cast => cast.Value.SourceComponent).Distinct().Count() != lanes.Length
+                || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
+            {
+                continue;
+            }
+            return [[.. lanes]];
+        }
+        return null;
+    }
+
+    // Whether fxc folds the cast away: arithmetic reads it beside a float operand,
+    // or it is written to a float output. A comparison of halves keeps it, and
+    // other readers are left alone.
+    private bool IsHalfCastDropped(
+        HlslTreeNode cast,
+        HashSet<HlslTreeNode> readers,
+        HashSet<HlslTreeNode> roots,
+        HashSet<HlslTreeNode> halfVariables)
+    {
+        if (roots.Contains(cast))
+        {
+            // CompileOutput strips the cast into a half output.
+            return !_registers.MethodOutputRegisters.Any(output =>
+                output.ResultModifier.HasFlag(ResultModifier.PartialPrecision));
+        }
+        return cast.Outputs.Any(reader => readers.Contains(reader)
+            && (reader is ConvertOperation { TargetType: "half" }
+                ? IsHalfCastDropped(reader, readers, roots, halfVariables)
+                : reader is Operation or ComparisonNode
+                    && !reader.Inputs.All(input => _compiler.IsHalfValued(input, halfVariables))));
     }
 
     // Whether the components, compiled together, are a constructor of them.

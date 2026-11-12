@@ -666,8 +666,9 @@ public sealed class NodeCompiler
     private string TryCompileProductWithOne(List<HlslTreeNode> components)
     {
         if (components[0] is not MultiplyOperation
-            || !components.All(IsFloatValued)
-            || !components.All(c => c.Outputs.Any(o => o is AddOperation))
+            // D3D9 arithmetic records no type, and is all float.
+            || !components.All(c => IsFloatValued(c) || c is Operation && _registers.IsShaderModel3OrEarlier)
+            || !components.All(c => c.Outputs.Any(o => o is AddOperation)) && !IsOneProductBesidePassed(components)
             || components.OfType<RegisterInputNode>().FirstOrDefault() is not RegisterInputNode passed)
         {
             return null;
@@ -700,6 +701,17 @@ public sealed class NodeCompiler
             return null;
         }
         return $"{Compile(others, components.Count)} * {Compile(factors, components.Count)}";
+    }
+
+    // Products that would be one mul with a constructor around one operand, but
+    // for the passed-through lanes: `float4(a, b, c, 1) * k`, its 1 a mov fxc
+    // writes either way, where `float4(a * k.x, ..., k.w)` is a mul per lane.
+    private bool IsOneProductBesidePassed(List<HlslTreeNode> components)
+    {
+        List<HlslTreeNode> products = [.. components.Where(c => c is MultiplyOperation)];
+        return products.Count > 1
+            && IsElementwiseAcross(products)
+            && CountUngroupedOperands(products) == 1;
     }
 
     /// <summary>
@@ -839,6 +851,23 @@ public sealed class NodeCompiler
         return components.Any(g => g.Inputs[0] is CompareOperation or MoveConditionalOperation)
             ? $"({condition})"
             : condition;
+    }
+
+    // A full-precision `a - b` of halves tested by a cmp, written `a >= b`: fxc
+    // compiles a comparison at full precision whatever its operands, but
+    // `a - b >= 0` as an add_pp.
+    private string HalfDifferenceCondition(List<HlslTreeNode> components)
+    {
+        List<SubtractOperation> differences = [.. components.Select(g => g.Inputs[0] as SubtractOperation)];
+        if (differences.Any(difference => difference == null || !IsHalfValued(difference)))
+        {
+            return null;
+        }
+        List<HlslTreeNode> minuends = [.. differences.Select(difference => difference.Minuend)];
+        string left = CompileOperand(minuends);
+        string right = CompileOperand(differences.Select(difference => difference.Subtrahend));
+        // The constant on the right, as CompareConstantTemplate puts it.
+        return minuends.All(ConstantMatcher.IsConstant) ? $"{right} <= {left}" : $"{left} >= {right}";
     }
 
     // A permutation that sorts both operands' distinct lanes together, or null if
@@ -2412,11 +2441,11 @@ public sealed class NodeCompiler
 
             case CompareOperation _:
                 {
-                    var value1 = CompileCondition(components);
+                    var value1 = HalfDifferenceCondition(components) ?? $"{CompileCondition(components)} >= 0";
                     var value2 = Compile(components.Select(g => g.Inputs[1]), components.Count);
                     var value3 = Compile(components.Select(g => g.Inputs[2]), components.Count);
 
-                    return $"{value1} >= 0 ? {value2} : {value3}";
+                    return $"{value1} ? {value2} : {value3}";
                 }
             case GreaterEqualOperation _:
                 {

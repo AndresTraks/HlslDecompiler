@@ -47,6 +47,8 @@ public class DecompileTests
     [TestCase("ps_3_0", "partial_precision_dot")]
     [TestCase("ps_3_0", "partial_precision_saturate")]
     [TestCase("ps_3_0", "partial_precision_loop")]
+    [TestCase("ps_3_0", "partial_precision_compare")]
+    [TestCase("ps_3_0", "product_with_one")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]
     [TestCase("ps_3_0", "semantics")]
@@ -178,6 +180,7 @@ public class DecompileTests
     [TestCase("ps_2_0", "splat_layers")]
     [TestCase("ps_2_0", "luminance_dot")]
     [TestCase("ps_2_0", "matrix2x2_offset")]
+    [TestCase("ps_2_0", "partial_precision_output_lane")]
     [TestCase("ps_3_0", "guarded_average")]
     public void DecompileShaderTest(string profile, string baseFilename)
     {

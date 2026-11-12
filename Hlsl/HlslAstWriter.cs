@@ -2541,8 +2541,9 @@ public class HlslAstWriter : HlslWriter
                     Rewire(twin, variables[i], alongside);
                 }
             }
-            // A named whole register value is repointed in its group; Rewire only
-            // moves graph readers, and a register root has none.
+            // A named register value is repointed in its group; Rewire only moves
+            // graph readers, and a register root has none. A lane named with
+            // others (DroppedHalfCast's) is repointed on its own.
             for (int i = 0; i < registerGroups.Count; i++)
             {
                 if (registerGroups[i].Length == candidate.Length
@@ -2550,7 +2551,12 @@ public class HlslAstWriter : HlslWriter
                         ReferenceEquals(pair.First, pair.Second)))
                 {
                     registerGroups[i] = [.. variables];
+                    continue;
                 }
+                registerGroups[i] = [.. registerGroups[i].Select(root =>
+                    Array.FindIndex(candidate, node => ReferenceEquals(node, root) && node is not ConstantNode) is int lane and >= 0
+                        ? variables[lane]
+                        : root)];
             }
             assignments.Add([.. candidate.Select((node, i) => (HlslTreeNode)new TempAssignmentNode(variables[i], node))]);
         }
@@ -3340,16 +3346,17 @@ public class HlslAstWriter : HlslWriter
                 halfVariables.Add(assignment.TempVariable);
             }
         }
-        foreach (IGrouping<int, ConvertOperation> instruction in readers
+        // An output lane is named with the instruction's other lanes, never alone.
+        foreach (IGrouping<int, ConvertOperation> instruction in readers.Concat(roots).Distinct(ReferenceEqualityComparer.Instance)
             .OfType<ConvertOperation>()
             .Where(cast => cast.TargetType == "half"
                 && Computed(cast).SourceInstruction != 0
-                && !roots.Contains(cast)
                 && !cast.Outputs.Any(reader => reader is TempAssignmentNode))
             .GroupBy(cast => Computed(cast).SourceInstruction))
         {
             ConvertOperation[] lanes = [.. instruction.OrderBy(cast => Computed(cast).SourceComponent)];
-            if (lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
+            if (lanes.All(roots.Contains)
+                || lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
                 || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
             {
                 continue;

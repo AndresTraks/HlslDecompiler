@@ -12,5 +12,5 @@ struct PS_IN
 float4 main(PS_IN i) : COLOR
 {
 	float3 t0 = tex2D(s0, i.texcoord).xyz;
-	return float4(float3(dot(i.texcoord1, t0), dot(i.texcoord2, t0), dot(i.texcoord3, t0)) * i.color.xyz, i.color.w);
+	return float4(dot(i.texcoord1, t0), dot(i.texcoord2, t0), dot(i.texcoord3, t0), 1) * i.color;
 }

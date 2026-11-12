@@ -5,6 +5,8 @@ namespace HlslDecompiler.Hlsl.TemplateMatch;
 /// <summary>
 /// Removes the [-pi, pi) range reduction fxc puts before SM3 sincos
 /// (`frac(x / 2pi + 0.5) * 2pi - pi`); fxc would otherwise reduce twice.
+/// A partial precision reduction has half casts between its steps; the angle
+/// keeps one, so fxc's own reduction of it is partial precision again.
 /// </summary>
 public class TrigonometricRangeReductionTemplate : INodeTemplate
 {
@@ -35,18 +37,20 @@ public class TrigonometricRangeReductionTemplate : INodeTemplate
             return null;
         }
 
-        HlslTreeNode scaled = TryRemoveAddend(node.Inputs[0], -Pi);
+        bool half = false;
+        HlslTreeNode scaled = TryRemoveAddend(WithoutHalfCast(node.Inputs[0], ref half), -Pi);
         if (scaled == null)
         {
             return null;
         }
 
-        if (TryRemoveFactor(scaled, TwoPi) is not FractionalOperation fraction)
+        if (TryRemoveFactor(scaled, TwoPi) is not HlslTreeNode wrapped
+            || WithoutHalfCast(wrapped, ref half) is not FractionalOperation fraction)
         {
             return null;
         }
 
-        HlslTreeNode shifted = TryRemoveAddend(fraction.Value, 0.5f);
+        HlslTreeNode shifted = TryRemoveAddend(WithoutHalfCast(fraction.Value, ref half), 0.5f);
         if (shifted is not MultiplyOperation inner)
         {
             return null;
@@ -64,9 +68,21 @@ public class TrigonometricRangeReductionTemplate : INodeTemplate
         {
             return null;
         }
-        return Math.Abs(factor - 1) < Tolerance
-            ? angle
-            : new MultiplyOperation(new ConstantNode(factor), angle);
+        if (Math.Abs(factor - 1) >= Tolerance)
+        {
+            angle = new MultiplyOperation(new ConstantNode(factor), angle);
+        }
+        return half ? new ConvertOperation(angle, "half") : angle;
+    }
+
+    private static HlslTreeNode WithoutHalfCast(HlslTreeNode node, ref bool half)
+    {
+        if (node is ConvertOperation { TargetType: "half" } cast)
+        {
+            half = true;
+            return cast.Value;
+        }
+        return node;
     }
 
     /// <returns>The other side of the sum, or null if this is not that sum.</returns>

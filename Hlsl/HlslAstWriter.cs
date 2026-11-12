@@ -256,28 +256,44 @@ public class HlslAstWriter : HlslWriter
     /// <summary>
     /// Whether every write of the variable is partial precision, so it can be
     /// declared half. All writes count: fxc mixes _pp and full writes to a register.
+    /// A constant half holds exactly - a loop sum's start - neither qualifies nor
+    /// disqualifies, but some write must be partial precision.
     /// </summary>
     private bool AssignsOnlyPartialPrecision(HlslTreeNode[] group)
     {
-        if (group.Length == 0 || !group.All(IsPartialPrecisionAssignment))
+        if (group.Length == 0 || !group.All(node =>
+            node is TempAssignmentNode assignment && WritesPartialPrecision(assignment) != false))
         {
             return false;
         }
         List<TempVariableNode> variables =
             [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.TempVariable)];
         bool onlyPartialPrecision = true;
+        bool anyPartialPrecision = false;
         new StatementVisitor(_functionStatements).Visit(statement =>
         {
             foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
             {
-                if (variables.Any(variable => ReferenceEquals(variable, assignment.TempVariable))
-                    && !IsPartialPrecisionAssignment(assignment))
+                if (variables.Any(variable => ReferenceEquals(variable, assignment.TempVariable)))
                 {
-                    onlyPartialPrecision = false;
+                    bool? writes = WritesPartialPrecision(assignment);
+                    onlyPartialPrecision &= writes != false;
+                    anyPartialPrecision |= writes == true;
                 }
             }
         });
-        return onlyPartialPrecision;
+        anyPartialPrecision |= group.Any(node => WritesPartialPrecision((TempAssignmentNode)node) == true);
+        return onlyPartialPrecision && anyPartialPrecision;
+    }
+
+    // Null for a constant half holds exactly, which is the same at either precision.
+    private bool? WritesPartialPrecision(TempAssignmentNode assignment)
+    {
+        if (assignment.Value is ConstantNode constant && (float)(Half)constant.Value == constant.Value)
+        {
+            return null;
+        }
+        return IsPartialPrecisionAssignment(assignment);
     }
 
     private bool IsPartialPrecisionAssignment(HlslTreeNode node)
@@ -3327,13 +3343,13 @@ public class HlslAstWriter : HlslWriter
         foreach (IGrouping<int, ConvertOperation> instruction in readers
             .OfType<ConvertOperation>()
             .Where(cast => cast.TargetType == "half"
-                && cast.Value.SourceInstruction != 0
+                && Computed(cast).SourceInstruction != 0
                 && !roots.Contains(cast)
                 && !cast.Outputs.Any(reader => reader is TempAssignmentNode))
-            .GroupBy(cast => cast.Value.SourceInstruction))
+            .GroupBy(cast => Computed(cast).SourceInstruction))
         {
-            ConvertOperation[] lanes = [.. instruction.OrderBy(cast => cast.Value.SourceComponent)];
-            if (lanes.Select(cast => cast.Value.SourceComponent).Distinct().Count() != lanes.Length
+            ConvertOperation[] lanes = [.. instruction.OrderBy(cast => Computed(cast).SourceComponent)];
+            if (lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
                 || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
             {
                 continue;
@@ -3343,9 +3359,19 @@ public class HlslAstWriter : HlslWriter
         return null;
     }
 
+    // The instruction's own value under its cast: a _sat_pp result is cast after
+    // the saturate, and only the instruction's node carries its position.
+    private static HlslTreeNode Computed(ConvertOperation cast)
+    {
+        return cast.Value is SaturateOperation { SourceInstruction: 0 } saturate
+            ? saturate.Inputs[0]
+            : cast.Value;
+    }
+
     // Whether fxc folds the cast away: arithmetic reads it beside a float operand,
-    // or it is written to a float output. A comparison of halves keeps it, and
-    // other readers are left alone.
+    // or it is written to a float output. A comparison of halves keeps it, a
+    // vector operand (a dot's) is judged by what reads the vector, and other
+    // readers are left alone.
     private bool IsHalfCastDropped(
         HlslTreeNode cast,
         HashSet<HlslTreeNode> readers,
@@ -3359,7 +3385,7 @@ public class HlslAstWriter : HlslWriter
                 output.ResultModifier.HasFlag(ResultModifier.PartialPrecision));
         }
         return cast.Outputs.Any(reader => readers.Contains(reader)
-            && (reader is ConvertOperation { TargetType: "half" }
+            && (reader is ConvertOperation { TargetType: "half" } or GroupNode
                 ? IsHalfCastDropped(reader, readers, roots, halfVariables)
                 : reader is Operation or ComparisonNode
                     && !reader.Inputs.All(input => _compiler.IsHalfValued(input, halfVariables))));

@@ -83,7 +83,7 @@ public sealed class NodeCompiler
             TempVariableNode variable => variable.IsHalf || halfVariables?.Contains(variable) == true,
             RegisterInputNode input => IsPartialPrecisionInput(input),
             ConstantNode => true,
-            Operation operation => operation.Inputs.All(input => IsHalfValued(input, halfVariables, known)),
+            Operation or GroupNode => node.Inputs.All(input => IsHalfValued(input, halfVariables, known)),
             _ => false,
         };
         known[node] = half;

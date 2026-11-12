@@ -266,10 +266,15 @@ public class HlslAstWriter : HlslWriter
         {
             return false;
         }
-        List<TempVariableNode> variables =
-            [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.TempVariable)];
+        return WritesOnlyPartialPrecision(
+            [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.TempVariable)],
+            group.Any(node => WritesPartialPrecision((TempAssignmentNode)node) == true));
+    }
+
+    // Whether the function's writes of the variables are all partial precision.
+    private bool WritesOnlyPartialPrecision(List<TempVariableNode> variables, bool anyPartialPrecision = false)
+    {
         bool onlyPartialPrecision = true;
-        bool anyPartialPrecision = false;
         new StatementVisitor(_functionStatements).Visit(statement =>
         {
             foreach (TempAssignmentNode assignment in statement.Outputs.Values.OfType<TempAssignmentNode>())
@@ -282,7 +287,6 @@ public class HlslAstWriter : HlslWriter
                 }
             }
         });
-        anyPartialPrecision |= group.Any(node => WritesPartialPrecision((TempAssignmentNode)node) == true);
         return onlyPartialPrecision && anyPartialPrecision;
     }
 
@@ -1122,7 +1126,16 @@ public class HlslAstWriter : HlslWriter
 
     private void WriteClipStatement( ClipStatement clip)
     {
-        string compiled = _compiler.Compile(clip.Values.Select(Reduce));
+        HlslTreeNode[][] values = [[.. clip.Values.Select(Reduce)]];
+        // A fetch a later statement reads again is repeated, which fxc merges for
+        // free, unless it is half: then it is named here (DroppedHalfCast), or the
+        // cast this read drops costs the merged fetch its _pp.
+        if (Reachable(values[0]).Any(node => node is ConvertOperation { TargetType: "half" } cast
+            && Computed(cast) is TextureLoadOutputNode))
+        {
+            WriteSharedSubexpressions(values);
+        }
+        string compiled = _compiler.Compile(values[0]);
         WriteLine($"clip({compiled});");
     }
 
@@ -1603,6 +1616,15 @@ public class HlslAstWriter : HlslWriter
                 if (!_declaredVariables.Add(variable) || !_declaredIndices.Add(variable.DeclarationIndex.Value))
                 {
                     continue;
+                }
+                // Declared ahead of its writes (before an if whose branches assign
+                // it), so they say whether it is half.
+                if (WritesOnlyPartialPrecision([.. group.Cast<TempVariableNode>()]))
+                {
+                    foreach (TempVariableNode lane in group.Cast<TempVariableNode>())
+                    {
+                        lane.IsHalf = true;
+                    }
                 }
                 string size = variable.VariableSize != 1 ? variable.VariableSize.ToString() : "";
                 string type = variable.Qualifier + variable.TypeName;
@@ -2259,7 +2281,9 @@ public class HlslAstWriter : HlslWriter
         }
         foreach (TempAssignmentNode assignment in named.SelectMany(g => g).OfType<TempAssignmentNode>())
         {
-            if (assignment.Value is LoadStructuredNode or TextureLoadOutputNode or ResourceLoadNode
+            // Or a fetch named half (DroppedHalfCast's): later readers read the cast.
+            if ((assignment.Value is LoadStructuredNode or TextureLoadOutputNode or ResourceLoadNode
+                    || assignment.Value is ConvertOperation { TargetType: "half", Value: TextureLoadOutputNode })
                 && !_namedLoads.ContainsKey(assignment.Value))
             {
                 _namedLoads[assignment.Value] = (assignment.TempVariable, _currentStatement);
@@ -2475,11 +2499,14 @@ public class HlslAstWriter : HlslWriter
 
             // The fallbacks run only when no node-identical repeat is left, so naming
             // an inner node never preempts naming the nest around it.
+            // A fetch losing its half cast is named whole before SplitRead names
+            // the one lane read here.
             List<HlslTreeNode[]> occurrences = candidate != null
                 ? [candidate]
                 : TextRepeats(recording, grouped, roots)
                     ?? RootOfSeveralRegisters(registerGroups, recording)
                     ?? RootReadAgain(registerGroups, recording, named.Concat(assignments).ToList())
+                    ?? DroppedHalfCast(readers, roots, named.Concat(assignments), fetchesOnly: true)
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
@@ -3335,7 +3362,8 @@ public class HlslAstWriter : HlslWriter
     private List<HlslTreeNode[]> DroppedHalfCast(
         HashSet<HlslTreeNode> readers,
         HashSet<HlslTreeNode> roots,
-        IEnumerable<HlslTreeNode[]> named)
+        IEnumerable<HlslTreeNode[]> named,
+        bool fetchesOnly = false)
     {
         // Variables named so far are marked half only when written; their value says.
         HashSet<HlslTreeNode> halfVariables = HlslTreeNode.NewNodeSet();
@@ -3351,6 +3379,7 @@ public class HlslAstWriter : HlslWriter
             .OfType<ConvertOperation>()
             .Where(cast => cast.TargetType == "half"
                 && Computed(cast).SourceInstruction != 0
+                && (!fetchesOnly || Computed(cast) is TextureLoadOutputNode)
                 && !cast.Outputs.Any(reader => reader is TempAssignmentNode))
             .GroupBy(cast => Computed(cast).SourceInstruction))
         {
@@ -3360,6 +3389,20 @@ public class HlslAstWriter : HlslWriter
                 || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
             {
                 continue;
+            }
+            // A fetch later statements read too is named whole, and they read the
+            // name: fxc merges the fetches, and one read without its cast costs
+            // them all the _pp.
+            if (Computed(lanes[0]) is TextureLoadOutputNode && _currentStatement != null)
+            {
+                lanes = [.. ValuesOf(_functionStatements)
+                    .OfType<ConvertOperation>()
+                    .Where(cast => cast.TargetType == "half"
+                        && Computed(cast).SourceInstruction == instruction.Key)
+                    .Concat(lanes)
+                    .GroupBy(cast => Computed(cast).SourceComponent)
+                    .Select(lane => lane.FirstOrDefault(lanes.Contains) ?? lane.First())
+                    .OrderBy(cast => Computed(cast).SourceComponent)];
             }
             return [[.. lanes]];
         }
@@ -3376,9 +3419,9 @@ public class HlslAstWriter : HlslWriter
     }
 
     // Whether fxc folds the cast away: arithmetic reads it beside a float operand,
-    // or it is written to a float output. A comparison of halves keeps it, a
-    // vector operand (a dot's) is judged by what reads the vector, and other
-    // readers are left alone.
+    // or it is written to a float output, or a gradient fetch reads it. A
+    // comparison of halves keeps it, a vector operand (a dot's) is judged by what
+    // reads the vector, and other readers are left alone.
     private bool IsHalfCastDropped(
         HlslTreeNode cast,
         HashSet<HlslTreeNode> readers,
@@ -3395,7 +3438,9 @@ public class HlslAstWriter : HlslWriter
             && (reader is ConvertOperation { TargetType: "half" } or GroupNode
                 ? IsHalfCastDropped(reader, readers, roots, halfVariables)
                 : reader is Operation or ComparisonNode
-                    && !reader.Inputs.All(input => _compiler.IsHalfValued(input, halfVariables))));
+                    ? !reader.Inputs.All(input => _compiler.IsHalfValued(input, halfVariables))
+                    // A gradient fetch's arguments, unlike other fetches'.
+                    : reader is TextureLoadOutputNode fetch && fetch.Controls.HasFlag(TextureLoadControls.Grad)));
     }
 
     // Whether the components, compiled together, are a constructor of them.

@@ -29,6 +29,12 @@ public class ReflectionEquivalenceTests
             + "use of the texture coordinate partial, declares the coordinate partial "
             + "too. What the shader computes is the same; the interpolator is hinted a "
             + "lower precision. The instruction writer keeps the halves apart.")],
+        ["ps_2_0/partial_precision_output_copy"] = [("instruction",
+            "The inputs t1-t3 are declared dcl where the original's were dcl_pp. The "
+            + "instruction writer declares r0 a float4, as the texture fetch into it is "
+            + "full precision, and multiplies the inputs by its lanes; fxc, finding a "
+            + "full-precision use of each input, declares them full precision. The AST "
+            + "writer names the half values and declares the same.")],
         ["hs_5_0/patch_semantic_index"] = [("ast",
             "Two fork phases where the original had six. The patch constants b210 and "
             + "b120 are a weighted sum of two control points each, written as one "

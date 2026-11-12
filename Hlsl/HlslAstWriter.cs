@@ -3374,7 +3374,10 @@ public class HlslAstWriter : HlslWriter
                 halfVariables.Add(assignment.TempVariable);
             }
         }
-        // An output lane is named with the instruction's other lanes, never alone.
+        // An output lane is named with the instruction's other lanes, never alone,
+        // except in ps_2_x and earlier: there a plain mov copies the _pp temp to
+        // the output, and the cast is lost unless the temp is named half.
+        bool outputsCopied = _shader.Type == ShaderType.Pixel && _shader.MajorVersion <= 2;
         foreach (IGrouping<int, ConvertOperation> instruction in readers.Concat(roots).Distinct(ReferenceEqualityComparer.Instance)
             .OfType<ConvertOperation>()
             .Where(cast => cast.TargetType == "half"
@@ -3384,7 +3387,7 @@ public class HlslAstWriter : HlslWriter
             .GroupBy(cast => Computed(cast).SourceInstruction))
         {
             ConvertOperation[] lanes = [.. instruction.OrderBy(cast => Computed(cast).SourceComponent)];
-            if (lanes.All(roots.Contains)
+            if (lanes.All(roots.Contains) && !outputsCopied
                 || lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
                 || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
             {
@@ -3440,7 +3443,9 @@ public class HlslAstWriter : HlslWriter
                 : reader is Operation or ComparisonNode
                     ? !reader.Inputs.All(input => _compiler.IsHalfValued(input, halfVariables))
                     // A gradient fetch's arguments, unlike other fetches'.
-                    : reader is TextureLoadOutputNode fetch && fetch.Controls.HasFlag(TextureLoadControls.Grad)));
+                    : reader is TextureLoadOutputNode fetch && fetch.Controls.HasFlag(TextureLoadControls.Grad)
+                        // A matrix's constant registers, never half.
+                        || reader is MatrixMultiplyOutputNode));
     }
 
     // Whether the components, compiled together, are a constructor of them.
@@ -3507,8 +3512,11 @@ public class HlslAstWriter : HlslWriter
             .Where(node => CostsAnInstruction(node)
                 && !roots.Contains(node)
                 && !grouped.Contains(node))
-            // Not already named, or it would be named every round.
-            .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode))
+            // Not already named, or it would be named every round; a name of its
+            // half cast names it too.
+            .Where(node => !node.Outputs.Any(reader => reader is TempAssignmentNode
+                || reader is ConvertOperation { TargetType: "half" } cast
+                    && cast.Outputs.Any(output => output is TempAssignmentNode)))
             .Select(node => (Node: node, Read: WorthNaming(node, writes, text)))
             .Where(node => node.Read > 1)
             .OrderByDescending(node => node.Read)

@@ -35,6 +35,13 @@ public class ReflectionEquivalenceTests
             + "full precision, and multiplies the inputs by its lanes; fxc, finding a "
             + "full-precision use of each input, declares them full precision. The AST "
             + "writer names the half values and declares the same.")],
+        ["ps_3_0/partial_precision_input"] = [("instruction",
+            "The input t1 is declared dcl_texcoord1 where the original's was "
+            + "dcl_texcoord1_pp. Its one read is a dp3_pp against a constant, which "
+            + "the original cast half; the instruction writer writes the constant "
+            + "as it is, and fxc, finding a full-precision read of the input, "
+            + "declares it full precision. The AST writer casts the constant and "
+            + "declares the same.")],
         ["hs_5_0/patch_semantic_index"] = [("ast",
             "Two fork phases where the original had six. The patch constants b210 and "
             + "b120 are a weighted sum of two control points each, written as one "

@@ -1844,7 +1844,67 @@ public class HlslAstWriter : HlslWriter
     {
         node = _templateMatcher.Reduce(node);
         NodeFinalizer.Finalize([node]);
+        CastConstantsBesideHalfInputs(node);
         return node;
+    }
+
+    /// <summary>
+    /// fxc declares an input dcl_pp only where every read of it is half, and a
+    /// float constant beside it in an instruction makes the read full precision.
+    /// The original's constant was cast half, which leaves nothing in the
+    /// bytecode but the _pp, so a _pp instruction reading a half input casts the
+    /// constants it reads.
+    /// </summary>
+    private void CastConstantsBesideHalfInputs(HlslTreeNode root)
+    {
+        if (!_registers.IsShaderModel3OrEarlier)
+        {
+            return;
+        }
+        foreach (ConvertOperation cast in Reachable([root]).OfType<ConvertOperation>()
+            .Where(cast => cast.TargetType == "half" && cast.Value is Operation).ToList())
+        {
+            // The instruction's own nodes: the result and what it built unstamped.
+            var reads = new List<(HlslTreeNode Reader, int Index)>();
+            var visited = HlslTreeNode.NewNodeSet();
+            void Collect(HlslTreeNode node)
+            {
+                if (!visited.Add(node))
+                {
+                    return;
+                }
+                for (int i = 0; i < node.Inputs.Count; i++)
+                {
+                    HlslTreeNode input = node.Inputs[i];
+                    if (input is RegisterInputNode)
+                    {
+                        reads.Add((node, i));
+                    }
+                    else if (input is GroupNode
+                        || input is Operation and not ConvertOperation && input.SourceInstruction == 0)
+                    {
+                        Collect(input);
+                    }
+                }
+            }
+            Collect(cast.Value);
+            if (!reads.Any(read => _compiler.IsPartialPrecisionInput((RegisterInputNode)read.Reader.Inputs[read.Index])))
+            {
+                continue;
+            }
+            foreach ((HlslTreeNode reader, int index) in reads)
+            {
+                var constant = (RegisterInputNode)reader.Inputs[index];
+                if (_registers.FindConstant(constant) == null)
+                {
+                    continue;
+                }
+                constant.Outputs.Remove(reader);
+                var halfConstant = new ConvertOperation(constant, "half");
+                reader.Inputs[index] = halfConstant;
+                halfConstant.Outputs.Add(reader);
+            }
+        }
     }
 
     private static bool IsPhiRead(HlslTreeNode value)

@@ -77,7 +77,8 @@ public class DotProduct3Template : IGroupTemplate
                 // If one of the arguments is a matrix, allow the other argument to be arbitrary.
                 return new DotProductContext(new GroupNode(a, b, c), new GroupNode(x, y, z));
             }
-            if (_templateMatcher.CanGroupComponents(y, z, allowMatrixColumn))
+            if (_templateMatcher.CanGroupComponents(y, z, allowMatrixColumn)
+                || _templateMatcher.AreFreeDots(x, y, z))
             {
                 return new DotProductContext(new GroupNode(a, b, c), new GroupNode(x, y, z));
             }
@@ -85,13 +86,11 @@ public class DotProduct3Template : IGroupTemplate
         else if ((allowMatrixColumn
             && _templateMatcher.SharesMatrixColumnOrRow(dot.Y.Inputs[1], cz.Factor2))
             || (_templateMatcher.CanGroupComponents(dot.Y.Inputs[1], cz.Factor2, allowMatrixColumn)
-                && dot.X.Inputs[0] is not DotProductOperation
-                && b is not DotProductOperation
-                && c is not DotProductOperation
+                && !_templateMatcher.MayBeMatrixRows(dot.X.Inputs[0], b, c)
                 && !IsTransposedGather(dot.X.Inputs[0], b, c)))
         {
             // The other side is a matrix or one register, so this side may be
-            // arbitrary, except dots: those are matrix multiply rows.
+            // arbitrary, except matrix rows: those are a matrix multiply.
             return new DotProductContext(
                 new GroupNode(dot.X.Inputs[0], b, c),
                 new GroupNode(dot.Y.Inputs[0], dot.Y.Inputs[1], cz.Factor2));

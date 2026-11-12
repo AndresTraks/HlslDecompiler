@@ -442,6 +442,55 @@ public class NodeGrouper
         return multiply.Factor1 is ConstantNode && CanGroupComponents(multiply.Factor2, node2);
     }
 
+    /// <summary>
+    /// Whether dots among the components may be rows of a matrix multiply, which
+    /// the multiplication grouper must see first.
+    /// </summary>
+    public bool MayBeMatrixRows(params HlslTreeNode[] components)
+    {
+        return components.Any(component => component is DotProductOperation)
+            && !AreFreeDots(components);
+    }
+
+    /// <summary>
+    /// Dots of one vector against rows no matrix holds: each row is shader
+    /// inputs or computed, as a tangent frame is. A matrix's rows are constants,
+    /// buffer loads or indexed reads, however they are addressed.
+    /// </summary>
+    public bool AreFreeDots(params HlslTreeNode[] components)
+    {
+        // A dp3_pp is a dot under a half cast.
+        HlslTreeNode[] values = [.. components.Select(component =>
+            component is ConvertOperation { TargetType: "half", Value: DotProductOperation dot } ? dot : component)];
+        if (!values.All(value => value is DotProductOperation))
+        {
+            return false;
+        }
+        DotProductOperation[] dots = [.. values.Cast<DotProductOperation>()];
+        foreach (GroupNode shared in new[] { dots[0].X, dots[0].Y })
+        {
+            List<GroupNode> rows = [];
+            foreach (DotProductOperation dot in dots)
+            {
+                if (AreNodesEquivalent(dot.X, shared))
+                {
+                    rows.Add(dot.Y);
+                }
+                else if (AreNodesEquivalent(dot.Y, shared))
+                {
+                    rows.Add(dot.X);
+                }
+            }
+            if (rows.Count == dots.Length
+                && rows.SelectMany(row => row.Inputs).All(input => input is Operation and not LoadStructuredNode
+                    || input is RegisterInputNode register && _registers.FindConstant(register) == null))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public bool SharesMatrixColumnOrRow(RegisterInputNode input1, RegisterInputNode input2)
     {
         return SharesMatrixColumn(input1, input2)

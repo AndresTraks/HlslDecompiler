@@ -61,12 +61,11 @@ public class DotProduct2Template : IGroupTemplate
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
                 }
                 if (_templateMatcher.CanGroupComponents(x, y, allowMatrixColumn)
-                    && a is not DotProductOperation
-                    && b is not DotProductOperation
+                    && !_templateMatcher.MayBeMatrixRows(a, b)
                     && !IsTransposedGather(a, b))
                 {
                     // The other side is one register, so this side may be arbitrary.
-                    // Not dots: they group as rows of a matrix multiply instead.
+                    // Not matrix rows: they group as a matrix multiply instead.
                     return new DotProductContext(new GroupNode(a, b), new GroupNode(x, y));
                 }
                 // `a*a + b*b` is a length squared over any components.
@@ -88,8 +87,10 @@ public class DotProduct2Template : IGroupTemplate
             // Deliberately not a mirror of the allowance above: an arbitrary side
             // here would eat components the cross and normalize groupers claim
             // later, at compile time. Plain reads are allowed, since no other
-            // grouper uses them and fxc's operand order decides which side they're on.
-            if (!IsPlainRead(x) || !IsPlainRead(y) || IsTransposedGather(x, y))
+            // grouper uses them and fxc's operand order decides which side they're on;
+            // so are dots outside a matrix multiply.
+            if (!(IsPlainRead(x) && IsPlainRead(y) || _templateMatcher.AreFreeDots(x, y))
+                || IsTransposedGather(x, y))
             {
                 return null;
             }

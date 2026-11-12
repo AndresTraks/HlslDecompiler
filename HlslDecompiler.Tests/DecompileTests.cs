@@ -54,6 +54,8 @@ public class DecompileTests
     [TestCase("ps_3_0", "partial_precision_clip")]
     [TestCase("ps_3_0", "partial_precision_matrix")]
     [TestCase("ps_3_0", "partial_precision_sincos")]
+    [TestCase("ps_3_0", "partial_precision_tangent_space")]
+    [TestCase("ps_3_0", "tangent_space_dot")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]
     [TestCase("ps_3_0", "semantics")]

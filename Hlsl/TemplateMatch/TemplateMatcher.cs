@@ -158,6 +158,20 @@ public class TemplateMatcher
         return _nodeGrouper.CanGroupComponents(a, b, allowMatrixColumn);
     }
 
+    public bool MayBeMatrixRows(params HlslTreeNode[] components)
+    {
+        return _nodeGrouper.MayBeMatrixRows(components);
+    }
+
+    /// <summary>
+    /// Dots that no other grouper claims: not matrix rows, and the cross and
+    /// normalize groupers take products, not dots.
+    /// </summary>
+    public bool AreFreeDots(params HlslTreeNode[] components)
+    {
+        return _nodeGrouper.AreFreeDots(components);
+    }
+
     public bool SharesMatrixColumnOrRow(HlslTreeNode x, HlslTreeNode y)
     {
         if (x is RegisterInputNode r1 && y is RegisterInputNode r2)

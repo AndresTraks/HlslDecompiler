@@ -2631,6 +2631,7 @@ public class HlslAstWriter : HlslWriter
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
                     ?? ScatteredInstruction(readers, recording, roots)
+                    ?? PackedDerivatives(readers, roots, named.Concat(assignments))
                     ?? DroppedHalfCast(readers, roots, named.Concat(assignments));
             if (occurrences == null)
             {
@@ -3528,6 +3529,74 @@ public class HlslAstWriter : HlslWriter
                     .OrderBy(cast => Computed(cast).SourceComponent)];
             }
             return [[.. lanes]];
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Names a value's ddx and ddy where one multiply scales both by one factor, as
+    /// gradients for a gradient fetch (`mul r1, r1, c0.y` over dsx in .xy and dsy in
+    /// .zw). Written inline, fxc scales each with its own mul; named, it packs them
+    /// again. Scaled by different factors fxc packs them anyway, and other readers
+    /// (a cross of derivatives) are left alone. One at a time, a named one read
+    /// through its variable.
+    /// </summary>
+    private static List<HlslTreeNode[]> PackedDerivatives(
+        HashSet<HlslTreeNode> readers,
+        HashSet<HlslTreeNode> roots,
+        IEnumerable<HlslTreeNode[]> named)
+    {
+        var valueOf = new Dictionary<HlslTreeNode, HlslTreeNode>(ReferenceEqualityComparer.Instance);
+        foreach (TempAssignmentNode assignment in named.SelectMany(group => group).OfType<TempAssignmentNode>())
+        {
+            valueOf[assignment.TempVariable] = assignment.Value;
+        }
+        static bool IsDerivative(HlslTreeNode node) =>
+            node is PartialDerivativeXOperation or PartialDerivativeYOperation;
+        foreach (IGrouping<int, HlslTreeNode> instruction in readers
+            .Where(node => node.SourceInstruction != 0 && node is MultiplyOperation)
+            .GroupBy(node => node.SourceInstruction))
+        {
+            // Each lane a derivative times the factor.
+            List<(HlslTreeNode Derivative, HlslTreeNode Factor)> lanes = [];
+            foreach (HlslTreeNode lane in instruction)
+            {
+                HlslTreeNode[] inputs = [.. lane.Inputs.Select(input => valueOf.GetValueOrDefault(input, input))];
+                int d = Array.FindIndex(inputs, IsDerivative);
+                if (inputs.Length != 2 || d < 0 || IsDerivative(inputs[1 - d]))
+                {
+                    break;
+                }
+                lanes.Add((inputs[d], inputs[1 - d]));
+            }
+            HlslTreeNode factor = lanes.FirstOrDefault().Factor;
+            if (lanes.Count != instruction.Count()
+                || !lanes.All(lane => ReferenceEquals(lane.Factor, factor)
+                    || lane.Factor is ConstantNode constant && factor is ConstantNode first
+                        && constant.Value == first.Value))
+            {
+                continue;
+            }
+            HlslTreeNode[] derivatives = [.. lanes
+                .Select(lane => lane.Derivative)
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .Cast<HlslTreeNode>()];
+            HlslTreeNode[] across = [.. derivatives.OfType<PartialDerivativeXOperation>()];
+            HlslTreeNode[] down = [.. derivatives.OfType<PartialDerivativeYOperation>()];
+            if (across.Length == 0 || down.Length == 0
+                || !across.Select(node => node.Inputs[0]).ToHashSet(ReferenceEqualityComparer.Instance)
+                    .SetEquals(down.Select(node => node.Inputs[0])))
+            {
+                continue;
+            }
+            foreach (HlslTreeNode[] derivative in new[] { across, down })
+            {
+                if (derivative.All(node => !roots.Contains(node)
+                    && !node.Outputs.Any(reader => reader is TempAssignmentNode)))
+                {
+                    return [[.. derivative.OrderBy(node => node.SourceComponent)]];
+                }
+            }
         }
         return null;
     }

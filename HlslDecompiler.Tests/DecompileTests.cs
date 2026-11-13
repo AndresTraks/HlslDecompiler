@@ -59,6 +59,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "partial_precision_bias_fetch")]
     [TestCase("ps_3_0", "loop_constant_index")]
     [TestCase("ps_3_0", "branch_constant_index")]
+    [TestCase("ps_3_0", "scaled_gradients")]
     [TestCase("ps_3_0", "while_condition")]
     [TestCase("ps_3_0", "counted_loop_condition")]
     [TestCase("ps_3_0", "tangent_space_dot")]

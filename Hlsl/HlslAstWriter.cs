@@ -2548,6 +2548,43 @@ public class HlslAstWriter : HlslWriter
     /// after each. Measured on text because grouping changes what is written.
     /// A measurement of these groups already made stands for the first compile.
     /// </summary>
+    /// <summary>
+    /// Whether the candidate reads the new value of a variable this statement
+    /// reassigns: read by a group written after the reassignment. A name sorts
+    /// ahead of a reassignment, where the variable still holds its old value -
+    /// `t3 = tex(a[t2.x]); t2.x = i;` - and a read of the new value cannot be told
+    /// from a read of the old. Left in its group, it is read after the assignment.
+    /// </summary>
+    private static bool ReadsOwnAssignment(HlslTreeNode[] candidate, IList<HlslTreeNode[]> registerGroups)
+    {
+        HashSet<HlslTreeNode> read = HlslTreeNode.NewNodeSet();
+        foreach (HlslTreeNode node in Reachable(candidate))
+        {
+            read.Add(node);
+        }
+        for (int g = 0; g < registerGroups.Count; g++)
+        {
+            // A first assignment is sorted among the names by its number; a
+            // reassignment keeps the number it had before the statement.
+            foreach (TempAssignmentNode assignment in registerGroups[g].OfType<TempAssignmentNode>()
+                .Where(assignment => assignment.IsReassignment))
+            {
+                if (!read.Contains(assignment.TempVariable) && !read.Contains(assignment))
+                {
+                    continue;
+                }
+                for (int later = g + 1; later < registerGroups.Count; later++)
+                {
+                    if (Reachable(registerGroups[later]).Any(node => candidate.Contains(node)))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private List<HlslTreeNode[]> NameRepeatedText(
         IList<HlslTreeNode[]> registerGroups, List<HlslTreeNode[]> named, HashSet<HlslTreeNode> roots,
         CompileMeasurement measured)
@@ -2612,7 +2649,7 @@ public class HlslAstWriter : HlslWriter
             candidate = occurrences[0];
             // Rewiring a shared reader would leak the name into a later statement
             // outside its scope (e.g. the other branch of an if); stop instead.
-            if (ReadersOutOfScope(occurrences))
+            if (ReadersOutOfScope(occurrences) || ReadsOwnAssignment(candidate, registerGroups))
             {
                 _lastRecording = recording;
                 return assignments;

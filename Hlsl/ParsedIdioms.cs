@@ -119,13 +119,6 @@ internal sealed class ParsedIdioms
             }
             index ??= tested;
         }
-        // A loop counter or a register read: an index computed into a register
-        // is read by the chain's statements, and the subscript would hide that
-        // read from them, so the register could be reassigned before it.
-        if (Moved(index) is not (PhiNode or RegisterInputNode))
-        {
-            return null;
-        }
         RegisterComponentKey first = elements[count - 1].RegisterComponentKey;
         if (first.RegisterKey is not D3D9RegisterKey { Type: RegisterType.Const } firstRegister
             || _registerState.FindConstantOfComponent(first) is not ConstantDeclaration array

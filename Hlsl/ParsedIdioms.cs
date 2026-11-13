@@ -57,6 +57,10 @@ internal sealed class ParsedIdioms
                 TakeApart(sum, Chain(sum));
             }
         }
+        foreach (LogicalOrOperation either in Values().OfType<LogicalOrOperation>().ToList())
+        {
+            Absorb(either);
+        }
         foreach (CompareOperation select in Values().OfType<CompareOperation>().ToList())
         {
             // Already taken apart as part of an enclosing chain.
@@ -73,6 +77,129 @@ internal sealed class ParsedIdioms
                 TakeApart(select, chain);
             }
         }
+    }
+
+    /// <summary>
+    /// `p || q` from `p || ((q || p) && !p)`, or `p || (q && !p)`: fxc's unrolled
+    /// early-out loop tests the first exit again under its own negation. Rewired in
+    /// place, as a return or break holds its condition with no way to replace it;
+    /// so only where the and and inner or are read by nothing else, and held by
+    /// nothing but the temp registers they were written to.
+    /// </summary>
+    private void Absorb(LogicalOrOperation either)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            HlslTreeNode first = either.Inputs[i];
+            if (either.Inputs[1 - i] is not LogicalAndOperation both || !IsOnlyReadBy(both, either))
+            {
+                continue;
+            }
+            for (int j = 0; j < 2; j++)
+            {
+                HlslTreeNode negated = both.Inputs[j];
+                if (!AreComplements(negated, first))
+                {
+                    continue;
+                }
+                HlslTreeNode other = both.Inputs[1 - j];
+                LogicalOrOperation inner = null;
+                // `q || p` under the negation of p is just q.
+                if (other is LogicalOrOperation candidate && IsOnlyReadBy(candidate, both))
+                {
+                    int repeated = ReferenceEquals(candidate.Inputs[0], first) ? 0
+                        : ReferenceEquals(candidate.Inputs[1], first) ? 1
+                        : -1;
+                    if (repeated >= 0)
+                    {
+                        inner = candidate;
+                        other = candidate.Inputs[1 - repeated];
+                    }
+                }
+                both.Replace(other);
+                both.Outputs.Clear();
+                DropFromTempRegisters(both);
+                foreach (HlslTreeNode dropped in new[] { inner, negated })
+                {
+                    if (dropped != null && dropped.Outputs.Count == 0 && IsDroppable(dropped))
+                    {
+                        dropped.Remove();
+                        DropFromTempRegisters(dropped);
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    private bool IsOnlyReadBy(HlslTreeNode node, HlslTreeNode reader)
+    {
+        return node.Outputs.All(output => ReferenceEquals(output, reader)) && IsDroppable(node);
+    }
+
+    // Held by no statement but as a temp register's value, which nothing reads once
+    // the node has no readers: such a register is dead, and its entries can go.
+    private bool IsDroppable(HlslTreeNode node)
+    {
+        bool droppable = true;
+        foreach (IList<IStatement> body in _bodies)
+        {
+            new StatementVisitor(body).Visit(statement =>
+            {
+                droppable &= !statement.HeldNodes.Contains(node)
+                    && statement.Outputs.Concat(statement.Inputs)
+                        .All(entry => !ReferenceEquals(entry.Value, node) || entry.Key.RegisterKey.IsTempRegister);
+            });
+        }
+        return droppable;
+    }
+
+    private void DropFromTempRegisters(HlslTreeNode node)
+    {
+        foreach (IList<IStatement> body in _bodies)
+        {
+            new StatementVisitor(body).Visit(statement =>
+            {
+                foreach (IDictionary<RegisterComponentKey, HlslTreeNode> map in new[] { statement.Outputs, statement.Inputs })
+                {
+                    foreach (RegisterComponentKey key in map.Where(e => ReferenceEquals(e.Value, node)).Select(e => e.Key).ToList())
+                    {
+                        map.Remove(key);
+                    }
+                }
+            });
+        }
+    }
+
+    // Whether one condition is the other inverted, as the parser inverts a not of
+    // it: the same operands under the opposite comparison.
+    private static bool AreComplements(HlslTreeNode a, HlslTreeNode b)
+    {
+        if (Condition(a) is not var (leftA, rightA, comparisonA, integerA, unsignedA)
+            || Condition(b) is not var (leftB, rightB, comparisonB, integerB, unsignedB))
+        {
+            return false;
+        }
+        IfComparison inverted = comparisonA switch
+        {
+            IfComparison.GT => IfComparison.LE,
+            IfComparison.GE => IfComparison.LT,
+            IfComparison.LT => IfComparison.GE,
+            IfComparison.LE => IfComparison.GT,
+            IfComparison.EQ => IfComparison.NE,
+            IfComparison.NE => IfComparison.EQ,
+            _ => IfComparison.None,
+        };
+        return inverted != IfComparison.None && inverted == comparisonB
+            && integerA == integerB && unsignedA == unsignedB
+            && ReferenceEquals(leftA, leftB) && ReferenceEquals(rightA, rightB);
+
+        static (HlslTreeNode, HlslTreeNode, IfComparison, bool, bool)? Condition(HlslTreeNode node) => node switch
+        {
+            ComparisonNode { IsBitsTest: false } c => (c.Left, c.Right, c.Comparison, c.IsInteger, c.IsUnsigned),
+            GreaterEqualOperation ge => (ge.Source0, ge.Source1, IfComparison.GE, false, false),
+            _ => null,
+        };
     }
 
     /// <summary>

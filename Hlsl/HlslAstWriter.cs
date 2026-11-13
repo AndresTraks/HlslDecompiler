@@ -3611,7 +3611,8 @@ public class HlslAstWriter : HlslWriter
             or ReflectOutputNode
             or MatrixMultiplyOutputNode
             or LitOutputNode
-            or ConstantNode;
+            or ConstantNode
+            && !NodeCompiler.IsColorIndex(node);
     }
 
     // All occurrences of text that repeats past the budget from different nodes.

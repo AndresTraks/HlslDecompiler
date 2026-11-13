@@ -2921,8 +2921,7 @@ public sealed class NodeCompiler
         }
         for (int i = 0; i < 2; i++)
         {
-            if (multiply.Inputs[i] is ConstantNode { Value: float scale }
-                && Math.Abs(scale - 255.001953f * rows) < 1e-3f * rows
+            if (IsColorScale(multiply.Inputs[i], rows)
                 && multiply.Inputs[1 - i] is RegisterInputNode
                 && System.Text.RegularExpressions.Regex.Match(
                     Compile(multiply.Inputs[1 - i]), @"^(.+)\.([xyzw])$") is { Success: true } lane)
@@ -2933,6 +2932,25 @@ public sealed class NodeCompiler
             }
         }
         return null;
+    }
+
+    private static bool IsColorScale(HlslTreeNode node, int rows)
+    {
+        return node is ConstantNode { Value: float scale }
+            && Math.Abs(scale - 255.001953f * rows) < 1e-3f * rows;
+    }
+
+    /// <summary>
+    /// An input lane scaled to a register index by D3DCOLORtoUBYTE4, left unnamed:
+    /// a variable would hide it from the subscript that writes it so.
+    /// </summary>
+    public static bool IsColorIndex(HlslTreeNode node)
+    {
+        return node is MultiplyOperation multiply
+            && node.Outputs.Count > 0
+            && node.Outputs.All(reader => reader is RelativeAddressNode)
+            && Enumerable.Range(0, 2).Any(i => multiply.Inputs[1 - i] is RegisterInputNode
+                && Enumerable.Range(1, 4).Any(rows => IsColorScale(multiply.Inputs[i], rows)));
     }
 
     /// <summary>

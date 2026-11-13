@@ -7,8 +7,9 @@ struct PS_IN
 	half3 texcoord2 : TEXCOORD2;
 };
 
-half4 main(PS_IN i) : COLOR
+float4 main(PS_IN i) : COLOR
 {
 	half t0 = dot((half3)light.xyz, i.texcoord1);
-	return float4(i.texcoord2 * t0 + (half3)ambient.xyz, 1);
+	half3 t1 = i.texcoord2 * t0 + (half3)ambient.xyz;
+	return float4(t1, 1);
 }

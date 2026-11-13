@@ -2498,6 +2498,13 @@ public sealed class RegisterState
             if (RegisterDeclarations.TryGetValue(registerKey, out var existingDeclaration))
             {
                 existingDeclaration.WriteMask |= instruction.GetDestinationWriteMask();
+                // An output is half only if every write to it is: one full
+                // precision write (a `mov oC0.w, c1.x` after a mul_pp) makes it float.
+                if (registerKey.IsOutput
+                    && !instruction.GetDestinationResultModifier().HasFlag(ResultModifier.PartialPrecision))
+                {
+                    existingDeclaration.ResultModifier &= ~ResultModifier.PartialPrecision;
+                }
             }
             else
             {

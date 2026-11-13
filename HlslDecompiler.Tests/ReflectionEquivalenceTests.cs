@@ -22,13 +22,6 @@ public class ReflectionEquivalenceTests
     // A listed writer that starts declaring the same fails, so its entry gets removed.
     private static readonly Dictionary<string, (string Writer, string Reason)[]> KnownDifferences = new()
     {
-        ["ps_3_0/partial_precision"] = [("ast",
-            "The input is declared dcl_texcoord_pp where the original's was not. The "
-            + "original writes its colour's xy at partial precision and its zw at full; "
-            + "the AST writer returns the whole colour as half4, and fxc, finding every "
-            + "use of the texture coordinate partial, declares the coordinate partial "
-            + "too. What the shader computes is the same; the interpolator is hinted a "
-            + "lower precision. The instruction writer keeps the halves apart.")],
         ["ps_2_0/partial_precision_output_copy"] = [("instruction",
             "The inputs t1-t3 are declared dcl where the original's were dcl_pp. The "
             + "instruction writer declares r0 a float4, as the texture fetch into it is "

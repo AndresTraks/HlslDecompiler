@@ -451,6 +451,13 @@ public sealed class NodeCompiler
 
         if (components.Count > 1)
         {
+            // A dot broadcast to several lanes is one dot to fxc, which merges the
+            // copies the templates built one per lane; it is written once.
+            if (components.All(c => c is DotProductOperation)
+                && components.Skip(1).All(c => NodeGrouper.AreNodesEquivalent(c, components[0])))
+            {
+                components = [.. components.Select(_ => components[0])];
+            }
             if (TryCompileVectorByMatrixProduct(components) is string product)
             {
                 return product;

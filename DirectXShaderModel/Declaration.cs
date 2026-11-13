@@ -137,7 +137,7 @@ public class RegisterDeclaration
 
     public RegisterKey RegisterKey { get; }
     public string Semantic { get; }
-    public ResultModifier ResultModifier { get; }
+    public ResultModifier ResultModifier { get; set; }
 
     /// <summary>
     /// A name the semantic does not give, e.g. edges[1] for a tessellation factor

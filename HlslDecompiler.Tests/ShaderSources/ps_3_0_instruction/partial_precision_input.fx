@@ -7,13 +7,13 @@ struct PS_IN
 	half3 texcoord2 : TEXCOORD2;
 };
 
-half4 main(PS_IN i) : COLOR
+float4 main(PS_IN i) : COLOR
 {
-	half4 o;
+	float4 o;
 
 	half r0;
 	r0 = dot(i.texcoord1.xyz, light.xyz);
-	o.xyz = i.texcoord2.xyz * r0.xxx + ambient.xyz;
+	o.xyz = half3(i.texcoord2.xyz * r0.xxx + ambient.xyz);
 	o.w = 1;
 
 	return o;

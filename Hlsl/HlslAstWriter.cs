@@ -3434,10 +3434,6 @@ public class HlslAstWriter : HlslWriter
                 halfVariables.Add(assignment.TempVariable);
             }
         }
-        // An output lane is named with the instruction's other lanes, never alone,
-        // except in ps_2_x and earlier: there a plain mov copies the _pp temp to
-        // the output, and the cast is lost unless the temp is named half.
-        bool outputsCopied = _shader.Type == ShaderType.Pixel && _shader.MajorVersion <= 2;
         foreach (IGrouping<int, ConvertOperation> instruction in readers.Concat(roots).Distinct(ReferenceEqualityComparer.Instance)
             .OfType<ConvertOperation>()
             .Where(cast => cast.TargetType == "half"
@@ -3447,8 +3443,7 @@ public class HlslAstWriter : HlslWriter
             .GroupBy(cast => Computed(cast).SourceInstruction))
         {
             ConvertOperation[] lanes = [.. instruction.OrderBy(cast => Computed(cast).SourceComponent)];
-            if (lanes.All(roots.Contains) && !outputsCopied
-                || lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
+            if (lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
                 || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
             {
                 continue;
@@ -3493,9 +3488,12 @@ public class HlslAstWriter : HlslWriter
     {
         if (roots.Contains(cast))
         {
-            // CompileOutput strips the cast into a half output.
+            // CompileOutput strips the cast into a half output. Into a float one
+            // fxc keeps it only on a half name, input or _pp result: a mov_pp.
             return !_registers.MethodOutputRegisters.Any(output =>
-                output.ResultModifier.HasFlag(ResultModifier.PartialPrecision));
+                    output.ResultModifier.HasFlag(ResultModifier.PartialPrecision))
+                && !(cast.Inputs[0] is ConvertOperation { TargetType: "half" }
+                    || cast.Inputs[0] is not Operation && _compiler.IsHalfValued(cast.Inputs[0], halfVariables));
         }
         return cast.Outputs.Any(reader => readers.Contains(reader)
             && (reader is ConvertOperation { TargetType: "half" } or GroupNode

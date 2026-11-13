@@ -1,4 +1,5 @@
-half4 main(float3 texcoord : TEXCOORD) : COLOR
+float4 main(float3 texcoord : TEXCOORD) : COLOR
 {
-	return float4(saturate(texcoord.xy), texcoord.z, 1);
+	half2 t0 = saturate(texcoord.xy);
+	return float4(t0, texcoord.z, 1);
 }

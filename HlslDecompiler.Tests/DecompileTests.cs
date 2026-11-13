@@ -154,6 +154,8 @@ public class DecompileTests
     [TestCase("vs_2_0", "matrix_palette")]
     [TestCase("vs_2_0", "skin_color_indices")]
     [TestCase("vs_2_0", "skin_blended_matrix")]
+    [TestCase("vs_2_0", "skin_row_major_3x4")]
+    [TestCase("vs_2_0", "blend_rotation")]
     [TestCase("ps_2_0", "water_ripple")]
     [TestCase("ps_2_0", "alpha_cutout")]
     [TestCase("ps_2_0", "detail_blend")]

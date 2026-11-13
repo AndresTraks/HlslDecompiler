@@ -183,8 +183,10 @@ public class MatrixMultiplicationGrouper
 
     /// <summary>
     /// A vector times a blend of matrices, `mul(v, A * w1 + B * w2)`: dots of the
-    /// vector with consecutive registers of one blend (see IdiomRecovery), each
-    /// register's components in order from x.
+    /// vector with one blend (see IdiomRecovery), each along a register (components
+    /// from x), the registers consecutive; or each across the registers, one
+    /// component of each, the components consecutive - the other orientation, as
+    /// `mul(M, v)` or a row major `mul(v, M)` reads it.
     /// </summary>
     private static MatrixMultiplicationContext TryGetBlendedMultiplicationGroup(IList<HlslTreeNode> components)
     {
@@ -192,53 +194,61 @@ public class MatrixMultiplicationGrouper
         {
             return null;
         }
-        IList<HlslTreeNode> vector = null;
-        IList<HlslTreeNode> firstRow = null;
+        BlendLine first = null;
         for (int i = 0; i < components.Count; i++)
         {
-            if (BlendRegisterOf((DotProductOperation)components[i]) is not (IList<HlslTreeNode> row, IList<HlslTreeNode> other)
-                || ((MatrixRowNode)row[0]).Register != i
-                || firstRow != null && (row.Count != firstRow.Count
-                    || !ReferenceEquals(((MatrixRowNode)row[0]).Blend, ((MatrixRowNode)firstRow[0]).Blend)
-                    || !NodeGrouper.AreNodesEquivalent(other, vector)))
+            if (BlendLineOf((DotProductOperation)components[i]) is not BlendLine line
+                || line.Index != i
+                || first != null && (line.Row.Count != first.Row.Count
+                    || line.AlongRegister != first.AlongRegister
+                    || !ReferenceEquals(line.Blend, first.Blend)
+                    || !NodeGrouper.AreNodesEquivalent(line.Vector, first.Vector)))
             {
                 return null;
             }
-            firstRow ??= row;
-            vector ??= other;
+            first ??= line;
         }
-        var first = (MatrixRowNode)firstRow[0];
-        ShaderTypeInfo type = first.MatrixType;
-        // As MatrixMultiplicationCompiler reads the counts: dots are the columns of
-        // mul(v, M), or the rows of a row major matrix.
-        bool rowMajor = type.ParameterClass == ParameterClass.MatrixRows;
-        int rows = rowMajor ? components.Count : firstRow.Count;
-        int columns = rowMajor ? firstRow.Count : components.Count;
+        ShaderTypeInfo type = ((MatrixRowNode)first.Row[0]).MatrixType;
+        bool matrixByVector = !first.AlongRegister;
+        // As MatrixMultiplicationCompiler reads the counts.
+        bool byVector = type.ParameterClass == ParameterClass.MatrixRows ? !matrixByVector : matrixByVector;
+        int rows = byVector ? components.Count : first.Row.Count;
+        int columns = byVector ? first.Row.Count : components.Count;
         if (rows > type.Rows || columns > type.Columns)
         {
             return null;
         }
-        return new MatrixMultiplicationContext([.. vector], null, false, components.Count, firstRow.Count)
+        return new MatrixMultiplicationContext([.. first.Vector], null, matrixByVector,
+            components.Count, first.Row.Count)
         {
             MatrixTypeInfo = type,
             BlendNode = first.Blend,
         };
     }
 
-    // The dot operand that is one register of a blend, components from x in order,
-    // and the other operand.
-    private static (IList<HlslTreeNode> Row, IList<HlslTreeNode> Vector)? BlendRegisterOf(DotProductOperation dot)
+    // A dot of the vector with a line of a blend: along register Index, or across
+    // the registers at component Index.
+    private sealed record BlendLine(IList<HlslTreeNode> Row, IList<HlslTreeNode> Vector,
+        HlslTreeNode Blend, bool AlongRegister, int Index);
+
+    private static BlendLine BlendLineOf(DotProductOperation dot)
     {
         foreach ((IList<HlslTreeNode> row, IList<HlslTreeNode> vector) in
             new[] { (dot.X.Inputs, dot.Y.Inputs), (dot.Y.Inputs, dot.X.Inputs) })
         {
-            if (row.Count > 0 && row[0] is MatrixRowNode head
-                && row.Select((node, i) => node is MatrixRowNode lane
-                    && ReferenceEquals(lane.Blend, head.Blend)
-                    && lane.Register == head.Register
-                    && lane.ComponentIndex == i).All(fits => fits))
+            if (row.Count == 0 || row[0] is not MatrixRowNode head
+                || row.Any(node => node is not MatrixRowNode lane || !ReferenceEquals(lane.Blend, head.Blend)))
             {
-                return (row, vector);
+                continue;
+            }
+            List<MatrixRowNode> lanes = [.. row.Cast<MatrixRowNode>()];
+            if (lanes.Select((lane, i) => lane.Register == head.Register && lane.ComponentIndex == i).All(fits => fits))
+            {
+                return new BlendLine(row, vector, head.Blend, true, head.Register);
+            }
+            if (lanes.Select((lane, i) => lane.ComponentIndex == head.ComponentIndex && lane.Register == i).All(fits => fits))
+            {
+                return new BlendLine(row, vector, head.Blend, false, head.ComponentIndex);
             }
         }
         return null;
@@ -246,9 +256,9 @@ public class MatrixMultiplicationGrouper
 
     /// <summary>
     /// A dot operand whose lanes are a weighted sum of matrix reads, as fxc blends
-    /// skinning bones one register at a time: `A[r].c * w1 + w2 * B[r].c` per lane
-    /// c. Null unless every term reads one register of a whole matrix (or array
-    /// element), with one weight across the lanes.
+    /// skinning bones: `A[r].c * w1 + w2 * B[r].c` per lane. Null unless every term
+    /// reads one whole matrix (or array element), with one weight across the lanes,
+    /// and every term's lane reads the same register and component.
     /// </summary>
     public BlendedLanes TryGetBlendedLanes(DotProductOperation dot)
     {
@@ -260,31 +270,32 @@ public class MatrixMultiplicationGrouper
                 continue;
             }
             List<(MatrixMultiplicationContext Matrix, HlslTreeNode Weight)> terms = [];
-            int register = -1;
+            int[] registers = null;
             for (int m = 0; m < lanes[0].Count; m++)
             {
                 HlslTreeNode[] reads = [.. lanes.Select(lane => lane[m].Read)];
                 HlslTreeNode weight = lanes[0][m].Weight;
                 RowMatrix matrix = GetRowMatrix(reads[0]);
-                if (matrix.MemberPath != null
-                    || lanes.Any(lane => !NodeGrouper.AreNodesEquivalent(lane[m].Weight, weight))
-                    || reads.Any(read => !RowKey(read).RegisterKey.Equals(RowKey(reads[0]).RegisterKey)
-                        || !AreSameIndex(RowIndex(read), RowIndex(reads[0])))
-                    // Lane c reads component c of the register, as every other term's.
-                    || reads.Select((read, c) => RowKey(read).ComponentIndex
-                        != RowKey(lanes[c][0].Read).ComponentIndex).Any(differs => differs))
+                if (lanes.Any(lane => !NodeGrouper.AreNodesEquivalent(lane[m].Weight, weight))
+                    || reads.Any(read => GetRowMatrix(read).Declaration != matrix.Declaration
+                        || GetElementIndex(matrix.Declaration, read) != GetElementIndex(matrix.Declaration, reads[0])
+                        || !AreSameIndex(RowIndex(read), RowIndex(reads[0]))))
                 {
                     terms = null;
                     break;
                 }
-                int termRegister = GetRegisterOffset(matrix.Declaration, reads[0])
-                    % System.Math.Max(matrix.Declaration.RegistersPerElement, 1);
-                if (register >= 0 && termRegister != register)
+                int registersPerElement = System.Math.Max(matrix.Declaration.RegistersPerElement, 1);
+                int[] termRegisters = [.. reads.Select(read =>
+                    GetRegisterOffset(matrix.Declaration, read) % registersPerElement)];
+                // Lane j reads the register and component every other term's does.
+                if (registers != null && !termRegisters.SequenceEqual(registers)
+                    || reads.Select((read, j) => RowKey(read).ComponentIndex
+                        != RowKey(lanes[j][0].Read).ComponentIndex).Any(differs => differs))
                 {
                     terms = null;
                     break;
                 }
-                register = termRegister;
+                registers = termRegisters;
                 ShaderTypeInfo type = matrix.MatrixType;
                 if (terms.Count > 0 && (type.Rows != terms[0].Matrix.MatrixTypeInfo.Rows
                     || type.Columns != terms[0].Matrix.MatrixTypeInfo.Columns
@@ -315,7 +326,11 @@ public class MatrixMultiplicationGrouper
                 terms = [.. terms.OrderBy(term => ((RegisterInputNode)term.Weight).RegisterComponentKey.ComponentIndex)];
             }
             int[] components = [.. lanes.Select(lane => RowKey(lane[0].Read).ComponentIndex)];
-            return new BlendedLanes(row, terms, register, components);
+            if (registers.Zip(components).Distinct().Count() != components.Length)
+            {
+                continue;
+            }
+            return new BlendedLanes(row, terms, registers, components);
         }
         return null;
     }
@@ -618,10 +633,11 @@ public class MatrixMultiplicationGrouper
         if (rowA == null || rowB == null)
         {
             return rowA == null && rowB == null
-                && BlendRegisterOf(a) is var (blendA, blendVectorA)
-                && BlendRegisterOf(b) is var (blendB, blendVectorB)
-                && ReferenceEquals(((MatrixRowNode)blendA[0]).Blend, ((MatrixRowNode)blendB[0]).Blend)
-                && NodeGrouper.AreNodesEquivalent(blendVectorA, blendVectorB);
+                && BlendLineOf(a) is BlendLine lineA
+                && BlendLineOf(b) is BlendLine lineB
+                && ReferenceEquals(lineA.Blend, lineB.Blend)
+                && lineA.AlongRegister == lineB.AlongRegister
+                && NodeGrouper.AreNodesEquivalent(lineA.Vector, lineB.Vector);
         }
         RowMatrix matrixA = GetRowMatrix(rowA[0]);
         RowMatrix matrixB = GetRowMatrix(rowB[0]);
@@ -643,9 +659,9 @@ public class MatrixMultiplicationGrouper
     /// </summary>
     public int? MatrixRowRegister(DotProductOperation dot)
     {
-        if (BlendRegisterOf(dot) is var (blended, _))
+        if (BlendLineOf(dot) is BlendLine line)
         {
-            return ((MatrixRowNode)blended[0]).Register;
+            return line.Index;
         }
         IList<HlslTreeNode> row = TryGetMatrixRow(dot, dot, 0);
         if (row == null)
@@ -793,8 +809,8 @@ public class MatrixMultiplicationContext
 
 /// <summary>
 /// A dot operand that is a blend of matrices: the lanes, the terms (each matrix with
-/// its weight), and the register and components the lanes read.
+/// its weight), and the register and component each lane reads.
 /// </summary>
 public sealed record BlendedLanes(IList<HlslTreeNode> Lanes,
     IReadOnlyList<(MatrixMultiplicationContext Matrix, HlslTreeNode Weight)> Terms,
-    int Register, int[] Components);
+    int[] Registers, int[] Components);

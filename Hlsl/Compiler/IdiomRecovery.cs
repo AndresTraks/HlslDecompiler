@@ -85,13 +85,16 @@ public static class IdiomRecovery
                 blends.Add(blend);
             }
             // A dot's lanes are the shared nodes another dot reads too.
-            foreach ((HlslTreeNode lane, int component) in lanes.Lanes.ToList().Zip(lanes.Components))
+            List<HlslTreeNode> laneNodes = [.. lanes.Lanes];
+            for (int j = 0; j < laneNodes.Count; j++)
             {
+                HlslTreeNode lane = laneNodes[j];
                 if (lane is MatrixRowNode)
                 {
                     continue;
                 }
-                var row = new MatrixRowNode(blend, lanes.Terms[0].Matrix.MatrixTypeInfo, lanes.Register, component);
+                var row = new MatrixRowNode(blend, lanes.Terms[0].Matrix.MatrixTypeInfo,
+                    lanes.Registers[j], lanes.Components[j]);
                 lane.Replace(row);
                 replaced[lane] = row;
             }

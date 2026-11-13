@@ -418,10 +418,11 @@ public class StatementFinalizer
         });
     }
 
-    private bool IsUnreadLoopStart(HlslTreeNode reader, HlslTreeNode value)
+    // A join nothing reads or renders: an if's, or a loop's for its start value.
+    private bool IsUnreadJoin(HlslTreeNode reader, HlslTreeNode value)
     {
-        return reader is PhiNode { IsLoopHeader: true, Outputs.Count: 0 } phi
-            && ReferenceEquals(phi.PreLoopValue, value)
+        return reader is PhiNode { Outputs.Count: 0 } phi
+            && (!phi.IsLoopHeader || ReferenceEquals(phi.PreLoopValue, value))
             && !IsRenderedByAnyStatement(phi);
     }
 
@@ -468,9 +469,9 @@ public class StatementFinalizer
                 }
 
                 // Read only within this statement; a phi reader means it leaves,
-                // unless it is a loop phi nothing reads: the loop writes the register
-                // before reading it, so fxc only reused it.
-                if (assignmentNode.Outputs.All(v => IsUnreadLoopStart(v, assignmentNode)
+                // unless it is a phi nothing reads: the register is written again
+                // after the if, or by the loop before reading it, so fxc only reused it.
+                if (assignmentNode.Outputs.All(v => IsUnreadJoin(v, assignmentNode)
                     || (v is not PhiNode && (written ??= new ReadThrough(assignment.Outputs)).Contains(v))))
                 {
                     // A local array store may inline the value only if it is the very

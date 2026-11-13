@@ -25,7 +25,6 @@ void main(CS_IN i)
 	GroupMemoryBarrierWithGroupSync();
 	int t0 = i.sv_dispatchthreadid.y < size.y;
 	if (t0 && i.sv_dispatchthreadid.x < size.x) {
-		t0 = 0;
 		float t1 = hdr.Load(int3(i.sv_dispatchthreadid.xy, 0)).z;
 		float t2 = dot(float3(hdr.Load(int3(i.sv_dispatchthreadid.xy, 0)).xy, t1), float3(0.212599993, 0.715200007, 0.0722000003));
 		InterlockedAdd(g0[t2 < 0.0000999999975 ? 0 : (uint)(254 * saturate((log2(t2) - minLog) * invRange) + 1)], 1);

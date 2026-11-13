@@ -36,21 +36,20 @@ void main(CS_IN i)
 		g0[i.sv_groupindex] = g0[i.sv_groupindex + 8] + t1;
 	}
 	GroupMemoryBarrierWithGroupSync();
-	int2 t2 = i.sv_groupindex < uint2(4, 2);
+	int t2 = i.sv_groupindex < 4;
 	if (i.sv_groupindex < 4) {
 		float t3 = g0[i.sv_groupindex + 4] + g0[i.sv_groupindex];
 		g0[i.sv_groupindex] = t3;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex < 2) {
-		float t4 = g0[i.sv_groupindex];
-		float t5 = g0[i.sv_groupindex + 2] + t4;
-		g0[i.sv_groupindex] = t5;
+		float t4 = g0[i.sv_groupindex + 2] + g0[i.sv_groupindex];
+		g0[i.sv_groupindex] = t4;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex < 1) {
-		float t6 = g0[1] + g0[0];
-		g0[0] = t6;
+		float t5 = g0[1] + g0[0];
+		g0[0] = t5;
 	}
 	GroupMemoryBarrierWithGroupSync();
 	if (i.sv_groupindex == 0) {

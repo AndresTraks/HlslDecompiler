@@ -29,6 +29,15 @@ public class FlowAttributeTests
             "The same early return: the instruction writer keeps the move in front "
             + "of `if (r0.x != 0) return o;`, and fxc puts it inside the if it "
             + "compiles the return to all the same.")],
+        ["ps_3_0/while_condition"] = [("instruction",
+            "One if more: the instruction writer spells the loop's break_ge as "
+            + "`if (r2.x >= params.x) break;` at the top of the rep, and fxc compiles "
+            + "a break in an if as if_ge/break_ne. Only a loop condition comes back "
+            + "as the one break_ge; the AST writer makes it `while (t1 < params.x)`.")],
+        ["ps_3_0/counted_loop_condition"] = [("instruction",
+            "The same break_ge as ps_3_0/while_condition, spelled as an if around "
+            + "a break in a loop of twelve; the AST writer makes it the for loop's "
+            + "second condition.")],
         ["cs_5_0/double_loop_carry"] = [("instruction",
             "fxc's: the instruction writer keeps the loop's double in its own "
             + "`double d0`, and fxc carries a double variable out of a loop by "

@@ -1139,6 +1139,9 @@ public class HlslAstWriter : HlslWriter
         WriteLine($"clip({compiled});");
     }
 
+    // The count fxc gives the rep it makes of a while loop.
+    private const uint WhileRepeatCount = 255;
+
     private void WriteLoopStatement(LoopStatement loop)
     {
         if (WritesFlowAttributes || loop.HasLoopAttribute || NeedsLoopAttribute(loop)
@@ -1157,13 +1160,29 @@ public class HlslAstWriter : HlslWriter
             string increment = _compiler.Compile(Reduce(loop.Increment)).TrimEnd(';');
             WriteLine($"for ({initializer}; {condition}; {increment}) {{");
         }
+        else if (loop.RepeatCount == WhileRepeatCount && !loop.HasLoopCounter
+            && TryGetExitTest(loop, out HlslTreeNode whileCondition, out IStatement[] whileExitTest))
+        {
+            // fxc's rep for a while loop: a break opening it is the condition again.
+            WriteLine($"while ({_compiler.Compile(Reduce(whileCondition))}) {{");
+            body = [.. loop.Body.Where(statement => !whileExitTest.Contains(statement))];
+        }
         else if (loop.RepeatCount is uint || loop.RepeatCountNode != null)
         {
             string variableName = GetLoopVariableName(_loopDepth);
             string count = loop.RepeatCount is uint repeatCount
                 ? repeatCount.ToString()
                 : _compiler.Compile(Reduce(loop.RepeatCountNode));
-            WriteLine($"for (int {variableName} = 0; {variableName} < {count}; {variableName}++) {{");
+            string condition = $"{variableName} < {count}";
+            // A break opening the body joins the condition: fxc makes it one breakc,
+            // where if/break/endif costs two more.
+            if (TryGetExitTest(loop, out HlslTreeNode exitCondition, out IStatement[] exitTest))
+            {
+                string exit = _compiler.Compile(Reduce(exitCondition));
+                condition += exit.Contains("||") ? $" && ({exit})" : $" && {exit}";
+                body = [.. loop.Body.Where(statement => !exitTest.Contains(statement))];
+            }
+            WriteLine($"for (int {variableName} = 0; {condition}; {variableName}++) {{");
             // In the `loop aL, iN` form, aL in the body is this variable.
             if (loop.HasLoopCounter)
             {
@@ -1232,8 +1251,12 @@ public class HlslAstWriter : HlslWriter
             {
                 continue;
             }
+            // A D3D9 break_<rel> repeats its one test per component.
             if (statement is not BreakStatement breakStatement
-                || breakStatement.Comparison is not ComparisonNode comparison
+                || (breakStatement.Comparison is GroupNode group
+                    && group.Inputs.All(c => NodeGrouper.AreNodesEquivalent(c, group.Inputs[0]))
+                    ? group.Inputs[0]
+                    : breakStatement.Comparison) is not ComparisonNode comparison
                 || ConstantMatcher.TryEvaluateComparison(comparison) != null
                 || comparison.Inverted() is not ComparisonNode opposite)
             {

@@ -57,6 +57,99 @@ internal sealed class ParsedIdioms
                 TakeApart(sum, Chain(sum));
             }
         }
+        foreach (CompareOperation select in Values().OfType<CompareOperation>().ToList())
+        {
+            // Already taken apart as part of an enclosing chain.
+            if (select.Outputs.Count == 0 && !IsStatementValue(select))
+            {
+                continue;
+            }
+            HashSet<HlslTreeNode> chain = HlslTreeNode.NewNodeSet();
+            if (TakeArrayElement(select, chain) is RelativeAddressNode element)
+            {
+                element.SourceInstruction = select.SourceInstruction;
+                element.SourceComponent = select.SourceComponent;
+                ReplaceEverywhere(select, element);
+                TakeApart(select, chain);
+            }
+        }
+    }
+
+    /// <summary>
+    /// `a[i]` of a constant array where a shader model 3 pixel shader cannot index
+    /// constants: fxc selects each element in turn, `cmp r, -abs(i - k), a[k], r`
+    /// from k = 0 with 0 as the start, and the last cmp is the read. The chain
+    /// must take every element of one array, so `a[i]` compiles to it again.
+    /// </summary>
+    private RelativeAddressNode TakeArrayElement(CompareOperation select, HashSet<HlslTreeNode> chain)
+    {
+        var elements = new List<RegisterInputNode>();
+        var tests = new List<HlslTreeNode>();
+        HlslTreeNode node = select;
+        while (node is CompareOperation
+            {
+                Value: NegateOperation { Value: AbsoluteOperation { Value: HlslTreeNode difference } } negate
+            } compare)
+        {
+            if (Moved(compare.GreaterEqualValue) is not RegisterInputNode element)
+            {
+                return null;
+            }
+            chain.Add(compare);
+            chain.Add(negate);
+            chain.Add(negate.Value);
+            chain.Add(difference);
+            elements.Add(element);
+            tests.Add(difference);
+            node = compare.LessValue;
+        }
+        int count = elements.Count;
+        if (count < 2 || !ConstantMatcher.IsZero(Moved(node)))
+        {
+            return null;
+        }
+        // Outermost first: element count - 1 down to 0.
+        HlslTreeNode index = null;
+        for (int i = 0; i < count; i++)
+        {
+            HlslTreeNode tested = Tested(tests[i], count - 1 - i);
+            if (tested == null || (index != null && !IsSameRead(tested, index) && !ReferenceEquals(Moved(tested), Moved(index))))
+            {
+                        return null;
+            }
+            index ??= tested;
+        }
+        // A loop counter or a register read: an index computed into a register
+        // is read by the chain's statements, and the subscript would hide that
+        // read from them, so the register could be reassigned before it.
+        if (Moved(index) is not (PhiNode or RegisterInputNode))
+        {
+            return null;
+        }
+        RegisterComponentKey first = elements[count - 1].RegisterComponentKey;
+        if (first.RegisterKey is not D3D9RegisterKey { Type: RegisterType.Const } firstRegister
+            || _registerState.FindConstantOfComponent(first) is not ConstantDeclaration array
+            || array.TypeInfo.NumElements != count)
+        {
+            return null;
+        }
+        int stride = System.Math.Max(array.RegistersPerElement, 1);
+        int offset = firstRegister.Number - array.RegisterIndex;
+        if (offset < 0 || offset >= stride)
+        {
+            return null;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            RegisterComponentKey key = elements[count - 1 - i].RegisterComponentKey;
+            if (key.RegisterKey is not D3D9RegisterKey { Type: RegisterType.Const } register
+                || register.Number != firstRegister.Number + i * stride
+                || key.ComponentIndex != first.ComponentIndex)
+            {
+                return null;
+            }
+        }
+        return new RelativeAddressNode(first, index) { IndexCountsElements = true };
     }
 
     /// <summary>
@@ -190,6 +283,23 @@ internal sealed class ParsedIdioms
             return null;
         }
         return component == 0 ? difference : null;
+    }
+
+    // The i of `i - k`, which fxc writes i + -k, or just i where k is 0.
+    private static HlslTreeNode Tested(HlslTreeNode difference, int k)
+    {
+        if (difference is AddOperation add)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (Moved(add.Inputs[i]) is ConstantNode offset && offset.Value == -k)
+                {
+                    return add.Inputs[1 - i];
+                }
+            }
+            return null;
+        }
+        return k == 0 ? difference : null;
     }
 
     private static HlslTreeNode Moved(HlslTreeNode node)

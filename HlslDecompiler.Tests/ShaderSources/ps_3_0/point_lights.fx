@@ -31,17 +31,16 @@ float4 main(PS_IN i) : COLOR
 	float3 t9 = normalize(t6.x * t3 + cross(t0, t3) * t6.y + t6.z * t0);
 	float3 t10 = normalize(cameraPosition - i.texcoord);
 	for (int i_ = 0; i_ < lightCount; i_++) {
-		float3 t11 = t7.w - float3(1, 2, 3);
-		float3 t12 = (t11.z == 0 ? lightPositions[3] : t11.y == 0 ? lightPositions[2] : t11.x == 0 ? lightPositions[1] : t7.w == 0 ? lightPositions[0] : 0) - i.texcoord;
-		float3 t13 = normalize(t12);
-		float t14 = pow(saturate(dot(t9, normalize(t13 + t10))), specularPower) + saturate(dot(t9, t13));
-		float t15 = dot(t12, t12) + 1;
-		t7.xyz = t7.xyz + t14 * (t11.z == 0 ? lightColors[3] : t11.y == 0 ? lightColors[2] : t11.x == 0 ? lightColors[1] : t7.w == 0 ? lightColors[0] : 0) / t15;
+		float3 t11 = lightPositions[t7.w] - i.texcoord;
+		float3 t12 = normalize(t11);
+		float t13 = pow(saturate(dot(t9, normalize(t12 + t10))), specularPower) + saturate(dot(t9, t12));
+		float t14 = dot(t11, t11) + 1;
+		t7.xyz = t7.xyz + t13 * lightColors[t7.w] / t14;
 		t7.w = t7.w + 1;
 	}
-	float t16 = 1 - saturate(dot(t9, t10));
+	float t15 = 1 - saturate(dot(t9, t10));
+	float t16 = t15 * t15;
 	float t17 = t16 * t16;
-	float t18 = t17 * t17;
-	float3 t19 = texCUBE(envMap, reflect(-t10, t9)).xyz;
-	return float4(t8.xyz * t7.xyz + t18 * t19, t8.w);
+	float3 t18 = texCUBE(envMap, reflect(-t10, t9)).xyz;
+	return float4(t8.xyz * t7.xyz + t17 * t18, t8.w);
 }

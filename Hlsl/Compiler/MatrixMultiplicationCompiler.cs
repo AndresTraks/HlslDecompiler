@@ -1,4 +1,5 @@
 ﻿using HlslDecompiler.DirectXShaderModel;
+using System.Linq;
 namespace HlslDecompiler.Hlsl;
 
 public sealed class MatrixMultiplicationCompiler
@@ -43,7 +44,7 @@ public sealed class MatrixMultiplicationCompiler
     public string CompileMatrixProduct(MatrixMultiplicationContext context, string leftMatrix)
     {
         if (context.StructuredElement != null || context.ElementIndexNode != null
-            || context.ElementIndex != null || context.MemberPath != null)
+            || context.ElementIndex != null || context.MemberPath != null || context.BlendNode != null)
         {
             return null;
         }
@@ -66,6 +67,51 @@ public sealed class MatrixMultiplicationCompiler
         {
             return CompileStructured(context);
         }
+        // A blend node compiles as its variable once named.
+        string matrixName = context.BlendNode != null
+            ? nodeCompiler.Compile([context.BlendNode])
+            : CompileMatrixName(context);
+        ShaderTypeInfo matrixType = context.MatrixTypeInfo ?? context.MatrixDeclaration.TypeInfo;
+        // A row major matrix packs the other way, so the same dot products are the
+        // other multiplication: `mul(v, M)` instead of `mul(M, v)`.
+        bool matrixByVector = matrixType.ParameterClass == ParameterClass.MatrixRows
+            ? !context.IsMatrixByVector
+            : context.IsMatrixByVector;
+        // A submatrix is cast to its own size. In mul(M, v) the dot products are the
+        // rows; in mul(v, M) they are the columns.
+        int rows = matrixByVector ? context.MatrixRowCount : context.MatrixColumnCount;
+        int columns = matrixByVector ? context.MatrixColumnCount : context.MatrixRowCount;
+        if (rows != matrixType.Rows || columns != matrixType.Columns)
+        {
+            // An unnamed blend is a sum.
+            matrixName = context.BlendNode is MatrixBlendNode
+                ? $"(float{rows}x{columns})({matrixName})"
+                : $"(float{rows}x{columns}){matrixName}";
+        }
+        string vector = nodeCompiler.Compile(context.Vector);
+        return matrixByVector
+            ? $"mul({matrixName}, {vector})"
+            : $"mul({vector}, {matrixName})";
+    }
+
+    // `A * w1 + B * w2`.
+    public string CompileBlend(
+        System.Collections.Generic.IReadOnlyList<(MatrixMultiplicationContext Matrix, HlslTreeNode Weight)> terms)
+    {
+        return string.Join(" + ", terms.Select(term =>
+            $"{CompileMatrixName(term.Matrix)} * {CompileWeight(term.Weight)}"));
+    }
+
+    // A blend weight, bracketed unless a single name or number.
+    private string CompileWeight(HlslTreeNode weight)
+    {
+        string compiled = nodeCompiler.Compile(weight);
+        return compiled.Contains(' ') ? $"({compiled})" : compiled;
+    }
+
+    // The matrix variable, element or member the context reads.
+    private string CompileMatrixName(MatrixMultiplicationContext context)
+    {
         string matrixName = context.MatrixDeclaration.Name;
         ShaderTypeInfo declared = context.MatrixDeclaration.TypeInfo;
         // One struct whose member array the index subscripts: `sk.joints[j].m`,
@@ -102,23 +148,6 @@ public sealed class MatrixMultiplicationCompiler
         {
             matrixName += context.MemberPath;
         }
-        ShaderTypeInfo matrixType = context.MatrixTypeInfo ?? context.MatrixDeclaration.TypeInfo;
-        // A row major matrix packs the other way, so the same dot products are the
-        // other multiplication: `mul(v, M)` instead of `mul(M, v)`.
-        bool matrixByVector = matrixType.ParameterClass == ParameterClass.MatrixRows
-            ? !context.IsMatrixByVector
-            : context.IsMatrixByVector;
-        // A submatrix is cast to its own size. In mul(M, v) the dot products are the
-        // rows; in mul(v, M) they are the columns.
-        int rows = matrixByVector ? context.MatrixRowCount : context.MatrixColumnCount;
-        int columns = matrixByVector ? context.MatrixColumnCount : context.MatrixRowCount;
-        if (rows != matrixType.Rows || columns != matrixType.Columns)
-        {
-            matrixName = $"(float{rows}x{columns}){matrixName}";
-        }
-        string vector = nodeCompiler.Compile(context.Vector);
-        return matrixByVector
-            ? $"mul({matrixName}, {vector})"
-            : $"mul({vector}, {matrixName})";
+        return matrixName;
     }
 }

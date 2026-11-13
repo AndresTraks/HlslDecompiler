@@ -36,6 +36,7 @@ public static class IdiomRecovery
         {
             RecoverReflect(dot, replaced);
         }
+        RecoverMatrixBlends(all, matrices, replaced);
         RecoverMatrixMultiplications(all, groups, matrices, replaced);
         foreach (LengthOperation length in all.OfType<LengthOperation>().ToList())
         {
@@ -53,6 +54,46 @@ public static class IdiomRecovery
                 {
                     group[i] = replacement;
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lanes that blend matrices, `A[r].c * w1 + w2 * B[r].c`, as skinning does
+    /// before multiplying: each lane becomes that register and component of one
+    /// MatrixBlendNode, shared by every lane of the same blend, so the dots over
+    /// them group as a multiplication by it and naming can name it once.
+    /// </summary>
+    private static void RecoverMatrixBlends(
+        List<HlslTreeNode> all,
+        MatrixMultiplicationGrouper matrices,
+        Dictionary<HlslTreeNode, HlslTreeNode> replaced)
+    {
+        List<MatrixBlendNode> blends = [];
+        // Widest first: a dp3 over the lanes a dp4 reads leaves the fourth unparsed.
+        foreach (DotProductOperation dot in all.OfType<DotProductOperation>()
+            .OrderByDescending(dot => dot.X.Inputs.Count).ToList())
+        {
+            if (matrices.TryGetBlendedLanes(dot) is not BlendedLanes lanes)
+            {
+                continue;
+            }
+            MatrixBlendNode blend = blends.FirstOrDefault(other => MatrixBlendNode.AreSameBlend(other.Terms, lanes.Terms));
+            if (blend == null)
+            {
+                blend = new MatrixBlendNode(lanes.Terms);
+                blends.Add(blend);
+            }
+            // A dot's lanes are the shared nodes another dot reads too.
+            foreach ((HlslTreeNode lane, int component) in lanes.Lanes.ToList().Zip(lanes.Components))
+            {
+                if (lane is MatrixRowNode)
+                {
+                    continue;
+                }
+                var row = new MatrixRowNode(blend, lanes.Terms[0].Matrix.MatrixTypeInfo, lanes.Register, component);
+                lane.Replace(row);
+                replaced[lane] = row;
             }
         }
     }

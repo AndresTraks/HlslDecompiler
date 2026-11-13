@@ -14,6 +14,7 @@ public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
     private readonly int _vectorLength;
     private readonly int _elementIndexAt = -1;
     private readonly int _structuredElementAt = -1;
+    private readonly int _blendAt = -1;
 
     public MatrixMultiplyOutputNode(MatrixMultiplicationContext matrix, int componentIndex)
     {
@@ -33,6 +34,11 @@ public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
         {
             _structuredElementAt = Inputs.Count;
             AddInput(matrix.StructuredElement);
+        }
+        if (matrix.BlendNode != null)
+        {
+            _blendAt = Inputs.Count;
+            AddInput(matrix.BlendNode);
         }
         ComponentIndex = componentIndex;
     }
@@ -60,6 +66,7 @@ public class MatrixMultiplyOutputNode : HlslTreeNode, IHasComponentIndex
         ElementIndexCountsElements = _matrix.ElementIndexCountsElements,
         MemberPath = _matrix.MemberPath,
         MatrixTypeInfo = _matrix.MatrixTypeInfo,
+        BlendNode = _blendAt < 0 ? null : Inputs[_blendAt],
     };
 
     public override string ToString()

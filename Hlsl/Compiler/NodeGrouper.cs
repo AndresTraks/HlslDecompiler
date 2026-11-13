@@ -643,6 +643,17 @@ public class NodeGrouper
                 && AreNodesEquivalent(array1.Index, array2.Index);
         }
 
+        if (node1 is MatrixBlendNode blend1 && node2 is MatrixBlendNode blend2)
+        {
+            return ReferenceEquals(blend1, blend2) || MatrixBlendNode.AreSameBlend(blend1.Terms, blend2.Terms);
+        }
+
+        // The same lane of two registers is two values.
+        if (node1 is MatrixRowNode row1 && node2 is MatrixRowNode row2 && row1.Register != row2.Register)
+        {
+            return false;
+        }
+
         // A variable has no inputs, so the generic rule would call any two equal.
         if (node1 is TempVariableNode variable1 && node2 is TempVariableNode variable2)
         {

@@ -496,7 +496,8 @@ public sealed class NodeCompiler
             {
                 // A row index is compiled separately, so it bounds the match too.
                 MarkGrouped(components, multiplication.Vector,
-                    multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
+                    multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode],
+                    multiplication.BlendNode == null ? [] : [multiplication.BlendNode]);
                 return _matrixMultiplicationCompiler.Compile(multiplication);
             }
             // Dots the multiplication grouper did not take whole have no vector form.
@@ -623,6 +624,11 @@ public sealed class NodeCompiler
         if (first is GroupNode group)
         {
             return Compile(group.Inputs, promoteToVectorSize);
+        }
+
+        if (first is MatrixBlendNode blend)
+        {
+            return _matrixMultiplicationCompiler.CompileBlend(blend.Terms);
         }
 
         if (first is PhiNode)
@@ -1607,7 +1613,8 @@ public sealed class NodeCompiler
                 continue;
             }
             MarkGrouped(rows, multiplication.Vector,
-                multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode]);
+                multiplication.ElementIndexNode == null ? [] : [multiplication.ElementIndexNode],
+                    multiplication.BlendNode == null ? [] : [multiplication.BlendNode]);
             string swizzle = string.Concat(Enumerable.Range(0, components.Count)
                 .Select(i => "xyzw"[Array.IndexOf(order, i)]));
             return $"{_matrixMultiplicationCompiler.Compile(multiplication)}.{swizzle}";
@@ -2948,7 +2955,7 @@ public sealed class NodeCompiler
     {
         return node is MultiplyOperation multiply
             && node.Outputs.Count > 0
-            && node.Outputs.All(reader => reader is RelativeAddressNode)
+            && node.Outputs.All(reader => reader is RelativeAddressNode or MatrixBlendNode)
             && Enumerable.Range(0, 2).Any(i => multiply.Inputs[1 - i] is RegisterInputNode
                 && Enumerable.Range(1, 4).Any(rows => IsColorScale(multiply.Inputs[i], rows)));
     }
@@ -3572,6 +3579,35 @@ public sealed class NodeCompiler
             string litSwizzle = GetAstSourceSwizzleName(
                 componentsWithIndices, 4, promoteToVectorSize);
             return $"lit({nDotL}, {nDotH}, {specularPower}){litSwizzle}";
+        }
+
+        // Lanes of a blend no multiplication took: the register, then the lanes.
+        if (first is MatrixRowNode blendRow
+            && components.All(c => c is MatrixRowNode lane
+                && ReferenceEquals(lane.Blend, blendRow.Blend) && lane.Register == blendRow.Register))
+        {
+            string blended = Compile([blendRow.Blend]);
+            string register = blendRow.MatrixType.ParameterClass == ParameterClass.MatrixRows
+                ? (blended.Contains(' ') ? $"({blended})" : blended) + $"[{blendRow.Register}]"
+                : $"transpose({blended})[{blendRow.Register}]";
+            string laneSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
+                blendRow.MatrixType.ParameterClass == ParameterClass.MatrixRows
+                    ? blendRow.MatrixType.Columns
+                    : blendRow.MatrixType.Rows,
+                promoteToVectorSize);
+            return register + laneSwizzle;
+        }
+        // One component across registers: a column major matrix's row, a row
+        // major one's column.
+        if (first is MatrixRowNode crossRow
+            && components.All(c => c is MatrixRowNode lane
+                && ReferenceEquals(lane.Blend, crossRow.Blend) && lane.ComponentIndex == crossRow.ComponentIndex))
+        {
+            string blended = Compile([crossRow.Blend]);
+            string vector = crossRow.MatrixType.ParameterClass == ParameterClass.MatrixRows
+                ? $"transpose({blended})[{crossRow.ComponentIndex}]"
+                : (blended.Contains(' ') ? $"({blended})" : blended) + $"[{crossRow.ComponentIndex}]";
+            return vector + "." + string.Concat(components.Select(c => "xyzw"[((MatrixRowNode)c).Register]));
         }
 
         if (first is MatrixMultiplyOutputNode matrixComponent)

@@ -3611,6 +3611,7 @@ public class HlslAstWriter : HlslWriter
             or ReflectOutputNode
             or MatrixMultiplyOutputNode
             or LitOutputNode
+            or MatrixBlendNode
             or ConstantNode
             && !NodeCompiler.IsColorIndex(node);
     }
@@ -3824,6 +3825,7 @@ public class HlslAstWriter : HlslWriter
             variable.IsUnsigned = isUnsigned;
             variable.IsDouble = isDouble;
             variable.IsBool = isBool;
+            variable.MatrixTypeName = nodes is [MatrixBlendNode blend] ? blend.TypeName : null;
         }
     }
 

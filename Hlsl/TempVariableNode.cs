@@ -38,11 +38,14 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // Holds a whole struct element, as Consume() returns one.
     public RegisterKey StructuredElementOf { get; set; }
 
-    public string TypeName => IsBool
+    // Holds a blend of matrices: declared as the matrix type, `float4x3`.
+    public string MatrixTypeName { get; set; }
+
+    public string TypeName => MatrixTypeName ?? (IsBool
         ? "bool"
         : IsInteger
         ? IntegerTypeName
-        : IsDouble ? "double" : IsHalf ? "half" : "float";
+        : IsDouble ? "double" : IsHalf ? "half" : "float");
 
     public override string ToString()
     {

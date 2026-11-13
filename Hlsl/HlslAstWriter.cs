@@ -2566,7 +2566,7 @@ public class HlslAstWriter : HlslWriter
                 : TextRepeats(recording, grouped, roots)
                     ?? RootOfSeveralRegisters(registerGroups, recording)
                     ?? RootReadAgain(registerGroups, recording, named.Concat(assignments).ToList())
-                    ?? DroppedHalfCast(readers, roots, named.Concat(assignments), fetchesOnly: true)
+                    ?? DroppedHalfCast(readers, roots, named.Concat(assignments), recording)
                     ?? SplitRead(readers, grouped, roots, measurement)
                     ?? SharedRoots(registerGroups, readers, recording, groupMatches)
                     ?? SharedInstruction(readers, recording, roots)
@@ -3417,14 +3417,17 @@ public class HlslAstWriter : HlslWriter
     /// `(half)` cast: read by full-precision arithmetic, or written to a float
     /// output, the cast folds away, and a vector instruction is _pp only if every
     /// lane is. A half variable keeps it: `half4 t = x * k` rather than
-    /// `(half4)(x * k) * c`.
+    /// `(half4)(x * k) * c`. Given the recording, only fetches are named, and also
+    /// one written in pieces (`half4(tex2D(s, uv).xy, 0, tex2D(s, uv).w)`): fxc
+    /// merges the two fetches and drops their _pp.
     /// </summary>
     private List<HlslTreeNode[]> DroppedHalfCast(
         HashSet<HlslTreeNode> readers,
         HashSet<HlslTreeNode> roots,
         IEnumerable<HlslTreeNode[]> named,
-        bool fetchesOnly = false)
+        List<(HlslTreeNode[] Nodes, string Text)> recording = null)
     {
+        bool fetchesOnly = recording != null;
         // Variables named so far are marked half only when written; their value says.
         HashSet<HlslTreeNode> halfVariables = HlslTreeNode.NewNodeSet();
         foreach (TempAssignmentNode assignment in named.SelectMany(group => group).OfType<TempAssignmentNode>())
@@ -3444,7 +3447,9 @@ public class HlslAstWriter : HlslWriter
         {
             ConvertOperation[] lanes = [.. instruction.OrderBy(cast => Computed(cast).SourceComponent)];
             if (lanes.Select(cast => Computed(cast).SourceComponent).Distinct().Count() != lanes.Length
-                || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables)))
+                || !lanes.Any(cast => IsHalfCastDropped(cast, readers, roots, halfVariables))
+                    && !(fetchesOnly && recording.Count(r => r.Nodes.All(node =>
+                        node is TextureLoadOutputNode && node.SourceInstruction == instruction.Key)) > 1))
             {
                 continue;
             }

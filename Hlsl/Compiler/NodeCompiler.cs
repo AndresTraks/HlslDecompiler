@@ -2841,6 +2841,10 @@ public sealed class NodeCompiler
 
     public string CompileRegisterIndexAsElement(HlslTreeNode index, int rows)
     {
+        if (CompileColorIndex(index, rows) is string colorIndex)
+        {
+            return colorIndex;
+        }
         // DXBC shifts where D3D9 multiplies.
         if (index is ShiftLeftOperation shift
             && shift.Inputs[1] is ConstantNode shiftAmount
@@ -2902,6 +2906,33 @@ public sealed class NodeCompiler
         // `(y * 4) & 28 / 4` read `& 7` of the register index, the wrong element.
         string registerIndex = CompileAsInteger([index]);
         return registerIndex.Contains(' ') ? $"({registerIndex}) / {rows}" : $"{registerIndex} / {rows}";
+    }
+
+    /// <summary>
+    /// `D3DCOLORtoUBYTE4(indices).x` for the address `indices.z * 255.001953 * rows`.
+    /// fxc takes the intrinsic for an integer and moves it to a0 as it is; the
+    /// product written out is a float, which it truncates first.
+    /// </summary>
+    private string CompileColorIndex(HlslTreeNode index, int rows)
+    {
+        if (index is not MultiplyOperation multiply)
+        {
+            return null;
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            if (multiply.Inputs[i] is ConstantNode { Value: float scale }
+                && Math.Abs(scale - 255.001953f * rows) < 1e-3f * rows
+                && multiply.Inputs[1 - i] is RegisterInputNode
+                && System.Text.RegularExpressions.Regex.Match(
+                    Compile(multiply.Inputs[1 - i]), @"^(.+)\.([xyzw])$") is { Success: true } lane)
+            {
+                // The intrinsic reads a D3DCOLOR's bgra: x and z trade places.
+                char component = lane.Groups[2].Value[0] switch { 'x' => 'z', 'z' => 'x', char c => c };
+                return $"D3DCOLORtoUBYTE4({lane.Groups[1].Value}).{component}";
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -3079,7 +3110,8 @@ public sealed class NodeCompiler
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices,
                 _registers.GetRegisterMaskedLength(arrayKey.RegisterKey),
                 promoteToVectorSize);
-            string index = CompileAsInteger([relativeAddress.Index]);
+            string index = CompileColorIndex(relativeAddress.Index, 1)
+                ?? CompileAsInteger([relativeAddress.Index]);
 
             // A def-defined array is named after its first register.
             if (_registers.FindConstantArray(arrayKey.RegisterKey) is ConstantArray literals)

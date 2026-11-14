@@ -578,6 +578,7 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "dot_beside_lane_sums")]
     [TestCase("ps_5_0", "lane_sum_every_lane")]
     [TestCase("ps_5_0", "broadcast_lane_beside_vector")]
+    [TestCase("ps_5_0", "saturated_product_reused")]
     [TestCase("cs_5_0", "switch_nested_break_carries")]
     [TestCase("ds_5_0", "patch_constant_index")]
     [TestCase("ds_5_0", "no_control_point_reads")]

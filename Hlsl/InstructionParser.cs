@@ -2034,7 +2034,15 @@ public class InstructionParser
             }
             if (instruction.Saturate)
             {
-                instructionTree = new SaturateOperation(instructionTree);
+                // The instruction's value is the saturated one: the stamp moves
+                // onto it, so naming takes `saturate(a * b)` whole.
+                HlslTreeNode unsaturated = instructionTree;
+                instructionTree = new SaturateOperation(unsaturated);
+                if (unsaturated.SourceInstruction == _instructionPointer + 1)
+                {
+                    unsaturated.SourceInstruction = 0;
+                }
+                StampSourceInstruction(instructionTree, destinationKey.ComponentIndex);
             }
             if (IsDoubleResult(instruction, destinationKey))
             {

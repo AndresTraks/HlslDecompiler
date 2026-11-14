@@ -62,3 +62,18 @@ public enum ParameterType
     Min16Int,
     Min16Uint
 }
+
+public static class ParameterTypes
+{
+    /// <summary>
+    /// The full precision type a minimum precision one stands for: min16int is
+    /// an int wherever a value's kind is asked.
+    /// </summary>
+    public static ParameterType FullPrecision(this ParameterType type) => type switch
+    {
+        ParameterType.Min8Float or ParameterType.Min10Float or ParameterType.Min16Float => ParameterType.Float,
+        ParameterType.Min12Int or ParameterType.Min16Int => ParameterType.Int,
+        ParameterType.Min16Uint => ParameterType.Uint,
+        _ => type,
+    };
+}

@@ -481,6 +481,8 @@ public class DecompileDxbcTests
     [TestCase("vs_4_0", "product_with_one")]
     [TestCase("ps_4_0", "loop_reused_register")]
     [TestCase("ps_5_0", "min16_signature")]
+    [TestCase("ps_5_0", "min16int_constant")]
+    [TestCase("ps_5_0", "min16uint_constant")]
     [TestCase("cs_5_0", "double_bits_select")]
     [TestCase("vs_5_0", "double_output_words")]
     [TestCase("ds_5_0", "packed_patch_flags")]

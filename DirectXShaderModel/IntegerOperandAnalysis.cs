@@ -1039,7 +1039,7 @@ public sealed class IntegerOperandAnalysis
                 .OfType<D3D10ConstantDeclaration>()
                 .FirstOrDefault(c => c.RegisterIndex == constantKey.Number
                     && offset >= c.VariableOffset && offset < c.VariableOffset + c.VariableSize);
-            return constant?.TypeInfo.ParameterType switch
+            return constant?.TypeInfo.ParameterType.FullPrecision() switch
             {
                 ParameterType.Uint => Signedness.Unsigned,
                 ParameterType.Int => Signedness.Signed,
@@ -1069,7 +1069,7 @@ public sealed class IntegerOperandAnalysis
         ResourceDefinition definition = _shader.ResourceDefinitions?
             .FirstOrDefault(d => inputTypes.Contains(d.ShaderInputType)
                 && d.BindPoint == load.GetParamRegisterNumber(ResourceIndex));
-        return definition?.ElementType?.ParameterType switch
+        return definition?.ElementType?.ParameterType.FullPrecision() switch
         {
             ParameterType.Uint => Signedness.Unsigned,
             ParameterType.Int => Signedness.Signed,
@@ -1295,7 +1295,7 @@ public sealed class IntegerOperandAnalysis
         {
             return ReachedMembersType(load, members);
         }
-        return definition.ElementType.ParameterType switch
+        return definition.ElementType.ParameterType.FullPrecision() switch
         {
             ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
             ParameterType.Float => StoredType.Float,
@@ -1313,7 +1313,7 @@ public sealed class IntegerOperandAnalysis
         {
             StoredType[] arrayTypes = [.. members
                 .Where(m => m.TypeInfo.NumElements > 1 && m.TypeInfo.MemberInfo is not { Count: > 0 })
-                .Select(m => m.TypeInfo.ParameterType switch
+                .Select(m => m.TypeInfo.ParameterType.FullPrecision() switch
                 {
                     ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
                     ParameterType.Float => StoredType.Float,
@@ -1345,7 +1345,7 @@ public sealed class IntegerOperandAnalysis
                     .Where(m => m.ByteOffset <= at)
                     .OrderByDescending(m => m.ByteOffset)
                     .FirstOrDefault();
-            StoredType memberType = member?.TypeInfo.ParameterType switch
+            StoredType memberType = member?.TypeInfo.ParameterType.FullPrecision() switch
             {
                 ParameterType.Int or ParameterType.Uint or ParameterType.Bool => StoredType.Integer,
                 ParameterType.Float => StoredType.Float,
@@ -1454,7 +1454,7 @@ public sealed class IntegerOperandAnalysis
         // Constant buffer variables declared int, uint or bool.
         foreach (D3D10ConstantDeclaration constant in shader.ConstantDeclarations.OfType<D3D10ConstantDeclaration>())
         {
-            if (constant.TypeInfo.ParameterType is not (ParameterType.Int or ParameterType.Uint or ParameterType.Bool))
+            if (constant.TypeInfo.ParameterType.FullPrecision() is not (ParameterType.Int or ParameterType.Uint or ParameterType.Bool))
             {
                 continue;
             }

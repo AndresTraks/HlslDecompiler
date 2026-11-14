@@ -320,7 +320,7 @@ public sealed class RegisterState
         {
             return null;
         }
-        return type.ParameterType switch
+        return type.ParameterType.FullPrecision() switch
         {
             ParameterType.Uint or ParameterType.Bool => true,
             ParameterType.Int => false,
@@ -368,7 +368,7 @@ public sealed class RegisterState
         {
             return null;
         }
-        return type.ParameterType switch
+        return type.ParameterType.FullPrecision() switch
         {
             ParameterType.Int or ParameterType.Uint or ParameterType.Bool => true,
             ParameterType.Float => false,
@@ -1861,7 +1861,7 @@ public sealed class RegisterState
         }
         if (FindConstantOfComponent(registerComponent) is ConstantDeclaration constant)
         {
-            return constant.TypeInfo.ParameterType switch
+            return constant.TypeInfo.ParameterType.FullPrecision() switch
             {
                 ParameterType.Int => DeclaredType.Int,
                 ParameterType.Uint => DeclaredType.Uint,

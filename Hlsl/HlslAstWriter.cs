@@ -3452,9 +3452,10 @@ public class HlslAstWriter : HlslWriter
             }
             int saved = written.Sum(r => r.Text.Length) - written.Max(r => r.Text.Length);
             // Or whole and part both written: fxc recomputes `f16tof32(v.x)` beside
-            // `f16tof32(v)`.
-            bool wholeAndPart = written.Any(r => r.Nodes.Length == group.Length)
-                && written.Any(r => r.Nodes.Length < group.Length)
+            // `f16tof32(v)`, and `a.w` broadcast beside `a`. Counted by distinct
+            // lanes, as a broadcast repeats one.
+            bool wholeAndPart = written.Any(r => DistinctCount(r.Nodes) == group.Length)
+                && written.Any(r => DistinctCount(r.Nodes) < group.Length)
                 && group.All(node => node is Operation);
             // Packed arithmetic lanes must form one vector expression, not a
             // constructor; other ops (a sincos pair) may be a constructor.
@@ -3466,6 +3467,11 @@ public class HlslAstWriter : HlslWriter
             }
         }
         return null;
+    }
+
+    private static int DistinctCount(HlslTreeNode[] nodes)
+    {
+        return nodes.Distinct(ReferenceEqualityComparer.Instance).Count();
     }
 
     /// <summary>

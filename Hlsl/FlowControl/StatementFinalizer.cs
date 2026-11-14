@@ -480,10 +480,12 @@ public class StatementFinalizer
                 if (assignmentNode.Outputs.All(v => IsUnreadJoin(v, assignmentNode)
                     || (v is not PhiNode && (written ??= new ReadThrough(assignment.Outputs)).Contains(v)))
                     || (i < statements.Count - 1
-                        && assignmentNode.Outputs is [var reader] && reader is not PhiNode
-                        && !(written ??= new ReadThrough(assignment.Outputs)).Contains(reader)
-                        && (nextHeld ??= Below(statements[i + 1].HeldNodes.Where(n => n != null))).Contains(reader)
-                        && IsReadBesideInlineLane(assignmentNode, reader, valuesAtStart)))
+                        && OneInstructionsLanes(assignmentNode.Outputs) is [var reader, ..] readers
+                        && (readers.Length == 1 || assignmentNode is LoadStructuredNode)
+                        && readers.All(r => r is not PhiNode
+                            && !(written ??= new ReadThrough(assignment.Outputs)).Contains(r)
+                            && (nextHeld ??= Below(statements[i + 1].HeldNodes.Where(n => n != null))).Contains(r))
+                        && IsReadBesideInlineLane(assignmentNode, reader, valuesAtStart, sameElement: readers.Length > 1)))
                 {
                     // A local array store may inline the value only if it is the very
                     // next statement; a store between could change what it reads.
@@ -1763,10 +1765,12 @@ public class StatementFinalizer
     /// <summary>
     /// A load lane, or a value reading one, whose reader also reads another lane of
     /// that load inline: through operations with no output of their own, the lane's
-    /// register written again.
+    /// register written again. With <paramref name="sameElement"/>, for a value
+    /// broadcast to an instruction's lanes, another member of the load's structured
+    /// element counts too.
     /// </summary>
     private static bool IsReadBesideInlineLane(HlslTreeNode value, HlslTreeNode reader,
-        HashSet<HlslTreeNode> outputValues)
+        HashSet<HlslTreeNode> outputValues, bool sameElement = false)
     {
         HlslTreeNode[] lanes = value is LoadStructuredNode ? [value] : [.. value.Inputs.OfType<LoadStructuredNode>()];
         if (lanes.Length == 0)
@@ -1784,7 +1788,8 @@ public class StatementFinalizer
             }
             if (node is LoadStructuredNode)
             {
-                if (lanes.Any(lane => !ReferenceEquals(lane, node) && IsSameValue(lane, node)))
+                if (lanes.Any(lane => !ReferenceEquals(lane, node)
+                    && (IsSameValue(lane, node) || sameElement && IsSameElement(lane, node))))
                 {
                     return true;
                 }
@@ -1806,6 +1811,35 @@ public class StatementFinalizer
     private static bool IsSameValue(HlslTreeNode a, HlslTreeNode b)
     {
         return HlslTreeNode.IsSameInstruction(a, b);
+    }
+
+    /// <summary>
+    /// The readers when there is one, or when they are lanes of one instruction
+    /// (a value broadcast to `v * w.xxxx`): read once either way. Otherwise empty.
+    /// </summary>
+    private static HlslTreeNode[] OneInstructionsLanes(IList<HlslTreeNode> readers)
+    {
+        if (readers.Count == 1)
+        {
+            return [readers[0]];
+        }
+        HlslTreeNode[] distinct = [.. readers.Distinct(ReferenceEqualityComparer.Instance).Cast<HlslTreeNode>()];
+        return distinct.Length == readers.Count && distinct.Length > 1
+            && distinct.All(r => HlslTreeNode.IsSameInstruction(r, distinct[0]))
+            ? distinct
+            : [];
+    }
+
+    /// <summary>
+    /// Two members of one structured element (`src[i].v` and `src[i].w`), which fxc
+    /// loads together in the order they are read.
+    /// </summary>
+    private static bool IsSameElement(HlslTreeNode a, HlslTreeNode b)
+    {
+        return a is LoadStructuredNode { IsRaw: false } first && b is LoadStructuredNode { IsRaw: false } second
+            && ReferenceEquals(first.Address, second.Address)
+            && first.Value is RegisterInputNode resource1 && second.Value is RegisterInputNode resource2
+            && resource1.RegisterComponentKey.RegisterKey.Equals(resource2.RegisterComponentKey.RegisterKey);
     }
 
     /// <summary>

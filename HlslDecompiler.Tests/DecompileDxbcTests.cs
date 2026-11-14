@@ -565,6 +565,8 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "uav_load_into_float")]
     [TestCase("cs_5_0", "load_before_branch_store")]
     [TestCase("cs_5_0", "raw_load_before_store")]
+    [TestCase("cs_5_0", "raw_load_normalize")]
+    [TestCase("cs_5_0", "raw_load_reflect")]
     [TestCase("cs_5_0", "switch_nested_break_carries")]
     [TestCase("ds_5_0", "patch_constant_index")]
     [TestCase("ds_5_0", "no_control_point_reads")]

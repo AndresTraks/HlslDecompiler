@@ -291,8 +291,10 @@ public sealed class NodeCompiler
     }
 
     /// <summary>
-    /// Compiles a value where a float is wanted (an output or return), so bits are
-    /// reinterpreted. An output carries no type of its own.
+    /// Compiles a value where a float is wanted (an output or return, or an operand
+    /// of a float-only intrinsic: normalize, reflect, cross), so bits are
+    /// reinterpreted. An output carries no type of its own; fxc would have converted
+    /// a number with itof before such an intrinsic.
     /// </summary>
     public string CompileAsFloat(IEnumerable<HlslTreeNode> group)
     {
@@ -521,7 +523,7 @@ public sealed class NodeCompiler
             if (normalize != null)
             {
                 MarkGrouped(components, normalize);
-                var vector = Compile(normalize);
+                var vector = CompileAsFloat(normalize);
                 return $"normalize({vector})";
             }
 
@@ -530,14 +532,14 @@ public sealed class NodeCompiler
             if (reflect != null)
             {
                 MarkGrouped(components, reflect.Value.Incident, reflect.Value.Normal);
-                return $"reflect({Compile(reflect.Value.Incident)}, {Compile(reflect.Value.Normal)})";
+                return $"reflect({CompileAsFloat(reflect.Value.Incident)}, {CompileAsFloat(reflect.Value.Normal)})";
             }
 
             var cross = _nodeGrouper.CrossProductGrouper.TryGetContext(components);
             if (cross != null)
             {
                 MarkGrouped(components, cross.Value.A, cross.Value.B);
-                return $"cross({Compile(cross.Value.A)}, {Compile(cross.Value.B)})";
+                return $"cross({CompileAsFloat(cross.Value.A)}, {CompileAsFloat(cross.Value.B)})";
             }
         }
 
@@ -3624,8 +3626,8 @@ public sealed class NodeCompiler
         {
             // Swizzle against the vector's width, not the register's.
             MarkMatched(components);
-            string incident = Compile(reflectComponent.Incident.Inputs);
-            string normal = Compile(reflectComponent.Normal.Inputs);
+            string incident = CompileAsFloat(reflectComponent.Incident.Inputs);
+            string normal = CompileAsFloat(reflectComponent.Normal.Inputs);
             string reflectSwizzle = GetAstSourceSwizzleName(componentsWithIndices,
                 reflectComponent.Incident.Inputs.Count, promoteToVectorSize);
             return $"reflect({incident}, {normal}){reflectSwizzle}";
@@ -3640,9 +3642,9 @@ public sealed class NodeCompiler
                 && components.All(c => c is NormalizeOutputNode n && n.Inputs.SequenceEqual(first.Inputs))
                 && components.Select(c => ((NormalizeOutputNode)c).ComponentIndex).Distinct().Count() == components.Count)
             {
-                return $"normalize({Compile(components.Select(c => first.Inputs[((NormalizeOutputNode)c).ComponentIndex]))})";
+                return $"normalize({CompileAsFloat(components.Select(c => first.Inputs[((NormalizeOutputNode)c).ComponentIndex]))})";
             }
-            string input = Compile(first.Inputs);
+            string input = CompileAsFloat(first.Inputs);
             string swizzle = GetAstSourceSwizzleName(componentsWithIndices, first.Inputs.Count,
                 promoteToVectorSize);
             return $"normalize({input}){swizzle}";

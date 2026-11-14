@@ -3901,7 +3901,7 @@ public class HlslSimpleWriter : HlslWriter
                     int width = instruction.GetDestinationMaskLength();
                     string method = width == 1 ? "Store" : $"Store{width}";
                     WriteLine("{0}.{3}({1}, {2});", GetOperandName(instruction, 0), GetOperandName(instruction, 1),
-                        GetOperandName(instruction, 2), method);
+                        StoredBits(instruction, 2) ?? GetOperandName(instruction, 2), method);
                     break;
                 }
             case D3D10Opcode.Sync:

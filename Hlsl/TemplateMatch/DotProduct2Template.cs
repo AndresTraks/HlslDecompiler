@@ -28,9 +28,9 @@ public class DotProduct2Template : IGroupTemplate
         {
             return null;
         }
-        if (IsSharedLaneProduct(ax, add) && IsSharedLaneProduct(by, add))
+        if (IsLaneProduct(ax) && IsLaneProduct(by) && (IsReadElsewhere(ax, add) || IsReadElsewhere(by, add)))
         {
-            // Lanes of one vector product that other sums also read (`p + p.yzwx`)
+            // Lanes of a vector product that other sums also read (`p + p.yzwx`)
             // are one mul for all of them; a dot apiece multiplies them again.
             return null;
         }
@@ -95,7 +95,10 @@ public class DotProduct2Template : IGroupTemplate
             // later, at compile time. Plain reads are allowed, since no other
             // grouper uses them and fxc's operand order decides which side they're on;
             // so are dots outside a matrix multiply.
-            if (!(IsPlainRead(x) && IsPlainRead(y) || _templateMatcher.AreFreeDots(x, y))
+            // Not lanes of two vector products (`p.x + q.y`): fxc would gather the
+            // other side with a mov apiece, where a mul and a mad do.
+            if (!(IsPlainRead(x) && IsPlainRead(y) && !(IsLaneProduct(ax) && IsLaneProduct(by))
+                    || _templateMatcher.AreFreeDots(x, y))
                 || IsTransposedGather(x, y))
             {
                 return null;
@@ -121,13 +124,18 @@ public class DotProduct2Template : IGroupTemplate
             // one split value, not a transpose.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
-    // One lane of a vector product, its factors the same component, read by more than this sum.
-    private static bool IsSharedLaneProduct(MultiplyOperation product, HlslTreeNode sum)
+    // One lane of a vector product: its factors other than literals read one component.
+    private static bool IsLaneProduct(MultiplyOperation product)
     {
-        return product.Factor1 is IHasComponentIndex factor1
-            && product.Factor2 is IHasComponentIndex factor2
-            && factor1.ComponentIndex == factor2.ComponentIndex
-            && product.Outputs.Any(output => !ReferenceEquals(output, sum));
+        HlslTreeNode[] factors = [.. product.Inputs.Where(factor => factor is not ConstantNode)];
+        return factors.Length != 0
+            && factors.All(factor => factor is IHasComponentIndex)
+            && factors.Select(factor => ((IHasComponentIndex)factor).ComponentIndex).Distinct().Count() == 1;
+    }
+
+    private static bool IsReadElsewhere(HlslTreeNode product, HlslTreeNode sum)
+    {
+        return product.Outputs.Any(output => !ReferenceEquals(output, sum));
     }
 
     // A component read, not computed: nothing the cross/normalize groupers claim.

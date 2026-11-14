@@ -475,7 +475,7 @@ public sealed class NodeCompiler
                 : _nodeGrouper.GroupComponents(components);
             if (componentGroups.Count > 1)
             {
-                if (TryCompileTransposedDots(components) is string weighted)
+                if ((TryCompileTransposedDots(components) ?? TryCompileLaneDots(components)) is string weighted)
                 {
                     return weighted;
                 }
@@ -511,7 +511,7 @@ public sealed class NodeCompiler
                 {
                     return permuted;
                 }
-                if (TryCompileTransposedDots(components) is string weighted)
+                if ((TryCompileTransposedDots(components) ?? TryCompileLaneDots(components)) is string weighted)
                 {
                     return weighted;
                 }
@@ -1527,59 +1527,97 @@ public sealed class NodeCompiler
             {
                 continue;
             }
-            // Each component as its sum, for the compiler to group across components.
-            var built = new List<HlslTreeNode>();
-            var sums = new List<HlslTreeNode>();
-            foreach (DotProductOperation dot in dots)
+            if (TryCompileProductSums(dots.Select(dot => Enumerable.Range(0, weights.Length)
+                .Select(j => (((GroupNode)dot.Inputs[1 - shared])[j], weights[j])).ToList()).ToList()) is string weighted)
             {
-                var values = (GroupNode)dot.Inputs[1 - shared];
-                HlslTreeNode sum = null;
-                for (int j = 0; j < weights.Length; j++)
-                {
-                    HlslTreeNode product = new MultiplyOperation(values[j], weights[j]) { ConsumesInteger = false };
-                    built.Add(product);
-                    if (sum != null)
-                    {
-                        sum = new AddOperation(sum, product) { ConsumesInteger = false };
-                        built.Add(sum);
-                    }
-                    else
-                    {
-                        sum = product;
-                    }
-                }
-                sums.Add(sum);
-            }
-            try
-            {
-                string measured = Measure([sums]).Recording[^1].Text;
-                if (System.Text.RegularExpressions.Regex.IsMatch(measured, @"\b(float|int|uint|half|double|bool)[234]\("))
-                {
-                    continue;
-                }
-                // Bracketed when nested: the node is a dot, which callers don't bracket.
-                string weighted = Compile(sums);
-                return _compileDepth > _topDepth ? $"({weighted})" : weighted;
-            }
-            finally
-            {
-                // Detach the temporary nodes from the graph's readers.
-                foreach (HlslTreeNode node in built)
-                {
-                    foreach (HlslTreeNode input in node.Inputs)
-                    {
-                        input.Outputs.Remove(node);
-                    }
-                }
-                // And from the recording, or naming would see them twice.
-                HashSet<HlslTreeNode> temporary = HlslTreeNode.NewNodeSet();
-                temporary.UnionWith(built);
-                Recording?.RemoveAll(record => record.Nodes.Any(temporary.Contains));
-                GroupMatches?.RemoveAll(match => match.Any(temporary.Contains));
-                Grouped?.ExceptWith(temporary);
+                return weighted;
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Dots each pairing the same components of two values, written as their
+    /// products summed: `float4(dot(c.xy, t.xy), dot(c.zw, t.zw), dot(c.xz, t.xz), ...)`
+    /// is `t.xzxy * c.xzxy + t.ywzw * c.ywzw`, a mul and a mad where the dots
+    /// are a dp2 a component. Three components or more: two dots cost the same.
+    /// </summary>
+    private string TryCompileLaneDots(List<HlslTreeNode> components)
+    {
+        if (components.Count < 3 || !components.All(c => c is DotProductOperation dot
+                && dot.Inputs[0] is GroupNode first && dot.Inputs[1] is GroupNode second
+                && first.Length == second.Length
+                && Enumerable.Range(0, first.Length).All(j =>
+                    first[j] is IHasComponentIndex a && second[j] is IHasComponentIndex b
+                    && a.ComponentIndex == b.ComponentIndex)))
+        {
+            return null;
+        }
+        List<DotProductOperation> dots = [.. components.Cast<DotProductOperation>()];
+        int length = ((GroupNode)dots[0].Inputs[0]).Length;
+        if (!dots.All(dot => ((GroupNode)dot.Inputs[0]).Length == length))
+        {
+            return null;
+        }
+        return TryCompileProductSums(dots.Select(dot => Enumerable.Range(0, length)
+            .Select(j => (((GroupNode)dot.Inputs[1])[j], ((GroupNode)dot.Inputs[0])[j])).ToList()).ToList());
+    }
+
+    /// <summary>
+    /// Each component as its products summed, for the compiler to group across
+    /// components. Taken only if the sum measures without vector constructors.
+    /// </summary>
+    private string TryCompileProductSums(List<List<(HlslTreeNode Value, HlslTreeNode Weight)>> components)
+    {
+        var built = new List<HlslTreeNode>();
+        var sums = new List<HlslTreeNode>();
+        foreach (List<(HlslTreeNode Value, HlslTreeNode Weight)> factors in components)
+        {
+            HlslTreeNode sum = null;
+            foreach ((HlslTreeNode value, HlslTreeNode weight) in factors)
+            {
+                HlslTreeNode product = new MultiplyOperation(value, weight) { ConsumesInteger = false };
+                built.Add(product);
+                if (sum != null)
+                {
+                    sum = new AddOperation(sum, product) { ConsumesInteger = false };
+                    built.Add(sum);
+                }
+                else
+                {
+                    sum = product;
+                }
+            }
+            sums.Add(sum);
+        }
+        try
+        {
+            string measured = Measure([sums]).Recording[^1].Text;
+            if (System.Text.RegularExpressions.Regex.IsMatch(measured, @"\b(float|int|uint|half|double|bool)[234]\("))
+            {
+                return null;
+            }
+            // Bracketed when nested: the node is a dot, which callers don't bracket.
+            string weighted = Compile(sums);
+            return _compileDepth > _topDepth ? $"({weighted})" : weighted;
+        }
+        finally
+        {
+            // Detach the temporary nodes from the graph's readers.
+            foreach (HlslTreeNode node in built)
+            {
+                foreach (HlslTreeNode input in node.Inputs)
+                {
+                    input.Outputs.Remove(node);
+                }
+            }
+            // And from the recording, or naming would see them twice.
+            HashSet<HlslTreeNode> temporary = HlslTreeNode.NewNodeSet();
+            temporary.UnionWith(built);
+            Recording?.RemoveAll(record => record.Nodes.Any(temporary.Contains));
+            GroupMatches?.RemoveAll(match => match.Any(temporary.Contains));
+            Grouped?.ExceptWith(temporary);
+        }
     }
 
     // Whether no two of the dots read the same value at this place of this side.

@@ -569,6 +569,7 @@ public class DecompileDxbcTests
     [TestCase("cs_5_0", "raw_load_reflect")]
     [TestCase("cs_5_0", "raw_load_pair_shift")]
     [TestCase("cs_5_0", "raw_load_pair_shift_first")]
+    [TestCase("ps_5_0", "product_swizzled_sum")]
     [TestCase("cs_5_0", "switch_nested_break_carries")]
     [TestCase("ds_5_0", "patch_constant_index")]
     [TestCase("ds_5_0", "no_control_point_reads")]

@@ -28,6 +28,12 @@ public class DotProduct2Template : IGroupTemplate
         {
             return null;
         }
+        if (IsSharedLaneProduct(ax, add) && IsSharedLaneProduct(by, add))
+        {
+            // Lanes of one vector product that other sums also read (`p + p.yzwx`)
+            // are one mul for all of them; a dot apiece multiplies them again.
+            return null;
+        }
 
         HlslTreeNode a = ax.Factor1;
         HlslTreeNode b = by.Factor1;
@@ -115,6 +121,15 @@ public class DotProduct2Template : IGroupTemplate
             // one split value, not a transpose.
             && nodes.Select(node => node.GetType()).Distinct().Count() == 1;
     }
+    // One lane of a vector product, its factors the same component, read by more than this sum.
+    private static bool IsSharedLaneProduct(MultiplyOperation product, HlslTreeNode sum)
+    {
+        return product.Factor1 is IHasComponentIndex factor1
+            && product.Factor2 is IHasComponentIndex factor2
+            && factor1.ComponentIndex == factor2.ComponentIndex
+            && product.Outputs.Any(output => !ReferenceEquals(output, sum));
+    }
+
     // A component read, not computed: nothing the cross/normalize groupers claim.
     private static bool IsPlainRead(HlslTreeNode node) =>
         node is IHasComponentIndex && node is not Operation && node is not DotProductOperation;

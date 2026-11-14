@@ -28,6 +28,13 @@ public class HlslTreeNode
     public int SourceComponent { get; set; }
 
     /// <summary>
+    /// The minimum precision <see cref="SourceInstruction"/> wrote this value at,
+    /// encoded as a signature's (1 min16float, 2 min10float, 4 min16int, 5 min16uint);
+    /// zero for full precision.
+    /// </summary>
+    public int MinPrecision { get; set; }
+
+    /// <summary>
     /// Facts recorded while all readers still existed (<see cref="ValueTypes.Record"/>).
     /// Null for later values, which are then asked live.
     /// </summary>

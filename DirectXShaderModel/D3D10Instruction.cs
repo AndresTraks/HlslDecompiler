@@ -962,6 +962,21 @@ public class D3D10Instruction : Instruction
         return D3D10OperandModifier.None;
     }
 
+    /// <summary>
+    /// The operand's minimum precision, encoded as a signature's: 0 full, 1 min16float,
+    /// 2 min10float, 4 min16int, 5 min16uint.
+    /// </summary>
+    public int GetOperandMinPrecision(int index)
+    {
+        Span<uint> span = OperandTokens.GetSpan(index);
+        bool isExtended = (span[0] & 0x80000000) != 0;
+        if (isExtended && (span[1] & 0x3F) == 1)
+        {
+            return (int)((span[1] >> 14) & 7);
+        }
+        return 0;
+    }
+
     public override D3D10RegisterKey GetParamRegisterKey(int index)
     {
         OperandType operandType = GetOperandType(index);

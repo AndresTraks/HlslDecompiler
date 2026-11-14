@@ -18,6 +18,9 @@ public class CommandLineOptions
         + "                       of the simplified expression tree\r\n"
         + "  --flow-attributes    Mark every if [branch] and every loop [loop], so that\r\n"
         + "                       the shader branches and loops where the original did\r\n"
+        + "  --min-precision      Declare variables holding min16float and other\r\n"
+        + "                       minimum precision values at that precision, as the\r\n"
+        + "                       original computed them, at some instruction cost\r\n"
         + "  --verbose            Print the stack trace when decompiling fails\r\n"
         + "  -h, --help           Show this help\r\n";
 
@@ -26,6 +29,7 @@ public class CommandLineOptions
     public bool Disassemble { get; private set; }
     public bool DoAstAnalysis { get; private set; } = true;
     public bool WritesFlowAttributes { get; private set; }
+    public bool KeepsMinimumPrecision { get; private set; }
     public bool Verbose { get; private set; }
     public bool ShowHelp { get; private set; }
     public string Error { get; private set; }
@@ -90,6 +94,9 @@ public class CommandLineOptions
                     break;
                 case "--flow-attributes":
                     WritesFlowAttributes = true;
+                    break;
+                case "--min-precision":
+                    KeepsMinimumPrecision = true;
                     break;
                 case "--verbose":
                     Verbose = true;

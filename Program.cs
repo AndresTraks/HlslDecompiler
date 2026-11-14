@@ -231,7 +231,11 @@ class Program
     {
         if (options.DoAstAnalysis)
         {
-            return new HlslAstWriter(shader) { WritesFlowAttributes = options.WritesFlowAttributes };
+            return new HlslAstWriter(shader)
+            {
+                WritesFlowAttributes = options.WritesFlowAttributes,
+                KeepsMinimumPrecision = options.KeepsMinimumPrecision,
+            };
         }
         return new HlslSimpleWriter(shader) { WritesFlowAttributes = options.WritesFlowAttributes };
     }

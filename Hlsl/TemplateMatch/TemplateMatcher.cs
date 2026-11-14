@@ -265,6 +265,7 @@ public class TemplateMatcher
         {
             replacement.SourceInstruction = node.SourceInstruction;
             replacement.SourceComponent = node.SourceComponent;
+            replacement.MinPrecision = node.MinPrecision;
         }
     }
 

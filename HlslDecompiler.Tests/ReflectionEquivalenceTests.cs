@@ -46,6 +46,15 @@ public class ReflectionEquivalenceTests
             "The same merge of the b210 and b120 phases, from the instruction writer's "
             + "phase-by-phase copy of them: fxc finds the six alike and runs one "
             + "phase per component twice.")],
+        ["cs_5_0/min16_groupshared"] = [("ast",
+            "dcl_globalFlags without enableMinimumPrecision. The original's only "
+            + "min16 values are a groupshared read and the sum it goes into, both "
+            + "temporaries, which the AST writer declares full precision by default; "
+            + "with nothing at minimum precision left, fxc drops the flag. "
+            + "--min-precision keeps the temporaries min16 (MinPrecisionTests)."),
+            ("instruction",
+            "The same flag: the instruction writer declares its registers float4, "
+            + "so nothing is computed at minimum precision either.")],
         ["cs_5_0/group_shared_tile"] = [("ast",
             "dcl_tgsm_structured where the original declared dcl_tgsm_raw. Raw "
             + "groupshared wider than one dword is the one declaration HLSL has no "

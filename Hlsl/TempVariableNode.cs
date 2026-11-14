@@ -41,11 +41,28 @@ public class TempVariableNode : HlslTreeNode, IHasComponentIndex
     // Holds a blend of matrices: declared as the matrix type, `float4x3`.
     public string MatrixTypeName { get; set; }
 
+    // Declared at the minimum precision its writes had (as HlslTreeNode.MinPrecision),
+    // with --min-precision; zero for full.
+    public int DeclaredMinPrecision { get; set; }
+
     public string TypeName => MatrixTypeName ?? (IsBool
         ? "bool"
         : IsInteger
-        ? IntegerTypeName
-        : IsDouble ? "double" : IsHalf ? "half" : "float");
+        ? MinPrecisionIntegerTypeName ?? IntegerTypeName
+        : IsDouble ? "double" : IsHalf ? "half" : MinPrecisionFloatTypeName ?? "float");
+
+    private string MinPrecisionFloatTypeName => DeclaredMinPrecision switch
+    {
+        1 => "min16float",
+        2 => "min10float",
+        _ => null,
+    };
+
+    private string MinPrecisionIntegerTypeName => DeclaredMinPrecision switch
+    {
+        4 or 5 => IsUnsigned ? "min16uint" : "min16int",
+        _ => null,
+    };
 
     public override string ToString()
     {

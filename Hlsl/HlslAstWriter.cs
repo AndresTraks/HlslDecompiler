@@ -35,6 +35,13 @@ public class HlslAstWriter : HlslWriter
     private IList<IStatement> _functionStatements;
     private VariableLiveness _liveness;
 
+    /// <summary>
+    /// Whether a variable holding minimum precision values is declared at that
+    /// precision (`min16float`). Off, it is full precision, which the original
+    /// allowed too and fxc compiles without the conversions back to 32 bits.
+    /// </summary>
+    public bool KeepsMinimumPrecision { get; init; }
+
     public HlslAstWriter(ShaderModel shader)
         : base(shader)
     {
@@ -344,10 +351,36 @@ public class HlslAstWriter : HlslWriter
         }
     }
 
+    /// <summary>
+    /// With <see cref="KeepsMinimumPrecision"/>, declares the variables of a group
+    /// whose every value was written at one minimum precision at that precision.
+    /// </summary>
+    private void MarkMinimumPrecision(HlslTreeNode[] group)
+    {
+        if (!KeepsMinimumPrecision || !group.All(node => node is TempAssignmentNode))
+        {
+            return;
+        }
+        int[] precisions = [.. group.Cast<TempAssignmentNode>().Select(assignment => assignment.Value switch
+        {
+            TempVariableNode variable => variable.DeclaredMinPrecision,
+            HlslTreeNode value => value.MinPrecision,
+        })];
+        if (precisions[0] == 0 || precisions.Any(precision => precision != precisions[0]))
+        {
+            return;
+        }
+        foreach (TempAssignmentNode assignment in group.Cast<TempAssignmentNode>())
+        {
+            assignment.TempVariable.DeclaredMinPrecision = precisions[0];
+        }
+    }
+
     // Compiles an assignment group, declaring the variable where nothing else does.
     private string CompileAssignment(HlslTreeNode[] group)
     {
         MarkPartialPrecision(group);
+        MarkMinimumPrecision(group);
         // Lanes declared here may share the group with lanes nothing declares.
         if (group.Any(node => node is TempAssignmentNode { IsReassignment: true })
             && group.All(node => node is TempAssignmentNode assignment
@@ -1849,6 +1882,7 @@ public class HlslAstWriter : HlslWriter
         foreach (HlslTreeNode[] assignment in assignments)
         {
             MarkPartialPrecision(assignment);
+            MarkMinimumPrecision(assignment);
             compiled.Add((assignment, _compiler.Compile(assignment)));
         }
         return compiled;

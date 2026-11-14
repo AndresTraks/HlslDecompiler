@@ -2044,6 +2044,11 @@ public class InstructionParser
                 }
                 StampSourceInstruction(instructionTree, destinationKey.ComponentIndex);
             }
+            // Only a value computed here; a mov passes its operand through unchanged.
+            if (instructionTree.SourceInstruction == _instructionPointer + 1)
+            {
+                instructionTree.MinPrecision = instruction.GetOperandMinPrecision(0);
+            }
             if (IsDoubleResult(instruction, destinationKey))
             {
                 _doubleValues.Add(instructionTree);

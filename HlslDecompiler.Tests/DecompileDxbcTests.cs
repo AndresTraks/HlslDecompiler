@@ -573,6 +573,8 @@ public class DecompileDxbcTests
     [TestCase("ps_5_0", "product_literal_swizzled_sum")]
     [TestCase("ps_5_0", "two_products_swizzled_sum")]
     [TestCase("ps_5_0", "lane_dots_vector")]
+    [TestCase("ps_5_0", "dot_beside_lane_sums")]
+    [TestCase("ps_5_0", "lane_sum_every_lane")]
     [TestCase("cs_5_0", "switch_nested_break_carries")]
     [TestCase("ds_5_0", "patch_constant_index")]
     [TestCase("ds_5_0", "no_control_point_reads")]

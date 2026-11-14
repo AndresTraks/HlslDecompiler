@@ -119,6 +119,9 @@ public class HlslAstWriter : HlslWriter
             values.AddRange(statement.HeldNodes);
         });
         ValueTypes.Record(values);
+        _templateMatcher.InstructionProducts = IndexInstructionProducts(values);
+        _templateMatcher.StatementValues = HlslTreeNode.NewNodeSet();
+        _templateMatcher.StatementValues.UnionWith(values.Where(value => value != null));
         StatementFinalizer.Finalize(statements, hasReturnValue, hasOutputStruct,
             CreateIntegerOperandAnalysis(), _doubleValues,
             liveOut: returnRegister == null ? null : [returnRegister]);
@@ -1861,6 +1864,38 @@ public class HlslAstWriter : HlslWriter
             return "";
         }
         return "." + string.Concat(components.Select(c => "xyzw"[c]));
+    }
+
+    /// <summary>
+    /// The lanes each multiply instruction wrote, among the values reachable from
+    /// the statements: whether a sum of some of them is a dot depends on the rest.
+    /// </summary>
+    private static Dictionary<int, HashSet<HlslTreeNode>> IndexInstructionProducts(IEnumerable<HlslTreeNode> values)
+    {
+        var products = new Dictionary<int, HashSet<HlslTreeNode>>();
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(values.Where(value => value != null));
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (!seen.Add(node))
+            {
+                continue;
+            }
+            if (node is MultiplyOperation && node.SourceInstruction != 0)
+            {
+                if (!products.TryGetValue(node.SourceInstruction, out HashSet<HlslTreeNode> lanes))
+                {
+                    products[node.SourceInstruction] = lanes = HlslTreeNode.NewNodeSet();
+                }
+                lanes.Add(node);
+            }
+            foreach (HlslTreeNode input in node.Inputs)
+            {
+                pending.Push(input);
+            }
+        }
+        return products;
     }
 
     private HlslTreeNode Reduce(HlslTreeNode node)

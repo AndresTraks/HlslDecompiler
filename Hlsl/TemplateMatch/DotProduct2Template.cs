@@ -28,10 +28,8 @@ public class DotProduct2Template : IGroupTemplate
         {
             return null;
         }
-        if (IsLaneProduct(ax) && IsLaneProduct(by) && (IsReadElsewhere(ax, add) || IsReadElsewhere(by, add)))
+        if (IsLaneProduct(ax) && IsLaneProduct(by) && _templateMatcher.LeavesInstructionLanesOut(add, ax, by))
         {
-            // Lanes of a vector product that other sums also read (`p + p.yzwx`)
-            // are one mul for all of them; a dot apiece multiplies them again.
             return null;
         }
 
@@ -131,11 +129,6 @@ public class DotProduct2Template : IGroupTemplate
         return factors.Length != 0
             && factors.All(factor => factor is IHasComponentIndex)
             && factors.Select(factor => ((IHasComponentIndex)factor).ComponentIndex).Distinct().Count() == 1;
-    }
-
-    private static bool IsReadElsewhere(HlslTreeNode product, HlslTreeNode sum)
-    {
-        return product.Outputs.Any(output => !ReferenceEquals(output, sum));
     }
 
     // A component read, not computed: nothing the cross/normalize groupers claim.

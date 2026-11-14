@@ -138,3 +138,5 @@ reordered cs_5_0/switch_nested_break_carries
 reworded hs_5_0/fork_factor_select
 reworded ps_5_0/product_swizzled_sum
 reworded ps_5_0/product_literal_swizzled_sum
+reworded ps_5_0/dot_beside_lane_sums
+reworded ps_3_0/dot_beside_lane_sums

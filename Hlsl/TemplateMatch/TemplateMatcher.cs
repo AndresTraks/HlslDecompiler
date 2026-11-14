@@ -56,6 +56,78 @@ public class TemplateMatcher
     /// </summary>
     public ISet<HlslTreeNode> DoubleValues { get; set; }
 
+    /// <summary>
+    /// The lanes of each multiply instruction, by instruction position. Null
+    /// until the writer builds it.
+    /// </summary>
+    public IReadOnlyDictionary<int, HashSet<HlslTreeNode>> InstructionProducts { get; set; }
+
+    /// <summary>
+    /// The statements' own values, before the finalizer: a lane among them is
+    /// read whole.
+    /// </summary>
+    public HashSet<HlslTreeNode> StatementValues { get; set; }
+
+    /// <summary>
+    /// Whether the sum chain over these two lanes of one multiply leaves out a lane
+    /// that needs the multiply anyway (`p + p.yzwx`, or `p.w` read alone), which
+    /// then serves the sum too, where dots would multiply again. A chain over
+    /// every lane is a dot on its own, and a lane read only by its own sum (two
+    /// matrix rows in one multiply) is a dot of its own.
+    /// </summary>
+    public bool LeavesInstructionLanesOut(HlslTreeNode sum, HlslTreeNode product1, HlslTreeNode product2)
+    {
+        if (InstructionProducts == null || product1.SourceInstruction == 0
+            || !HlslTreeNode.IsSameInstruction(product1, product2)
+            || !InstructionProducts.TryGetValue(product1.SourceInstruction, out HashSet<HlslTreeNode> lanes))
+        {
+            return false;
+        }
+        // Up through sums and the mads adding to it, which multiply a lane again.
+        HlslTreeNode top = sum;
+        while (top.Outputs.Count == 1 && (top.Outputs[0] is AddOperation
+            || top.Outputs[0] is MultiplyAddOperation mad && ReferenceEquals(mad.Addend, top)))
+        {
+            top = top.Outputs[0];
+        }
+        var leaves = new List<(HlslTreeNode, HlslTreeNode)>();
+        var pending = new Stack<HlslTreeNode>([top]);
+        while (pending.Count != 0)
+        {
+            switch (pending.Pop())
+            {
+                case AddOperation add:
+                    pending.Push(add.Addend1);
+                    pending.Push(add.Addend2);
+                    break;
+                case MultiplyAddOperation mad:
+                    leaves.Add((mad.Factor1, mad.Factor2));
+                    pending.Push(mad.Addend);
+                    break;
+                case MultiplyOperation product:
+                    leaves.Add((product.Factor1, product.Factor2));
+                    break;
+            }
+        }
+        return lanes.Any(lane => !leaves.Any(leaf => IsSameProduct(leaf, lane.Inputs[0], lane.Inputs[1]))
+            && IsReadWhole(lane));
+    }
+
+    // Read other than by a single sum: more than once, by another operation, or as a statement's value.
+    private bool IsReadWhole(HlslTreeNode lane)
+    {
+        return lane.Outputs.Count != 1
+            || lane.Outputs[0] is not (AddOperation or MultiplyAddOperation)
+            || StatementValues?.Contains(lane) == true;
+    }
+
+    private static bool IsSameProduct((HlslTreeNode, HlslTreeNode) leaf, HlslTreeNode factor1, HlslTreeNode factor2)
+    {
+        (HlslTreeNode a, HlslTreeNode b) = leaf;
+        return NodeGrouper.AreNodesEquivalent(a, factor1) && NodeGrouper.AreNodesEquivalent(b, factor2)
+            || NodeGrouper.AreNodesEquivalent(a, factor2) && NodeGrouper.AreNodesEquivalent(b, factor1);
+    }
+
     public TemplateMatcher(NodeGrouper nodeGrouper)
     {
         _stages =

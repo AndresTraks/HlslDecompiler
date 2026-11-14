@@ -23,7 +23,8 @@ void main(CS_IN i)
 	}
 	GroupMemoryBarrierWithGroupSync();
 	int2 t0 = int2(g1[0], g1[1]);
-	float2 t1 = float2(asfloat(g0[0]) + asfloat(g0[1]), 3 * asfloat(g0[3]));
-	int t2 = g0[2];
-	output[i.sv_dispatchthreadid.x] = float4(2 * asfloat(g0[0]) + asfloat(t0.x), 2 * asfloat(g0[1]) + asfloat(t0.y), asfloat(t2) * float2(2, 1) + t1);
+	int t1 = g0[0];
+	int t2 = g0[1];
+	int t3 = g0[2];
+	output[i.sv_dispatchthreadid.x] = float4(2 * asfloat(t1) + asfloat(t0.x), 2 * asfloat(t2) + asfloat(t0.y), asfloat(t1) + asfloat(t2) + 2 * asfloat(t3), asfloat(t3) + 3 * asfloat(g0[3]));
 }

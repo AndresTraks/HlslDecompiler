@@ -453,6 +453,12 @@ public class StatementFinalizer
             // than per reader.
             // The next statement's condition or clip values do not change here.
             ReadThrough written = null;
+            // A value reading a load lane beside a lane already read inline (its
+            // register written again here) goes inline too when read once, by the
+            // next statement: a variable for it alone would load the memory twice.
+            HashSet<HlslTreeNode> valuesAtStart = HlslTreeNode.NewNodeSet();
+            valuesAtStart.UnionWith(assignment.Outputs.Values);
+            HashSet<HlslTreeNode> nextHeld = null;
             HashSet<HlslTreeNode> nextReads = null;
             foreach (var assignmentOutput in assignmentOutputs)
             {
@@ -472,7 +478,12 @@ public class StatementFinalizer
                 // unless it is a phi nothing reads: the register is written again
                 // after the if, or by the loop before reading it, so fxc only reused it.
                 if (assignmentNode.Outputs.All(v => IsUnreadJoin(v, assignmentNode)
-                    || (v is not PhiNode && (written ??= new ReadThrough(assignment.Outputs)).Contains(v))))
+                    || (v is not PhiNode && (written ??= new ReadThrough(assignment.Outputs)).Contains(v)))
+                    || (i < statements.Count - 1
+                        && assignmentNode.Outputs is [var reader] && reader is not PhiNode
+                        && !(written ??= new ReadThrough(assignment.Outputs)).Contains(reader)
+                        && (nextHeld ??= Below(statements[i + 1].HeldNodes.Where(n => n != null))).Contains(reader)
+                        && IsReadBesideInlineLane(assignmentNode, reader, valuesAtStart)))
                 {
                     // A local array store may inline the value only if it is the very
                     // next statement; a store between could change what it reads.
@@ -1747,6 +1758,46 @@ public class StatementFinalizer
             }
         }
         return shared;
+    }
+
+    /// <summary>
+    /// A load lane, or a value reading one, whose reader also reads another lane of
+    /// that load inline: through operations with no output of their own, the lane's
+    /// register written again.
+    /// </summary>
+    private static bool IsReadBesideInlineLane(HlslTreeNode value, HlslTreeNode reader,
+        HashSet<HlslTreeNode> outputValues)
+    {
+        HlslTreeNode[] lanes = value is LoadStructuredNode ? [value] : [.. value.Inputs.OfType<LoadStructuredNode>()];
+        if (lanes.Length == 0)
+        {
+            return false;
+        }
+        HashSet<HlslTreeNode> seen = HlslTreeNode.NewNodeSet();
+        var pending = new Stack<HlslTreeNode>(reader.Inputs);
+        while (pending.Count != 0)
+        {
+            HlslTreeNode node = pending.Pop();
+            if (ReferenceEquals(node, value) || outputValues.Contains(node) || !seen.Add(node))
+            {
+                continue;
+            }
+            if (node is LoadStructuredNode)
+            {
+                if (lanes.Any(lane => !ReferenceEquals(lane, node) && IsSameValue(lane, node)))
+                {
+                    return true;
+                }
+            }
+            else if (node is Operation)
+            {
+                foreach (HlslTreeNode input in node.Inputs)
+                {
+                    pending.Push(input);
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>

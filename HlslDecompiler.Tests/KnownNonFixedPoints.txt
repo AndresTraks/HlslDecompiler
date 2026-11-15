@@ -141,3 +141,4 @@ reworded ps_5_0/product_literal_swizzled_sum
 reworded ps_5_0/dot_beside_lane_sums
 reworded ps_3_0/dot_beside_lane_sums
 reworded ps_5_0/min16_sample_temp
+reworded ps_3_0/input_dcl_order

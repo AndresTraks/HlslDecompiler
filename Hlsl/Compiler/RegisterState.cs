@@ -2466,6 +2466,29 @@ public sealed class RegisterState
         }
     }
 
+    /// <summary>
+    /// Puts a D3D9 shader's v# inputs in register order. fxc numbers inputs in
+    /// the order they are declared, while a dcl list need not be in register
+    /// order; vPos, vFace and ps_2_0's t# keep their places.
+    /// </summary>
+    public void OrderInputsByRegister()
+    {
+        static bool IsInput(RegisterDeclaration declaration) =>
+            declaration.RegisterKey is D3D9RegisterKey { Type: RegisterType.Input };
+        var sorted = new Queue<RegisterDeclaration>(MethodInputRegisters.Where(IsInput)
+            .OrderBy(declaration => ((D3D9RegisterKey)declaration.RegisterKey).Number));
+        if (sorted.Count < 2)
+        {
+            return;
+        }
+        List<RegisterDeclaration> all = [.. MethodInputRegisters];
+        MethodInputRegisters.Clear();
+        foreach (RegisterDeclaration declaration in all)
+        {
+            MethodInputRegisters.Add(IsInput(declaration) ? sorted.Dequeue() : declaration);
+        }
+    }
+
     // Where fxc would put an unbound constant, given the bound ones.
     private static int PlacedByCompiler(List<D3D9ConstantDeclaration> inSet, D3D9ConstantDeclaration target)
     {

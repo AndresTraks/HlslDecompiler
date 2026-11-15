@@ -67,6 +67,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "lane_sum_every_lane")]
     [TestCase("ps_3_0", "broadcast_lane_beside_vector")]
     [TestCase("ps_3_0", "constant_bindings")]
+    [TestCase("ps_3_0", "input_dcl_order")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]
     [TestCase("ps_3_0", "semantics")]

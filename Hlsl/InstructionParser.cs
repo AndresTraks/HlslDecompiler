@@ -183,6 +183,7 @@ public class InstructionParser
             [_statements, .. (linkageBodies ?? []).Select(body => body.Item2)]);
         ResolvePolymorphicImmediates();
         _registerState.PlanConstantRegisters();
+        _registerState.OrderInputsByRegister();
         return new HlslAst(_statements, _registerState, _doubleValues)
         {
             PreshaderOutputs = _preshaderOutputs,

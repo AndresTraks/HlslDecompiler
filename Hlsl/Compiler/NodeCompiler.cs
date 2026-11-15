@@ -90,6 +90,22 @@ public sealed class NodeCompiler
         return half;
     }
 
+    // Whether a half cast of the value can be written as the value alone.
+    private bool IsHalfAlready(HlslTreeNode value) => IsHalfValued(value) && HasHalfOperand(value);
+
+    // Whether a half typed value reads something half, rather than only literals.
+    private bool HasHalfOperand(HlslTreeNode node)
+    {
+        return node switch
+        {
+            ConvertOperation cast => cast.TargetType == "half",
+            TempVariableNode variable => variable.IsHalf,
+            RegisterInputNode input => IsPartialPrecisionInput(input),
+            Operation or GroupNode => node.Inputs.Any(HasHalfOperand),
+            _ => false,
+        };
+    }
+
     // An input its signature declares half.
     public bool IsPartialPrecisionInput(RegisterInputNode input)
     {
@@ -1280,6 +1296,10 @@ public sealed class NodeCompiler
     // A conversion's operand or an array index deeper down is still an integer.
     private int _floatArithmeticOperandDepth = -1;
 
+    // That float arithmetic, and the one a cast being compiled is an operand of.
+    private Operation _floatArithmetic;
+    private Operation _castOperandOf;
+
     // Likewise for integer arithmetic, where a float input read directly is its bits.
     private int _integerArithmeticOperandDepth = -1;
 
@@ -1959,6 +1979,11 @@ public sealed class NodeCompiler
         bool wasAssignedDirectly = _assignedDirectlyToInteger;
         int wasFloatArithmeticOperandDepth = _floatArithmeticOperandDepth;
         int wasIntegerArithmeticOperandDepth = _integerArithmeticOperandDepth;
+        Operation wasFloatArithmetic = _floatArithmetic;
+        Operation wasCastOperandOf = _castOperandOf;
+        _castOperandOf = operation is ConvertOperation && _compileDepth == _floatArithmeticOperandDepth
+            ? _floatArithmetic
+            : null;
         _assignedDirectlyToInteger = false;
         _readingAsBits = operation is BitwiseAndOperation or BitwiseOrOperation or BitwiseXorOperation
             or BitwiseNotOperation or ShiftLeftOperation or ShiftRightOperation
@@ -1980,6 +2005,7 @@ public sealed class NodeCompiler
                 or DivisionOperation or MultiplyAddOperation
             ? _compileDepth + 1
             : -1;
+        _floatArithmetic = _floatArithmeticOperandDepth == -1 ? null : operation;
         _integerArithmeticOperandDepth = !_readingAsFloat
             && ValueTypes.ComputesInIntegers(operation) == true
             && operation is AddOperation or SubtractOperation or MultiplyOperation
@@ -1997,6 +2023,8 @@ public sealed class NodeCompiler
             _assignedDirectlyToInteger = wasAssignedDirectly;
             _floatArithmeticOperandDepth = wasFloatArithmeticOperandDepth;
             _integerArithmeticOperandDepth = wasIntegerArithmeticOperandDepth;
+            _floatArithmetic = wasFloatArithmetic;
+            _castOperandOf = wasCastOperandOf;
         }
     }
 
@@ -2453,6 +2481,22 @@ public sealed class NodeCompiler
                             or DotProductOperation or LengthOperation
                             or FirstBitHighOperation
                         || value[0] is VectorComponentNode;
+                    // A value HLSL types half already. Literals alone take the type of
+                    // what reads them, so a half operand has to be there too. Read by
+                    // arithmetic, the brackets stay where they group: `a + (b + c)`
+                    // is not the sum fxc makes of `a + b + c`.
+                    // Only once written: names are chosen from the text as measured
+                    // with the casts.
+                    if (Recording == null && convert.TargetType == "half" && value.All(IsHalfAlready)
+                        // Lanes of literals gather into a float4(...), a float.
+                        && !System.Text.RegularExpressions.Regex.IsMatch(compiledValue, @"\bfloat[234]?\b"))
+                    {
+                        bool groups = _castOperandOf != null
+                            && !(isSingleTerm || IsBracketed(compiledValue) || IsConstructor(compiledValue))
+                            && (value[0] is AddOperation or SubtractOperation or MultiplyAddOperation
+                                || _castOperandOf is MultiplyOperation or DivisionOperation);
+                        return groups ? $"({compiledValue})" : compiledValue;
+                    }
                     // As wide as the value: `(float2)`, not `(float)`. One value in
                     // every lane is a scalar cast, broadcast where it is read: a
                     // `(float3)t4` inside a lane the constructor repeats is X3014.

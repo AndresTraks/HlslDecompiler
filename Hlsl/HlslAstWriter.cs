@@ -333,11 +333,16 @@ public class HlslAstWriter : HlslWriter
             return true;
         }
         // A variable named for a value several partial precision reads share: the
-        // cast sits on each reader rather than on the one write.
-        return assignment.TempVariable.Outputs.Count > 0
-            && assignment.TempVariable.Outputs.All(reader =>
-                reader is ConvertOperation { TargetType: "half" });
+        // cast sits on each reader rather than on the one write. Beside such a
+        // read, a reader may carry it on what it computes (`(half3)(t0 + k)`, a _pp
+        // mad reading a _pp normalize); alone, that says nothing of the value.
+        IList<HlslTreeNode> readers = assignment.TempVariable.Outputs;
+        return readers.Any(IsHalfCast)
+            && readers.All(reader => IsHalfCast(reader)
+                || reader is Operation && reader.Outputs.Count > 0 && reader.Outputs.All(IsHalfCast));
     }
+
+    private static bool IsHalfCast(HlslTreeNode node) => node is ConvertOperation { TargetType: "half" };
 
     private void MarkPartialPrecision(HlslTreeNode[] group)
     {

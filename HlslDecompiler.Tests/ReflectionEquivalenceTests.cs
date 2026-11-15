@@ -35,6 +35,18 @@ public class ReflectionEquivalenceTests
             + "as it is, and fxc, finding a full-precision read of the input, "
             + "declares it full precision. The AST writer casts the constant and "
             + "declares the same.")],
+        ["ps_3_0/half_view_shared"] = [("instruction",
+            "The input t1 is declared dcl_texcoord1 where the original's was "
+            + "dcl_texcoord1_pp. Its reads are _pp dot products against r0 and r2, "
+            + "which the instruction writer declares float4 for their full-precision "
+            + "lanes, so fxc finds full-precision reads of the input. The AST writer "
+            + "declares the normalized vectors half and keeps the dcl_pp.")],
+        ["ps_3_0/half_normals_full_dot"] = [("instruction",
+            "The inputs t1-t3 are declared dcl where the original's were dcl_pp. "
+            + "Each is multiplied by a lane of r0, which the instruction writer "
+            + "declares float4 as the texture fetch into it is full precision, so fxc "
+            + "finds full-precision reads of them. The AST writer names the half "
+            + "bump vector and keeps the dcl_pp.")],
         ["hs_5_0/patch_semantic_index"] = [("ast",
             "Two fork phases where the original had six. The patch constants b210 and "
             + "b120 are a weighted sum of two control points each, written as one "

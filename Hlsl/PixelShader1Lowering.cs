@@ -118,7 +118,9 @@ public static class PixelShader1Lowering
             Emit(Opcode.Mov, DestinationToken(RegisterType.ColorOut, 0, 0xF),
                 Source(RegisterType.Temp, 0, Identity));
 
-            return Assemble();
+            ShaderModel lowered = Assemble();
+            lowered.IsTranslated = true;
+            return lowered;
         }
 
         private void Lower(D3D9Instruction instruction, int? holdIn)

@@ -45,6 +45,13 @@ public class ShaderModel
     /// </summary>
     public bool CentroidInSemantic { get; set; }
 
+    /// <summary>
+    /// Whether the instructions are a translation of another compiler's (the Xbox
+    /// 360's, or ps_1_x's paired colour and alpha), which splits a vector op into
+    /// several for reasons of its own rather than because the source did.
+    /// </summary>
+    public bool IsTranslated { get; set; }
+
     public ShaderModel(int majorVersion,
         int minorVersion,
         ShaderType type,

@@ -738,6 +738,9 @@ public sealed class RegisterState
     /// <summary>D3D9 bytecode, whose HLSL older compilers must read too.</summary>
     public bool IsShaderModel3OrEarlier => _shaderModel.MajorVersion <= 3;
 
+    /// <summary>See <see cref="ShaderModel.IsTranslated"/>.</summary>
+    public bool IsTranslated => _shaderModel.IsTranslated;
+
     public RegisterState(ShaderModel shaderModel)
     {
         _shaderModel = shaderModel;

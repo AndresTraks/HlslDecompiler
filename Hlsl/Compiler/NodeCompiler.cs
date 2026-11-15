@@ -498,7 +498,8 @@ public sealed class NodeCompiler
                 // An elementwise op with exactly one ungrouped operand stays one op
                 // with a constructor around that operand, which fxc keeps as one
                 // instruction; two half-ops in a constructor it keeps apart.
-                if (IsElementwiseAcross(components) && CountUngroupedOperands(components) == 1)
+                if (IsElementwiseAcross(components) && CountUngroupedOperands(components) == 1
+                    && !IsSplitOverRegisterReads(components))
                 {
                     return CompileOperation((Operation)components[0], components, promoteToVectorSize);
                 }
@@ -848,6 +849,43 @@ public sealed class NodeCompiler
                 }
         }
     }
+
+    // Lanes the original computed in different instructions, the operand they do not
+    // share being only reads of input registers: fxc gathers those with a mov each
+    // before one op, so the original's source was split. Computed parts it writes
+    // into the lanes as it goes, and over a constant register it splits the op itself.
+    private bool IsSplitOverRegisterReads(List<HlslTreeNode> components)
+    {
+        return !_registers.IsTranslated
+            && components
+                .Select(c => c.SourceInstruction)
+                .Where(instruction => instruction != 0)
+                .Distinct()
+                .Count() > 1
+            && GathersRegisterReads(components);
+    }
+
+    // A product of them by one shared factor counts too: fxc folds it into a mad
+    // and still gathers the reads (`float4(n, uv.x) * t + k`).
+    private bool GathersRegisterReads(List<HlslTreeNode> components)
+    {
+        for (int operand = 0; operand < components[0].Inputs.Count; operand++)
+        {
+            List<HlslTreeNode> values = [.. components.Select(c => c.Inputs[operand])];
+            if (_nodeGrouper.GroupComponents(values).Count > 1)
+            {
+                return values.All(IsInputRegisterRead)
+                    || values.All(v => v is MultiplyOperation)
+                        && IsElementwiseAcross(values)
+                        && CountUngroupedOperands(values) == 1
+                        && GathersRegisterReads(values);
+            }
+        }
+        return false;
+    }
+
+    private static bool IsInputRegisterRead(HlslTreeNode node) =>
+        node is RegisterInputNode { RegisterComponentKey.RegisterKey: D3D9RegisterKey { Type: RegisterType.Input or RegisterType.Texture } };
 
     private int CountUngroupedOperands(List<HlslTreeNode> components)
     {

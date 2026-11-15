@@ -203,6 +203,7 @@ public sealed partial class XenosTranslator
             flow[i].HasFlowAttribute = flowAttributes[i];
         }
         model.CentroidInSemantic = true;
+        model.IsTranslated = true;
         return model;
     }
 

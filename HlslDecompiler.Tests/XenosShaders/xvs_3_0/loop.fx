@@ -1,5 +1,5 @@
-float4 k[8];
 int n : register(i0);
+float4 k[8];
 
 float4 main(float4 position : POSITION) : POSITION
 {

@@ -1,6 +1,6 @@
+float4 offsets[8] : register(c0);
 float4 control : register(c8);
-float4 offsets[8];
-sampler2D source;
+sampler2D source : register(s0);
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

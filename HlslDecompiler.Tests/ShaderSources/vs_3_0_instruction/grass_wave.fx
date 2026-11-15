@@ -1,5 +1,5 @@
-float4 wind : register(c4);
 float4x4 worldViewProjection;
+float4 wind;
 
 struct VS_IN
 {

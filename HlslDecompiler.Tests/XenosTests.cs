@@ -427,7 +427,7 @@ public class XenosTests
         // And the decompiled HLSL declares it with the initializer.
         var hlsl = new StringWriter();
         new Hlsl.HlslAstWriter(new XenosTranslator(source).TranslateToShaderModel()).Write(hlsl);
-        Assert.That(hlsl.ToString(), Does.Contain("float4 tint : register(c4) = float4(1, 2, 3, 4)"));
+        Assert.That(hlsl.ToString(), Does.Contain("float4 tint = float4(1, 2, 3, 4)"));
     }
 
     private static string[] Hex(IEnumerable<uint> words) => words.Select(w => w.ToString("x8")).ToArray();

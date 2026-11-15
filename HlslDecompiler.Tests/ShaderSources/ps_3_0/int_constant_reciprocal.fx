@@ -1,6 +1,6 @@
-int count : register(c1);
-float4 step;
-sampler2D t;
+float4 step : register(c0);
+int count;
+sampler2D t : register(s0);
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

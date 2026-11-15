@@ -1,8 +1,8 @@
-float4 offset : register(c6);
-float scale : register(c7);
-bool useOffset : register(c4);
-bool useScale : register(c5);
 float4x4 worldViewProj;
+bool useOffset;
+bool useScale;
+float4 offset;
+float scale;
 
 struct VS_IN
 {

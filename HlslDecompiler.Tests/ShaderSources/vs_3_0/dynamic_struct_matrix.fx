@@ -4,8 +4,8 @@ struct struct1
 	float4 tint;
 };
 
-int g_Index : register(c20);
 struct1 g_Instances[4];
+int g_Index;
 
 float4 main(float4 position : POSITION) : POSITION
 {

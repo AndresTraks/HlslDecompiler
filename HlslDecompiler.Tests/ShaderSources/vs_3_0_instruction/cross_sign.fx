@@ -1,7 +1,7 @@
-float3 axis : register(c4);
-float4 planeA : register(c5);
-float4 planeB : register(c6);
 float4x4 worldViewProj;
+float3 axis;
+float4 planeA;
+float4 planeB;
 
 struct VS_IN
 {

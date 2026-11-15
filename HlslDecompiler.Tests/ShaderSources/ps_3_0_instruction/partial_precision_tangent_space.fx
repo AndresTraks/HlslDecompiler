@@ -1,5 +1,5 @@
-sampler2D directions : register(s1);
 sampler2D normals;
+sampler2D directions;
 
 struct PS_IN
 {

@@ -1,8 +1,8 @@
-float4 fog : register(c9);
-float4 lightColour : register(c8);
-float4 lightDirection : register(c7);
-float4x4 world : register(c4);
 float4x4 worldViewProjection;
+float4x4 world;
+float4 lightDirection;
+float4 lightColour;
+float4 fog;
 
 struct VS_IN
 {

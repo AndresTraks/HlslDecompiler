@@ -56,6 +56,18 @@ public class D3D9ConstantDeclaration : ConstantDeclaration
     /// </summary>
     public byte[] DefaultValue { get; init; }
 
+    /// <summary>
+    /// Bound by the original's source (`: register(c4)`): the table's reserved
+    /// word is nonzero for such a constant and zero for one fxc placed itself.
+    /// </summary>
+    public bool IsBound { get; init; }
+
+    /// <summary>
+    /// Whether the declaration is written with its register: bound in the
+    /// original, or where fxc would not place it by itself. Null until planned.
+    /// </summary>
+    public bool? WritesRegister { get; set; }
+
     public D3D9ConstantDeclaration(string name, RegisterSet registerSet, short registerIndex, short registerCount, ShaderTypeInfo typeInfo, byte[] defaultValue = null)
         : base(name, registerIndex, typeInfo)
     {

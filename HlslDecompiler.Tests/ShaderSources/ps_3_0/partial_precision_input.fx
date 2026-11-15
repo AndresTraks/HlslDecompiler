@@ -1,5 +1,5 @@
-float4 ambient : register(c1);
 float4 light;
+float4 ambient;
 
 struct PS_IN
 {

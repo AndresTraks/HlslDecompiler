@@ -1,5 +1,5 @@
-samplerCUBE c : register(s1);
 sampler2D s;
+samplerCUBE c;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {

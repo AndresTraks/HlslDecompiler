@@ -1,5 +1,5 @@
-sampler2D diffuse;
 float4 wave;
+sampler2D diffuse;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

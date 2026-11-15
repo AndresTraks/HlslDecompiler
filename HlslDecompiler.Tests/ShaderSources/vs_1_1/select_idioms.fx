@@ -1,6 +1,6 @@
-float4 scales[4] : register(c4);
-float4 threshold : register(c8);
 float4x4 wvp;
+float4 scales[4];
+float4 threshold;
 
 struct VS_IN
 {

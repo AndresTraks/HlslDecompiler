@@ -1,12 +1,12 @@
-float3 cameraPosition : register(c8);
-sampler2D diffuseMap;
-samplerCUBE envMap : register(s2);
-float3 lightColors[4] : register(c4);
 int lightCount : register(i0);
 float3 lightPositions[4];
-sampler2D normalMap;
-float specularPower : register(c9);
-float2 uvScale : register(c10);
+float3 lightColors[4];
+float3 cameraPosition;
+float specularPower;
+float2 uvScale;
+sampler2D diffuseMap : register(s0);
+sampler2D normalMap : register(s1);
+samplerCUBE envMap : register(s2);
 
 struct PS_IN
 {

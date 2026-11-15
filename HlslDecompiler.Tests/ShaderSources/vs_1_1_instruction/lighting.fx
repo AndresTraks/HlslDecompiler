@@ -1,7 +1,7 @@
-float4 ambient : register(c3);
-float3 halfVector : register(c1);
 float3 lightDir;
-float specularPower : register(c2);
+float3 halfVector;
+float specularPower;
+float4 ambient;
 
 float4 main(float4 normal : NORMAL) : POSITION
 {

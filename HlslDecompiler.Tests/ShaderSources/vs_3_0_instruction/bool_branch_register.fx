@@ -1,8 +1,8 @@
-float3 eye : register(c5);
-sampler2D heightMap;
-float4 morph : register(c4);
 bool useMorph : register(b0);
-float4x4 viewProj;
+float4x4 viewProj : register(c0);
+float4 morph : register(c4);
+float3 eye : register(c5);
+sampler2D heightMap : register(s0);
 
 struct VS_OUT
 {

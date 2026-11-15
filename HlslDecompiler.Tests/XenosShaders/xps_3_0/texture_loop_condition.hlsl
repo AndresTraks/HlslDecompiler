@@ -1,5 +1,5 @@
-float4 k[8];
 int n : register(i0);
+float4 k[8];
 sampler2D s;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR

@@ -1,6 +1,6 @@
-sampler2D detail : register(s1);
-sampler2D offsetMap;
 float4 tint;
+sampler2D offsetMap;
+sampler2D detail : register(s1);
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

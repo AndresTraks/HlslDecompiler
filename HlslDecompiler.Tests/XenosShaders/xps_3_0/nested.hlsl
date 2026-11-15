@@ -1,6 +1,6 @@
-float4 k;
-int m : register(i1);
 int n : register(i0);
+int m : register(i1);
+float4 k;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {

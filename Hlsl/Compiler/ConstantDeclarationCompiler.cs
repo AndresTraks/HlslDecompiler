@@ -108,6 +108,13 @@ public sealed class ConstantDeclarationCompiler
         {
             // Where it was in the preshader says nothing about where it goes.
         }
+        else if (declaration.WritesRegister is bool writesRegister)
+        {
+            if (writesRegister)
+            {
+                registerSpecifier = $" : register({"bics"[registerSet]}{declaration.RegisterIndex})";
+            }
+        }
         // Bools and ints always say: undeclared, fxc may put one in a float
         // register (`if (useMorph)` read c6, a def's register, not b0).
         else if (_index[registerSet] == declaration.RegisterIndex

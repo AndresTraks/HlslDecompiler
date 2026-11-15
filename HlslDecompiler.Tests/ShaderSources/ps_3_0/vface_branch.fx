@@ -1,5 +1,5 @@
-float4 p;
-sampler2D t;
+float4 p : register(c0);
+sampler2D t : register(s0);
 
 struct PS_IN
 {

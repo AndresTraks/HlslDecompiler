@@ -1,5 +1,5 @@
-float4 wave : register(c4);
 float4x4 worldViewProjection;
+float4 wave;
 
 struct VS_IN
 {

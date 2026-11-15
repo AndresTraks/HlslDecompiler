@@ -1,5 +1,5 @@
-sampler2D s;
 float4 tint;
+sampler2D s;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

@@ -182,6 +182,7 @@ public class InstructionParser
         ParsedIdioms.Recover(_registerState,
             [_statements, .. (linkageBodies ?? []).Select(body => body.Item2)]);
         ResolvePolymorphicImmediates();
+        _registerState.PlanConstantRegisters();
         return new HlslAst(_statements, _registerState, _doubleValues)
         {
             PreshaderOutputs = _preshaderOutputs,

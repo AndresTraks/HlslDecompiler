@@ -1,5 +1,5 @@
-float4 tint : register(c4);
 float4x4 wvp;
+float4 tint;
 
 struct VS_IN
 {

@@ -1,5 +1,5 @@
+float4x4 wvp : register(c0);
 float4 pal[16] : register(c4);
-float4x4 wvp;
 
 struct VS_IN
 {

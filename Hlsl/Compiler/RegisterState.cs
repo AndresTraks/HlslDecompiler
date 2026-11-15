@@ -2411,6 +2411,87 @@ public sealed class RegisterState
         }
     }
 
+    /// <summary>
+    /// Orders the D3D9 constants by register and decides which are written with
+    /// their register. fxc places an unbound constant itself: the largest first,
+    /// equal sizes in declaration order, each in the first free registers around
+    /// the bound ones. A constant is bound if the original bound it or if that
+    /// placement would put it elsewhere.
+    /// </summary>
+    public void PlanConstantRegisters()
+    {
+        List<D3D9ConstantDeclaration> table = [.. ConstantDeclarations
+            .OfType<D3D9ConstantDeclaration>().Where(c => !c.IsPreshaderInput)];
+        if (table.Count == 0)
+        {
+            return;
+        }
+        // A constant may be listed once per register set; its entries stay together,
+        // in table order, so the writer still writes the same one first.
+        var firstEntry = new Dictionary<string, D3D9ConstantDeclaration>();
+        foreach (D3D9ConstantDeclaration constant in table)
+        {
+            firstEntry.TryAdd(constant.Name, constant);
+        }
+        List<D3D9ConstantDeclaration> ordered = [.. table
+            .OrderBy(c => firstEntry[c.Name].RegisterSet)
+            .ThenBy(c => firstEntry[c.Name].RegisterIndex)];
+        var queue = new Queue<D3D9ConstantDeclaration>(ordered);
+        List<ConstantDeclaration> all = [.. ConstantDeclarations];
+        ConstantDeclarations.Clear();
+        foreach (ConstantDeclaration declaration in all)
+        {
+            ConstantDeclarations.Add(declaration is D3D9ConstantDeclaration { IsPreshaderInput: false }
+                ? queue.Dequeue()
+                : declaration);
+        }
+
+        foreach (D3D9ConstantDeclaration constant in ordered)
+        {
+            // Bools and ints always say: unbound, fxc may put one the decompilation
+            // reads differently in a float register (a bool in b1 moved to c0, and
+            // every float constant after it).
+            constant.WritesRegister = constant.IsBound
+                || constant.RegisterSet is not (RegisterSet.Float4 or RegisterSet.Sampler);
+        }
+        foreach (RegisterSet set in new[] { RegisterSet.Float4, RegisterSet.Sampler })
+        {
+            List<D3D9ConstantDeclaration> inSet = [.. ordered.Where(c => c.RegisterSet == set)];
+            // A constant fxc would misplace is bound, which moves the others: repeat.
+            while (inSet.FirstOrDefault(c => c.WritesRegister == false
+                && PlacedByCompiler(inSet, c) != c.RegisterIndex) is D3D9ConstantDeclaration misplaced)
+            {
+                misplaced.WritesRegister = true;
+            }
+        }
+    }
+
+    // Where fxc would put an unbound constant, given the bound ones.
+    private static int PlacedByCompiler(List<D3D9ConstantDeclaration> inSet, D3D9ConstantDeclaration target)
+    {
+        var used = new HashSet<int>();
+        foreach (D3D9ConstantDeclaration bound in inSet.Where(c => c.WritesRegister == true))
+        {
+            used.UnionWith(Enumerable.Range(bound.RegisterIndex, bound.RegisterCount));
+        }
+        // Stable: equal sizes keep their order.
+        foreach (D3D9ConstantDeclaration constant in inSet.Where(c => c.WritesRegister == false)
+            .OrderByDescending(c => c.RegisterCount))
+        {
+            int start = 0;
+            while (Enumerable.Range(start, constant.RegisterCount).Any(used.Contains))
+            {
+                start++;
+            }
+            if (ReferenceEquals(constant, target))
+            {
+                return start;
+            }
+            used.UnionWith(Enumerable.Range(start, constant.RegisterCount));
+        }
+        return -1;
+    }
+
     public void DeclareConstant(D3D9ConstantDeclaration constant)
     {
         ConstantDeclarations.Add(constant);

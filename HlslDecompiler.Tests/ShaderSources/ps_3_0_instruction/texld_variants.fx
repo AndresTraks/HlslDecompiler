@@ -1,5 +1,5 @@
-float bias : register(c1);
 float lod;
+float bias;
 sampler2D samp;
 
 struct PS_IN

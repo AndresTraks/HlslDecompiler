@@ -1,8 +1,8 @@
+bool useTexture : register(b0);
+bool tint : register(b1);
 float4 colorA;
 float4 colorB;
 sampler2D tex;
-bool tint : register(b1);
-bool useTexture : register(b0);
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

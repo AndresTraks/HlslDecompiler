@@ -1,5 +1,5 @@
-sampler2D shadowMap;
 float4 shadowParameters;
+sampler2D shadowMap;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {

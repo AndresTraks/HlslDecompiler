@@ -1,6 +1,6 @@
-sampler2D s0;
 float4 steps[16];
 float threshold;
+sampler2D s0;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

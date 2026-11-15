@@ -1,6 +1,6 @@
 float4 color;
-sampler2D diffuse;
 float4 light;
+sampler2D diffuse;
 
 float4 main(float4 texcoord : TEXCOORD) : COLOR
 {

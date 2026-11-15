@@ -1,8 +1,8 @@
-float3 eye : register(c7);
-float4 fogParams : register(c9);
-float3 lightDir : register(c8);
-float4x4 w : register(c4);
 float4x4 wvp;
+float4x4 w;
+float3 eye;
+float3 lightDir;
+float4 fogParams;
 
 struct VS_IN
 {

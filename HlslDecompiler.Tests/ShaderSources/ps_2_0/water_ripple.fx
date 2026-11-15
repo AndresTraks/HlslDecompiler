@@ -1,7 +1,7 @@
-float4 eyePosition : register(c1);
 float4 lightDirection;
+float4 eyePosition;
+float4 waterColour;
 sampler2D normalMap;
-float4 waterColour : register(c2);
 
 struct PS_IN
 {

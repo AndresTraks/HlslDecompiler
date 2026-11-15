@@ -1,6 +1,6 @@
-float3 eyeDir : register(c1);
 float3 lightDir;
-float shininess : register(c2);
+float3 eyeDir;
+float shininess;
 
 struct PS_IN
 {

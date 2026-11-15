@@ -1,7 +1,7 @@
-sampler2D baseMap;
 float4 blendControl;
-sampler2D blendMap : register(s2);
+sampler2D baseMap;
 sampler2D detailMap;
+sampler2D blendMap;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

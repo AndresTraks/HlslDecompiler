@@ -1,6 +1,6 @@
-float3 attenuation : register(c5);
-float4 light : register(c4);
 float4x4 worldViewProj;
+float4 light;
+float3 attenuation;
 
 struct VS_IN
 {

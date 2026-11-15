@@ -1,11 +1,11 @@
 float4 fogColour;
-sampler2D layer0 : register(s1);
-sampler2D layer1 : register(s2);
-sampler2D layer2 : register(s3);
-float2 layerScale : register(c2);
 float3 lightDirection;
-float rimPower : register(c3);
+float2 layerScale;
+float rimPower;
 sampler2D splatMap;
+sampler2D layer0;
+sampler2D layer1;
+sampler2D layer2;
 
 struct PS_IN
 {

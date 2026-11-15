@@ -1,6 +1,6 @@
-sampler2D height;
-float morph : register(c4);
 float4x4 wvp;
+float morph;
+sampler2D height;
 
 struct VS_IN
 {

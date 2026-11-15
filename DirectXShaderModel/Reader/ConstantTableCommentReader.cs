@@ -82,7 +82,8 @@ public class ConstantTableCommentReader : BinaryReader
         RegisterSet registerSet = (RegisterSet)ReadInt16();
         short registerIndex = ReadInt16();
         short registerCount = ReadInt16();
-        BaseStream.Position += sizeof(short); // Reserved
+        // Reserved: fxc sets it ((index << 2) | 2) on a constant the source bound.
+        short reserved = ReadInt16();
         int typeInfoOffset = ReadInt32();
         int defaultValueOffset = ReadInt32();
 
@@ -99,7 +100,10 @@ public class ConstantTableCommentReader : BinaryReader
             defaultValue = ReadDefaultValue(typeInfo);
         }
 
-        return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, typeInfo, defaultValue);
+        return new D3D9ConstantDeclaration(name, registerSet, registerIndex, registerCount, typeInfo, defaultValue)
+        {
+            IsBound = reserved != 0,
+        };
     }
 
     /// <summary>

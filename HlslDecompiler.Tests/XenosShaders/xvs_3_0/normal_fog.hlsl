@@ -1,6 +1,6 @@
-float3 eye : register(c7);
-float4x3 w : register(c4);
 float4x4 wvp;
+float4x3 w;
+float3 eye;
 
 struct VS_IN
 {

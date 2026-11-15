@@ -1,5 +1,5 @@
-sampler2D heightMap;
 float4x4 wvp;
+sampler2D heightMap;
 
 struct VS_IN
 {

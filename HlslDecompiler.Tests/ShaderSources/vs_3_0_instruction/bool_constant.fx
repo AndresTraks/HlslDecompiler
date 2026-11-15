@@ -1,7 +1,7 @@
 bool doubled : register(b0);
-bool flipped : register(c4);
 int repeats : register(i0);
 float4x4 wvp;
+bool flipped;
 
 struct VS_IN
 {

@@ -1,9 +1,9 @@
 float4x4 bones[20];
-sampler2D heightMap;
-float heightScale : register(c84);
-float2 heightUv : register(c85);
-float time : register(c86);
 float4x4 worldViewProjection;
+float heightScale;
+float2 heightUv;
+float time;
+sampler2D heightMap : register(s0);
 
 struct VS_IN
 {

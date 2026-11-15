@@ -1,5 +1,5 @@
-sampler2D s0;
 float4 steps[8];
+sampler2D s0;
 
 float4 main(float2 texcoord : TEXCOORD) : COLOR
 {

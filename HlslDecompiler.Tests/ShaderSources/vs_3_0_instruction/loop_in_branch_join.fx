@@ -1,7 +1,7 @@
 bool b : register(b0);
+int n : register(i0);
 float4 k[4];
 float4 m;
-int n : register(i0);
 
 float4 main(float4 position : POSITION) : POSITION
 {

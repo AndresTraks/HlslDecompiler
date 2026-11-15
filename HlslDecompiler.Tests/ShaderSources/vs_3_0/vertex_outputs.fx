@@ -1,6 +1,6 @@
-float4 fogColour : register(c5);
-float pointSize : register(c4);
 float4x4 wvp;
+float pointSize;
+float4 fogColour;
 
 struct VS_OUT
 {

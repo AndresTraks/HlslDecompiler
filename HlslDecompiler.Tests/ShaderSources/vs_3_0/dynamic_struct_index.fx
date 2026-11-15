@@ -5,8 +5,8 @@ struct struct1
 	float4 color;
 };
 
-int g_Index : register(c24);
 struct1 g_Lights[8];
+int g_Index;
 
 float4 main(float4 position : POSITION) : POSITION
 {

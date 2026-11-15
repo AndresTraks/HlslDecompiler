@@ -1,5 +1,5 @@
-float4 k : register(c4);
 float4x4 wvp;
+float4 k;
 
 struct VS_IN
 {

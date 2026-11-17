@@ -8,29 +8,9 @@ ps_1_1 to ps_5_0 \
 gs_4_0 to gs_5_0, cs_4_0 to cs_5_0, hs_5_0, ds_5_0 \
 fx_2_0, fx_4_0, fx_4_1 and fx_5_0.
 
+Xbox 360 shaders (Xenos microcode).
+
 Shader Model 6+ (DXIL) is not supported.
-
-Xbox 360 shaders (Xenos microcode, as XNA Game Studio 3.1 and the XDK store
-them) decompile too: the microcode is translated into the shader model 3
-bytecode it means, which decompiles as any other. `--asm` writes the microcode
-in the syntax XNA's Xbox 360 assembler reads back. Not translated yet: a pixel
-shader indexing constants through a0 (ps_3_0 has no address register), memory
-export, and subroutines.
-
-A ps_1_x shader decompiles to HLSL for ps_2_0, since no compiler targets ps_1_x
-any more. Values are computed in floating point: hardware that ran ps_1_x in
-fixed point clamped intermediate values, to [-1, 1] before ps_1_4 and to
-[-8, 8] in it.
-
-texbem, texbeml and bem read the bump environment matrix and luminance from
-texture stage state, which HLSL cannot name. The decompilation reads them from
-uniforms instead, which whoever runs it sets where the stage state was set. For
-stage 1 they are `float2x2 bumpEnvMat1`, whose rows are (M00, M01) and
-(M10, M11), so that the offset reads `mul(float2(du, dv), bumpEnvMat1)`, and
-`float2 bumpEnvLum1`, the luminance scale and offset.
-
-What ps_1_4 leaves undefined is not decompiled: a texcrd into an alpha, a
-projected texcrd into a blue, a projected read of a cube or volume texture.
 
 ## Usage
 `HlslDecompiler [options] shader.fxc`
@@ -70,37 +50,6 @@ mad oC0.yzw, v0.xxx, c0.xyy, c0.yxz
 | `--asm` | Write the disassembly instead of HLSL |
 | `--instructions` | Write HLSL one statement per instruction |
 | `--flow-attributes` | Mark every `if` `[branch]` and every loop `[loop]` |
+| `--min-precision` | Declare variables at `min16float` and other minimum precision the original declared, at some instruction cost |
 | `--verbose` | Print the stack trace when decompiling fails |
 | `-h`, `--help` | Show the options |
-
-## Testing
-`dotnet test` decompiles every shader in `HlslDecompiler.Tests/CompiledShaders`
-and compares the output with the goldens beside it: the disassembly in
-`ShaderAssembly`, and the HLSL of both writers in `ShaderSources`. The tiers
-that recompile call `d3dcompiler_47.dll`, the compiler behind `fxc.exe`, in
-process. Windows ships it; a Windows SDK's copy is preferred when one is
-installed, and `D3DCOMPILER_DLL` names another. Elsewhere they run `fxc.exe`
-under Wine, from `FXC_EXE`.
-
-The Xbox 360 listings in `HlslDecompiler.Tests/XenosShaders` are checked against
-their goldens, and, when the XNA helper is built, also by assembling each one
-with XNA's assembler and comparing the result with the original shader. The
-helper is extracted from XNA Game Studio 3.1's installer, without installing it:
-```
-powershell -File tools\xna-xbox\build.ps1 -Installer XNAGS31_setup.exe
-```
-It is used from `tools\xna-xbox\bin`, or from where `XNA_XBOX_EXE` points. Where to
-download the installer, and what the script takes from it, is in
-[tools/xna-xbox/README.md](tools/xna-xbox/README.md).
-
-When a change to the decompiler changes its output, bless the goldens instead
-of editing them by hand:
-```
-powershell -File HlslDecompiler.Tests\Bless.ps1
-```
-It rewrites every golden that differs, measures which goldens are now fixed
-points (they decompile from their own compilation to themselves), takes those
-off `KnownNonFixedPoints.txt`, and lists what changed. Review it with
-`git diff`. A golden that stops being a fixed point is not blessed; it fails.
-Setting `HLSL_BLESS=1` blesses whatever a `dotnet test` run covers; the script
-runs the fixed points after the goldens, so that they compile the new ones.

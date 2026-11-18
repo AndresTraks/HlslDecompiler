@@ -363,17 +363,24 @@ public class NodeGrouper
         {
             return false;
         }
-        // Only a plain read (`add r, c, v`); for an expression the zero costs an
-        // instruction.
-        if (node2 is not (TempVariableNode or RegisterInputNode))
+        HlslTreeNode added = add.Addend2 is ConstantNode ? add.Addend1
+            : add.Addend1 is ConstantNode ? add.Addend2
+            : null;
+        if (added == null)
         {
             return false;
         }
-        if (add.Addend2 is ConstantNode)
+        // Only a plain read (`add r, c, v`); for an expression the zero costs an
+        // instruction, unless the instruction that wrote both lanes added it
+        // (`mad r.xyz, a, b, c` with a zero in c) to the same kind of value: a
+        // product beside a sum is a folded factor as well, and the two folds
+        // together make a constructor.
+        if (node2 is not (TempVariableNode or RegisterInputNode)
+            && !(HlslTreeNode.IsSameInstruction(add, node2) && Operation.IsSameKind(added, node2)))
         {
-            return CanGroupComponents(add.Addend1, node2);
+            return false;
         }
-        return add.Addend1 is ConstantNode && CanGroupComponents(add.Addend2, node2);
+        return CanGroupComponents(added, node2);
     }
 
     /// <summary>

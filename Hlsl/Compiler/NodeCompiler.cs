@@ -604,6 +604,24 @@ public sealed class NodeCompiler
             return $"{Compile(bases, promoteToVectorSize)} + {Compile(addends, addends.Count)}";
         }
 
+        // The same for a constant subtracted: `t0 - float3(0, 0, 1)`.
+        if (components.Count > 1
+            && components.Any(c => c is SubtractOperation)
+            && components.Any(c => c is not SubtractOperation)
+            && components.All(c => c is SubtractOperation { Subtrahend: ConstantNode }
+                || c is not (SubtractOperation or AddOperation)))
+        {
+            bool integer = components
+                .OfType<SubtractOperation>()
+                .All(subtract => ((ConstantNode)subtract.Subtrahend).IntegerValue != null);
+            List<HlslTreeNode> minuends = [.. components.Select(
+                c => c is SubtractOperation subtract ? subtract.Minuend : c)];
+            List<HlslTreeNode> subtrahends = [.. components.Select(
+                c => c is SubtractOperation subtract ? subtract.Subtrahend
+                    : integer ? new ConstantNode(0) : new ConstantNode(0f))];
+            return $"{Compile(minuends, promoteToVectorSize)} - {Compile(subtrahends, subtrahends.Count)}";
+        }
+
         var first = components[0];
 
         if (first is ConstantNode)
@@ -2343,9 +2361,10 @@ public sealed class NodeCompiler
                         multiplicand2 = temp;
                     }
 
-                    // Keep `a * (b / c)`: `a * b / c` rounds differently.
-                    bool firstIsAssociative = AssociativityTester.TestForMultiplication(multiplicand1.First());
-                    bool secondIsAssociative = AssociativityTester.TestForMultiplication(multiplicand2.First())
+                    // Keep `a * (b / c)`: `a * b / c` rounds differently. Every lane: one
+                    // whose zero was folded away is bare beside a sum.
+                    bool firstIsAssociative = multiplicand1.All(AssociativityTester.TestForMultiplication);
+                    bool secondIsAssociative = multiplicand2.All(AssociativityTester.TestForMultiplication)
                         && !IsQuotient(multiplicand2)
                         && !(multiplicand2.First() is MultiplyOperation && multiplicand1.First() is not ConstantNode);
                     string first = Compile(multiplicand1, promoteToVectorSize);

@@ -355,17 +355,24 @@ public class NodeGrouper
 
     /// <summary>
     /// Whether an add of a constant is the sibling of a bare node that the same add
-    /// would have covered, had its constant not been zero.
+    /// would have covered, had its constant not been zero. A negative constant made
+    /// the add a subtract (`x - 1`), which is the same add; but not an integer one
+    /// beside a plain read, as `int3(t.x, t.y - 1, 0)` recompiled cheaper than
+    /// `int3(t.xy - int2(0, 1), 0)`.
     /// </summary>
     private bool GroupsWithFoldedAddend(HlslTreeNode node1, HlslTreeNode node2)
     {
-        if (node1 is not AddOperation add || node2 is AddOperation)
+        if (node1 is not (AddOperation or SubtractOperation) || node2 is AddOperation or SubtractOperation)
         {
             return false;
         }
-        HlslTreeNode added = add.Addend2 is ConstantNode ? add.Addend1
-            : add.Addend1 is ConstantNode ? add.Addend2
-            : null;
+        HlslTreeNode added = node1 switch
+        {
+            AddOperation { Addend2: ConstantNode } add => add.Addend1,
+            AddOperation { Addend1: ConstantNode } add => add.Addend2,
+            SubtractOperation { Subtrahend: ConstantNode } subtract => subtract.Minuend,
+            _ => null
+        };
         if (added == null)
         {
             return false;
@@ -375,8 +382,10 @@ public class NodeGrouper
         // (`mad r.xyz, a, b, c` with a zero in c) to the same kind of value: a
         // product beside a sum is a folded factor as well, and the two folds
         // together make a constructor.
-        if (node2 is not (TempVariableNode or RegisterInputNode)
-            && !(HlslTreeNode.IsSameInstruction(add, node2) && Operation.IsSameKind(added, node2)))
+        bool sameInstruction = HlslTreeNode.IsSameInstruction(node1, node2) && Operation.IsSameKind(added, node2);
+        bool plainRead = node2 is TempVariableNode or RegisterInputNode
+            && node1 is not SubtractOperation { Subtrahend: ConstantNode { IntegerValue: not null } };
+        if (!plainRead && !sameInstruction)
         {
             return false;
         }

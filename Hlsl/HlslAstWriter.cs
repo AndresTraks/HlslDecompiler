@@ -4297,34 +4297,39 @@ public class HlslAstWriter : HlslWriter
 
             // Add the instruction's other lanes, or a lane read once is recomputed
             // inline; only where they form one vector expression, not packed scalars.
-            if (group.All(node => node is Operation && HlslTreeNode.IsSameInstruction(node, candidate))
-                && group.Select(node => node.SourceComponent).Distinct().Count() == group.Count)
+            // A _pp lane is read through its half cast, which no instruction made.
+            static bool IsHalfCast(HlslTreeNode node) => node is ConvertOperation { TargetType: "half" };
+            static HlslTreeNode Lane(HlslTreeNode node) => node is ConvertOperation { TargetType: "half" } cast ? Computed(cast) : node;
+            if (group.All(node => Lane(node) is Operation && HlslTreeNode.IsSameInstruction(Lane(node), Lane(candidate)))
+                && group.Select(node => Lane(node).SourceComponent).Distinct().Count() == group.Count)
             {
                 List<HlslTreeNode> widened = [.. group];
                 foreach (HlslTreeNode other in reachable)
                 {
                     if (widened.Count < 4
                         && other is Operation
-                        && HlslTreeNode.IsSameInstruction(other, candidate)
+                        && IsHalfCast(other) == IsHalfCast(candidate)
+                        && HlslTreeNode.IsSameInstruction(Lane(other), Lane(candidate))
                         && !named.Contains(other)
                         && !roots.Contains(other)
-                        && !widened.Any(node => node.SourceComponent == other.SourceComponent))
+                        && !widened.Any(node => Lane(node).SourceComponent == Lane(other).SourceComponent))
                     {
                         widened.Add(other);
                     }
                 }
                 if (widened.Count > group.Count)
                 {
-                    HlslTreeNode[] ordered = [.. widened.OrderBy(node => node.SourceComponent)];
+                    HlslTreeNode[] ordered = [.. widened.OrderBy(node => Lane(node).SourceComponent)];
                     string together = _compiler.Measure([ordered]).Recording[^1].Text;
-                    if (!System.Text.RegularExpressions.Regex.IsMatch(together, @"\b(float|int|uint|half|double|bool)[234]\(")
+                    // A literal vector (`+ float3(0, 0, 1)`) constructs no lanes.
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(together, @"\b(float|int|uint|half|double|bool)[234]\((?![-0-9., ]*\))")
                         && ReadsWholeVectors(together))
                     {
                         foreach (HlslTreeNode other in widened.Skip(group.Count))
                         {
                             named.Add(other);
                         }
-                        group = widened;
+                        group = [.. ordered];
                     }
                 }
             }

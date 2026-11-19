@@ -601,7 +601,7 @@ public sealed class NodeCompiler
             List<HlslTreeNode> bases = [.. components.Select(BaseOfFoldedAdd)];
             List<HlslTreeNode> addends = [.. components.Select(
                 c => AddendOfFoldedAdd(c, integer))];
-            return $"{Compile(bases, promoteToVectorSize)} + {Compile(addends, addends.Count)}";
+            return $"{Compile(bases, promoteToVectorSize)} + {CompileLiteralOperand(components, addends)}";
         }
 
         // The same for a constant subtracted: `t0 - float3(0, 0, 1)`.
@@ -619,7 +619,7 @@ public sealed class NodeCompiler
             List<HlslTreeNode> subtrahends = [.. components.Select(
                 c => c is SubtractOperation subtract ? subtract.Subtrahend
                     : integer ? new ConstantNode(0) : new ConstantNode(0f))];
-            return $"{Compile(minuends, promoteToVectorSize)} - {Compile(subtrahends, subtrahends.Count)}";
+            return $"{Compile(minuends, promoteToVectorSize)} - {CompileLiteralOperand(components, subtrahends)}";
         }
 
         var first = components[0];
@@ -2018,7 +2018,40 @@ public sealed class NodeCompiler
     private string CompileConstant(List<HlslTreeNode> components, int promoteToVectorSize)
     {
         var constantComponents = components.Cast<ConstantNode>().ToArray();
-        return _constantCompiler.Compile(constantComponents, _assigningToUnsigned);
+        string compiled = _constantCompiler.Compile(constantComponents, _assigningToUnsigned);
+        return _compileDepth == _halfLiteralDepth && compiled.StartsWith("float") && IsConstructor(compiled)
+            ? "half" + compiled["float".Length..]
+            : compiled;
+    }
+
+    /// <summary>
+    /// The depth whose literal vectors are operands of a _pp instruction. fxc shares a
+    /// literal between instructions by value, and the first spelling's type decides:
+    /// `half4(t, 1)` beside a float3(0, 0, 1) addend is a mov of a float 1, beside
+    /// a half3(0, 0, 1) a mov_pp.
+    /// </summary>
+    private int _halfLiteralDepth = -1;
+
+    // Every lane read by a half cast: one _pp instruction (D3D9 has no other half).
+    private bool IsPartialPrecisionArithmetic(List<HlslTreeNode> components)
+    {
+        return _registers.IsShaderModel3OrEarlier
+            && components.All(c => c.Outputs.Any(reader => reader is ConvertOperation { TargetType: "half" }));
+    }
+
+    // The literal operand of a folded zero's lanes, half where they are _pp.
+    private string CompileLiteralOperand(List<HlslTreeNode> components, List<HlslTreeNode> literal)
+    {
+        int wasHalfLiteralDepth = _halfLiteralDepth;
+        _halfLiteralDepth = IsPartialPrecisionArithmetic(components) ? _compileDepth + 1 : -1;
+        try
+        {
+            return Compile(literal, literal.Count);
+        }
+        finally
+        {
+            _halfLiteralDepth = wasHalfLiteralDepth;
+        }
     }
 
     /// <summary>
@@ -2062,6 +2095,10 @@ public sealed class NodeCompiler
             ? _compileDepth + 1
             : -1;
         _floatArithmetic = _floatArithmeticOperandDepth == -1 ? null : operation;
+        int wasHalfLiteralDepth = _halfLiteralDepth;
+        _halfLiteralDepth = _floatArithmeticOperandDepth != -1 && IsPartialPrecisionArithmetic(components)
+            ? _floatArithmeticOperandDepth
+            : -1;
         _integerArithmeticOperandDepth = !_readingAsFloat
             && ValueTypes.ComputesInIntegers(operation) == true
             && operation is AddOperation or SubtractOperation or MultiplyOperation
@@ -2081,6 +2118,7 @@ public sealed class NodeCompiler
             _integerArithmeticOperandDepth = wasIntegerArithmeticOperandDepth;
             _floatArithmetic = wasFloatArithmetic;
             _castOperandOf = wasCastOperandOf;
+            _halfLiteralDepth = wasHalfLiteralDepth;
         }
     }
 

@@ -76,6 +76,7 @@ public class DecompileTests
     [TestCase("ps_3_0", "mad_zero_lanes")]
     [TestCase("ps_3_0", "subtract_zero_lanes")]
     [TestCase("ps_3_0", "shared_half_literal")]
+    [TestCase("ps_3_0", "lerp_to_zero_lanes")]
     [TestCase("ps_3_0", "negate_absolute")]
     [TestCase("ps_3_0", "dynamic_index")]
     [TestCase("ps_3_0", "semantics")]

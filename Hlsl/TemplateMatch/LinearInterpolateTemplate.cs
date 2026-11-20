@@ -30,6 +30,15 @@ public class LinearInterpolateTemplate : NodeTemplate<AddOperation>
         {
             return null;
         }
+        // A `to` of 0 was folded away: `amount * -from + from`.
+        if (multiply.Factor2 is NegateOperation negated2 && ReferenceEquals(negated2.Value, from))
+        {
+            return (multiply.Factor1, new ConstantNode(0f), from);
+        }
+        if (multiply.Factor1 is NegateOperation negated1 && ReferenceEquals(negated1.Value, from))
+        {
+            return (multiply.Factor2, new ConstantNode(0f), from);
+        }
         if (multiply.Factor2 is SubtractOperation difference2
             && ReferenceEquals(difference2.Subtrahend, from))
         {

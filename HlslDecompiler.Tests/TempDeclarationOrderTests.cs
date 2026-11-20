@@ -176,18 +176,17 @@ public class TempDeclarationOrderTests
                 {
                 	VS_OUT o;
 
-                	float t4 = step(abs(i.normal.w - 1), -abs(i.normal.w - 1));
-                	float t0 = t4;
-                	float2 t1 = float2(cos(i.normal.z), sin(i.normal.z));
-                	float t5 = i.normal.x * t1.x - t1.y * i.normal.y;
-                	float3 t2 = float3(lerp(i.position.x, t5, t0), lerp(i.position.y, dot(t1, i.normal.yx), t0), t0 * -i.position.z + i.position.z);
-                	float t3 = 0;
-                	o.position.xyz = float3(i.position.x + t4 * t5, i.position.y + t4 * dot(t1, i.normal.yx), 0);
+                	float t3 = step(abs(i.normal.w - 1), -abs(i.normal.w - 1));
+                	float2 t0 = float2(cos(i.normal.z), sin(i.normal.z));
+                	float t4 = i.normal.x * t0.x - t0.y * i.normal.y;
+                	float3 t1 = lerp(i.position.xyz, float3(t4, dot(t0, i.normal.yx), 0), t3);
+                	float t2 = 0;
+                	o.position.xyz = float3(i.position.x + t3 * t4, i.position.y + t3 * dot(t0, i.normal.yx), 0);
                 	for (int i_ = 0; i_ < 9; i_++) {
-                		t3 = t3 - 1;
+                		t2 = t2 - 1;
                 	}
                 	o.position.w = 1;
-                	o.color = float4(t2, t3 - 1);
+                	o.color = float4(t1, t2 - 1);
 
                 	return o;
                 }
